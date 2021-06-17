@@ -1,0 +1,6 @@
+
+int main(str[] args) {
+    if (args.count > 0) {
+        pln(args[0]);
+    }
+}

@@ -3,21 +3,24 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "sqrrl_types.h"
+#include "sqrrl.h"
 
-int main(int argc, char* argv[]) {
-    str filename;
+#include "sqrrl_tokenizer.cpp"
+
+int // NOTE(alexander): this is called by the platform layer
+compiler_main_entry(int argc, char* argv[]) {
+    str filepath;
     if (argc > 1) {
-        filename = str_lit(argv[1]);
+        filepath = str_lit(argv[1]);
     } else {
-        filename = str_lit("examples/demo.sq");
+        filepath = str_lit("examples/demo.sq");
     }
     
     // Read entire source file
     FILE* file;
-    fopen_s(&file, lit(filename), "rb");
+    fopen_s(&file, lit(filepath), "rb");
     if (!file) {
-        printf("File `%s` was not found!", lit(filename));
+        printf("File `%s` was not found!", lit(filepath));
         return -1;
     }
     
@@ -32,6 +35,18 @@ int main(int argc, char* argv[]) {
     fclose(file);
     
     printf("%s\n", lit(source));
+    
+    // Lexer
+    Tokenizer tokenizer = {};
+    tokenizer.start = source.data;
+    tokenizer.end = source.data + source.count;
+    tokenizer.next = tokenizer.start;
+    tokenizer.source = source;
+    tokenizer.filepath = filepath;
+    // TODO(alexander): calculate line number!
+    
+    
+    
     
     return 0;
     

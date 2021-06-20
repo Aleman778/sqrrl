@@ -35,6 +35,7 @@ typedef intptr_t  smm;
 typedef float     f32;
 typedef double    f64;
 typedef int32_t   b32;
+typedef char*     cstr;
 
 struct str {
     u8* data;

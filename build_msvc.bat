@@ -27,6 +27,6 @@ if ["%~1"]==["release"] (
 )
 
 rem Compile
-cl %compiler_flags% ../code/sqrrl.cpp -link %linker_flags%
+cl %compiler_flags% ../code/windows_sqrrl.cpp -link %linker_flags%
 
 popd

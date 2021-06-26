@@ -94,6 +94,14 @@ enum {
 #undef TOKEN
 };
 
+typedef s32 Int_Base;
+enum {
+    IntBase_Decimal,
+    IntBase_Binary,
+    IntBase_Octal,
+    IntBase_Hexadecimal,
+};
+
 struct Token {
     Token_Type type;
     str source;
@@ -102,6 +110,10 @@ struct Token {
     smm line;
     smm column;
     smm offset;
+    
+    Int_Base int_base;
+    smm suffix_start; // optional defined for literal type suffix e.g.  10i8
+    smm num_hashes; // optionally defined for raw string literals.
 };
 
 struct Tokenizer {
@@ -118,8 +130,6 @@ struct Tokenizer {
     u32 curr_utf32_character; // the current character as unicode codepoint
     smm* lines;
 };
-
-void utf8_advance_character(Tokenizer* t);
 
 inline bool
 is_hex_digit(u8 c) {
@@ -154,9 +164,9 @@ is_whitespace(u32 c) { // NOTE(alexander): takes utf-32 character as input
 
 inline bool
 is_ident_start(u32 c) {
-    return (('a' <= c && c <= 'z')
-            ||  ('A' <= c && c <= 'Z')
-            ||   '_' == c);
+    return (('a' <= c && c <= 'z') ||
+            ('A' <= c && c <= 'Z') ||
+            '_' == c);
 }
 
 inline bool
@@ -166,6 +176,9 @@ is_ident_continue(u32 c) {
             ||  ('0' <= c && c <= '9')
             ||   '_' == c);
 }
+
+// NOTE(alexander): forward declare function
+void utf8_advance_character(Tokenizer* t);
 
 inline s32
 scan_while(Tokenizer* t, bool predicate(u32)) {

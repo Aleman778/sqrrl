@@ -4,7 +4,6 @@
 #include <string.h>
 
 #include "sqrrl.h"
-
 #include "sqrrl_tokenizer.cpp"
 
 int // NOTE(alexander): this is called by the platform layer
@@ -34,7 +33,7 @@ compiler_main_entry(int argc, char* argv[]) {
     fread(source.data, source.count, 1, file);
     fclose(file);
     
-    printf("%s\n", lit(source));
+    pln("%\n", f_str(source));
     
     // Lexer
     Tokenizer tokenizer = {};
@@ -46,7 +45,17 @@ compiler_main_entry(int argc, char* argv[]) {
     // TODO(alexander): calculate line number!
     
     
+    //Token token = eat_token();
+    //pln("Hello world: %.*s\n", lit(source));
     
+    //token = peek_token();
+    
+    
+    // NOTE(alexander): just a test for a better formatter than printf
+    str firstname = str_lit("Alexander");
+    str lastname = str_lit("Mennborg");
+    int level = 24;
+    pln("Welcome % %, you are at level %!\n", f_str(firstname), f_str(lastname), f_int(level));
     
     return 0;
     

@@ -11,7 +11,7 @@ set compiler_flags=-nologo -Gm- -GR- -Zo -EHa -Oi -FC -Zi -GS- -Gs9999999
 set compiler_flags=-WX -W4 -wd4201 -wd4100 -wd4189 -wd4505 -wd4127 %compiler_flags%
 
 rem Common Linker Flags
-set linker_flags=-incremental:no -opt:ref
+set linker_flags=-incremental:no -opt:ref -OUT:sqrrl.exe
 
 rem Build Specific Flags
 if ["%~1"]==["release"] (    

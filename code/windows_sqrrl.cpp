@@ -1,6 +1,5 @@
-
-
 #include "sqrrl.h"
+#include "sqrrl.cpp"
 
 
 int main(int argc, char* argv[]) {

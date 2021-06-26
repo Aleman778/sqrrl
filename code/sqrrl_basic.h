@@ -23,7 +23,7 @@
 // NOTE(alexander): define assestion macro on debug mode
 #if BUILD_DEBUG
 void
-__assert(const char* expression, const char* file, int line) {
+__assert(cstr expression, cstr file, int line) {
     // TODO(alexander): improve assertion printing.
     fprintf(stderr, "%s:%d: Assertion failed: %s\n", file, line, expression);
     *(int *)0 = 0; // NOTE(alexander): purposefully trap the program
@@ -58,7 +58,7 @@ struct str {
 
 // NOTE(alexander): converts C string to str type
 inline str
-str_lit(const char* string) {
+str_lit(cstr string) {
     str result;
     result.data = (u8*) string;
     result.count = strlen(string);
@@ -179,7 +179,9 @@ str_format(const char* format...) { // TODO(alexander): replace snprintf with cu
                 } break;
                 
                 case FormatType_str: {
-                    count = snprintf(buffer, size_remaining, "%.*s", va_arg(args, int), va_arg(args, char*));
+                    int string_count = va_arg(args, int);
+                    char* string = va_arg(args, char*);
+                    count = snprintf(buffer, size_remaining, "%.*s", string_count, string);
                 } break;
                 
                 case FormatType_cstr: {

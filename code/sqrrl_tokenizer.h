@@ -1,8 +1,4 @@
 
-// NOTE(alexander): this is used to detect utf8 characters
-global const u8 utf8_first_byte_mark[4] = { 0x00, 0xC0, 0xE0, 0xF0 };
-global const u8 utf8_first_byte_mask[4] = { 0x7F, 0x1F, 0x0F, 0x07 };
-
 // The different tokens that the tokenizer can recognize
 #define DEF_TOKEN_KINDS                                 \
 TOKEN(Invalid,                 "invalid")           \
@@ -19,7 +15,7 @@ TOKEN(Close_Bracket,           "]")                 \
 TOKEN(Annotation,              "@")                 \
 TOKEN(Directive,               "#")                 \
 TOKEN(Question,                "?")                 \
-TOKEN(Polymorphic,             "$")                 \
+TOKEN(Dollar,                  "$")                 \
 TOKEN(Assign,                  "=")                 \
 TOKEN(Lt,                      "<")                 \
 TOKEN(Gt,                      ">")                 \
@@ -45,7 +41,6 @@ TOKEN(String,                  "string")            \
 TOKEN(Raw_String,              "string")            \
 TOKEN(Byte_String,             "byte string")       \
 TOKEN(Byte_Raw_String,         "byte raw string")   \
-TOKEN(Logical_Eq,              "+=")                \
 TOKEN(Add_Assign,              "+=")                \
 TOKEN(Sub_Assign,              "-=")                \
 TOKEN(Mul_Assign,              "*=")                \
@@ -75,13 +70,13 @@ TOKEN(Ellipsis,                "...")               \
 TOKEN(EOF,                     "end of file")       \
 TOKEN(Error,                   "error")
 
-global const char* token_kind_repr[] = {
+global cstr token_kind_repr[] = {
 #define TOKEN(name, str) str,
     DEF_TOKEN_KINDS
 #undef TOKEN
 };
 
-global const char* token_kind_names[] = {
+global cstr token_kind_names[] = {
 #define TOKEN(name, str) "Token_" #name,
     DEF_TOKEN_KINDS
 #undef TOKEN
@@ -106,7 +101,7 @@ struct Token {
     Token_Type type;
     str source;
     
-    str filename;
+    str file;
     smm line;
     smm column;
     smm offset;
@@ -116,6 +111,9 @@ struct Token {
     smm num_hashes; // optionally defined for raw string literals.
 };
 
+#define f_token(x) FormatType_cstr, token_kind_repr[x]
+#define f_token_name(x) FormatType_cstr, token_kind_names[x]
+
 struct Tokenizer {
     u8* start;
     u8* end;
@@ -124,12 +122,23 @@ struct Tokenizer {
     u8* curr_line; // points to the first character of a new line.
     
     str source;
-    str filepath;
+    str file;
     smm line_number; // starts at zero
     smm column_number; // starts at zero
     u32 curr_utf32_character; // the current character as unicode codepoint
     smm* lines;
 };
+
+inline void
+tokenizer_set_source(Tokenizer* tokenizer, str source, str file) {
+    tokenizer->start = source.data;
+    tokenizer->end = source.data + source.count;
+    tokenizer->next = tokenizer->start;
+    tokenizer->source = source;
+    tokenizer->curr = tokenizer->start;
+    tokenizer->curr_line = tokenizer->start;
+    tokenizer->file = file;
+}
 
 inline bool
 is_hex_digit(u8 c) {
@@ -178,13 +187,13 @@ is_ident_continue(u32 c) {
 }
 
 // NOTE(alexander): forward declare function
-void utf8_advance_character(Tokenizer* t);
+void utf8_advance_character(Tokenizer* tokenizer);
 
 inline s32
-scan_while(Tokenizer* t, bool predicate(u32)) {
+scan_while(Tokenizer* tokenizer, bool predicate(u32)) {
     int num_scanned = 0;
-    while (predicate(t->curr_utf32_character) && t->curr < t->end) {
-        utf8_advance_character(t);
+    while (predicate(tokenizer->curr_utf32_character) && tokenizer->curr < tokenizer->end) {
+        utf8_advance_character(tokenizer);
         num_scanned++;
     }
     return num_scanned;

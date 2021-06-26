@@ -5,6 +5,7 @@
 
 #include "sqrrl.h"
 #include "sqrrl_tokenizer.cpp"
+#include "sqrrl_parser.cpp"
 
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[]) {
@@ -33,23 +34,27 @@ compiler_main_entry(int argc, char* argv[]) {
     fread(source.data, source.count, 1, file);
     fclose(file);
     
+    // TODO(alexander): temp printing source
     pln("%\n", f_str(source));
     
     // Lexer
     Tokenizer tokenizer = {};
-    tokenizer.start = source.data;
-    tokenizer.end = source.data + source.count;
-    tokenizer.next = tokenizer.start;
-    tokenizer.source = source;
-    tokenizer.filepath = filepath;
+    tokenizer_set_source(&tokenizer, source, filepath);
     // TODO(alexander): calculate line number!
     
+    // TODO(alexander): testing parser
+    Parser parser = {};
+    parser.tokenizer = &tokenizer;
     
-    //Token token = eat_token();
-    //pln("Hello world: %.*s\n", lit(source));
-    
-    //token = peek_token();
-    
+    Token token = next_token(&parser);
+    pln("next_token: %\n", f_token_name(token.type));
+    pln("next_token: %\n", f_token(token.type));
+    token = peek_token(&parser);
+    pln("peek_token: %\n", f_token(token.type));
+    pln("peek_token: %\n", f_token(token.type));
+    token = next_token(&parser);
+    pln("next_token: %\n", f_token_name(token.type));
+    pln("next_token: %\n", f_token(token.type));
     
     // NOTE(alexander): just a test for a better formatter than printf
     str firstname = str_lit("Alexander");
@@ -58,5 +63,4 @@ compiler_main_entry(int argc, char* argv[]) {
     pln("Welcome % %, you are at level %!\n", f_str(firstname), f_str(lastname), f_int(level));
     
     return 0;
-    
 }

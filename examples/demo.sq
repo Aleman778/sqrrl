@@ -1,5 +1,5 @@
 
-int main(str[] args) {
+int 10 main(str[] args) {
     if (args.count > 0) {
         pln(args[0]);
     }

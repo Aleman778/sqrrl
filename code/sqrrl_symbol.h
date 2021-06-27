@@ -1,44 +1,54 @@
 
 // Predefined keyword symbols that are reserved by the compiler.
-#define DEF_KEYWORDS    \
-KEYWORD(invalid)    \
-KEYWORD(break)      \
-KEYWORD(cast)       \
-KEYWORD(continue)   \
-KEYWORD(defer)      \
-KEYWORD(do)         \
-KEYWORD(else)       \
-KEYWORD(enum)       \
-KEYWORD(extern)     \
-KEYWORD(false)      \
-KEYWORD(for)        \
-KEYWORD(hidden)     \
-KEYWORD(if)         \
-KEYWORD(import)     \
-KEYWORD(in)         \
-KEYWORD(loop)       \
-KEYWORD(return)     \
-KEYWORD(struct)     \
-KEYWORD(true)       \
-KEYWORD(union)      \
-KEYWORD(while)      \
-KEYWORD(int)        \
-KEYWORD(s8)         \
-KEYWORD(s16)        \
-KEYWORD(s32)        \
-KEYWORD(s64)        \
-KEYWORD(uint)       \
-KEYWORD(u8)         \
-KEYWORD(u16)        \
-KEYWORD(u32)        \
-KEYWORD(u64)        \
-KEYWORD(f32)        \
-KEYWORD(f64)        \
-KEYWORD(b32)        \
-KEYWORD(char)       \
-KEYWORD(str)        \
-KEYWORD(bool)       \
-KEYWORD(void)
+#define DEF_SYMBOLS  \
+SYMBOL(invalid)  \
+SYMBOL(break)    \
+SYMBOL(cast)     \
+SYMBOL(continue) \
+SYMBOL(defer)    \
+SYMBOL(do)       \
+SYMBOL(else)     \
+SYMBOL(enum)     \
+SYMBOL(extern)   \
+SYMBOL(false)    \
+SYMBOL(for)      \
+SYMBOL(hidden)   \
+SYMBOL(if)       \
+SYMBOL(include)  \
+SYMBOL(in)       \
+SYMBOL(inline)   \
+SYMBOL(loop)     \
+SYMBOL(return)   \
+SYMBOL(static)   \
+SYMBOL(struct)   \
+SYMBOL(true)     \
+SYMBOL(typedef)  \
+SYMBOL(union)    \
+SYMBOL(while)    \
+SYMBOL(int)      \
+SYMBOL(s8)       \
+SYMBOL(s16)      \
+SYMBOL(s32)      \
+SYMBOL(s64)      \
+SYMBOL(smm)      \
+SYMBOL(uint)     \
+SYMBOL(u8)       \
+SYMBOL(u16)      \
+SYMBOL(u32)      \
+SYMBOL(u64)      \
+SYMBOL(umm)      \
+SYMBOL(f32)      \
+SYMBOL(f64)      \
+SYMBOL(b32)      \
+SYMBOL(char)     \
+SYMBOL(str)      \
+SYMBOL(bool)     \
+SYMBOL(void)     \
+SYMBOL(pointer)  \
+SYMBOL(array)    \
+SYMBOL(tuple)    \
+SYMBOL(function) \
+SYMBOL(infer)
 
 struct Symbol {
     str s;
@@ -46,7 +56,18 @@ struct Symbol {
 };
 
 enum Keyword {
-#define KEYWORD(symbol) Kw_##symbol,
-    DEF_KEYWORDS
-#undef KEYWORD
+#define SYMBOL(symbol) Kw_##symbol,
+    DEF_SYMBOLS
+#undef SYMBOL
+};
+
+global const u32 builtin_keywords_begin = Kw_break;
+global const u32 builtin_keywords_end = Kw_bool;
+global const u32 builtin_types_begin = Kw_int;
+global const u32 builtin_types_end = Kw_void;
+
+global Symbol builtin_keyword_symbols[] = {
+#define SYMBOL(atom) { str_lit(#atom), Kw_##atom },
+    DEF_SYMBOLS
+#undef SYMBOL
 };

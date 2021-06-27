@@ -1,5 +1,6 @@
 
-enum Unary_Op {
+typedef s32 Unary_Op;
+enum {
     UnaryOp_Neg,
     UnaryOp_Not,
     UnaryOp_Bit_Not,
@@ -7,7 +8,8 @@ enum Unary_Op {
     UnaryOp_Deref,
 };
 
-enum Binary_Op {
+typedef s32 Binary_Op;
+enum {
     BinaryOp_Add,
     BinaryOp_Subtract,
     BinaryOp_Multiply,
@@ -39,20 +41,31 @@ enum Binary_Op {
     BinaryOp_Shift_Right_Assign,
 };
 
-enum Ternary_Op {
+typedef s32 Ternary_Op;
+enum {
     TernaryOp_Conditional, // expr ? true : false
 };
 
 struct Pointer_Value {
     smm address;
-    Type* type;
+    //Type* type; // TODO(alexander): missing type definition
 };
 
 struct Array_Value {
-    Type* element_type;
+    //Type* element_type; // TODO(alexander): missing type definition
     void* elements;
     smm count;
     smm capacity;
+};
+
+typedef s32 Value_Type;
+enum {
+    ValueType_boolean,
+    ValueType_sint,
+    ValueType_uint,
+    ValueType_floating,
+    ValueType_pointer,
+    ValueType_array,
 };
 
 struct Value {
@@ -63,6 +76,6 @@ struct Value {
         u64 uint;
         f64 floating;
         Pointer_Value pointer;
-        
+        Array_Value array;
     };
 };

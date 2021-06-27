@@ -1,6 +1,25 @@
 
-int 10 main(str[] args) {
-    if (args.count > 0) {
-        pln(args[0]);
-    }
+// NOTE: this is typically the entry point of your program
+int main(str[] args) {
+    variable_assignment();    
+}
+
+
+void variable_assignment() {
+    // Assigning variables
+    s32 points = 10;  // 32-bit (s)igned integer
+    u32 counter = 24; // 32-bit (u)nsigned integer
+    f32 value = 0.64; // 32-bit (f)loating point number
+    pln("%\n%\n%", #points, #counter, #value); // printing the result
+    // NOTE: There also exists 8-bit, 16-bit, 64-bit and CPU architecture dependant variants
+
+    // Declaring variables without assignment
+    s32 points2;
+
+    points2 = 0;
+    
+    
+    
+    
+    
 }

@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "sqrrl.h"
+
 #include "sqrrl_tokenizer.cpp"
 #include "sqrrl_parser.cpp"
 
@@ -16,11 +17,14 @@ compiler_main_entry(int argc, char* argv[]) {
         filepath = str_lit("examples/demo.sq");
     }
     
+    // Setup string interning of variables
+    vars_initialize();
+    
     // Read entire source file
     FILE* file;
-    fopen_s(&file, lit(filepath), "rb");
+    fopen_s(&file, filepath, "rb");
     if (!file) {
-        printf("File `%s` was not found!", lit(filepath));
+        printf("File `%s` was not found!", filepath);
         return -1;
     }
     
@@ -28,10 +32,9 @@ compiler_main_entry(int argc, char* argv[]) {
     umm file_size = ftell(file);
     fseek(file, 0, SEEK_SET);
     
-    str source;
-    source.data = (u8*) malloc(file_size + 1);
-    source.count = file_size;
-    fread(source.data, source.count, 1, file);
+    str source = (str) malloc(file_size + 5) + 4;
+    *((u32*) source - 1) = (u32) file_size;
+    fread(source, str_count(source), 1, file);
     fclose(file);
     
     // TODO(alexander): temp printing source
@@ -42,25 +45,11 @@ compiler_main_entry(int argc, char* argv[]) {
     tokenizer_set_source(&tokenizer, source, filepath);
     // TODO(alexander): calculate line number!
     
-    // TODO(alexander): testing parser
+    
     Parser parser = {};
     parser.tokenizer = &tokenizer;
+    Ast_File ast_file = parse_file(&parser);
     
-    Token token = next_token(&parser);
-    pln("next_token: %\n", f_token_name(token.type));
-    pln("next_token: %\n", f_token(token.type));
-    token = peek_token(&parser);
-    pln("peek_token: %\n", f_token(token.type));
-    pln("peek_token: %\n", f_token(token.type));
-    token = next_token(&parser);
-    pln("next_token: %\n", f_token_name(token.type));
-    pln("next_token: %\n", f_token(token.type));
-    
-    // NOTE(alexander): just a test for a better formatter than printf
-    str firstname = str_lit("Alexander");
-    str lastname = str_lit("Mennborg");
-    int level = 24;
-    pln("Welcome % %, you are at level %!\n", f_str(firstname), f_str(lastname), f_int(level));
     
     return 0;
 }

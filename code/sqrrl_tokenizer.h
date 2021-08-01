@@ -131,8 +131,8 @@ struct Tokenizer {
 
 inline void
 tokenizer_set_source(Tokenizer* tokenizer, str source, str file) {
-    tokenizer->start = source.data;
-    tokenizer->end = source.data + source.count;
+    tokenizer->start = (u8*) source;
+    tokenizer->end = tokenizer->start + str_count(source);
     tokenizer->next = tokenizer->start;
     tokenizer->source = source;
     tokenizer->curr = tokenizer->start;

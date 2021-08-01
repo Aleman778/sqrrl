@@ -609,7 +609,7 @@ advance_token(Tokenizer* tokenizer) {
             default: {
                 u8 buffer[4];
                 smm count = (smm) utf32_convert_to_utf8(tokenizer->curr_utf32_character, buffer);
-                str character = { buffer, count };
+                str character = str_lit((str) buffer, (u32) count);
                 tokenization_error(tokenizer, str_format("invalid character `%`", f_str(character)));
                 token.type = Token_Error;
                 
@@ -618,8 +618,7 @@ advance_token(Tokenizer* tokenizer) {
     }
     
     if (advance_utf32_at_end) utf8_advance_character(tokenizer);
-    token.source.data = base;
-    token.source.count = (smm) (tokenizer->curr - base);
+    token.source = str_lit((char*) base, (u32) (tokenizer->curr - base));
     return token;
 }
 

@@ -40,6 +40,7 @@ Keyword parse_keyword(Parser* parser);
 
 Ast* parse_identifier(Parser* parser, bool report_error=true);
 Ast* parse_expression(Parser* parser, bool report_error=true);
+Ast* parse_statement(Parser* parser, bool report_error=true);
 
 Ast* parse_struct_or_union_argument(Parser* parser);
 Ast* parse_enum_argument(Parser* parser);

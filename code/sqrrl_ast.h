@@ -217,6 +217,7 @@ struct Ast {
         DEF_AST_TYPES 
 #undef AST_GROUP
 #undef AST
+        Ast* children[4];
     };
     Span span;
 };
@@ -225,3 +226,36 @@ struct Ast_File {
     Ast* ast;
     
 };
+
+
+void print_ast(Ast* node, u32 spacing=0) {
+    for (u32 s = 0; s < spacing; s++) printf(" ");
+    if (!node) {
+        pln("null");
+        return;
+    }
+    
+    pln("(%", f_str(ast_struct_names[node->type]));
+    spacing += 2;
+    
+    // some special cases
+    if (node->type == Ast_Abi) {
+    } else if (node->type == Ast_Literal) {
+    } else if (node->type == Ast_Ident) {
+    } else if (node->type == Ast_Named_Type) {
+    } else if (node->type == Ast_Infer_Type) {
+    } else if (node->type == Ast_Type_Decl) {
+        print_ast(node->Type_Decl.type, spacing);
+        print_ast(node->Type_Decl.stmt, spacing);
+    } else {
+        // otherwise parse all possible children
+        print_ast(node->children[0], spacing);
+        print_ast(node->children[1], spacing);
+        print_ast(node->children[2], spacing);
+        print_ast(node->children[3], spacing);
+    }
+    
+    spacing -= 2;
+    for (u32 s = 0; s < spacing; s++) printf(" ");
+    pln(")");
+}

@@ -21,6 +21,10 @@
 #define terabytes(value) (1024LL * gigabytes(value))
 
 // NOTE(alexander): define assestion macro on debug mode
+#ifdef assert
+#undef assert
+#endif
+
 #if BUILD_DEBUG
 void
 __assert(cstr expression, cstr file, int line) {
@@ -59,6 +63,7 @@ str_lit(str string, u32 count) {
     char* result = (char*) malloc(count + 5) + 4;
     result[count] = '\0';
     *((u32*) result - 1) = count;
+    memcpy(result, string, count);
     return (str) result;
 }
 
@@ -190,7 +195,7 @@ arena_push_size(Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT, umm flags=0
             arena->min_block_size = ARENA_DEFAULT_BLOCK_SIZE;
         }
         
-        arena->base = (u8*) malloc(arena->min_block_size);
+        arena->base = (u8*) calloc(1, arena->min_block_size);
         arena->curr_used = 0;
         arena->prev_used = 0;
         arena->size = arena->min_block_size;

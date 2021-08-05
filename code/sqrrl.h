@@ -1,6 +1,7 @@
 #ifndef _SQRRL_H_
 #define _SQRRL_H_
 
+#define STB_DS_IMPLEMENTATION
 #include "stb_ds.h" // TODO(alexander): implement this on our own!
 #include "sqrrl_basic.h"
 #include "sqrrl_vars.h"

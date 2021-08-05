@@ -1,7 +1,5 @@
-
-// NOTE: this is typically the entry point of your program
 int main(str[] args) {
-    variable_assignment();    
+    variable_assignment();
 }
 
 

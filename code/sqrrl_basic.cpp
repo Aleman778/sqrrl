@@ -55,7 +55,9 @@ pln(const char* format...) {
     }
     
     if (count_until_percent > 0) {
-        printf("%.*s", count_until_percent, format_at_prev_percent);
+        printf("%.*s\n", count_until_percent, format_at_prev_percent);
+    } else {
+        printf("\n");
     }
 }
 
@@ -65,10 +67,9 @@ str_format(const char* format...) { // TODO(alexander): replace snprintf with cu
     va_start(args, format);
     
     umm size_remaining = 1000;
-    str result;
-    result.data = (u8*) malloc(size_remaining); // TODO(alexander): use a scratch buffer instead
-    result.count = 0;
-    char* buffer = (char*) result.data;
+    str result = (str) malloc(size_remaining + 5) + 4; // TODO(alexander): use a scratch buffer instead
+    char* buffer = (char*) result;
+    u32 resulting_count = 0;
     
     while (*format != '\0') {
         if (*format == '%') {
@@ -112,7 +113,7 @@ str_format(const char* format...) { // TODO(alexander): replace snprintf with cu
             }
             size_remaining -= count;
             buffer += count;
-            result.count += count;
+            resulting_count += count;
             
         } else {
             size_remaining--;
@@ -121,6 +122,8 @@ str_format(const char* format...) { // TODO(alexander): replace snprintf with cu
         
         format++;
     }
+    
+    str_count(result) = resulting_count;
     
     return result;
 }

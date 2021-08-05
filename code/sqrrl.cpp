@@ -5,6 +5,7 @@
 
 #include "sqrrl.h"
 
+#include "sqrrl_basic.cpp"
 #include "sqrrl_tokenizer.cpp"
 #include "sqrrl_parser.cpp"
 
@@ -24,7 +25,7 @@ compiler_main_entry(int argc, char* argv[]) {
     FILE* file;
     fopen_s(&file, filepath, "rb");
     if (!file) {
-        printf("File `%s` was not found!", filepath);
+        pln("File `%` was not found!", f_str(filepath));
         return -1;
     }
     
@@ -38,7 +39,7 @@ compiler_main_entry(int argc, char* argv[]) {
     fclose(file);
     
     // TODO(alexander): temp printing source
-    pln("%\n", f_str(source));
+    pln("%", f_str(source));
     
     // Lexer
     Tokenizer tokenizer = {};

@@ -62,7 +62,12 @@ parse_expression(Parser* parser, bool report_error) {
     return result;
 }
 
-
+Ast*
+parse_statement(Parser* parser, bool report_error) {
+    Ast* result = 0;
+    (void) parser;
+    return result;
+}
 
 Ast*
 parse_struct_or_union_argument(Parser* parser) {
@@ -270,8 +275,11 @@ parse_type(Parser* parser) {
 
 
 Ast*
-parse_top_level_declaration(Parser* parser, bool report_error=true) {
+parse_top_level_declaration(Parser* parser) {
     Ast* result = push_ast_node(parser);
+    
+    result->type = Ast_Type_Decl;
+    result->Type_Decl.mods = AstDeclModified_None;
     
     // parse first a modified
     Keyword keyword = parse_keyword(parser, false);
@@ -283,6 +291,9 @@ parse_top_level_declaration(Parser* parser, bool report_error=true) {
         } break;
     }
     
+    result->Type_Decl.type = parse_type(parser);
+    result->Type_Decl.stmt = parse_statement(parser);
+    
     return result;
 }
 
@@ -290,6 +301,7 @@ Ast_File
 parse_file(Parser* parser) {
     Ast_File result = {};
     result.ast = parse_top_level_declaration(parser);
+    print_ast(result.ast, 0);
     
     
     

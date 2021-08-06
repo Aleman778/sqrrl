@@ -1,6 +1,7 @@
 
 // Define the different types of nodes in the Abstract Syntax Tree
 #define DEF_AST_TYPES                          \
+AST_GROUP(None,        "none")                 \
 AST(Abi,               "abi", str)             \
 AST(Literal,           "literal", Value)       \
 AST(Ident,             "identifier", str_id)   \
@@ -101,7 +102,7 @@ Ast* second;                                   \
 })                                             \
 AST_GROUP(Stmt_End,    "statement")            \
 AST_GROUP(Type_Begin,  "type")                 \
-AST(Named_Type,        "named", str_id)        \
+AST(Named_Type,        "named", Ast*)          \
 AST(Array_Type,        "array", struct {       \
 Ast* elem_type;                                \
 Ast* shape;                                    \
@@ -110,7 +111,7 @@ AST(Pointer_Type,      "pointer", Ast*)        \
 AST(Tuple_Type,        "tuple", struct {       \
 Ast* elem_types;                               \
 })                                             \
-AST(Infer_Type,        "infer", str_id)        \
+AST(Infer_Type,        "infer", void*)         \
 AST(Function_Type,     "function", struct {    \
 Ast* return_type;                              \
 Ast* ident;                                    \
@@ -131,7 +132,7 @@ Ast* fields;                                   \
 })                                             \
 AST(Typedef,           "typedef", struct {     \
 Ast* type;                                     \
-Ast* ident;                                     \
+Ast* ident;                                    \
 })                                             \
 AST_GROUP(Type_End,    "type")                 \
 AST_GROUP(Decl_Begin,  "declaration")          \
@@ -142,7 +143,7 @@ Ast_Decl_Mods mods;                            \
 })                                             \
 AST_GROUP(Decl_End,    "declaration")
 
-global cstr ast_names[] = {
+global cstr ast_strings[] = {
 #define AST(symbol, name, decl) name,
 #define AST_GROUP(symbol, name) name,
     DEF_AST_TYPES
@@ -150,7 +151,7 @@ global cstr ast_names[] = {
 #undef AST
 };
 
-global cstr ast_struct_names[] = {
+global cstr ast_struct_strings[] = {
 #define AST(symbol, ...) "Ast_" #symbol,
 #define AST_GROUP(symbol, ...) "Ast_" #symbol,
     DEF_AST_TYPES
@@ -229,21 +230,26 @@ struct Ast_File {
 
 
 void print_ast(Ast* node, u32 spacing=0) {
-    for (u32 s = 0; s < spacing; s++) printf(" ");
     if (!node) {
-        pln("null");
         return;
     }
     
-    pln("(%", f_str(ast_struct_names[node->type]));
+    for (u32 s = 0; s < spacing; s++) printf(" ");
+    
+    pln("(%", f_str(ast_struct_strings[node->type]));
     spacing += 2;
     
     // some special cases
     if (node->type == Ast_Abi) {
+        printf(" \"%\"", f_str(node->Abi));
     } else if (node->type == Ast_Literal) {
+        print_value(node->Literal);
     } else if (node->type == Ast_Ident) {
-    } else if (node->type == Ast_Named_Type) {
-    } else if (node->type == Ast_Infer_Type) {
+        printf(" `%s`", vars_get_str(node->Ident));
+    } else if (node->type == Ast_Binary) {
+        printf("(%)", );
+        print_ast(node->children[0], spacing);
+        print_ast(node->children[1], spacing);
     } else if (node->type == Ast_Type_Decl) {
         print_ast(node->Type_Decl.type, spacing);
         print_ast(node->Type_Decl.stmt, spacing);

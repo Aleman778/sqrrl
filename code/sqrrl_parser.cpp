@@ -32,7 +32,7 @@ parse_keyword(Parser* parser, bool report_error) {
 
 Ast*
 parse_identifier(Parser* parser, bool report_error) {
-    Ast* result = 0;
+    Ast* result = push_ast_node(parser);
     
     Token token = next_token(parser);
     if (token.type == Token_Ident) {
@@ -55,7 +55,7 @@ parse_identifier(Parser* parser, bool report_error) {
 
 Ast*
 parse_expression(Parser* parser, bool report_error) {
-    Ast* result = 0;
+    Ast* result = push_ast_node(parser);
     
     (void) parser;
     
@@ -64,7 +64,7 @@ parse_expression(Parser* parser, bool report_error) {
 
 Ast*
 parse_statement(Parser* parser, bool report_error) {
-    Ast* result = 0;
+    Ast* result = push_ast_node(parser);
     (void) parser;
     return result;
 }
@@ -156,7 +156,7 @@ parse_type(Parser* parser) {
     
     next_token(parser);
     
-    Ast* base = 0;
+    Ast* base = push_ast_node(parser);
     str_id ident = vars_save_str(token.source);
     
     if (ident >= builtin_types_begin && ident <= builtin_types_end || ident > keyword_last) {

@@ -1,6 +1,6 @@
 
 // The different tokens that the tokenizer can recognize
-#define DEF_TOKEN_KINDS                                 \
+#define DEF_TOKEN_TYPES                                 \
 TOKEN(Invalid,                 "invalid")           \
 TOKEN(Semi,                    ";")                 \
 TOKEN(Colon,                   ":")                 \
@@ -70,22 +70,22 @@ TOKEN(Ellipsis,                "...")               \
 TOKEN(EOF,                     "end of file")       \
 TOKEN(Error,                   "error")
 
-global cstr token_kind_repr[] = {
+global cstr token_type_repr[] = {
 #define TOKEN(name, str) str,
-    DEF_TOKEN_KINDS
+    DEF_TOKEN_TYPES
 #undef TOKEN
 };
 
-global cstr token_kind_names[] = {
+global cstr token_type_strings[] = {
 #define TOKEN(name, str) "Token_" #name,
-    DEF_TOKEN_KINDS
+    DEF_TOKEN_TYPES
 #undef TOKEN
 };
 
 typedef s32 Token_Type;
 enum {
 #define TOKEN(name, str) Token_##name,
-    DEF_TOKEN_KINDS
+    DEF_TOKEN_TYPES
 #undef TOKEN
 };
 
@@ -112,7 +112,7 @@ struct Token {
 };
 
 #define f_token(x) FormatType_cstr, token_kind_repr[x]
-#define f_token_name(x) FormatType_cstr, token_kind_names[x]
+#define f_token_name(x) FormatType_cstr, token_kind_strings[x]
 
 struct Tokenizer {
     u8* start;

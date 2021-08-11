@@ -118,6 +118,7 @@ str_format(const char* format...) { // TODO(alexander): replace snprintf with cu
         } else {
             size_remaining--;
             *buffer++ = *format;
+            resulting_count++;
         }
         
         format++;

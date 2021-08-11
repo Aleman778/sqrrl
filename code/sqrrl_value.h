@@ -23,7 +23,7 @@ enum {
     BinaryOp_Bitwise_Or,
     BinaryOp_Logical_Or,
     BinaryOp_Bitwise_Xor,
-    BinaryOp_Shift_left,
+    BinaryOp_Shift_Left,
     BinaryOp_Shift_Right,
     BinaryOp_Equals,
     BinaryOp_Not_Equals,
@@ -42,6 +42,7 @@ enum {
     BinaryOp_Bitwise_Xor_Assign,
     BinaryOp_Shift_Left_Assign,
     BinaryOp_Shift_Right_Assign,
+    BinaryOp_Count,
 };
 
 global cstr binary_op_strings[] = { 
@@ -49,16 +50,22 @@ global cstr binary_op_strings[] = {
     "<=", ">", ">=", "=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=" };
 
 
+typedef s32 Associativity;
+enum {
+    Associative_Left,
+    Associative_Right,
+};
+
 u8
 binary_get_precedence(Binary_Op op) {
     switch (op) {
-        case BinaryOp_Mul:                return 11;
-        case BinaryOp_Div:                return 11;
-        case BinaryOp_Mod:                return 11;
+        case BinaryOp_Multiply:            return 11;
+        case BinaryOp_Divide:             return 11;
+        case BinaryOp_Modulo:             return 11;
         case BinaryOp_Add:                return 10;
-        case BinaryOp_Sub:                return 10;
-        case BinaryOp_Shl:                return 9;
-        case BinaryOp_Shr:                return 9;
+        case BinaryOp_Subtract:           return 10;
+        case BinaryOp_Shift_Left:         return 9;
+        case BinaryOp_Shift_Right:        return 9;
         case BinaryOp_Less_Than:          return 8;
         case BinaryOp_Less_Equals:        return 8;
         case BinaryOp_Greater_Than:       return 8;
@@ -86,7 +93,7 @@ binary_get_precedence(Binary_Op op) {
     return 0;
 }
 
-Assoc
+Associativity
 binary_get_associativity(Binary_Op op) {
     switch (op) {
         case BinaryOp_Multiply:
@@ -107,7 +114,7 @@ binary_get_associativity(Binary_Op op) {
         case BinaryOp_Bitwise_Xor:
         case BinaryOp_Logical_And:
         case BinaryOp_Logical_Or: {
-            return Assoc::Left;
+            return Associative_Left;
         }
         
         case BinaryOp_Assign:
@@ -121,11 +128,11 @@ binary_get_associativity(Binary_Op op) {
         case BinaryOp_Bitwise_Xor_Assign:
         case BinaryOp_Shift_Left_Assign:
         case BinaryOp_Shift_Right_Assign: {
-            return Assoc::Right;
+            return Associative_Right;
         }
     }
     assert(0 && "bug");
-    return Assoc::Left;
+    return Associative_Left;
 }
 
 typedef s32 Ternary_Op;
@@ -139,18 +146,22 @@ struct Pointer_Value {
     //Type* type; // TODO(alexander): missing type definition
 };
 
+// NOTE(alexander): forward declare.
+struct Value;
+
 struct Array_Value {
     //Type* element_type; // TODO(alexander): missing type definition
-    void* elements;
+    Value* elements;
     smm count;
     smm capacity;
 };
 
+// TODO(alexander): add more value types
 typedef s32 Value_Type;
 enum {
     Value_boolean,
-    Value_sint,
-    Value_uint,
+    Value_signed_int,
+    Value_unsigned_int,
     Value_floating,
     Value_pointer,
     Value_array,
@@ -160,8 +171,8 @@ struct Value {
     Value_Type type;
     union {
         bool boolean;
-        s64 sint;
-        u64 uint;
+        s64 signed_int;
+        u64 unsigned_int;
         f64 floating;
         Pointer_Value pointer;
         Array_Value array;
@@ -174,6 +185,30 @@ void print_value(Value* val) {
             printf(val->boolean ? "true" : "false");
         } break;
         
-        case Value
+        case Value_signed_int: {
+            printf("%lld", val->signed_int);
+        } break;
+        
+        case Value_unsigned_int: {
+            printf("%llu", val->signed_int);
+        } break;
+        
+        case Value_floating: {
+            printf("%f", val->floating);
+        } break;
+        
+        case Value_pointer: {
+            printf("0x%I64X", val->pointer.address);
+        } break;
+        
+        case Value_array: {
+            printf("[");
+            Array_Value* arr = &val->array;
+            for (smm index = 0; index < arr->count; index++) {
+                if (index > 0) printf(", ");
+                print_value(&arr->elements[index]);
+            }
+            printf("[");
+        } break;
     }
 }

@@ -3,7 +3,7 @@
 #define DEF_AST_TYPES                          \
 AST_GROUP(None,        "none")                 \
 AST(Abi,               "abi", str)             \
-AST(Literal,           "literal", Value)       \
+AST(Value,             "value", Value)       \
 AST(Ident,             "identifier", str_id)   \
 AST(Argument,          "argument", struct {    \
 Ast* type;                                     \
@@ -11,8 +11,8 @@ Ast* ident;                                    \
 Ast* assign;                                   \
 })                                             \
 AST(Compound,          "compound", struct {    \
-Ast* node;                                     \
 Ast* next;                                     \
+Ast* node;                                     \
 })                                             \
 AST_GROUP(Expr_Begin,  "expression")           \
 AST(Unary_Expr,        "unary", struct {       \
@@ -35,8 +35,8 @@ Ast* ident;                                    \
 Ast* args;                                     \
 })                                             \
 AST(Field_Expr,        "field", struct {       \
-Ast* first;                                    \
-Ast* second;                                   \
+Ast* var;                                      \
+Ast* field;                                    \
 })                                             \
 AST(Cast_Expr,         "cast", struct {        \
 Ast* type;                                     \
@@ -50,8 +50,8 @@ Ast* array;                                    \
 Ast* index;                                    \
 })                                             \
 AST(Array_Expr,        "array", struct {       \
-Ast* first;                                    \
-Ast* second;                                   \
+Ast* type;                                      \
+Ast* elements;                                  \
 })                                             \
 AST(Struct_Expr,       "struct", struct {      \
 Ast* first;                                    \
@@ -64,9 +64,10 @@ Ast* second;                                   \
 AST_GROUP(Expr_End,    "expression")           \
 AST_GROUP(Stmt_Begin,  "statement")            \
 AST(Assign_Stmt,       "assignment", struct {  \
-Ast* first;                                    \
-Ast* second;                                   \
+Ast* type;                                     \
+Ast* expr;                                     \
 })                                             \
+AST(Expr_Stmt,         "expression", Ast*)     \
 AST(Block_Stmt,        "block", struct {       \
 Ast* stmts;                                    \
 })                                             \
@@ -88,17 +89,17 @@ Ast* cond;                                     \
 Ast* update;                                   \
 Ast* block;                                    \
 })                                             \
-AST(Loop_Stmt,         "loop", struct {        \
-Ast* label;                                    \
-})                                             \
 AST(While_Stmt,        "while", struct {       \
 Ast* label;                                    \
 Ast* cond;                                     \
 Ast* block;                                    \
 })                                             \
+AST(Loop_Stmt,         "loop", struct {        \
+Ast* label;                                    \
+Ast* block;                                    \
+})                                             \
 AST(Return_Stmt,       "return", struct {      \
-Ast* first;                                    \
-Ast* second;                                   \
+Ast* expr;                                     \
 })                                             \
 AST_GROUP(Stmt_End,    "statement")            \
 AST_GROUP(Type_Begin,  "type")                 \
@@ -168,19 +169,12 @@ enum {
 #undef AST
 };
 
-typedef s32 Inlining;
-enum {
-    Inlining_Default,
-    Inlining_Inline,
-    Inlining_No_Inline,
-};
-
 typedef s32 Ast_Decl_Mods;
 enum {
     AstDeclModified_None      = 0,
-    AstDeclModified_Inline    = 1,
-    AstDeclModified_No_Inline = 1 << 2,
-    AstDeclModified_Internal  = 1 << 3,
+    AstDeclModified_Inline    = bit(1),
+    AstDeclModified_No_Inline = bit(2),
+    AstDeclModified_Internal  = bit(3),
 };
 
 union Span {
@@ -229,25 +223,33 @@ struct Ast_File {
 };
 
 
-void print_ast(Ast* node, u32 spacing=0) {
+void
+print_ast(Ast* node, u32 spacing=0) {
     if (!node) {
         return;
     }
     
+    printf("\n");
     for (u32 s = 0; s < spacing; s++) printf(" ");
+    printf("(%s", ast_struct_strings[node->type]);
     
-    pln("(%", f_str(ast_struct_strings[node->type]));
     spacing += 2;
     
     // some special cases
     if (node->type == Ast_Abi) {
-        printf(" \"%\"", f_str(node->Abi));
-    } else if (node->type == Ast_Literal) {
-        print_value(node->Literal);
+        printf(" \"%s\")", node->Abi);
+        return;
+    } else if (node->type == Ast_Value) {
+        print_value(&node->Value);
+        printf(")");
+        return;
     } else if (node->type == Ast_Ident) {
-        printf(" `%s`", vars_get_str(node->Ident));
-    } else if (node->type == Ast_Binary) {
-        printf("(%)", );
+        printf(" `%s`", vars_load_str(node->Ident));
+        printf(")");
+        return;
+    } else if (node->type == Ast_Binary_Expr) {
+        assert_enum(BinaryOp, node->Binary_Expr.op);
+        printf("(%s)", binary_op_strings[node->Binary_Expr.op]);
         print_ast(node->children[0], spacing);
         print_ast(node->children[1], spacing);
     } else if (node->type == Ast_Type_Decl) {
@@ -262,6 +264,8 @@ void print_ast(Ast* node, u32 spacing=0) {
     }
     
     spacing -= 2;
-    for (u32 s = 0; s < spacing; s++) printf(" ");
-    pln(")");
+    printf(")");
+    if (spacing == 0) {
+        printf("\n");
+    }
 }

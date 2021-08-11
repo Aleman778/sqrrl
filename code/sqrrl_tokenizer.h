@@ -35,12 +35,8 @@ TOKEN(Ident,                   "identifier")        \
 TOKEN(Raw_Ident,               "identifier")        \
 TOKEN(Int,                     "number")            \
 TOKEN(Float,                   "number")            \
-TOKEN(Byte,                    "number")            \
 TOKEN(Char,                    "character")         \
 TOKEN(String,                  "string")            \
-TOKEN(Raw_String,              "string")            \
-TOKEN(Byte_String,             "byte string")       \
-TOKEN(Byte_Raw_String,         "byte raw string")   \
 TOKEN(Add_Assign,              "+=")                \
 TOKEN(Sub_Assign,              "-=")                \
 TOKEN(Mul_Assign,              "*=")                \
@@ -111,8 +107,8 @@ struct Token {
     smm num_hashes; // optionally defined for raw string literals.
 };
 
-#define f_token(x) FormatType_cstr, token_kind_repr[x]
-#define f_token_name(x) FormatType_cstr, token_kind_strings[x]
+#define f_token(x) FormatType_cstr, token_type_repr[x]
+#define f_token_name(x) FormatType_cstr, token_type_strings[x]
 
 struct Tokenizer {
     u8* start;

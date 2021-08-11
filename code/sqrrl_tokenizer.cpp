@@ -350,40 +350,6 @@ advance_token(Tokenizer* tokenizer) {
         token.type = Token_Whitespace;
         advance_utf32_at_end = false;
         
-    } else if (*tokenizer->curr == 'b') {
-        utf8_advance_character(tokenizer);
-        if (*tokenizer->curr == '\'') {
-            scan_single_quoted_string(tokenizer);
-            token.type = Token_Byte;
-        } else if (*tokenizer->curr == '"') {
-            scan_double_quoted_string(tokenizer);
-            token.type = Token_Byte_String;
-        } else if (*tokenizer->curr == 'r' && (*tokenizer->next == '"' || *tokenizer->next == '#')) {
-            utf8_advance_character(tokenizer);
-            token.num_hashes = scan_raw_string(tokenizer);
-            token.type = Token_Byte_Raw_String;
-        } else {
-            scan_while(tokenizer, &is_ident_continue);
-            token.type = Token_Ident;
-            advance_utf32_at_end = false;
-        }
-        
-    } else if (*tokenizer->curr == 'r') {
-        utf8_advance_character(tokenizer);
-        if (*tokenizer->curr == '"' || (*tokenizer->curr == '#' && (*tokenizer->next == '"' || *tokenizer->next == '#'))) {
-            token.num_hashes = scan_raw_string(tokenizer);
-            token.type = Token_Raw_String;
-            advance_utf32_at_end = false;
-        } else if (*tokenizer->curr == '#' && is_ident_start(*tokenizer->next)) {
-            utf8_advance_character(tokenizer);
-            scan_while(tokenizer, &is_ident_continue);
-            token.type = Token_Raw_Ident;
-        } else {
-            scan_while(tokenizer, &is_ident_continue);
-            token.type = Token_Ident;
-            advance_utf32_at_end = false;
-        }
-        
     } else if (is_ident_start(*tokenizer->curr)) {
         utf8_advance_character(tokenizer);
         scan_while(tokenizer, &is_ident_continue);

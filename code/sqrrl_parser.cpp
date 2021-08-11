@@ -6,7 +6,7 @@ next_token_if_matched(Parser* parser, Token_Type expected, bool report_error) {
         return true;
     } else {
         if (report_error) {
-            parse_error_unexpected_token(parser, expected, token.type);
+            parse_error_unexpected_token(parser, expected, token);
         }
         return false;
     }
@@ -24,7 +24,7 @@ parse_keyword(Parser* parser, bool report_error) {
     }
     
     if (report_error) {
-        parse_error(parser, token, str_format("expected keyword, found `%s`", f_str(token.source)));
+        parse_error(parser, token, str_format("expected keyword, found `%`", f_str(token.source)));
     }
     
     return Kw_invalid;
@@ -47,25 +47,427 @@ parse_identifier(Parser* parser, bool report_error) {
         result->type = Ast_Ident;
         result->Ident = vars_save_str(token.source);
     } else if (report_error) {
-        parse_error_unexpected_token(parser, Token_Ident, token.type);
+        parse_error_unexpected_token(parser, Token_Ident, token);
     }
     
     return result;
 }
 
-Ast*
-parse_expression(Parser* parser, bool report_error) {
-    Ast* result = push_ast_node(parser);
-    
-    (void) parser;
-    
-    return result;
+u32
+parse_escape_character(Parser* parser, u8*& curr, u8* end, bool byte) {
+    u8 c = *curr++;
+    switch (c) {
+        case 'x': {
+            assert(curr + 2 < end && "string out of bounds");
+            s32 d1 = hex_digit_to_s32(*curr++);
+            s32 d2 = hex_digit_to_s32(*curr++);
+            return (u32) (d1 << 4 | d2);
+        }
+        
+        case 'u': {
+            if (byte) {
+                parse_error(parser, parser->current_token, 
+                            "unicode escape characters cannot be used as bytes or in byte string");
+            }
+            u32 value = 0;
+            assert(*curr++ == '{');
+            while ((c = *curr++) != '}' && curr < end) {
+                value = value * 16 + hex_digit_to_s32(c);
+                if (value > 0x10FFFF) {
+                    parse_error(parser, parser->current_token, 
+                                "invalid unicode escape character, expected at most 10FFFF");
+                    return 0;
+                }
+            }
+            return value;
+        }
+        
+        case 'n':  return '\n';
+        case 't':  return '\t';
+        case 'r':  return '\r';
+        case '\\': return '\\';
+        case '\'': return '\'';
+        case '"':  return '"';
+        case '0':  return '\0';
+    }
+    return 0;
 }
 
 Ast*
-parse_statement(Parser* parser, bool report_error) {
+parse_char(Parser* parser) {
+    assert(parser->token.kind == Token_Char);
+    
+    str string = parser->current_token.source;
+    u8* curr = (u8*) string;
+    u8* end = (u8*) string + str_count(string);
+    assert(*curr++ == '\'');
+    
+    u32 character = 0;
+    if (*curr == '\\') {
+        curr++;
+        character = parse_escape_character(parser, curr, end, false);
+    } else {
+        // NOTE(alexander): extracts utf-32 character, simplified from advance_utf8_character
+        u8 num_bytes = utf8_calculate_num_bytes(*curr);
+        character = *curr++ & utf8_first_byte_mask[num_bytes - 1];
+        for (int i = 1; i < num_bytes; i++) {
+            character <<= 6;
+            character |= *curr++ & 0x3F;
+        }
+    }
+    
+    if (*curr++ != '\'' && curr < end) {
+        parse_error(parser, parser->current_token, "character literal may only contain one codepoint");
+    }
+    
+    return push_ast_value(parsr, create_char_value(character));
+}
+
+Ast*
+parse_string(Parser* parser) {
+    assert(parser->token.kind == Token_String);
+    
+    str string = parser->token.source;
+    u8* curr = string.data;
+    u8* end = string.data + string.length;
+    
+    // TODO(alexander): create string builder
+    str string = str_alloc(parser, 1000);
+    String_Builder sb;
+    initialize_string_builder(&sb, string.length + 1, arena_allocator(parser->temp_arena));
+    
+    u8 c = *curr;
+    assert(*curr++ == '"');
+    while (curr < end) {
+        c = *curr++;
+        if (c == '\\') {
+            u32 value = parse_escape_character(parser, curr, end, false);
+            if (value > 0x7F) {
+                ensure_capacity(&sb, 4);
+                sb.length += (isize) convert_utf32_to_utf8(value, (u8*) (sb.data + sb.length));
+            } else {
+                append(&sb, (char) value);
+            }
+            continue;
+        } else if (c == '"') {
+            break;
+        }
+        
+        u8 n = get_utf8_character_info(c);
+        assert(n > 0);
+        append(&sb, (char) c);
+        for (; n > 1; n--) append(&sb, (char) *curr++);
+    }
+    append(&sb, '\0');
+    
+    String s = intern_string(create_string(sb.data, sb.length - 1)).s;
+    return push_ast_literal(parser->arena, create_string_value(s), Primitive_string);
+}
+
+Ast*
+parse_int(Parser* parser) {
+    assert(parser->token.kind == Token_Int);
+    
+    Token token = parser->token;
+    Type type = primitive_types[Primitive_integer];
+    if (token.suffix_start != token.source.length) {
+        String suffix = substring_nocopy(token.source, token.suffix_start, token.source.length);
+        Symbol sym = find_symbol(suffix);
+        switch (sym.index) {
+            case Kw_i8:    type = primitive_types[Primitive_i8];    break;
+            case Kw_i16:   type = primitive_types[Primitive_i16];   break;
+            case Kw_i32:   type = primitive_types[Primitive_i32];   break;
+            case Kw_i64:   type = primitive_types[Primitive_i64];   break;
+            case Kw_isize: type = primitive_types[Primitive_isize]; break;
+            case Kw_u8:    type = primitive_types[Primitive_u8];    break;
+            case Kw_u16:   type = primitive_types[Primitive_u16];   break;
+            case Kw_u32:   type = primitive_types[Primitive_u32];   break;
+            case Kw_u64:   type = primitive_types[Primitive_u64];   break;
+            case Kw_usize: type = primitive_types[Primitive_usize]; break;
+            default:
+            if (string_equals(suffix, str_lit("u"))) {
+                type = primitive_types[Primitive_uint];
+            }
+            // TODO(alexander): improve this error, e.g. show what types are available?
+            String name = copy_string(suffix, arena_allocator(parser->temp_arena));
+            parse_error(parser, token, "invalid integer type `%s`", lit(name));
+            break;
+        }
+    }
+    
+    int base = 10;
+    int curr_index = 0;
+    switch (token.int_base) {
+        case Int_Base::Binary: {
+            base = 2;
+            curr_index += 2;
+        } break;
+        
+        case Int_Base::Octal: {
+            base = 8;
+            curr_index += 2;
+        } break;
+        
+        case Int_Base::Hexadecimal: {
+            base = 16;
+            curr_index += 2;
+        } break;
+        
+        case Int_Base::Decimal: break;
+    }
+    
+    u64 value = 0;
+    while (curr_index < token.suffix_start) {
+        u8 c = token.source[curr_index++];
+        if (c == '_') continue;
+        
+        int d = get_hex_digit(c);
+        assert(d != -1 && "tokenization error");
+        u64 x = value * base;
+        if (value != 0 && x / base != value) {
+            parse_error(parser, token, "integer literal is too large");
+            break;
+        }
+        
+        u64 y = x + d;
+        if (y < x) { // NOTE(alexander): this should work since d is small compared to x
+            parse_error(parser, token, "integer literal is too large");
+            break;
+        }
+        
+        value = y;
+    }
+    
+    return push_ast_literal(parser->arena, create_int_value(value, false), type.Primitive);
+}
+
+Ast*
+parse_float(Parser* parser) {
+    assert(parser->token.kind == Token_Float);
+    
+    Token token = parser->token;
+    if (token.int_base != IntBase_Decimal) {
+        parse_error(parser, token, "%s float literal is not supported", to_cstring(token.int_base));
+        return NULL;
+    }
+    
+    Type type = primitive_types[Primitive_float];
+    if (token.suffix_start != token.source.length) {
+        String suffix = substring_nocopy(token.source, token.suffix_start, token.source.length);
+        Symbol sym = find_symbol(suffix);
+        switch (sym.index) {
+            case Kw_f32: type = primitive_types[Primitive_f32];
+            case Kw_f64: type = primitive_types[Primitive_f64];
+            default:
+            String name = copy_string(token.source, arena_allocator(parser->temp_arena));
+            parse_error(parser, token, "invalid float type `%s`, expected `f32` or `f64`", lit(name));
+        }
+    }
+    
+    int curr_index = 0;
+    f64 value = 0.0;
+    u8 c = 0;
+    while (curr_index < token.suffix_start) {
+        c = token.source[curr_index++];
+        if (c == '_') continue;
+        if (c == 'e' || c == 'E' || c == '.') break;
+        f64 d = (f64) get_hex_digit(c);
+        value = value * 10.0 + d;
+    }
+    
+    if (c == '.') {
+        f64 numerator = 0.0;
+        f64 denominator = 1.0;
+        while (curr_index < token.source.length) {
+            c = token.source[curr_index++];
+            if (c == '_') continue;
+            if (c == 'e' || c == 'E') break;
+            numerator = numerator * 10.0 + (f64) (c - '0');
+            denominator = denominator * 10.0;
+        }
+        value += numerator/denominator;
+    }
+    
+    if (c == 'e' || c == 'E') {
+        printf("token.source = %s\n", lit(copy_string(token.source)));
+        c = token.source[curr_index++];
+        f64 exponent = 0.0;
+        f64 sign = 1.0;
+        if (c == '-') sign = -1.0;
+        
+        while (curr_index < token.source.length) {
+            c = token.source[curr_index++];
+            if (c == '_') continue;
+            exponent = exponent * 10.0 + (f64) (c - '0');
+        }
+        value = value*pow(10.0, sign*exponent);
+    }
+    
+    return push_ast_literal(parser->arena, create_float_value(value), Primitive_float);
+}
+
+Ast*
+parse_expression(Parser* parser, bool report_error) {
+    Ast* lhs_expr = 0;
+    
+    Token token = peek_token(token);
+    switch (token.type) {
+        case Token_Ident: {
+            str_id sym = vars_save_str(token.source);
+            switch (sym.index) {
+                case Kw_false: {
+                    next_token(parser);
+                    lhs_expr = push_ast_literal(parser, create_bool_value(false));
+                } break;
+                
+                case Kw_true: {
+                    next_token(parser);
+                    lhs_expr = push_ast_literal(parser, create_bool_value(true));
+                } break;
+                
+                case Kw_cast: {
+                    next_token(parser);
+                    parse_token(parser, Token_Open_Paren);
+                    Ast* type = parse_type(parser, true);
+                    parse_token(parser, Token_Close_Paren);
+                    
+                    Ast* inner_expr = parse_expr(parser, true);
+                    Ast* node = push_struct(parser->arena, Ast);
+                    node->kind = Ast_Type_Cast_Expr;
+                    node->Type_Cast_Expr.type = type;
+                    node->Type_Cast_Expr.expr = inner_expr;
+                    lhs_expr = node;
+                } break;
+                
+                default: {
+                    lhs_expr = parse_ident(parser, token, true);
+                    if (lhs_expr) next_token(parser);
+                } break;
+            }
+            
+        } break;
+        
+        case Token_Raw_Ident: {
+            next_token(parser);
+            lhs_expr = parse_ident(parser, token, true);
+        } break;
+        
+        case Token_Int: {
+            next_token(parser);
+            lhs_expr = parse_int(parser);
+        } break;
+        
+        case Token_Float: {
+            next_token(parser);
+            lhs_expr = parse_float(parser);
+        } break;
+        
+        case Token_Char: {
+            next_token(parser);
+            lhs_expr = parse_char(parser);
+        } break;
+        
+        case Token_String: {
+            next_token(parser);
+            lhs_expr = parse_string(parser);
+        } break;
+    }
+    
+    if (!lhs_expr) {
+        lhs_expr = push_ast_node(parser);
+    }
+    
+    return lhs_expr;
+}
+
+Ast*
+parse_statement(Parser* parser) {
     Ast* result = push_ast_node(parser);
-    (void) parser;
+    Token token = peek_token(parser);
+    
+    if (token.type == Token_Ident) {
+        next_token(parser);
+        if (next_token_if_matched(parser, Token_Assign, false)) {
+            Ast* type = result;
+            result = push_ast_node(parser);
+            result->type = Ast_Assign_Stmt;
+            result->Assign_Stmt.type = parse_type(parser);
+            result->Assign_Stmt.expr = parse_expression(parser);
+        } else {
+            Keyword keyword = (Keyword) vars_save_str(token.source);
+            switch (keyword) {
+                case Kw_break: {
+                    result->type = Ast_Break_Stmt;
+                    result->Break_Stmt.ident = parse_identifier(parser, false);
+                } break;
+                
+                case Kw_continue: {
+                    result->type = Ast_Continue_Stmt;
+                    result->Continue_Stmt.ident = parse_identifier(parser, false);
+                } break;
+                
+                case Kw_if: {
+                    result->type = Ast_If_Stmt;
+                    bool opened_paren = next_token_if_matched(parser, Token_Open_Paren, false);
+                    result->If_Stmt.cond = parse_expression(parser);
+                    next_token_if_matched(parser, Token_Close_Paren, opened_paren);
+                    result->If_Stmt.then_block = parse_statement(parser);
+                    result->If_Stmt.else_block = parse_statement(parser);
+                } break;
+                
+                case Kw_for: {
+                    result->type = Ast_For_Stmt;
+                    result->For_Stmt.label = parse_identifier(parser, false);
+                    if (result->For_Stmt.label->type != Ast_None) {
+                        next_token_if_matched(parser, Token_Colon);
+                    }
+                    bool opened_paren = next_token_if_matched(parser, Token_Open_Paren, false);
+                    // TODO(alexander): should probably not be statement, move out variable decl
+                    result->For_Stmt.init = parse_statement(parser);
+                    result->For_Stmt.cond = parse_statement(parser);
+                    result->For_Stmt.update = parse_statement(parser);
+                    next_token_if_matched(parser, Token_Close_Paren, opened_paren);
+                    result->For_Stmt.block = parse_statement(parser);
+                } break;
+                
+                case Kw_while: {
+                    result->type = Ast_While_Stmt;
+                    result->While_Stmt.label = parse_identifier(parser, false);
+                    if (result->While_Stmt.label->type != Ast_None) {
+                        next_token_if_matched(parser, Token_Colon);
+                    }
+                    bool opened_paren = next_token_if_matched(parser, Token_Open_Paren, false);
+                    result->While_Stmt.cond = parse_expression(parser);
+                    next_token_if_matched(parser, Token_Close_Paren, opened_paren);
+                    result->While_Stmt.block = parse_statement(parser);
+                } break;
+                
+                case Kw_loop: {
+                    result->type = Ast_Loop_Stmt;
+                    result->Loop_Stmt.label = parse_identifier(parser, false);
+                } break;
+                
+                case Kw_return: {
+                    result->type = Ast_Return_Stmt;
+                    result->Return_Stmt.expr = parse_expression(parser, false);
+                } break;
+            }
+        }
+    } else if (token.type == Token_Open_Brace) {
+        result->type = Ast_Block_Stmt;
+        result->Block_Stmt.stmts = parse_compound(parser, Token_Open_Brace, Token_Close_Brace, Token_Semi,
+                                                  &parse_statement);
+    }
+    
+    if (result->type == Ast_None) {
+        result = parse_expression(parser);
+    }
+    
+    if (result->type != Ast_Block_Stmt) {
+        // TODO(alexander): should we force semi colon or not? right now it is optional.
+        next_token_if_matched(parser, Token_Semi, false);
+    }
+    
     return result;
 }
 
@@ -77,6 +479,8 @@ parse_struct_or_union_argument(Parser* parser) {
     result->Argument.ident = parse_identifier(parser);
     if (next_token_if_matched(parser, Token_Assign, false)) {
         result->Argument.assign = parse_expression(parser);
+    } else {
+        result->Argument.assign = push_ast_node(parser);
     }
     next_token_if_matched(parser, Token_Semi);
     return result;
@@ -89,6 +493,8 @@ parse_enum_argument(Parser* parser) {
     result->Argument.ident = parse_identifier(parser);
     if (next_token_if_matched(parser, Token_Assign, false)) {
         result->Argument.assign = parse_expression(parser);
+    } else {
+        result->Argument.assign = push_ast_node(parser);
     }
     next_token_if_matched(parser, Token_Comma, false);
     return result;
@@ -97,9 +503,13 @@ parse_enum_argument(Parser* parser) {
 Ast*
 parse_formal_function_argument(Parser* parser) {
     Ast* result = push_ast_node(parser);
+    result->type = Ast_Argument;
+    result->Argument.type = parse_type(parser);
     result->Argument.ident = parse_identifier(parser);
     if (next_token_if_matched(parser, Token_Assign, false)) {
         result->Argument.assign = parse_expression(parser);
+    } else {
+        result->Argument.assign = push_ast_node(parser);
     }
     next_token_if_matched(parser, Token_Comma, false);
     return result;
@@ -112,6 +522,8 @@ parse_actual_function_argument(Parser* parser) {
     result->Argument.ident = parse_identifier(parser);
     if (next_token_if_matched(parser, Token_Assign, false)) {
         result->Argument.assign = parse_expression(parser);
+    } else {
+        result->Argument.assign = push_ast_node(parser);
     }
     next_token_if_matched(parser, Token_Comma, false);
     return result;
@@ -125,11 +537,13 @@ parse_compound(Parser* parser,
     Ast* result = push_ast_node(parser);
     Ast* curr = result;
     
+    
     next_token_if_matched(parser, begin);
     while (peek_token(parser).type != end) {
-        Ast* element = element_parser(parser);
-        curr->Compound.next = element;
-        curr = element;
+        curr->type = Ast_Compound;
+        curr->Compound.node = element_parser(parser);
+        curr->Compound.next = push_ast_node(parser);
+        curr = curr->Compound.next;
         
         if (parser->current_token.type != separator) {
             break;
@@ -162,7 +576,9 @@ parse_type(Parser* parser) {
     if (ident >= builtin_types_begin && ident <= builtin_types_end || ident > keyword_last) {
         base = push_ast_node(parser);
         base->type = Ast_Named_Type;
-        base->Named_Type = ident;
+        base->Named_Type = push_ast_node(parser);
+        base->Named_Type->type = Ast_Ident;
+        base->Named_Type->Ident = ident;
     } else {
         switch (ident) {
             case Kw_struct: {
@@ -198,7 +614,7 @@ parse_type(Parser* parser) {
             
             case Kw_typedef: {
                 base = push_ast_node(parser);
-                base->type = Ast_Enum_Type;
+                base->type = Ast_Typedef;
                 base->Typedef.type = parse_type(parser);
                 base->Typedef.ident = parse_identifier(parser);
                 return base;
@@ -212,11 +628,10 @@ parse_type(Parser* parser) {
     }
     
     Ast* result = base;
-    if (base) {
+    if (base->type != Ast_None) {
         Token second_token = peek_token(parser);
-        switch (token.type) {
+        switch (second_token.type) {
             case Token_Ident: {
-                next_token(parser);
                 
                 // TODO(alexander): check what the base type is, e.g. cannnot be struct type as return type
                 result = push_ast_node(parser);
@@ -255,10 +670,10 @@ parse_type(Parser* parser) {
                 next_token(parser);
                 result = push_ast_node(parser);
                 result->type = Ast_Array_Type;
-                result->Array_Type.elem_type = 
-                    result->Array_Type.shape = parse_expression(parser);
+                result->Array_Type.elem_type = base;
+                result->Array_Type.shape = parse_expression(parser);
                 
-                next_token_if_matched(parser, Token_Mul);
+                next_token_if_matched(parser, Token_Close_Bracket);
             } break;
             
             case Token_Mul: {

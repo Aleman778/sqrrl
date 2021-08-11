@@ -20,6 +20,9 @@
 #define gigabytes(value) (1024LL * megabytes(value))
 #define terabytes(value) (1024LL * gigabytes(value))
 
+// NOTE(alexander): bit stuff
+#define bit(x) (1 << (x))
+
 // NOTE(alexander): define assestion macro on debug mode
 #ifdef assert
 #undef assert
@@ -37,6 +40,8 @@ __assert(cstr expression, cstr file, int line) {
 #define assert(expression)
 #endif
 
+// TODO(alexander): special asserts
+#define assert_enum(T, v) assert((v) > 0 && (v) < T##_Count && "enum value out of range")
 #define assert_power_of_two(x) assert((((x) & ((x) - 1)) == 0) && "x is not power of two")
 
 // NOTE(alexander): define more convinient types
@@ -58,13 +63,20 @@ typedef char*        str;
 typedef const char*  cstr;
 
 // TODO(alexander): lazy!!!! don't use malloc for this, put in arena later...
+
 inline str
-str_lit(str string, u32 count) {
+str_alloc(str string, u32 count) {
     char* result = (char*) malloc(count + 5) + 4;
     result[count] = '\0';
     *((u32*) result - 1) = count;
-    memcpy(result, string, count);
     return (str) result;
+}
+
+inline str
+str_lit(str string, u32 count) {
+    str result = str_alloc(string, count);
+    memcpy(result, string, count);
+    return result;
 }
 
 inline str
@@ -74,6 +86,11 @@ str_lit(cstr string) {
 }
 
 #define str_count(s) *((u32*) s - 1)
+
+inline u32
+count(str string) {
+    return str_count(string);
+}
 
 // NOTE(alexander): improved string formatting and printf
 typedef int Format_Type;
@@ -88,7 +105,9 @@ enum { // TODO(alexander): add more types
 
 // TODO(alexander): add more types
 #define f_int(x) FormatType_int, (int) (x)
+#define f_smm(x) FormatType_smm, (smm) (x)
 #define f_uint(x) FormatType_uint, (uint) (x)
+#define f_umm(x) FormatType_umm, (umm) (x)
 #define f_str(x) FormatType_str, (int) str_count(x), x
 #define f_cstr(x) FormatType_cstr, (cstr) (x)
 

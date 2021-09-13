@@ -165,6 +165,7 @@ enum {
     Value_floating,
     Value_pointer,
     Value_array,
+    Value_string,
 };
 
 struct Value {
@@ -176,8 +177,65 @@ struct Value {
         f64 floating;
         Pointer_Value pointer;
         Array_Value array;
+        str string;
     };
 };
+
+inline Value
+create_boolean_value(bool value) {
+    Value result;
+    result.type = Value_boolean;
+    result.boolean = (u64) value;
+    return result;
+}
+
+inline Value
+create_signed_int_value(s64 value) {
+    Value result;
+    result.type = Value_signed_int;
+    result.signed_int = (u64) value;
+    return result;
+}
+
+inline Value
+create_unsigned_int_value(u64 value) {
+    Value result;
+    result.type = Value_unsigned_int;
+    result.unsigned_int = (u64) value;
+    return result;
+}
+
+inline Value
+create_floating_value(f64 value) {
+    Value result;
+    result.type = Value_floating;
+    result.floating = value;
+    return result;
+}
+
+inline Value
+create_pointer_value(smm value) {
+    Value result;
+    result.type = Value_pointer;
+    result.pointer = { value };
+    return result;
+}
+
+inline Value
+create_array_value(Value* values, smm count, smm capacity) {
+    Value result;
+    result.type = Value_array;
+    result.array = { values, count, capacity };
+    return result;
+}
+
+inline Value
+create_string_value(str value) {
+    Value result;
+    result.type = Value_string;
+    result.string = value;
+    return result;
+}
 
 void print_value(Value* val) {
     switch (val->type) {
@@ -209,6 +267,10 @@ void print_value(Value* val) {
                 print_value(&arr->elements[index]);
             }
             printf("[");
+        } break;
+        
+        case Value_string: {
+            printf("%s", val->string);
         } break;
     }
 }

@@ -54,8 +54,8 @@ parse_identifier(Parser* parser, bool report_error) {
 }
 
 u32
-parse_escape_character(Parser* parser, u8*& curr, u8* end, bool byte) {
-    u8 c = *curr++;
+parse_escape_character(Parser* parser, char*& curr, char* end, bool byte) {
+    char c = *curr++;
     switch (c) {
         case 'x': {
             assert(curr + 2 < end && "string out of bounds");
@@ -98,8 +98,8 @@ parse_char(Parser* parser) {
     assert(parser->token.kind == Token_Char);
     
     str string = parser->current_token.source;
-    u8* curr = (u8*) string;
-    u8* end = (u8*) string + str_count(string);
+    char* curr = string;
+    char* end = string + str_count(string);
     assert(*curr++ == '\'');
     
     u32 character = 0;
@@ -120,58 +120,68 @@ parse_char(Parser* parser) {
         parse_error(parser, parser->current_token, "character literal may only contain one codepoint");
     }
     
-    return push_ast_value(parsr, create_char_value(character));
+    // TODO(alexander): should we create a char value type?
+    return push_ast_value(parser, create_unsigned_int_value(character));
 }
 
 Ast*
 parse_string(Parser* parser) {
     assert(parser->token.kind == Token_String);
     
-    str string = parser->token.source;
-    u8* curr = string.data;
-    u8* end = string.data + string.length;
+    str string = parser->current_token.source;
+    char* curr = string;
+    char* end = string + str_count(string);
     
     // TODO(alexander): create string builder
-    str string = str_alloc(parser, 1000);
-    String_Builder sb;
-    initialize_string_builder(&sb, string.length + 1, arena_allocator(parser->temp_arena));
+    str sb = str_alloc(1000);
+    char* sb_curr = (char*) sb;
+    u32 sb_count = 0;
     
-    u8 c = *curr;
     assert(*curr++ == '"');
     while (curr < end) {
-        c = *curr++;
+        char c = *curr++;
         if (c == '\\') {
             u32 value = parse_escape_character(parser, curr, end, false);
             if (value > 0x7F) {
-                ensure_capacity(&sb, 4);
-                sb.length += (isize) convert_utf32_to_utf8(value, (u8*) (sb.data + sb.length));
+                // TODO(alexander): create string builder!
+                //ensure_capacity(&sb, 4);
+                u8 count = utf32_convert_to_utf8(value, (u8*) sb_curr);
+                sb_curr += count;
+                sb_count += count;
             } else {
-                append(&sb, (char) value);
+                *sb_curr++ = (char) value;
+                sb_count++;
             }
             continue;
         } else if (c == '"') {
             break;
         }
         
-        u8 n = get_utf8_character_info(c);
+        u8 n = utf8_calculate_num_bytes((u8) c);
         assert(n > 0);
-        append(&sb, (char) c);
-        for (; n > 1; n--) append(&sb, (char) *curr++);
+        *sb_curr++ = c;
+        sb_count++;
+        for (; n > 1; n--) *sb_curr++ = *curr++;
     }
-    append(&sb, '\0');
+    *sb_curr++ = 0;
     
-    String s = intern_string(create_string(sb.data, sb.length - 1)).s;
-    return push_ast_literal(parser->arena, create_string_value(s), Primitive_string);
+    str result = str_alloc(sb_count);
+    memcpy(result, sb, sb_count);
+    
+    return push_ast_value(parser, create_string_value(result));
 }
 
 Ast*
 parse_int(Parser* parser) {
-    assert(parser->token.kind == Token_Int);
+    Token token = parser->current_token;
+    assert(token.type == Token_Int);
     
-    Token token = parser->token;
-    Type type = primitive_types[Primitive_integer];
-    if (token.suffix_start != token.source.length) {
-        String suffix = substring_nocopy(token.source, token.suffix_start, token.source.length);
+    
+    if (token.suffix_start != str_count(token.source)) {
+        assert(0 && "number suffixes are not supported yet!");
+#if 0
+        Type type = primitive_types[Primitive_integer];
+        str suffix = substring_nocopy(token.source, token.suffix_start, token.source.length);
         Symbol sym = find_symbol(suffix);
         switch (sym.index) {
             case Kw_i8:    type = primitive_types[Primitive_i8];    break;
@@ -193,27 +203,26 @@ parse_int(Parser* parser) {
             parse_error(parser, token, "invalid integer type `%s`", lit(name));
             break;
         }
+#endif
     }
     
     int base = 10;
     int curr_index = 0;
     switch (token.int_base) {
-        case Int_Base::Binary: {
+        case IntBase_Binary: {
             base = 2;
             curr_index += 2;
         } break;
         
-        case Int_Base::Octal: {
+        case IntBase_Octal: {
             base = 8;
             curr_index += 2;
         } break;
         
-        case Int_Base::Hexadecimal: {
+        case IntBase_Hexadecimal: {
             base = 16;
             curr_index += 2;
         } break;
-        
-        case Int_Base::Decimal: break;
     }
     
     u64 value = 0;
@@ -221,7 +230,7 @@ parse_int(Parser* parser) {
         u8 c = token.source[curr_index++];
         if (c == '_') continue;
         
-        int d = get_hex_digit(c);
+        s32 d = hex_digit_to_s32(c);
         assert(d != -1 && "tokenization error");
         u64 x = value * base;
         if (value != 0 && x / base != value) {
@@ -238,21 +247,24 @@ parse_int(Parser* parser) {
         value = y;
     }
     
-    return push_ast_literal(parser->arena, create_int_value(value, false), type.Primitive);
+    return push_ast_value(parser, create_signed_int_value(value));
 }
 
 Ast*
 parse_float(Parser* parser) {
-    assert(parser->token.kind == Token_Float);
+    Token token = parser->current_token;
+    assert(token.type == Token_Float);
     
-    Token token = parser->token;
     if (token.int_base != IntBase_Decimal) {
-        parse_error(parser, token, "%s float literal is not supported", to_cstring(token.int_base));
-        return NULL;
+        parse_error(parser, token, "float literals does not support int bases");
+        return 0;
     }
     
-    Type type = primitive_types[Primitive_float];
-    if (token.suffix_start != token.source.length) {
+    
+    if (token.suffix_start != str_count(token.source)) {
+        assert(0 && "number suffixes are not supported yet!");
+#if 0
+        Type type = primitive_types[Primitive_float];
         String suffix = substring_nocopy(token.source, token.suffix_start, token.source.length);
         Symbol sym = find_symbol(suffix);
         switch (sym.index) {
@@ -262,23 +274,24 @@ parse_float(Parser* parser) {
             String name = copy_string(token.source, arena_allocator(parser->temp_arena));
             parse_error(parser, token, "invalid float type `%s`, expected `f32` or `f64`", lit(name));
         }
+#endif
     }
     
-    int curr_index = 0;
+    u32 curr_index = 0;
     f64 value = 0.0;
     u8 c = 0;
     while (curr_index < token.suffix_start) {
         c = token.source[curr_index++];
         if (c == '_') continue;
         if (c == 'e' || c == 'E' || c == '.') break;
-        f64 d = (f64) get_hex_digit(c);
+        f64 d = (f64) hex_digit_to_s32(c);
         value = value * 10.0 + d;
     }
     
     if (c == '.') {
         f64 numerator = 0.0;
         f64 denominator = 1.0;
-        while (curr_index < token.source.length) {
+        while (curr_index < str_count(token.source)) {
             c = token.source[curr_index++];
             if (c == '_') continue;
             if (c == 'e' || c == 'E') break;
@@ -289,13 +302,13 @@ parse_float(Parser* parser) {
     }
     
     if (c == 'e' || c == 'E') {
-        printf("token.source = %s\n", lit(copy_string(token.source)));
+        pln("token.source = %\n", f_str(token.source));
         c = token.source[curr_index++];
         f64 exponent = 0.0;
         f64 sign = 1.0;
         if (c == '-') sign = -1.0;
         
-        while (curr_index < token.source.length) {
+        while (curr_index < str_count(token.source)) {
             c = token.source[curr_index++];
             if (c == '_') continue;
             exponent = exponent * 10.0 + (f64) (c - '0');
@@ -303,53 +316,52 @@ parse_float(Parser* parser) {
         value = value*pow(10.0, sign*exponent);
     }
     
-    return push_ast_literal(parser->arena, create_float_value(value), Primitive_float);
+    return push_ast_value(parser, create_floating_value(value));
 }
 
 Ast*
 parse_expression(Parser* parser, bool report_error) {
     Ast* lhs_expr = 0;
     
-    Token token = peek_token(token);
+    Token token = peek_token(parser);
+    pln("expr token = %", f_token(token.type));
     switch (token.type) {
         case Token_Ident: {
             str_id sym = vars_save_str(token.source);
-            switch (sym.index) {
+            switch (sym) {
                 case Kw_false: {
                     next_token(parser);
-                    lhs_expr = push_ast_literal(parser, create_bool_value(false));
+                    lhs_expr = push_ast_value(parser, create_boolean_value(false));
                 } break;
                 
                 case Kw_true: {
                     next_token(parser);
-                    lhs_expr = push_ast_literal(parser, create_bool_value(true));
+                    lhs_expr = push_ast_value(parser, create_boolean_value(true));
                 } break;
                 
                 case Kw_cast: {
                     next_token(parser);
-                    parse_token(parser, Token_Open_Paren);
-                    Ast* type = parse_type(parser, true);
-                    parse_token(parser, Token_Close_Paren);
+                    next_token_if_matched(parser, Token_Open_Paren);
+                    Ast* type = parse_type(parser);
+                    next_token_if_matched(parser, Token_Close_Paren);
                     
-                    Ast* inner_expr = parse_expr(parser, true);
-                    Ast* node = push_struct(parser->arena, Ast);
-                    node->kind = Ast_Type_Cast_Expr;
-                    node->Type_Cast_Expr.type = type;
-                    node->Type_Cast_Expr.expr = inner_expr;
+                    Ast* inner_expr = parse_expression(parser);
+                    Ast* node = push_ast_node(parser);
+                    node->type = Ast_Cast_Expr;
+                    node->Cast_Expr.type = type;
+                    node->Cast_Expr.expr = inner_expr;
                     lhs_expr = node;
                 } break;
                 
                 default: {
-                    lhs_expr = parse_ident(parser, token, true);
-                    if (lhs_expr) next_token(parser);
+                    lhs_expr = parse_identifier(parser);
                 } break;
             }
             
         } break;
         
         case Token_Raw_Ident: {
-            next_token(parser);
-            lhs_expr = parse_ident(parser, token, true);
+            lhs_expr = parse_identifier(parser);
         } break;
         
         case Token_Int: {

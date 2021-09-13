@@ -65,7 +65,7 @@ typedef const char*  cstr;
 // TODO(alexander): lazy!!!! don't use malloc for this, put in arena later...
 
 inline str
-str_alloc(str string, u32 count) {
+str_alloc(u32 count) {
     char* result = (char*) malloc(count + 5) + 4;
     result[count] = '\0';
     *((u32*) result - 1) = count;
@@ -74,7 +74,7 @@ str_alloc(str string, u32 count) {
 
 inline str
 str_lit(str string, u32 count) {
-    str result = str_alloc(string, count);
+    str result = str_alloc(count);
     memcpy(result, string, count);
     return result;
 }

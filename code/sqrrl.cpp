@@ -46,11 +46,9 @@ compiler_main_entry(int argc, char* argv[]) {
     tokenizer_set_source(&tokenizer, source, filepath);
     // TODO(alexander): calculate line number!
     
-    
     Parser parser = {};
     parser.tokenizer = &tokenizer;
     Ast_File ast_file = parse_file(&parser);
-    
     
     return 0;
 }

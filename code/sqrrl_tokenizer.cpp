@@ -39,8 +39,8 @@ void
 utf8_advance_character(Tokenizer* tokenizer) {
     if (tokenizer->curr) {
         tokenizer->column_number++;
-        
         if (*tokenizer->curr == '\n') {
+            arr_push(tokenizer->lines, (smm) (tokenizer->next - tokenizer->start));
             tokenizer->curr_line = tokenizer->next;
             tokenizer->line_number++;
             tokenizer->column_number = 0;

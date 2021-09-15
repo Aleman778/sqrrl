@@ -321,10 +321,9 @@ parse_float(Parser* parser) {
 
 Ast*
 parse_expression(Parser* parser, bool report_error) {
-    Ast* lhs_expr = 0;
-    
     Token token = peek_token(parser);
-    pln("expr token = %", f_token(token.type));
+    Ast* lhs_expr = push_ast_node(parser, &token);
+    
     switch (token.type) {
         case Token_Ident: {
             str_id sym = vars_save_str(token.source);
@@ -394,8 +393,8 @@ parse_expression(Parser* parser, bool report_error) {
 
 Ast*
 parse_statement(Parser* parser) {
-    Ast* result = push_ast_node(parser);
     Token token = peek_token(parser);
+    Ast* result = push_ast_node(parser, &token);
     
     if (token.type == Token_Ident) {
         next_token(parser);
@@ -480,6 +479,7 @@ parse_statement(Parser* parser) {
         next_token_if_matched(parser, Token_Semi, false);
     }
     
+    update_span(parser, result);
     return result;
 }
 
@@ -703,7 +703,8 @@ parse_type(Parser* parser) {
 
 Ast*
 parse_top_level_declaration(Parser* parser) {
-    Ast* result = push_ast_node(parser);
+    Token peek = peek_token(parser);
+    Ast* result = push_ast_node(parser, &peek);
     
     result->type = Ast_Type_Decl;
     result->Type_Decl.mods = AstDeclModified_None;
@@ -728,10 +729,8 @@ Ast_File
 parse_file(Parser* parser) {
     Ast_File result = {};
     result.ast = parse_top_level_declaration(parser);
-    print_ast(result.ast, 0);
-    
-    
-    
+    update_span(parser, result.ast);
+    print_ast(result.ast, parser->tokenizer);
     
     return result;
 }

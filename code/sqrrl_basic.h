@@ -148,15 +148,56 @@ str str_format(cstr format...);
 //}
 
 // NOTE(alexander): change the naming convention of stb_ds
+#define arr_free(a) arrfree(a)
 #define arr_push(a, x) arrput(a, x)
 #define arr_pop(a, x) arrpop(a, x)
 #define arr_insert(a, x, p) arrins(a, p, x)
 #define arr_remove(a, p) arrdel(a, p)
 #define arr_set_capacity(a, c) arrsetcap(a, c)
 #define arr_get_capacity(a) arrcap(a)
+#define arr_count(a) arrlen(a)
 
 #define map_put(m, k, v) hmput(m, k, v)
 #define str_map_put(m, k, v) shput(m, k, v)
+
+int 
+compare_ints(void* a, void* b) {
+    return *(int*)a - *(int*)b;
+}
+
+struct Binary_Search_Result  {
+    void* value;
+    smm index;
+    b32 exact_match;
+};
+
+Binary_Search_Result
+_binary_search(void* arr, void* val, smm count, smm size, 
+               int (*compare)(void*, void*)) {
+    Binary_Search_Result result = {};
+    smm low = 0, high = count - 1;
+    
+    while (low <= high) {
+        smm mid = (high - low) / 2 + low;
+        result.index = mid;
+        
+        void* elem = (u8*) arr + mid*size;
+        int cmp = compare(val, elem);
+        if (cmp > 0) {
+            high = mid - 1;
+        } else if (cmp < 0) {
+            low = mid + 1;
+        } else {
+            result.exact_match = true;
+            break;
+        }
+    }
+    
+    result.value = (u8*) arr + result.index*size;
+    return result;
+}
+
+#define binary_search(arr, val, compare) _binary_search(arr, &val, arr_count(arr), sizeof(arr), compare)
 
 // NOTE(alexander): hash map
 

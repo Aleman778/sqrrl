@@ -134,6 +134,14 @@ tokenizer_set_source(Tokenizer* tokenizer, str source, str file) {
     tokenizer->curr = tokenizer->start;
     tokenizer->curr_line = tokenizer->start;
     tokenizer->file = file;
+    
+    if (tokenizer->lines) {
+        arr_free(tokenizer->lines); // SPEED(alexander): maybe clear instead
+        tokenizer->lines = 0;
+    }
+    
+    arr_set_capacity(tokenizer->lines, 32);
+    arr_push(tokenizer->lines, 0);
 }
 
 inline bool

@@ -195,12 +195,19 @@ token_to_span(Token token) {
 
 inline Span 
 span_combine(Span span1, Span span2) {
-    assert(span1.ctx == span2.ctx);
+    assert(span1.index == span2.index);
     
     Span span;
-    span.base = span1.base;
-    span.count = (u16) (span2.base - span1.base + (u32) span2.count);
     span.index = span1.index;
+    if (span1.base < span2.base) {
+        span.base = span1.base;
+        span.count = (u16) (span2.base - span1.base + (u32) span2.count);
+    } else {
+        span.base = span2.base;
+        span.count = (u16) (span1.base - span2.base + (u32) span1.count);
+    }
+    
+    
     return span;
 }
 
@@ -222,9 +229,8 @@ struct Ast_File {
     
 };
 
-
 void
-print_ast(Ast* node, u32 spacing=0) {
+print_ast(Ast* node, Tokenizer* tokenizer, u32 spacing=0) {
     if (!node) {
         return;
     }
@@ -238,30 +244,35 @@ print_ast(Ast* node, u32 spacing=0) {
     // some special cases
     if (node->type == Ast_Abi) {
         printf(" \"%s\")", node->Abi);
-        return;
     } else if (node->type == Ast_Value) {
         print_value(&node->Value);
-        printf(")");
-        return;
     } else if (node->type == Ast_Ident) {
         printf(" `%s`", vars_load_str(node->Ident));
-        printf(")");
-        return;
     } else if (node->type == Ast_Binary_Expr) {
         assert_enum(BinaryOp, node->Binary_Expr.op);
         printf("(%s)", binary_op_strings[node->Binary_Expr.op]);
-        print_ast(node->children[0], spacing);
-        print_ast(node->children[1], spacing);
+        print_ast(node->children[0], tokenizer, spacing);
+        print_ast(node->children[1], tokenizer, spacing);
     } else if (node->type == Ast_Type_Decl) {
-        print_ast(node->Type_Decl.type, spacing);
-        print_ast(node->Type_Decl.stmt, spacing);
+        print_ast(node->Type_Decl.type, tokenizer, spacing);
+        print_ast(node->Type_Decl.stmt, tokenizer, spacing);
     } else {
         // otherwise parse all possible children
-        print_ast(node->children[0], spacing);
-        print_ast(node->children[1], spacing);
-        print_ast(node->children[2], spacing);
-        print_ast(node->children[3], spacing);
+        print_ast(node->children[0], tokenizer, spacing);
+        print_ast(node->children[1], tokenizer, spacing);
+        print_ast(node->children[2], tokenizer, spacing);
+        print_ast(node->children[3], tokenizer, spacing);
     }
+    
+    // HACK(alexander): this is for debugging spans
+    Binary_Search_Result begin = binary_search(tokenizer->lines, (smm) node->span.base, compare_ints);
+    Binary_Search_Result end = binary_search(tokenizer->lines, (smm) node->span.base + (smm) node->span.count, compare_ints);
+    
+    u32 beg_line = (u32) begin.index + 1;
+    u32 beg_col = (u32) ((smm) node->span.base - *(smm*) begin.value) + 1;
+    u32 end_line = (u32) end.index + 1;
+    u32 end_col = (u32) ((smm) node->span.base + (smm) node->span.count - *(smm*) end.value) + 1;
+    printf(" in examples/demo.sq:%u:%u to %u:%u", beg_line, beg_col, end_line, end_col);
     
     spacing -= 2;
     printf(")");

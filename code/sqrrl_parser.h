@@ -9,16 +9,29 @@ struct Parser {
 };
 
 inline Ast*
-push_ast_node(Parser* parser) {
-    return arena_push_struct(&parser->ast_arena, Ast, 0);
+push_ast_node(Parser* parser, Token* token=0) {
+    Ast* result = arena_push_struct(&parser->ast_arena, Ast, 0);
+    token = token ? token : &parser->current_token;
+    if (token) {
+        result->span = token_to_span(*token);
+    }
+    return result;
 }
 
 inline Ast*
 push_ast_value(Parser* parser, Value value) {
-    Ast* ast = push_ast_node(parser);
-    ast->type = Ast_Value;
-    ast->Value = value;
-    return ast;
+    Ast* result = push_ast_node(parser);
+    result->type = Ast_Value;
+    result->Value = value;
+    return result;
+}
+
+inline void
+update_span(Parser* parser, Ast* node, Token* token=0) {
+    token = token ? token : &parser->current_token;
+    if (token) {
+        node->span = span_combine(node->span, token_to_span(*token));
+    }
 }
 
 // TODO(alexander): better diagnostic, this will do for now!

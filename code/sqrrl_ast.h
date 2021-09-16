@@ -50,16 +50,15 @@ Ast* array;                                    \
 Ast* index;                                    \
 })                                             \
 AST(Array_Expr,        "array", struct {       \
-Ast* type;                                      \
-Ast* elements;                                  \
+Ast* type;                                     \
+Ast* elements;                                 \
 })                                             \
 AST(Struct_Expr,       "struct", struct {      \
-Ast* first;                                    \
-Ast* second;                                   \
+Ast* ident;                                    \
+Ast* fields;                                   \
 })                                             \
 AST(Tuple_Expr,        "tuple", struct {       \
-Ast* first;                                    \
-Ast* second;                                   \
+Ast* values;                                   \
 })                                             \
 AST_GROUP(Expr_End,    "expression")           \
 AST_GROUP(Stmt_Begin,  "statement")            \
@@ -160,8 +159,7 @@ global cstr ast_struct_strings[] = {
 #undef AST
 };
 
-typedef s32 Ast_Type;
-enum {
+enum Ast_Type {
 #define AST(symbol, ...) Ast_##symbol,
 #define AST_GROUP(symbol, ...) Ast_##symbol,
     DEF_AST_TYPES

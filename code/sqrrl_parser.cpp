@@ -322,7 +322,7 @@ parse_float(Parser* parser) {
 Ast*
 parse_expression(Parser* parser, bool report_error) {
     Token token = peek_token(parser);
-    Ast* lhs_expr = push_ast_node(parser, &token);
+    Ast* atom_expr = 0;
     
     switch (token.type) {
         case Token_Ident: {
@@ -330,12 +330,12 @@ parse_expression(Parser* parser, bool report_error) {
             switch (sym) {
                 case Kw_false: {
                     next_token(parser);
-                    lhs_expr = push_ast_value(parser, create_boolean_value(false));
+                    atom_expr = push_ast_value(parser, create_boolean_value(false));
                 } break;
                 
                 case Kw_true: {
                     next_token(parser);
-                    lhs_expr = push_ast_value(parser, create_boolean_value(true));
+                    atom_expr = push_ast_value(parser, create_boolean_value(true));
                 } break;
                 
                 case Kw_cast: {
@@ -349,44 +349,129 @@ parse_expression(Parser* parser, bool report_error) {
                     node->type = Ast_Cast_Expr;
                     node->Cast_Expr.type = type;
                     node->Cast_Expr.expr = inner_expr;
-                    lhs_expr = node;
+                    atom_expr = node;
                 } break;
                 
                 default: {
-                    lhs_expr = parse_identifier(parser);
+                    atom_expr = parse_identifier(parser);
                 } break;
             }
             
         } break;
         
         case Token_Raw_Ident: {
-            lhs_expr = parse_identifier(parser);
+            atom_expr = parse_identifier(parser);
         } break;
         
         case Token_Int: {
             next_token(parser);
-            lhs_expr = parse_int(parser);
+            atom_expr = parse_int(parser);
         } break;
         
         case Token_Float: {
             next_token(parser);
-            lhs_expr = parse_float(parser);
+            atom_expr = parse_float(parser);
         } break;
         
         case Token_Char: {
             next_token(parser);
-            lhs_expr = parse_char(parser);
+            atom_expr = parse_char(parser);
         } break;
         
         case Token_String: {
             next_token(parser);
-            lhs_expr = parse_string(parser);
+            atom_expr = parse_string(parser);
+        } break;
+        
+        case Token_Open_Paren: {
+            next_token(parser);
+            atom_expr = push_ast_node(parser, &token);
+            Ast* inner_expr = parse_expression(parser, report_error);
+            if (inner_expr == 0) {
+                return inner_expr;
+            }
+            
+            Token peek = peek_token(parser);
+            switch (peek.type) {
+                case Token_Close_Paren: {
+                    next_token(parser);
+                    atom_expr->type = Ast_Paren_Expr;
+                    atom_expr->Paren_Expr.expr = inner_expr;
+                    update_span(parser, atom_expr);
+                } break;
+                
+                case Token_Comma: {
+                    atom_expr = parse_compound(parser, 
+                                               Token_Comma, Token_Close_Paren, Token_Comma, 
+                                               &parse_actual_argument);
+                } break;
+                
+                default: {
+                    if (report_error) {
+                        parse_error(parser, peek, str_format(" token `%` expected `)` or ``", f_token(peek.type)));
+                    }
+                }
+            }
         } break;
     }
     
-    if (!lhs_expr) {
-        lhs_expr = push_ast_node(parser);
+    if (!atom_expr) {
+        atom_expr = push_ast_node(parser);
+        if (report_error) {
+            parse_error(parser, token, "expected expression");
+        }
+        return atom_expr;
     }
+    update_span(parser, atom_expr);
+    
+    // Some expressions are build by combining multiple expressiosn e.g. `atom1[atom2]`.
+    token = peek_token(parser);
+    Ast* lhs_expr = atom_expr;
+    switch (token.type) {
+        case Token_Dot: {
+            next_token(parser);
+            lhs_expr = push_ast_node(parser);
+            lhs_expr->type = Ast_Field_Expr;
+            lhs_expr->Field_Expr.var = atom_expr;
+            lhs_expr->Field_Expr.field = parse_expression(parser);
+        } break;
+        
+        case Token_Question: {
+            next_token(parser);
+            lhs_expr = push_ast_node(parser);
+            lhs_expr->type = Ast_Ternary_Expr;
+            lhs_expr->Ternary_Expr.first = atom_expr;
+            lhs_expr->Ternary_Expr.second = parse_expression(parser);
+            lhs_expr->Ternary_Expr.third = parse_expression(parser);
+        } break;
+        
+        case Token_Open_Paren: {
+            lhs_expr = parse_compound(parser, 
+                                      Token_Open_Paren, Token_Close_Paren, Token_Comma, 
+                                      &parse_actual_argument);
+        } break;
+        
+        case Token_Open_Bracket: {
+            next_token(parser);
+            lhs_expr = push_ast_node(parser);
+            lhs_expr->type = Ast_Index_Expr;
+            lhs_expr->Index_Expr.array = atom_expr;
+            lhs_expr->Index_Expr.index = parse_expression(parser);
+            next_token_if_matched(parser, Token_Close_Brace);
+        } break;
+        
+        case Token_Open_Brace: {
+            if (atom_expr->type == Ast_Ident) {
+                lhs_expr = push_ast_node(parser);
+                lhs_expr->type = Ast_Struct_Expr;
+                lhs_expr->Struct_Expr.ident = atom_expr;
+                lhs_expr->Struct_Expr.fields = parse_compound(parser,
+                                                              Token_Open_Brace, Token_Close_Brace, Token_Comma, 
+                                                              &parse_actual_struct_or_union_argument);
+            }
+        } break;
+    }
+    update_span(parser, lhs_expr);
     
     return lhs_expr;
 }
@@ -394,11 +479,14 @@ parse_expression(Parser* parser, bool report_error) {
 Ast*
 parse_statement(Parser* parser) {
     Token token = peek_token(parser);
-    Ast* result = push_ast_node(parser, &token);
+    Ast* result = 0;
     
     if (token.type == Token_Ident) {
-        next_token(parser);
-        if (next_token_if_matched(parser, Token_Assign, false)) {
+        Token second_token = peek_second_token(parser);
+        if (second_token.type == Token_Assign) {
+            next_token(parser);
+            next_token(parser);
+            
             Ast* type = result;
             result = push_ast_node(parser);
             result->type = Ast_Assign_Stmt;
@@ -408,16 +496,22 @@ parse_statement(Parser* parser) {
             Keyword keyword = (Keyword) vars_save_str(token.source);
             switch (keyword) {
                 case Kw_break: {
+                    next_token(parser);
+                    result = push_ast_node(parser, &token);
                     result->type = Ast_Break_Stmt;
                     result->Break_Stmt.ident = parse_identifier(parser, false);
                 } break;
                 
                 case Kw_continue: {
+                    next_token(parser);
+                    result = push_ast_node(parser, &token);
                     result->type = Ast_Continue_Stmt;
                     result->Continue_Stmt.ident = parse_identifier(parser, false);
                 } break;
                 
                 case Kw_if: {
+                    next_token(parser);
+                    result = push_ast_node(parser, &token);
                     result->type = Ast_If_Stmt;
                     bool opened_paren = next_token_if_matched(parser, Token_Open_Paren, false);
                     result->If_Stmt.cond = parse_expression(parser);
@@ -427,6 +521,8 @@ parse_statement(Parser* parser) {
                 } break;
                 
                 case Kw_for: {
+                    next_token(parser);
+                    result = push_ast_node(parser, &token);
                     result->type = Ast_For_Stmt;
                     result->For_Stmt.label = parse_identifier(parser, false);
                     if (result->For_Stmt.label->type != Ast_None) {
@@ -442,6 +538,8 @@ parse_statement(Parser* parser) {
                 } break;
                 
                 case Kw_while: {
+                    next_token(parser);
+                    result = push_ast_node(parser, &token);
                     result->type = Ast_While_Stmt;
                     result->While_Stmt.label = parse_identifier(parser, false);
                     if (result->While_Stmt.label->type != Ast_None) {
@@ -454,37 +552,41 @@ parse_statement(Parser* parser) {
                 } break;
                 
                 case Kw_loop: {
+                    next_token(parser);
+                    result = push_ast_node(parser, &token);
                     result->type = Ast_Loop_Stmt;
                     result->Loop_Stmt.label = parse_identifier(parser, false);
                 } break;
                 
                 case Kw_return: {
+                    next_token(parser);
+                    result = push_ast_node(parser, &token);
                     result->type = Ast_Return_Stmt;
                     result->Return_Stmt.expr = parse_expression(parser, false);
                 } break;
             }
         }
     } else if (token.type == Token_Open_Brace) {
+        result = push_ast_node(parser, &token);
         result->type = Ast_Block_Stmt;
         result->Block_Stmt.stmts = parse_compound(parser, Token_Open_Brace, Token_Close_Brace, Token_Semi,
                                                   &parse_statement);
     }
     
-    if (result->type == Ast_None) {
+    if (!result) {
         result = parse_expression(parser);
     }
     
-    if (result->type != Ast_Block_Stmt) {
-        // TODO(alexander): should we force semi colon or not? right now it is optional.
-        next_token_if_matched(parser, Token_Semi, false);
-    }
+    //if (result->type != Ast_Block_Stmt) {
+    //next_token_if_matched(parser, Token_Semi);
+    //}
     
     update_span(parser, result);
     return result;
 }
 
 Ast*
-parse_struct_or_union_argument(Parser* parser) {
+parse_formal_struct_or_union_argument(Parser* parser) {
     Ast* result = push_ast_node(parser);
     result->type = Ast_Argument;
     result->Argument.type = parse_type(parser);
@@ -499,7 +601,24 @@ parse_struct_or_union_argument(Parser* parser) {
 }
 
 Ast*
-parse_enum_argument(Parser* parser) {
+parse_actual_struct_or_union_argument(Parser* parser) {
+    Ast* result = push_ast_node(parser);
+    result->type = Ast_Argument;
+    result->Argument.ident = parse_identifier(parser, false);
+    if (result->Argument.ident) {
+        if (next_token_if_matched(parser, Token_Colon, false)) {
+            result->Argument.assign = parse_expression(parser);
+        } else {
+            result->Argument.assign = push_ast_node(parser);
+        }
+    } else {
+        result->Argument.assign = parse_expression(parser);
+    }
+    return result;
+}
+
+Ast*
+parse_formal_enum_argument(Parser* parser) {
     Ast* result = push_ast_node(parser);
     result->type = Ast_Argument;
     result->Argument.ident = parse_identifier(parser);
@@ -508,7 +627,6 @@ parse_enum_argument(Parser* parser) {
     } else {
         result->Argument.assign = push_ast_node(parser);
     }
-    next_token_if_matched(parser, Token_Comma, false);
     return result;
 }
 
@@ -523,7 +641,6 @@ parse_formal_function_argument(Parser* parser) {
     } else {
         result->Argument.assign = push_ast_node(parser);
     }
-    next_token_if_matched(parser, Token_Comma, false);
     return result;
 }
 
@@ -537,27 +654,36 @@ parse_actual_function_argument(Parser* parser) {
     } else {
         result->Argument.assign = push_ast_node(parser);
     }
-    next_token_if_matched(parser, Token_Comma, false);
     return result;
 }
 
+Ast*
+parse_actual_argument(Parser* parser) {
+    return parse_expression(parser);
+}
 
 Ast*
 parse_compound(Parser* parser, 
                Token_Type begin, Token_Type end, Token_Type separator,
                Ast* (*element_parser)(Parser* parser)) {
     Ast* result = push_ast_node(parser);
-    Ast* curr = result;
-    
+    result->type = Ast_Compound;
     
     next_token_if_matched(parser, begin);
+    if (next_token_if_matched(parser, end, false)) {
+        result->Compound.node = push_ast_node(parser);
+        result->Compound.next = push_ast_node(parser);
+        return result;
+    }
+    
+    Ast* curr = result;
     while (peek_token(parser).type != end) {
         curr->type = Ast_Compound;
         curr->Compound.node = element_parser(parser);
         curr->Compound.next = push_ast_node(parser);
         curr = curr->Compound.next;
         
-        if (parser->current_token.type != separator) {
+        if (!next_token_if_matched(parser, Token_Comma, false)) {
             break;
         }
     }
@@ -599,7 +725,7 @@ parse_type(Parser* parser) {
                 base->Struct_Type.ident = parse_identifier(parser);
                 base->Struct_Type.fields = parse_compound(parser,
                                                           Token_Open_Brace, Token_Close_Brace, Token_Semi,
-                                                          &parse_struct_or_union_argument);
+                                                          &parse_formal_struct_or_union_argument);
             } break;
             
             case Kw_union: {
@@ -608,7 +734,7 @@ parse_type(Parser* parser) {
                 base->Struct_Type.ident = parse_identifier(parser);
                 base->Struct_Type.fields = parse_compound(parser,
                                                           Token_Open_Brace, Token_Close_Brace, Token_Semi,
-                                                          &parse_struct_or_union_argument);
+                                                          &parse_formal_struct_or_union_argument);
             } break;
             
             case Kw_enum: { 
@@ -621,7 +747,7 @@ parse_type(Parser* parser) {
                 }
                 base->Enum_Type.fields = parse_compound(parser,
                                                         Token_Open_Brace, Token_Close_Brace, Token_Comma,
-                                                        &parse_enum_argument);
+                                                        &parse_formal_enum_argument);
             } break;
             
             case Kw_typedef: {
@@ -683,7 +809,7 @@ parse_type(Parser* parser) {
                 result = push_ast_node(parser);
                 result->type = Ast_Array_Type;
                 result->Array_Type.elem_type = base;
-                result->Array_Type.shape = parse_expression(parser);
+                result->Array_Type.shape = parse_expression(parser, false);
                 
                 next_token_if_matched(parser, Token_Close_Bracket);
             } break;
@@ -728,6 +854,10 @@ parse_top_level_declaration(Parser* parser) {
 Ast_File
 parse_file(Parser* parser) {
     Ast_File result = {};
+    result.ast = parse_top_level_declaration(parser);
+    update_span(parser, result.ast);
+    print_ast(result.ast, parser->tokenizer);
+    
     result.ast = parse_top_level_declaration(parser);
     update_span(parser, result.ast);
     print_ast(result.ast, parser->tokenizer);

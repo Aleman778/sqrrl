@@ -50,12 +50,15 @@ Keyword parse_keyword(Parser* parser, bool report_error=true);
 
 Ast* parse_identifier(Parser* parser, bool report_error=true);
 Ast* parse_expression(Parser* parser, bool report_error=true);
+Ast* parse_atom_expression(Parser* parser, bool report_error=true);
 Ast* parse_statement(Parser* parser);
 
-Ast* parse_struct_or_union_argument(Parser* parser);
-Ast* parse_enum_argument(Parser* parser);
+Ast* parse_formal_struct_or_union_argument(Parser* parser);
+Ast* parse_actual_struct_or_union_argument(Parser* parser);
+Ast* parse_formal_enum_argument(Parser* parser);
 Ast* parse_formal_function_argument(Parser* parser);
 Ast* parse_actual_function_argument(Parser* parser);
+Ast* parse_actual_argument(Parser* parser);
 Ast* parse_compound(Parser* parser, 
                     Token_Type begin, Token_Type end, Token_Type separator,
                     Ast* (*element_parser)(Parser* parser));

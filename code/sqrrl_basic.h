@@ -162,7 +162,12 @@ str str_format(cstr format...);
 
 int 
 compare_ints(void* a, void* b) {
-    return *(int*)a - *(int*)b;
+    return *(int*) a - *(int*) b;
+}
+
+int
+compare_smm(void* a, void* b) {
+    return (int) (*(smm*) a - *(smm*) b);
 }
 
 struct Binary_Search_Result  {

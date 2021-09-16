@@ -186,6 +186,26 @@ union Span {
     u64 packed;
 };
 
+struct Span_Data {
+    u32 begin_line;
+    u32 begin_col;
+    u32 end_line;
+    u32 end_col;
+};
+
+Span_Data
+calculate_span_data(smm* lines, Span span) {
+    Binary_Search_Result begin = binary_search(lines, (smm) span.base, compare_smm);
+    Binary_Search_Result end = binary_search(lines, (smm) span.base + (smm) span.count, compare_smm);
+    
+    Span_Data result;
+    result.begin_line = (u32) begin.index + 1;
+    result.begin_col = (u32) ((smm) span.base - *(smm*) begin.value) + 1;
+    result.end_line = (u32) end.index + 1;
+    result.end_col = (u32) ((smm) span.base + (smm) span.count - *(smm*) end.value) + 1;
+    return result;
+}
+
 global const Span empty_span = { 0 };
 
 inline Span 
@@ -193,7 +213,7 @@ token_to_span(Token token) {
     return { (u32) token.offset, (u16) str_count(token.source), 0 }; // TODO(alexander): what should index be?
 }
 
-inline Span 
+inline Span
 span_combine(Span span1, Span span2) {
     assert(span1.index == span2.index);
     
@@ -206,8 +226,6 @@ span_combine(Span span1, Span span2) {
         span.base = span2.base;
         span.count = (u16) (span1.base - span2.base + (u32) span1.count);
     }
-    
-    
     return span;
 }
 
@@ -226,7 +244,6 @@ struct Ast {
 
 struct Ast_File {
     Ast* ast;
-    
 };
 
 void
@@ -265,14 +282,8 @@ print_ast(Ast* node, Tokenizer* tokenizer, u32 spacing=0) {
     }
     
     // HACK(alexander): this is for debugging spans
-    Binary_Search_Result begin = binary_search(tokenizer->lines, (smm) node->span.base, compare_ints);
-    Binary_Search_Result end = binary_search(tokenizer->lines, (smm) node->span.base + (smm) node->span.count, compare_ints);
-    
-    u32 beg_line = (u32) begin.index + 1;
-    u32 beg_col = (u32) ((smm) node->span.base - *(smm*) begin.value) + 1;
-    u32 end_line = (u32) end.index + 1;
-    u32 end_col = (u32) ((smm) node->span.base + (smm) node->span.count - *(smm*) end.value) + 1;
-    printf(" in examples/demo.sq:%u:%u to %u:%u", beg_line, beg_col, end_line, end_col);
+    Span_Data span = calculate_span_data(tokenizer->lines, node->span);
+    printf(" in examples/demo.sq:%u:%u to %u:%u", span.begin_line, span.begin_col, span.end_line, span.end_col);
     
     spacing -= 2;
     printf(")");

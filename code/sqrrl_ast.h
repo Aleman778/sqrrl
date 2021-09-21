@@ -11,8 +11,8 @@ Ast* ident;                                    \
 Ast* assign;                                   \
 })                                             \
 AST(Compound,          "compound", struct {    \
-Ast* next;                                     \
 Ast* node;                                     \
+Ast* next;                                     \
 })                                             \
 AST_GROUP(Expr_Begin,  "expression")           \
 AST(Unary_Expr,        "unary", struct {       \
@@ -20,12 +20,11 @@ Unary_Op op;                                   \
 Ast* first;                                    \
 })                                             \
 AST(Binary_Expr,       "binary", struct {      \
-Unary_Op op;                                   \
+Binary_Op op;                                   \
 Ast* first;                                    \
 Ast* second;                                   \
 })                                             \
 AST(Ternary_Expr,      "ternary", struct {     \
-Unary_Op op;                                   \
 Ast* first;                                    \
 Ast* second;                                   \
 Ast* third;                                    \
@@ -64,6 +63,7 @@ AST_GROUP(Expr_End,    "expression")           \
 AST_GROUP(Stmt_Begin,  "statement")            \
 AST(Assign_Stmt,       "assignment", struct {  \
 Ast* type;                                     \
+Ast* ident;                                    \
 Ast* expr;                                     \
 })                                             \
 AST(Expr_Stmt,         "expression", Ast*)     \
@@ -167,8 +167,7 @@ enum Ast_Type {
 #undef AST
 };
 
-typedef s32 Ast_Decl_Mods;
-enum {
+enum Ast_Decl_Mods {
     AstDeclModified_None      = 0,
     AstDeclModified_Inline    = bit(1),
     AstDeclModified_No_Inline = bit(2),
@@ -260,14 +259,19 @@ print_ast(Ast* node, Tokenizer* tokenizer, u32 spacing=0) {
     if (node->type == Ast_Abi) {
         printf(" \"%s\")", node->Abi);
     } else if (node->type == Ast_Value) {
+        printf(" ");
         print_value(&node->Value);
     } else if (node->type == Ast_Ident) {
         printf(" `%s`", vars_load_str(node->Ident));
+    } else if (node->type == Ast_Unary_Expr) {
+        assert_enum(UnaryOp, node->Unary_Expr.op);
+        printf("(%s)", unary_op_strings[node->Binary_Expr.op]);
+        print_ast(node->Unary_Expr.first, tokenizer, spacing);
     } else if (node->type == Ast_Binary_Expr) {
         assert_enum(BinaryOp, node->Binary_Expr.op);
         printf("(%s)", binary_op_strings[node->Binary_Expr.op]);
-        print_ast(node->children[0], tokenizer, spacing);
-        print_ast(node->children[1], tokenizer, spacing);
+        print_ast(node->Binary_Expr.first, tokenizer, spacing);
+        print_ast(node->Binary_Expr.second, tokenizer, spacing);
     } else if (node->type == Ast_Type_Decl) {
         print_ast(node->Type_Decl.type, tokenizer, spacing);
         print_ast(node->Type_Decl.stmt, tokenizer, spacing);

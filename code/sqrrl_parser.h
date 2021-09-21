@@ -34,10 +34,17 @@ update_span(Parser* parser, Ast* node, Token* token=0) {
     }
 }
 
+Token next_token(Parser* parser);
+Token peek_token(Parser* parser);
+Token peek_second_token(Parser* parser);
+
+
 // TODO(alexander): better diagnostic, this will do for now!
 inline void
 parse_error(Parser* parser, Token token, str message) {
-    pln("%:%:%: %", f_str(token.file), f_smm(token.line + 1), f_smm(token.column + 1), f_str(message));
+    pln("%:%:%: %\n(Tokens - current: `%`, peek: `%`, peek second: `%`)", f_str(token.file), f_smm(token.line + 1), f_smm(token.column + 1), f_str(message), f_token(parser->current_token.type), 
+        f_token(peek_token(parser).type), f_token(peek_second_token(parser).type));
+    DEBUG_log_backtrace();
 }
 
 inline void
@@ -49,9 +56,12 @@ bool next_token_if_matched(Parser* parser, Token_Type expected, bool report_erro
 Keyword parse_keyword(Parser* parser, bool report_error=true);
 
 Ast* parse_identifier(Parser* parser, bool report_error=true);
-Ast* parse_expression(Parser* parser, bool report_error=true);
+Ast* parse_expression(Parser* parser, bool report_error=true, u8 min_prec=1);
 Ast* parse_atom_expression(Parser* parser, bool report_error=true);
 Ast* parse_statement(Parser* parser);
+
+Unary_Op parse_unary_op(Parser* parser);
+Binary_Op parse_binary_op(Parser* parser);
 
 Ast* parse_formal_struct_or_union_argument(Parser* parser);
 Ast* parse_actual_struct_or_union_argument(Parser* parser);
@@ -64,7 +74,3 @@ Ast* parse_compound(Parser* parser,
                     Ast* (*element_parser)(Parser* parser));
 
 Ast* parse_type(Parser* parser);
-
-Token next_token(Parser* parser);
-Token peek_token(Parser* parser);
-Token peek_second_token(Parser* parser);

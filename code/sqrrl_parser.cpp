@@ -320,7 +320,7 @@ parse_float(Parser* parser) {
 }
 
 Ast*
-parse_expression(Parser* parser, bool report_error) {
+parse_expression(Parser* parser, bool report_error, u8 min_prec) {
     Token token = peek_token(parser);
     Ast* atom_expr = 0;
     
@@ -408,7 +408,7 @@ parse_expression(Parser* parser, bool report_error) {
                 
                 default: {
                     if (report_error) {
-                        parse_error(parser, peek, str_format(" token `%` expected `)` or ``", f_token(peek.type)));
+                        parse_error(parser, peek, str_format("expected `)` or `,` found `%` ", f_token(peek.type)));
                     }
                 }
             }
@@ -473,8 +473,36 @@ parse_expression(Parser* parser, bool report_error) {
     }
     update_span(parser, lhs_expr);
     
+    // Parse binary expression using precedence climbing, is applicable
+    Binary_Op binary_op = parse_binary_op(parser);
+    while (binary_op) {
+        u8 prec = binary_get_prec(binary_op);
+        Assoc assoc = binary_get_assoc(binary_op);
+        
+        if (prec < min_prec) {
+            break;
+        }
+        
+        u8 next_min_prec = prec;
+        if (assoc == Assoc_Left) {
+            next_min_prec += 1;
+        }
+        
+        next_token(parser);
+        Ast* rhs_expr = parse_expression(parser, true, next_min_prec);
+        Ast* node = push_ast_node(parser);
+        node->type = Ast_Binary_Expr;
+        node->Binary_Expr.op = binary_op;
+        node->Binary_Expr.first = lhs_expr;
+        node->Binary_Expr.second = rhs_expr;
+        node->span = span_combine(lhs_expr->span, rhs_expr->span);
+        lhs_expr = node;
+        binary_op = parse_binary_op(parser);
+    }
+    
     return lhs_expr;
 }
+
 
 Ast*
 parse_statement(Parser* parser) {
@@ -483,15 +511,17 @@ parse_statement(Parser* parser) {
     
     if (token.type == Token_Ident) {
         Token second_token = peek_second_token(parser);
-        if (second_token.type == Token_Assign) {
-            next_token(parser);
-            next_token(parser);
-            
-            Ast* type = result;
+        if (second_token.type == Token_Ident) {
             result = push_ast_node(parser);
             result->type = Ast_Assign_Stmt;
             result->Assign_Stmt.type = parse_type(parser);
-            result->Assign_Stmt.expr = parse_expression(parser);
+            result->Assign_Stmt.ident = parse_identifier(parser);
+            if (next_token_if_matched(parser, Token_Assign, false)) {
+                // TODO(alexander): add support for int x = 5, y = 10;
+                result->Assign_Stmt.expr = parse_expression(parser);
+            } else {
+                result->Assign_Stmt.expr = push_ast_node(parser);
+            }
         } else {
             Keyword keyword = (Keyword) vars_save_str(token.source);
             switch (keyword) {
@@ -577,12 +607,63 @@ parse_statement(Parser* parser) {
         result = parse_expression(parser);
     }
     
+    // TODO(alexander): don't think we need this! Compounds parse the separator as semicolon
     //if (result->type != Ast_Block_Stmt) {
     //next_token_if_matched(parser, Token_Semi);
     //}
     
     update_span(parser, result);
     return result;
+}
+
+Unary_Op
+parse_unary_op(Parser* parser) {
+    Token token = peek_token(parser);
+    switch (token.type) {
+        case Token_Sub:         return UnaryOp_Negate;
+        case Token_Logical_Not: return UnaryOp_Not;
+        case Token_Bit_Not:     return UnaryOp_Bitwise_Not;
+        case Token_Mul:         return UnaryOp_Address_Of;
+        case Token_Shl:         return UnaryOp_Dereference;
+        default:                return UnaryOp_None;
+    }
+}
+
+Binary_Op
+parse_binary_op(Parser* parser) {
+    Token token = peek_token(parser);
+    switch (token.type) {
+        case Token_Equals:         return BinaryOp_Equals;
+        case Token_Lt:             return BinaryOp_Less_Than;
+        case Token_Gt:             return BinaryOp_Greater_Than;
+        case Token_Add:            return BinaryOp_Add;
+        case Token_Sub:            return BinaryOp_Subtract;
+        case Token_Mul:            return BinaryOp_Multiply;
+        case Token_Div:            return BinaryOp_Divide;
+        case Token_Bit_And:        return BinaryOp_Bitwise_And;
+        case Token_Bit_Or:         return BinaryOp_Bitwise_Or;
+        case Token_Bit_Xor:        return BinaryOp_Bitwise_Xor;
+        case Token_Mod:            return BinaryOp_Modulo;
+        case Token_Assign:         return BinaryOp_Assign;
+        case Token_Add_Assign:     return BinaryOp_Add_Assign;
+        case Token_Sub_Assign:     return BinaryOp_Subtract_Assign;
+        case Token_Mul_Assign:     return BinaryOp_Multiply_Assign;
+        case Token_Div_Assign:     return BinaryOp_Divide_Assign;
+        case Token_Mod_Assign:     return BinaryOp_Modulo_Assign;
+        case Token_Bit_And_Assign: return BinaryOp_Bitwise_And_Assign;
+        case Token_Bit_Or_Assign:  return BinaryOp_Bitwise_Or_Assign;
+        case Token_Bit_Xor_Assign: return BinaryOp_Bitwise_Xor_Assign;
+        case Token_Shl_Assign:     return BinaryOp_Shift_Left_Assign;
+        case Token_Shr_Assign:     return BinaryOp_Shift_Left_Assign;
+        case Token_Not_Equals:     return BinaryOp_Not_Equals;
+        case Token_Logical_And:    return BinaryOp_Logical_And;
+        case Token_Logical_Or:     return BinaryOp_Logical_Or;
+        case Token_Lt_Equals:      return BinaryOp_Less_Equals;
+        case Token_Gt_Equals:      return BinaryOp_Greater_Equals;
+        case Token_Shl:            return BinaryOp_Shift_Left;
+        case Token_Shr:            return BinaryOp_Shift_Right;
+        default:                   return BinaryOp_None;
+    }
 }
 
 Ast*
@@ -683,7 +764,7 @@ parse_compound(Parser* parser,
         curr->Compound.next = push_ast_node(parser);
         curr = curr->Compound.next;
         
-        if (!next_token_if_matched(parser, Token_Comma, false)) {
+        if (!next_token_if_matched(parser, separator, false)) {
             break;
         }
     }
@@ -738,7 +819,6 @@ parse_type(Parser* parser) {
             } break;
             
             case Kw_enum: { 
-                
                 base = push_ast_node(parser);
                 base->type = Ast_Enum_Type;
                 base->Enum_Type.ident = parse_identifier(parser);
@@ -770,16 +850,17 @@ parse_type(Parser* parser) {
         Token second_token = peek_token(parser);
         switch (second_token.type) {
             case Token_Ident: {
-                
-                // TODO(alexander): check what the base type is, e.g. cannnot be struct type as return type
-                result = push_ast_node(parser);
-                result->type = Ast_Function_Type;
-                result->Function_Type.return_type = base;
-                result->Function_Type.ident = parse_identifier(parser);
-                result->Function_Type.arg_types = parse_compound(parser,
-                                                                 Token_Open_Paren, Token_Close_Paren, Token_Comma,
-                                                                 &parse_formal_function_argument);
-                return result;
+                if (peek_second_token(parser).type == Token_Open_Paren) {
+                    // TODO(alexander): check what the base type is, e.g. cannot be struct type as return type
+                    result = push_ast_node(parser);
+                    result->type = Ast_Function_Type;
+                    result->Function_Type.return_type = base;
+                    result->Function_Type.ident = parse_identifier(parser);
+                    result->Function_Type.arg_types = parse_compound(parser,
+                                                                     Token_Open_Paren, Token_Close_Paren, Token_Comma,
+                                                                     &parse_formal_function_argument);
+                    return result;
+                }
             } break;
             
             case Token_Open_Paren: {

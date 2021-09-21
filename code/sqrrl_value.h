@@ -1,142 +1,97 @@
 
-typedef s32 Unary_Op;
-enum {
-    UnaryOp_Neg,
-    UnaryOp_Not,
-    UnaryOp_Bit_Not,
-    UnaryOp_Addr_Of,
-    UnaryOp_Deref,
+#define DEF_UNARY_OPS \
+UNOP(None,        "") \
+UNOP(Negate,      "-") \
+UNOP(Not,         "!") \
+UNOP(Bitwise_Not, "~") \
+UNOP(Address_Of,  "&") \
+UNOP(Dereference,   "*")
+
+#define DEF_BINARY_OPS \
+BINOP(None,               "",   0,  Assoc_Left) \
+BINOP(Multiply,           "*",  11, Assoc_Left) \
+BINOP(Divide,             "/",  11, Assoc_Left) \
+BINOP(Modulo,             "%",  11, Assoc_Left) \
+BINOP(Add,                "+",  10, Assoc_Left) \
+BINOP(Subtract,           "-",  10, Assoc_Left) \
+BINOP(Shift_Left,         "<<", 9,  Assoc_Left) \
+BINOP(Shift_Right,        ">>", 9,  Assoc_Left) \
+BINOP(Less_Than,          "<",  8,  Assoc_Left) \
+BINOP(Less_Equals,        "<=", 8,  Assoc_Left) \
+BINOP(Greater_Than,       ">",  8,  Assoc_Left) \
+BINOP(Greater_Equals,     ">=", 8,  Assoc_Left) \
+BINOP(Equals,             "==", 7,  Assoc_Left) \
+BINOP(Not_Equals,         "!=", 7,  Assoc_Left) \
+BINOP(Bitwise_And,        "&",  6,  Assoc_Left) \
+BINOP(Bitwise_Or,         "|",  5,  Assoc_Left) \
+BINOP(Bitwise_Xor,        "^",  4,  Assoc_Left) \
+BINOP(Logical_And,        "&&", 3,  Assoc_Left) \
+BINOP(Logical_Or,         "||", 2,  Assoc_Left) \
+BINOP(Assign,             "=",  1,  Assoc_Right) \
+BINOP(Add_Assign,         "+=", 1,  Assoc_Right) \
+BINOP(Subtract_Assign,    "-=", 1,  Assoc_Right) \
+BINOP(Multiply_Assign,    "*=", 1,  Assoc_Right) \
+BINOP(Divide_Assign,      "/=", 1,  Assoc_Right) \
+BINOP(Modulo_Assign,      "%=", 1,  Assoc_Right) \
+BINOP(Bitwise_And_Assign, "&=", 1,  Assoc_Right) \
+BINOP(Bitwise_Or_Assign,  "|=", 1,  Assoc_Right) \
+BINOP(Bitwise_Xor_Assign, "^=", 1,  Assoc_Right) \
+BINOP(Shift_Left_Assign,  "<<", 1,  Assoc_Right) \
+BINOP(Shift_Right_Assign, ">>", 1,  Assoc_Right)
+
+enum Assoc {
+    Assoc_Left,
+    Assoc_Right,
 };
 
-
-global cstr unary_op_strings[] = { "-", "!", "~", "&", "*" };
-
-typedef s32 Binary_Op;
-enum {
-    BinaryOp_Add,
-    BinaryOp_Subtract,
-    BinaryOp_Multiply,
-    BinaryOp_Divide,
-    BinaryOp_Modulo,
-    BinaryOp_Bitwise_And,
-    BinaryOp_Logical_And,
-    BinaryOp_Bitwise_Or,
-    BinaryOp_Logical_Or,
-    BinaryOp_Bitwise_Xor,
-    BinaryOp_Shift_Left,
-    BinaryOp_Shift_Right,
-    BinaryOp_Equals,
-    BinaryOp_Not_Equals,
-    BinaryOp_Less_Than,
-    BinaryOp_Less_Equals,
-    BinaryOp_Greater_Than,
-    BinaryOp_Greater_Equals,
-    BinaryOp_Assign,
-    BinaryOp_Add_Assign,
-    BinaryOp_Subtract_Assign,
-    BinaryOp_Multiply_Assign,
-    BinaryOp_Divide_Assign,
-    BinaryOp_Modulo_Assign,
-    BinaryOp_Bitwise_And_Assign,
-    BinaryOp_Bitwise_Or_Assign,
-    BinaryOp_Bitwise_Xor_Assign,
-    BinaryOp_Shift_Left_Assign,
-    BinaryOp_Shift_Right_Assign,
-    BinaryOp_Count,
+enum Unary_Op {
+#define UNOP(symbol, name) UnaryOp_##symbol,
+    DEF_UNARY_OPS
+#undef UNOP
 };
 
-global cstr binary_op_strings[] = { 
-    "+", "-", "*", "/", "%", "&", "&&", "|", "||", "^", "<<", ">>", "==", "!=", "<", 
-    "<=", ">", ">=", "=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=" };
+enum Binary_Op {
+#define BINOP(symbol, name, prec, assoc) BinaryOp_##symbol,
+    DEF_BINARY_OPS
+#undef BINOP
+};
 
+global cstr unary_op_strings[] = {
+#define UNOP(symbol, name) name,
+    DEF_UNARY_OPS
+#undef UNOP
+};
 
-typedef s32 Associativity;
-enum {
-    Associative_Left,
-    Associative_Right,
+global cstr binary_op_strings[] = {
+#define BINOP(symbol, name, prec, assoc) name,
+    DEF_BINARY_OPS
+#undef BINOP
 };
 
 u8
-binary_get_precedence(Binary_Op op) {
+binary_get_prec(Binary_Op op) {
     switch (op) {
-        case BinaryOp_Multiply:            return 11;
-        case BinaryOp_Divide:             return 11;
-        case BinaryOp_Modulo:             return 11;
-        case BinaryOp_Add:                return 10;
-        case BinaryOp_Subtract:           return 10;
-        case BinaryOp_Shift_Left:         return 9;
-        case BinaryOp_Shift_Right:        return 9;
-        case BinaryOp_Less_Than:          return 8;
-        case BinaryOp_Less_Equals:        return 8;
-        case BinaryOp_Greater_Than:       return 8;
-        case BinaryOp_Greater_Equals:     return 8;
-        case BinaryOp_Equals:             return 7;
-        case BinaryOp_Not_Equals:         return 7;
-        case BinaryOp_Bitwise_And:        return 6;
-        case BinaryOp_Bitwise_Or:         return 5;
-        case BinaryOp_Bitwise_Xor:        return 4;
-        case BinaryOp_Logical_And:        return 3;
-        case BinaryOp_Logical_Or:         return 2;
-        case BinaryOp_Assign:             return 1;
-        case BinaryOp_Add_Assign:         return 1;
-        case BinaryOp_Subtract_Assign:    return 1;
-        case BinaryOp_Multiply_Assign:    return 1;
-        case BinaryOp_Divide_Assign:      return 1;
-        case BinaryOp_Modulo_Assign:      return 1;
-        case BinaryOp_Bitwise_And_Assign: return 1;
-        case BinaryOp_Bitwise_Or_Assign:  return 1;
-        case BinaryOp_Bitwise_Xor_Assign: return 1;
-        case BinaryOp_Shift_Left_Assign:  return 1;
-        case BinaryOp_Shift_Right_Assign: return 1;
+#define BINOP(symbol, name, prec, assoc) case BinaryOp_##symbol: return prec;
+        DEF_BINARY_OPS
+#undef BINOP
     }
-    assert(0 && "bug"); 
+    assert(0 && "bug");
     return 0;
 }
 
-Associativity
-binary_get_associativity(Binary_Op op) {
+Assoc
+binary_get_assoc(Binary_Op op) {
     switch (op) {
-        case BinaryOp_Multiply:
-        case BinaryOp_Divide:
-        case BinaryOp_Modulo:
-        case BinaryOp_Add:
-        case BinaryOp_Subtract:
-        case BinaryOp_Shift_Left:
-        case BinaryOp_Shift_Right:
-        case BinaryOp_Less_Than:
-        case BinaryOp_Less_Equals:
-        case BinaryOp_Greater_Than:
-        case BinaryOp_Greater_Equals:
-        case BinaryOp_Equals:
-        case BinaryOp_Not_Equals:
-        case BinaryOp_Bitwise_And:
-        case BinaryOp_Bitwise_Or:
-        case BinaryOp_Bitwise_Xor:
-        case BinaryOp_Logical_And:
-        case BinaryOp_Logical_Or: {
-            return Associative_Left;
-        }
-        
-        case BinaryOp_Assign:
-        case BinaryOp_Add_Assign:
-        case BinaryOp_Subtract_Assign:
-        case BinaryOp_Multiply_Assign:
-        case BinaryOp_Divide_Assign:
-        case BinaryOp_Modulo_Assign:
-        case BinaryOp_Bitwise_And_Assign:
-        case BinaryOp_Bitwise_Or_Assign:
-        case BinaryOp_Bitwise_Xor_Assign:
-        case BinaryOp_Shift_Left_Assign:
-        case BinaryOp_Shift_Right_Assign: {
-            return Associative_Right;
-        }
+#define BINOP(symbol, name, prec, assoc) case BinaryOp_##symbol: return assoc;
+        DEF_BINARY_OPS
+#undef BINOP
     }
+    
     assert(0 && "bug");
-    return Associative_Left;
+    return Assoc_Left;
 }
 
-typedef s32 Ternary_Op;
-enum {
+enum Ternary_Op {
     TernaryOp_Conditional, // expr ? true : false
 };
 

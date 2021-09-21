@@ -15,7 +15,7 @@ compiler_main_entry(int argc, char* argv[]) {
     if (argc > 1) {
         filepath = str_lit(argv[1]);
     } else {
-        filepath = str_lit("examples/demo.sq");
+        filepath = str_lit("C:/Dev/sqrrl/examples/demo.sq");
     }
     
     // Setup string interning of variables

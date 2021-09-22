@@ -173,6 +173,7 @@ enum {
     AstDeclModifier_Inline    = bit(1),
     AstDeclModifier_No_Inline = bit(2),
     AstDeclModifier_Internal  = bit(3),
+    AstDeclModifier_Global    = bit(4),
 };
 
 union Span {
@@ -274,6 +275,20 @@ print_ast(Ast* node, Tokenizer* tokenizer, u32 spacing=0) {
         print_ast(node->Binary_Expr.first, tokenizer, spacing);
         print_ast(node->Binary_Expr.second, tokenizer, spacing);
     } else if (node->type == Ast_Type_Decl) {
+        printf("( ");
+        if (is_bitflag_set(node->Type_Decl.mods, AstDeclModifier_Inline)) {
+            printf("inline ");
+        }
+        if (is_bitflag_set(node->Type_Decl.mods, AstDeclModifier_No_Inline)) {
+            printf("no_inline ");
+        }
+        if (is_bitflag_set(node->Type_Decl.mods, AstDeclModifier_Internal)) {
+            printf("internal ");
+        }
+        if (is_bitflag_set(node->Type_Decl.mods, AstDeclModifier_Global)) {
+            printf("global ");
+        }
+        printf(")");
         print_ast(node->Type_Decl.type, tokenizer, spacing);
         print_ast(node->Type_Decl.stmt, tokenizer, spacing);
     } else {

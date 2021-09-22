@@ -926,25 +926,35 @@ parse_top_level_declaration(Parser* parser) {
         
         str_id id = vars_save_str(token.source);
         switch (id) {
-            // TODO(alexander): we might want to change this to annotation syntax
-            case Kw_internal: {
-                // NOTE(alexander): check if we already have internal bit set
-                result->Type_Decl.mods |= AstDeclModifier_Internal;
-            } break;
-            
             case Kw_inline: {
-                // NOTE(alexander): check if we already have inline/no_inline bit set
+                next_token(parser);
+                // TODO(alexander): check if we already have inline/no_inline bit set
                 result->Type_Decl.mods |= AstDeclModifier_Inline;
             } break;
             
             case Kw_no_inline: {
-                // NOTE(alexander): check if we already have inline/no_inline bit set
+                next_token(parser);
+                // TODO(alexander): check if we already have inline/no_inline bit set
                 result->Type_Decl.mods |= AstDeclModifier_No_Inline;
+            } break;
+            
+            // TODO(alexander): we might want to change this to annotation syntax
+            case Kw_internal: {
+                next_token(parser);
+                // TODO(alexander): check if we already have internal bit set
+                result->Type_Decl.mods |= AstDeclModifier_Internal;
+            } break;
+            
+            case Kw_global: {
+                next_token(parser);
+                // TODO(alexander): check if we already have global bit set
+                result->Type_Decl.mods |= AstDeclModifier_Global;
             } break;
             
             default: {
                 Ast* type = parse_type(parser);
                 result->Type_Decl.type = type;
+                // TODO(alexander): check that mods matches the type of declaration
                 
                 switch (type->type) {
                     case Ast_Struct_Type:

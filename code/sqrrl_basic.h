@@ -22,6 +22,8 @@
 
 // NOTE(alexander): bit stuff
 #define bit(x) (1 << (x))
+#define is_bit_set(var, x) ((var) & (1 << (x)))
+#define is_bitflag_set(var, flag) ((var) & (flag))
 
 // NOTE(alexander): define assestion macro on debug mode
 #ifdef assert

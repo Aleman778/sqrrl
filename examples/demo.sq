@@ -4,6 +4,8 @@ struct v2 {
   f32 y;
 }
 
+global s32 timer = 0;
+
 int main(str[] args) {
     variable_assignment();
 }

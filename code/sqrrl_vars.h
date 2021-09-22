@@ -12,6 +12,7 @@ VAR(enum)     \
 VAR(extern)   \
 VAR(false)    \
 VAR(for)      \
+VAR(global)   \
 VAR(internal) \
 VAR(if)       \
 VAR(include)  \
@@ -19,6 +20,7 @@ VAR(in)       \
 VAR(inline)   \
 VAR(no_inline)\
 VAR(loop)     \
+VAR(local_persist) \
 VAR(return)   \
 VAR(static)   \
 VAR(struct)   \

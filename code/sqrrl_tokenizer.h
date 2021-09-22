@@ -125,6 +125,9 @@ struct Tokenizer {
     smm* lines;
 };
 
+// NOTE(alexander): forward declare function
+void utf8_advance_character(Tokenizer* tokenizer);
+
 inline void
 tokenizer_set_source(Tokenizer* tokenizer, str source, str file) {
     tokenizer->start = (u8*) source;
@@ -134,6 +137,7 @@ tokenizer_set_source(Tokenizer* tokenizer, str source, str file) {
     tokenizer->curr = tokenizer->start;
     tokenizer->curr_line = tokenizer->start;
     tokenizer->file = file;
+    utf8_advance_character(tokenizer);
     
     if (tokenizer->lines) {
         arr_free(tokenizer->lines); // SPEED(alexander): maybe clear instead
@@ -190,13 +194,10 @@ is_ident_continue(u32 c) {
             ||   '_' == c);
 }
 
-// NOTE(alexander): forward declare function
-void utf8_advance_character(Tokenizer* tokenizer);
-
 inline s32
 scan_while(Tokenizer* tokenizer, bool predicate(u32)) {
     int num_scanned = 0;
-    while (predicate(tokenizer->curr_utf32_character) && tokenizer->curr < tokenizer->end) {
+    while (predicate(tokenizer->curr_utf32_character) && tokenizer->next < tokenizer->end) {
         utf8_advance_character(tokenizer);
         num_scanned++;
     }

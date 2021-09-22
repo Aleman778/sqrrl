@@ -2,6 +2,7 @@
 internal void
 tokenization_error(Tokenizer* t, str message) {
     pln("tokenization_error: %\n", f_str(message)); // TODO(alexander): real diagnostics
+    DEBUG_log_backtrace();
 }
 
 internal inline void

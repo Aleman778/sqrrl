@@ -12,11 +12,12 @@ VAR(enum)     \
 VAR(extern)   \
 VAR(false)    \
 VAR(for)      \
-VAR(internal)   \
+VAR(internal) \
 VAR(if)       \
 VAR(include)  \
 VAR(in)       \
 VAR(inline)   \
+VAR(no_inline)\
 VAR(loop)     \
 VAR(return)   \
 VAR(static)   \
@@ -58,9 +59,12 @@ global u32 vars_id_counter = 0;
 
 str_id
 vars_save_str(cstr s) {
-    str_id id = vars_id_counter++;
-    str_map_put(vars_str_to_id, s, id);
-    arr_push(vars_id_to_str, s);
+    str_id id = str_map_get(vars_str_to_id, s);
+    if (!id) {
+        id = vars_id_counter++;
+        str_map_put(vars_str_to_id, s, id);
+        arr_push(vars_id_to_str, s);
+    }
     return id;
 }
 
@@ -93,3 +97,8 @@ global const u32 builtin_keywords_begin = Kw_infer;
 global const u32 builtin_keywords_end = builtin_types_end;
 global const u32 keyword_first = Kw_invalid;
 global const u32 keyword_last = Kw_infer;
+
+inline bool
+is_keyword(str_id id) {
+    return id > keyword_first && id <= keyword_last;
+}

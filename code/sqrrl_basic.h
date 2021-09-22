@@ -159,6 +159,7 @@ str str_format(cstr format...);
 
 #define map_put(m, k, v) hmput(m, k, v)
 #define str_map_put(m, k, v) shput(m, k, v)
+#define str_map_get(m, k) shget(m, k)
 
 int 
 compare_ints(void* a, void* b) {

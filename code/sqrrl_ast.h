@@ -139,7 +139,7 @@ AST_GROUP(Decl_Begin,  "declaration")          \
 AST(Type_Decl,         "type", struct {        \
 Ast* type;                                     \
 Ast* stmt;                                     \
-Ast_Decl_Mods mods;                            \
+Ast_Decl_Modifier mods;                        \
 })                                             \
 AST_GROUP(Decl_End,    "declaration")
 
@@ -167,11 +167,12 @@ enum Ast_Type {
 #undef AST
 };
 
-enum Ast_Decl_Mods {
-    AstDeclModified_None      = 0,
-    AstDeclModified_Inline    = bit(1),
-    AstDeclModified_No_Inline = bit(2),
-    AstDeclModified_Internal  = bit(3),
+typedef s32 Ast_Decl_Modifier;
+enum {
+    AstDeclModifier_None      = 0,
+    AstDeclModifier_Inline    = bit(1),
+    AstDeclModifier_No_Inline = bit(2),
+    AstDeclModifier_Internal  = bit(3),
 };
 
 union Span {

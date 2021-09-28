@@ -12,7 +12,7 @@
 #define local_persist static
 
 // NOTE(alexander): count the number of elements in a fixed size array
-#define array_count(array) (sizeof(array) / sizeof((array)[0]))
+#define fixed_array_count(array) (sizeof(array) / sizeof((array)[0]))
 
 // NOTE(alexander): specify file size macros
 #define kilobytes(value) (1024LL * (value))
@@ -150,18 +150,18 @@ str str_format(cstr format...);
 //}
 
 // NOTE(alexander): change the naming convention of stb_ds
-#define arr_free(a) arrfree(a)
-#define arr_push(a, x) arrput(a, x)
-#define arr_pop(a, x) arrpop(a, x)
-#define arr_insert(a, x, p) arrins(a, p, x)
-#define arr_remove(a, p) arrdel(a, p)
-#define arr_set_capacity(a, c) arrsetcap(a, c)
-#define arr_get_capacity(a) arrcap(a)
-#define arr_count(a) arrlen(a)
+#define array_free(a) arrfree(a)
+#define array_push(a, x) arrput(a, x)
+#define array_pop(a, x) arrpop(a, x)
+#define array_insert(a, x, p) arrins(a, p, x)
+#define array_remove(a, p) arrdel(a, p)
+#define array_set_capacity(a, c) arrsetcap(a, c)
+#define array_get_capacity(a) arrcap(a)
+#define array_count(a) arrlen(a)
 
 #define map_put(m, k, v) hmput(m, k, v)
-#define str_map_put(m, k, v) shput(m, k, v)
-#define str_map_get(m, k) shget(m, k)
+#define string_map_put(m, k, v) shput(m, k, v)
+#define string_map_get(m, k) shget(m, k)
 
 int 
 compare_ints(void* a, void* b) {
@@ -205,7 +205,7 @@ _binary_search(void* arr, void* val, smm count, smm size,
     return result;
 }
 
-#define binary_search(arr, val, compare) _binary_search(arr, &val, arr_count(arr), sizeof(arr), compare)
+#define binary_search(arr, val, compare) _binary_search(arr, &val, array_count(arr), sizeof(arr), compare)
 
 // NOTE(alexander): hash map
 

@@ -76,6 +76,11 @@ Ast* ident;                                    \
 AST(Continue_Stmt,     "continue", struct {    \
 Ast* ident;                                    \
 })                                             \
+AST(Decl_Stmt, "declaration", struct {         \
+Ast* ident;                                    \
+Ast* type;                                     \
+Ast* decl;                                     \
+})                                             \
 AST(If_Stmt,           "if", struct {          \
 Ast* cond;                                     \
 Ast* then_block;                               \
@@ -113,8 +118,8 @@ Ast* elem_types;                               \
 })                                             \
 AST(Infer_Type,        "infer", void*)         \
 AST(Function_Type,     "function", struct {    \
-Ast* return_type;                              \
 Ast* ident;                                    \
+Ast* return_type;                              \
 Ast* arg_types;                                \
 })                                             \
 AST(Struct_Type,       "struct", struct {      \
@@ -137,8 +142,8 @@ Ast* ident;                                    \
 AST_GROUP(Type_End,    "type")                 \
 AST_GROUP(Decl_Begin,  "declaration")          \
 AST(Type_Decl,         "type", struct {        \
-Ast* type;                                     \
-Ast* stmt;                                     \
+Ast* ident;                                    \
+Ast* decl;                                     \
 Ast_Decl_Modifier mods;                        \
 })                                             \
 AST_GROUP(Decl_End,    "declaration")
@@ -236,13 +241,18 @@ struct Ast {
         DEF_AST_TYPES 
 #undef AST_GROUP
 #undef AST
-        Ast* children[4];
+        Ast* children[5];
     };
     Span span;
 };
 
+struct Ast_Decl_Entry {
+    str_id key;
+    Ast* value;
+};
+
 struct Ast_File {
-    Ast* ast;
+    Ast_Decl_Entry* decls;
 };
 
 void
@@ -289,8 +299,7 @@ print_ast(Ast* node, Tokenizer* tokenizer, u32 spacing=0) {
             printf("global ");
         }
         printf(")");
-        print_ast(node->Type_Decl.type, tokenizer, spacing);
-        print_ast(node->Type_Decl.stmt, tokenizer, spacing);
+        print_ast(node->Type_Decl.decl, tokenizer, spacing);
     } else {
         // otherwise parse all possible children
         print_ast(node->children[0], tokenizer, spacing);

@@ -53,7 +53,7 @@ parse_identifier(Parser* parser, bool report_error) {
     return result;
 }
 
-u32
+internal u32
 parse_escape_character(Parser* parser, char*& curr, char* end, bool byte) {
     char c = *curr++;
     switch (c) {
@@ -93,7 +93,7 @@ parse_escape_character(Parser* parser, char*& curr, char* end, bool byte) {
     return 0;
 }
 
-Ast*
+internal Ast*
 parse_char(Parser* parser) {
     assert(parser->token.kind == Token_Char);
     
@@ -124,7 +124,7 @@ parse_char(Parser* parser) {
     return push_ast_value(parser, create_unsigned_int_value(character));
 }
 
-Ast*
+internal Ast*
 parse_string(Parser* parser) {
     assert(parser->token.kind == Token_String);
     
@@ -171,7 +171,7 @@ parse_string(Parser* parser) {
     return push_ast_value(parser, create_string_value(result));
 }
 
-Ast*
+internal Ast*
 parse_int(Parser* parser) {
     Token token = parser->current_token;
     assert(token.type == Token_Int);
@@ -250,7 +250,7 @@ parse_int(Parser* parser) {
     return push_ast_value(parser, create_signed_int_value(value));
 }
 
-Ast*
+internal Ast*
 parse_float(Parser* parser) {
     Token token = parser->current_token;
     assert(token.type == Token_Float);
@@ -506,6 +506,15 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec) {
     return lhs_expr;
 }
 
+internal Ast*
+parse_block_statement(Parser* parser, Token* token=0) {
+    Ast* result = push_ast_node(parser, token);
+    result->type = Ast_Block_Stmt;
+    result->Block_Stmt.stmts = parse_compound(parser, Token_Open_Brace, Token_Close_Brace, Token_Semi,
+                                              &parse_statement);
+    return result;
+}
+
 
 Ast*
 parse_statement(Parser* parser) {
@@ -515,15 +524,44 @@ parse_statement(Parser* parser) {
     if (token.type == Token_Ident) {
         Token second_token = peek_second_token(parser);
         if (second_token.type == Token_Ident) {
-            result = push_ast_node(parser);
-            result->type = Ast_Assign_Stmt;
-            result->Assign_Stmt.type =parse_type(parser);
-            result->Assign_Stmt.ident = parse_identifier(parser);
-            if (next_token_if_matched(parser, Token_Assign, false)) {
-                // TODO(alexander): add support for int x = 5, y = 10;
-                result->Assign_Stmt.expr = parse_expression(parser);
-            } else {
-                result->Assign_Stmt.expr = push_ast_node(parser);
+            result = push_ast_node(parser, &token);
+            Ast* type = parse_type(parser);
+            
+            switch (type->type) {
+                case Ast_Struct_Type:
+                case Ast_Union_Type:
+                case Ast_Enum_Type: {
+                    result->type = Ast_Decl_Stmt;
+                    result->Decl_Stmt.ident = type->children[0];
+                    result->Decl_Stmt.type = type;
+                } break;
+                
+                case Ast_Function_Type: {
+                    result->type = Ast_Decl_Stmt;
+                    result->Decl_Stmt.ident = type->Function_Type.ident;
+                    result->Decl_Stmt.type = type;
+                    // TODO(alexander): this is a little bit strange
+                    result->Decl_Stmt.decl = parse_block_statement(parser);
+                } break;
+                
+                case Ast_Typedef: {
+                    result->type = Ast_Decl_Stmt;
+                    result->Decl_Stmt.type = type;
+                    result->Decl_Stmt.ident = parse_identifier(parser);
+                } break;
+                
+                default: {
+                    result->type = Ast_Assign_Stmt;
+                    result->Assign_Stmt.type = type;
+                    result->Assign_Stmt.ident = parse_identifier(parser);
+                    
+                    if (next_token_if_matched(parser, Token_Assign, false)) {
+                        // TODO(alexander): add support for int x = 5, y = 10;
+                        result->Assign_Stmt.expr = parse_expression(parser);
+                    } else {
+                        result->Assign_Stmt.expr = push_ast_node(parser);
+                    }
+                } break;
             }
         } else {
             Keyword keyword = (Keyword) vars_save_str(token.source);
@@ -600,20 +638,12 @@ parse_statement(Parser* parser) {
             }
         }
     } else if (token.type == Token_Open_Brace) {
-        result = push_ast_node(parser, &token);
-        result->type = Ast_Block_Stmt;
-        result->Block_Stmt.stmts = parse_compound(parser, Token_Open_Brace, Token_Close_Brace, Token_Semi,
-                                                  &parse_statement);
+        result = parse_block_statement(parser, &token);
     }
     
     if (!result) {
         result = parse_expression(parser);
     }
-    
-    // TODO(alexander): don't think we need this! Compounds parse the separator as semicolon
-    //if (result->type != Ast_Block_Stmt) {
-    //next_token_if_matched(parser, Token_Semi);
-    //}
     
     update_span(parser, result);
     return result;
@@ -813,10 +843,10 @@ parse_type(Parser* parser) {
             case Kw_union: {
                 base = push_ast_node(parser);
                 base->type = Ast_Union_Type;
-                base->Struct_Type.ident = parse_identifier(parser);
-                base->Struct_Type.fields = parse_compound(parser,
-                                                          Token_Open_Brace, Token_Close_Brace, Token_Semi,
-                                                          &parse_formal_struct_or_union_argument);
+                base->Union_Type.ident = parse_identifier(parser);
+                base->Union_Type.fields = parse_compound(parser,
+                                                         Token_Open_Brace, Token_Close_Brace, Token_Semi,
+                                                         &parse_formal_struct_or_union_argument);
             } break;
             
             case Kw_enum: { 
@@ -909,17 +939,20 @@ parse_type(Parser* parser) {
 }
 
 
-Ast*
+Ast_Decl_Entry
 parse_top_level_declaration(Parser* parser) {
+    Ast_Decl_Entry result = {};
     Token peek = peek_token(parser);
-    Ast* result = push_ast_node(parser, &peek);
+    Ast* decl = push_ast_node(parser, &peek);
     
-    result->type = Ast_Type_Decl;
-    result->Type_Decl.mods = AstDeclModifier_None;
+    decl->type = Ast_Type_Decl;
+    decl->Type_Decl.mods = AstDeclModifier_None;
+    result.value = decl;
     
     while (true) {
         Token token = peek_token(parser);
         if (token.type != Token_Ident) {
+            next_token(parser);
             parse_error_unexpected_token(parser, Token_Ident, token);
             return result;
         }
@@ -929,43 +962,53 @@ parse_top_level_declaration(Parser* parser) {
             case Kw_inline: {
                 next_token(parser);
                 // TODO(alexander): check if we already have inline/no_inline bit set
-                result->Type_Decl.mods |= AstDeclModifier_Inline;
+                decl->Type_Decl.mods |= AstDeclModifier_Inline;
             } break;
             
             case Kw_no_inline: {
                 next_token(parser);
                 // TODO(alexander): check if we already have inline/no_inline bit set
-                result->Type_Decl.mods |= AstDeclModifier_No_Inline;
+                decl->Type_Decl.mods |= AstDeclModifier_No_Inline;
             } break;
             
             // TODO(alexander): we might want to change this to annotation syntax
             case Kw_internal: {
                 next_token(parser);
                 // TODO(alexander): check if we already have internal bit set
-                result->Type_Decl.mods |= AstDeclModifier_Internal;
+                decl->Type_Decl.mods |= AstDeclModifier_Internal;
             } break;
             
             case Kw_global: {
                 next_token(parser);
                 // TODO(alexander): check if we already have global bit set
-                result->Type_Decl.mods |= AstDeclModifier_Global;
+                decl->Type_Decl.mods |= AstDeclModifier_Global;
             } break;
             
             default: {
-                Ast* type = parse_type(parser);
-                result->Type_Decl.type = type;
-                // TODO(alexander): check that mods matches the type of declaration
+                Ast* decl_stmt = parse_statement(parser);
+                decl->Type_Decl.decl = decl_stmt;
                 
-                switch (type->type) {
-                    case Ast_Struct_Type:
-                    case Ast_Union_Type:
-                    case Ast_Enum_Type: {
-                        result->Type_Decl.stmt = push_ast_node(parser);
-                    } break;
-                    default: {
-                        result->Type_Decl.stmt = parse_statement(parser);
-                    } break;
+                // TODO(alexander): report error
+                if (decl_stmt->type < Ast_Stmt_Begin && decl_stmt->type > Ast_Stmt_End) {
+                    parse_error(parser, token, str_format("expected statement found `%`", f_token(token.type)));
                 }
+                
+                if (decl_stmt->type != Ast_Decl_Stmt) {
+                    next_token_if_matched(parser, Token_Semi);
+                }
+                
+                // NOTE(alexander): tries to find an identifier to use as search key
+                for (int i = 0; i < fixed_array_count(decl_stmt->children); i++) {
+                    Ast* node = decl_stmt->children[i];
+                    if (!node) continue;
+                    if (node->type == Ast_Ident) {
+                        decl->Type_Decl.ident = node;
+                        result.key = node->Ident;
+                        return result;
+                    }
+                }
+                
+                parse_error(parser, token, "cannot declare top level declaration without identifier");
                 return result;
             } break;
         }
@@ -977,13 +1020,20 @@ parse_top_level_declaration(Parser* parser) {
 Ast_File
 parse_file(Parser* parser) {
     Ast_File result = {};
-    result.ast = parse_top_level_declaration(parser);
-    update_span(parser, result.ast);
-    print_ast(result.ast, parser->tokenizer);
     
-    result.ast = parse_top_level_declaration(parser);
-    update_span(parser, result.ast);
-    print_ast(result.ast, parser->tokenizer);
+    
+    while (true) {
+        Token token = peek_token(parser);
+        if (token.type == Token_EOF || token.type == Token_Error) {
+            break;
+        }
+        
+        Ast_Decl_Entry decl = parse_top_level_declaration(parser);
+        update_span(parser, decl.value);
+        
+        map_put(result.decls, decl.key, decl.value);
+        print_ast(decl.value, parser->tokenizer);
+    }
     
     return result;
 }

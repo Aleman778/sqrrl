@@ -9,6 +9,7 @@
 #include "sqrrl_tokenizer.cpp"
 #include "sqrrl_parser.cpp"
 
+
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[]) {
     str filepath;

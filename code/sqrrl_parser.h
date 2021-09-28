@@ -38,7 +38,6 @@ Token next_token(Parser* parser);
 Token peek_token(Parser* parser);
 Token peek_second_token(Parser* parser);
 
-
 // TODO(alexander): better diagnostic, this will do for now!
 inline void
 parse_error(Parser* parser, Token token, str message) {
@@ -59,6 +58,7 @@ Ast* parse_identifier(Parser* parser, bool report_error=true);
 Ast* parse_expression(Parser* parser, bool report_error=true, u8 min_prec=1);
 Ast* parse_atom_expression(Parser* parser, bool report_error=true);
 Ast* parse_statement(Parser* parser);
+Ast* parse_type(Parser* parser);
 
 Unary_Op parse_unary_op(Parser* parser);
 Binary_Op parse_binary_op(Parser* parser);
@@ -72,5 +72,3 @@ Ast* parse_actual_argument(Parser* parser);
 Ast* parse_compound(Parser* parser, 
                     Token_Type begin, Token_Type end, Token_Type separator,
                     Ast* (*element_parser)(Parser* parser));
-
-Ast* parse_type(Parser* parser);

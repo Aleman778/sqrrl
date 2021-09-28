@@ -140,12 +140,12 @@ tokenizer_set_source(Tokenizer* tokenizer, str source, str file) {
     utf8_advance_character(tokenizer);
     
     if (tokenizer->lines) {
-        arr_free(tokenizer->lines); // SPEED(alexander): maybe clear instead
+        array_free(tokenizer->lines); // SPEED(alexander): maybe clear instead
         tokenizer->lines = 0;
     }
     
-    arr_set_capacity(tokenizer->lines, 32);
-    arr_push(tokenizer->lines, 0);
+    array_set_capacity(tokenizer->lines, 32);
+    array_push(tokenizer->lines, 0);
 }
 
 inline bool

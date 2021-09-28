@@ -61,11 +61,11 @@ global u32 vars_id_counter = 0;
 
 str_id
 vars_save_str(cstr s) {
-    str_id id = str_map_get(vars_str_to_id, s);
+    str_id id = string_map_get(vars_str_to_id, s);
     if (!id) {
         id = vars_id_counter++;
-        str_map_put(vars_str_to_id, s, id);
-        arr_push(vars_id_to_str, s);
+        string_map_put(vars_str_to_id, s, id);
+        array_push(vars_id_to_str, s);
     }
     return id;
 }

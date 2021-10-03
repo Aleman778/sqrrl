@@ -41,7 +41,7 @@ Token peek_second_token(Parser* parser);
 // TODO(alexander): better diagnostic, this will do for now!
 inline void
 parse_error(Parser* parser, Token token, str message) {
-    pln("%:%:%: %\n(Tokens - current: `%`, peek: `%`, peek second: `%`)", f_str(token.file), f_smm(token.line + 1), f_smm(token.column + 1), f_str(message), f_token(parser->current_token.type), 
+    pln("%:%:%: error: %\n(Tokens - current: `%`, peek: `%`, peek second: `%`)", f_str(token.file), f_smm(token.line + 1), f_smm(token.column + 1), f_str(message), f_token(parser->current_token.type), 
         f_token(peek_token(parser).type), f_token(peek_second_token(parser).type));
     DEBUG_log_backtrace();
 }

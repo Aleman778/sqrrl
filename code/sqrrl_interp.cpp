@@ -1,38 +1,71 @@
 
-struct Interp {
+Interp_Value 
+interp_expression(Interp* interp, Ast* ast) {
+    assert(is_ast_expr(ast));
     
-    s32 block_depth;
+    Interp_Value result = {};
     
-    Arena stack;
-    smm stack_pointer;
-    smm base_pointer;
+    switch (ast->type) {
+        case Ast_Unary_Expr: {
+            Interp_Value first_op = interp_expression(interp, ast->Unary_Expr.first);
+        } break;
+        
+        case Ast_Binary_Expr: {
+            Interp_Value first_op = interp_expression(interp, ast->Binary_Expr.first);
+            Interp_Value second_op = interp_expression(interp, ast->Binary_Expr.second);
+        } break;
+        
+        case Ast_Ternary_Expr: {
+            Interp_Value first_op = interp_expression(interp, ast->Ternary_Expr.first);
+            Interp_Value second_op = interp_expression(interp, ast->Ternary_Expr.second);
+            Interp_Value third_op = interp_expression(interp, ast->Ternary_Expr.third);
+            
+        } break;
+        
+        case Ast_Call_Expr: {
+            
+        } break;
+        
+        case Ast_Field_Expr: {
+            
+        } break;
+        
+        case Ast_Cast_Expr: {
+            
+        } break;
+        
+        case Ast_Paren_Expr: {
+            
+        } break;
+        
+        case Ast_Index_Expr: {
+            
+        } break;
+        
+        case Ast_Array_Expr: {
+            
+        } break;
+        
+        case Ast_Struct_Expr: {
+            
+        } break;
+        
+        case Ast_Tuple_Expr: {
+            
+        } break;
+    }
+    
+    return result;
 }
 
-enum Interp_Result_Type {
-    InterpResultType_Void,
-    InterpResultType_Immediate,
-    InterpResultType_Return,
-    InterpResultType_Break,
-    InterpResultType_Continue,
-}
-
-struct Interp_Value {
-    Interp_Result_Type result_type;
-    Value value;
-    s32 block_depth;
-    str_id label;
-}
-
-inline void*
-interp_stack_push(Interp* interp, smm size) {
-    void* memory = arena_push_size(&interp->stack, size, 1);
-    interp->stack_pointer += size;
-    return memory;
+Interp_Value
+interp_function_call(Interp* interp, Ast* ast) {
+    return {};
 }
 
 Interp_Value
 interp_statement(Interp* interp, Ast* ast) {
-    assert(ast->type > Ast_Stmt_Begin && ast->type < Ast_Stmt_End);
+    assert(is_ast_stmt(ast));
     
     Interp_Value result = {};
     
@@ -85,16 +118,18 @@ Interp_Value
 interp_block(Interp* interp, Ast* ast) {
     interp->block_depth++;
     
+    Interp_Value result = {};
     while (ast->type == Ast_Compound) {
-        interp_statement(interp, ast->Compound.node);
+        result = interp_statement(interp, ast->Compound.node);
         ast = ast->Compound.next;
+        
+        if (result.result_type == InterpResultType_Return ||
+            result.result_type == InterpResultType_Continue ||
+            result.result_type == InterpResultType_Break) {
+            break;
+        }
     }
     
     interp->block_depth--;
-}
-
-
-Interp_Value
-interp_function_call(Interp* interp, Ast* ast) {
-    
+    return result;
 }

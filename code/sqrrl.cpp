@@ -8,7 +8,7 @@
 #include "sqrrl_basic.cpp"
 #include "sqrrl_tokenizer.cpp"
 #include "sqrrl_parser.cpp"
-
+#include "sqrrl_interp.cpp"
 
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[]) {

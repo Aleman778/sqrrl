@@ -255,6 +255,26 @@ struct Ast_File {
     Ast_Decl_Entry* decls;
 };
 
+inline bool
+is_ast_expr(Ast* ast) {
+    return ast->type > Ast_Expr_Begin && ast->type < Ast_Expr_End;
+}
+
+inline bool
+is_ast_stmt(Ast* ast) {
+    return ast->type > Ast_Stmt_Begin && ast->type < Ast_Stmt_End;
+}
+
+inline bool
+is_ast_type(Ast* ast) {
+    return ast->type > Ast_Type_Begin && ast->type < Ast_Type_End;
+}
+
+inline bool
+is_ast_decl(Ast* ast) {
+    return ast->type > Ast_Decl_Begin && ast->type < Ast_Decl_End;
+}
+
 void
 print_ast(Ast* node, Tokenizer* tokenizer, u32 spacing=0) {
     if (!node) {

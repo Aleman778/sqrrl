@@ -40,15 +40,15 @@ Token peek_second_token(Parser* parser);
 
 // TODO(alexander): better diagnostic, this will do for now!
 inline void
-parse_error(Parser* parser, Token token, str message) {
-    pln("%:%:%: error: %\n(Tokens - current: `%`, peek: `%`, peek second: `%`)", f_str(token.file), f_smm(token.line + 1), f_smm(token.column + 1), f_str(message), f_token(parser->current_token.type), 
+parse_error(Parser* parser, Token token, string message) {
+    pln("%:%:%: error: %\n(Tokens - current: `%`, peek: `%`, peek second: `%`)", f_string(token.file), f_smm(token.line + 1), f_smm(token.column + 1), f_string(message), f_token(parser->current_token.type), 
         f_token(peek_token(parser).type), f_token(peek_second_token(parser).type));
     DEBUG_log_backtrace();
 }
 
 inline void
 parse_error_unexpected_token(Parser* parser, Token_Type expected, Token found) {
-    parse_error(parser, found, str_format("expected token `%` found `%`", f_token(expected), f_token(found.type)));
+    parse_error(parser, found, string_format("expected token `%` found `%`", f_token(expected), f_token(found.type)));
 }
 
 bool next_token_if_matched(Parser* parser, Token_Type expected, bool report_error=true);

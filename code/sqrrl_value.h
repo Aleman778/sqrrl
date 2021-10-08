@@ -56,13 +56,13 @@ enum Binary_Op {
 #undef BINOP
 };
 
-global cstr unary_op_strings[] = {
+global cstring unary_op_strings[] = {
 #define UNOP(symbol, name) name,
     DEF_UNARY_OPS
 #undef UNOP
 };
 
-global cstr binary_op_strings[] = {
+global cstring binary_op_strings[] = {
 #define BINOP(symbol, name, prec, assoc) name,
     DEF_BINARY_OPS
 #undef BINOP
@@ -95,17 +95,19 @@ enum Ternary_Op {
     TernaryOp_Conditional, // expr ? true : false
 };
 
+// Forward declare type
+struct Type;
 
 struct Pointer_Value {
     smm address;
-    //Type* type; // TODO(alexander): missing type definition
+    Type* type;
 };
 
 // NOTE(alexander): forward declare.
 struct Value;
 
 struct Array_Value {
-    //Type* element_type; // TODO(alexander): missing type definition
+    Type* element_type;
     Value* elements;
     smm count;
     smm capacity;
@@ -132,9 +134,19 @@ struct Value {
         f64 floating;
         Pointer_Value pointer;
         Array_Value array;
-        str string;
+        string str;
     };
 };
+
+inline u64
+value_to_u64(Value value) {
+    switch (value.type) {
+        case Value_boolean: return value.boolean == true ? 1 : 0;
+        case Value_signed_int: return (u64) value.signed_int;
+        case Value_floating: return (u64) value.floating;
+        default: return (u64) value.unsigned_int;
+    }
+}
 
 inline Value
 create_boolean_value(bool value) {
@@ -180,15 +192,15 @@ inline Value
 create_array_value(Value* values, smm count, smm capacity) {
     Value result;
     result.type = Value_array;
-    result.array = { values, count, capacity };
+    result.array = { 0, values, count, capacity };
     return result;
 }
 
 inline Value
-create_string_value(str value) {
+create_string_value(string value) {
     Value result;
     result.type = Value_string;
-    result.string = value;
+    result.str = value;
     return result;
 }
 
@@ -225,7 +237,7 @@ void print_value(Value* val) {
         } break;
         
         case Value_string: {
-            printf("%s", val->string);
+            printf("%s", val->str);
         } break;
     }
 }

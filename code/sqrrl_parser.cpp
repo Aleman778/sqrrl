@@ -16,7 +16,7 @@ Keyword
 parse_keyword(Parser* parser, bool report_error) {
     Token token = peek_token(parser);
     if (token.type == Token_Ident) {
-        str_id id = vars_save_str(token.source);
+        string_id id = vars_save_string(token.source);
         if (id > keyword_first && id <= keyword_last) {
             next_token(parser);
             return (Keyword) id;
@@ -24,7 +24,7 @@ parse_keyword(Parser* parser, bool report_error) {
     }
     
     if (report_error) {
-        parse_error(parser, token, str_format("expected keyword, found `%`", f_str(token.source)));
+        parse_error(parser, token, string_format("expected keyword, found `%`", f_string(token.source)));
     }
     
     return Kw_invalid;
@@ -36,16 +36,16 @@ parse_identifier(Parser* parser, bool report_error) {
     
     Token token = next_token(parser);
     if (token.type == Token_Ident) {
-        str_id id = vars_save_str(token.source);
+        string_id id = vars_save_string(token.source);
         if (id < keyword_last) {
             if (report_error) parse_error(parser, token, 
-                                          str_format("expected `identifier` found keyword `%`", f_str(token.source)));
+                                          string_format("expected `identifier` found keyword `%`", f_string(token.source)));
             return 0;
         }
         
         result = push_ast_node(parser);
         result->type = Ast_Ident;
-        result->Ident = vars_save_str(token.source);
+        result->Ident = vars_save_string(token.source);
     } else if (report_error) {
         parse_error_unexpected_token(parser, Token_Ident, token);
     }
@@ -97,9 +97,9 @@ internal Ast*
 parse_char(Parser* parser) {
     assert(parser->token.kind == Token_Char);
     
-    str string = parser->current_token.source;
-    char* curr = string;
-    char* end = string + str_count(string);
+    string str = parser->current_token.source;
+    char* curr = str;
+    char* end = str + string_count(str);
     assert(*curr++ == '\'');
     
     u32 character = 0;
@@ -128,12 +128,12 @@ internal Ast*
 parse_string(Parser* parser) {
     assert(parser->token.kind == Token_String);
     
-    str string = parser->current_token.source;
-    char* curr = string;
-    char* end = string + str_count(string);
+    string str = parser->current_token.source;
+    char* curr = str;
+    char* end = str + string_count(str);
     
-    // TODO(alexander): create string builder
-    str sb = str_alloc(1000);
+    // TODO(alexander): create str builder
+    string sb = string_alloc(1000);
     char* sb_curr = (char*) sb;
     u32 sb_count = 0;
     
@@ -164,8 +164,8 @@ parse_string(Parser* parser) {
         for (; n > 1; n--) *sb_curr++ = *curr++;
     }
     *sb_curr++ = 0;
-    
-    str result = str_alloc(sb_count);
+
+    string result = string_alloc(sb_count);
     memcpy(result, sb, sb_count);
     
     return push_ast_value(parser, create_string_value(result));
@@ -177,11 +177,11 @@ parse_int(Parser* parser) {
     assert(token.type == Token_Int);
     
     
-    if (token.suffix_start != str_count(token.source)) {
+    if (token.suffix_start != string_count(token.source)) {
         assert(0 && "number suffixes are not supported yet!");
 #if 0
         Type type = primitive_types[Primitive_integer];
-        str suffix = substring_nocopy(token.source, token.suffix_start, token.source.length);
+        string suffix = substring_nocopy(token.source, token.suffix_start, token.source.length);
         Symbol sym = find_symbol(suffix);
         switch (sym.index) {
             case Kw_i8:    type = primitive_types[Primitive_i8];    break;
@@ -195,7 +195,7 @@ parse_int(Parser* parser) {
             case Kw_u64:   type = primitive_types[Primitive_u64];   break;
             case Kw_usize: type = primitive_types[Primitive_usize]; break;
             default:
-            if (string_equals(suffix, str_lit("u"))) {
+            if (string_equals(suffix, string_lit("u"))) {
                 type = primitive_types[Primitive_uint];
             }
             // TODO(alexander): improve this error, e.g. show what types are available?
@@ -261,7 +261,7 @@ parse_float(Parser* parser) {
     }
     
     
-    if (token.suffix_start != str_count(token.source)) {
+    if (token.suffix_start != string_count(token.source)) {
         assert(0 && "number suffixes are not supported yet!");
 #if 0
         Type type = primitive_types[Primitive_float];
@@ -291,7 +291,7 @@ parse_float(Parser* parser) {
     if (c == '.') {
         f64 numerator = 0.0;
         f64 denominator = 1.0;
-        while (curr_index < str_count(token.source)) {
+        while (curr_index < string_count(token.source)) {
             c = token.source[curr_index++];
             if (c == '_') continue;
             if (c == 'e' || c == 'E') break;
@@ -302,13 +302,13 @@ parse_float(Parser* parser) {
     }
     
     if (c == 'e' || c == 'E') {
-        pln("token.source = %\n", f_str(token.source));
+        pln("token.source = %\n", f_string(token.source));
         c = token.source[curr_index++];
         f64 exponent = 0.0;
         f64 sign = 1.0;
         if (c == '-') sign = -1.0;
         
-        while (curr_index < str_count(token.source)) {
+        while (curr_index < string_count(token.source)) {
             c = token.source[curr_index++];
             if (c == '_') continue;
             exponent = exponent * 10.0 + (f64) (c - '0');
@@ -326,7 +326,7 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec) {
     
     switch (token.type) {
         case Token_Ident: {
-            str_id sym = vars_save_str(token.source);
+            string_id sym = vars_save_string(token.source);
             switch (sym) {
                 case Kw_false: {
                     next_token(parser);
@@ -408,7 +408,7 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec) {
                 
                 default: {
                     if (report_error) {
-                        parse_error(parser, peek, str_format("expected `)` or `,` found `%` ", f_token(peek.type)));
+                        parse_error(parser, peek, string_format("expected `)` or `,` found `%` ", f_token(peek.type)));
                     }
                 }
             }
@@ -564,7 +564,7 @@ parse_statement(Parser* parser) {
                 } break;
             }
         } else {
-            Keyword keyword = (Keyword) vars_save_str(token.source);
+            Keyword keyword = (Keyword) vars_save_string(token.source);
             switch (keyword) {
                 case Kw_break: {
                     next_token(parser);
@@ -814,14 +814,14 @@ parse_type(Parser* parser) {
     }
     
     if (token.type != Token_Ident) {
-        parse_error(parser, token, str_format("expected `type` found `%`", f_str(token.source)));
+        parse_error(parser, token, string_format("expected `type` found `%`", f_string(token.source)));
         return 0;
     }
     
     next_token(parser);
     
     Ast* base = push_ast_node(parser);
-    str_id ident = vars_save_str(token.source);
+    string_id ident = vars_save_string(token.source);
     
     if (ident >= builtin_types_begin && ident <= builtin_types_end || ident > keyword_last) {
         base = push_ast_node(parser);
@@ -870,7 +870,7 @@ parse_type(Parser* parser) {
             } break;
             
             default: {
-                parse_error(parser, token, str_format("expected `type` found `%`", f_str(token.source)));
+                parse_error(parser, token, string_format("expected `type` found `%`", f_string(token.source)));
                 return 0;
             } break;
         }
@@ -957,7 +957,7 @@ parse_top_level_declaration(Parser* parser) {
             return result;
         }
         
-        str_id id = vars_save_str(token.source);
+        string_id id = vars_save_string(token.source);
         switch (id) {
             case Kw_inline: {
                 next_token(parser);
@@ -990,7 +990,7 @@ parse_top_level_declaration(Parser* parser) {
                 
                 // TODO(alexander): report error
                 if (decl_stmt->type < Ast_Stmt_Begin && decl_stmt->type > Ast_Stmt_End) {
-                    parse_error(parser, token, str_format("expected statement found `%`", f_token(token.type)));
+                    parse_error(parser, token, string_format("expected statement found `%`", f_token(token.type)));
                 }
                 
                 if (decl_stmt->type != Ast_Decl_Stmt) {

@@ -33,13 +33,13 @@ pln(const char* format...) {
                     printf("%zu", va_arg(args, umm));
                 } break;
                 
-                case FormatType_str: {
+                case FormatType_string: {
                     int count = va_arg(args, int);
-                    char* string = va_arg(args, char*);
-                    printf("%.*s", count, string);
+                    char* str = va_arg(args, char*);
+                    printf("%.*s", count, str);
                 } break;
                 
-                case FormatType_cstr: {
+                case FormatType_cstring: {
                     printf("%s", va_arg(args, char*));
                 } break;
                 
@@ -61,13 +61,13 @@ pln(const char* format...) {
     }
 }
 
-str // NOTE(alexander): this string has to be manually freed at the moment!!!
-str_format(const char* format...) { // TODO(alexander): replace snprintf with custom implementation later...
+string // NOTE(alexander): this string has to be manually freed at the moment!!!
+string_format(const char* format...) { // TODO(alexander): replace snprintf with custom implementation later...
     va_list args;
     va_start(args, format);
     
     umm size_remaining = 1000;
-    str result = (str) malloc(size_remaining + 5) + 4; // TODO(alexander): use a scratch buffer instead
+    string result = (string) malloc(size_remaining + 5) + 4; // TODO(alexander): use a scratch buffer instead
     char* buffer = (char*) result;
     u32 resulting_count = 0;
     
@@ -92,13 +92,13 @@ str_format(const char* format...) { // TODO(alexander): replace snprintf with cu
                     count = snprintf(buffer, size_remaining, "%zu", va_arg(args, umm));
                 } break;
                 
-                case FormatType_str: {
-                    int string_count = va_arg(args, int);
-                    char* string = va_arg(args, char*);
-                    count = snprintf(buffer, size_remaining, "%.*s", string_count, string);
+                case FormatType_string: {
+                    int str_count = va_arg(args, int);
+                    char* str = va_arg(args, char*);
+                    count = snprintf(buffer, size_remaining, "%.*s", str_count, str);
                 } break;
                 
-                case FormatType_cstr: {
+                case FormatType_cstring: {
                     count = snprintf(buffer, size_remaining, "%s", va_arg(args, char*));
                 } break;
                 
@@ -124,7 +124,7 @@ str_format(const char* format...) { // TODO(alexander): replace snprintf with cu
         format++;
     }
     
-    str_count(result) = resulting_count;
+    string_count(result) = resulting_count;
     
     return result;
 }

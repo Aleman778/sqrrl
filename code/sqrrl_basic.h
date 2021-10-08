@@ -61,38 +61,37 @@ typedef intptr_t     smm;
 typedef float        f32;
 typedef double       f64;
 typedef int32_t      b32;
-typedef char*        str;
-typedef const char*  cstr;
+typedef char*        string;
+typedef const char*  cstring;
+
+inline u32
+cstring_count(cstring str) {
+    return (u32) strlen(str);
+}
 
 // TODO(alexander): lazy!!!! don't use malloc for this, put in arena later...
-
-inline str
-str_alloc(u32 count) {
+inline string
+string_alloc(u32 count) {
     char* result = (char*) malloc(count + 5) + 4;
     result[count] = '\0';
     *((u32*) result - 1) = count;
-    return (str) result;
+    return (string) result;
 }
 
-inline str
-str_lit(str string, u32 count) {
-    str result = str_alloc(count);
-    memcpy(result, string, count);
+inline string
+string_lit(string str, u32 count) {
+    string result = string_alloc(count);
+    memcpy(result, str, count);
     return result;
 }
 
-inline str
-str_lit(cstr string) {
-    u32 count = (u32) strlen(string);
-    return str_lit((str) string, count);
+inline string
+string_lit(cstring str) {
+    u32 count = (u32) cstring_count(str);
+    return string_lit((string) str, count);
 }
 
-#define str_count(s) *((u32*) s - 1)
-
-inline u32
-count(str string) {
-    return str_count(string);
-}
+#define string_count(s) *((u32*) s - 1)
 
 // NOTE(alexander): improved string formatting and printf
 typedef int Format_Type;
@@ -101,8 +100,8 @@ enum { // TODO(alexander): add more types
     FormatType_uint,
     FormatType_smm,
     FormatType_umm,
-    FormatType_str,
-    FormatType_cstr,
+    FormatType_string,
+    FormatType_cstring,
 };
 
 // TODO(alexander): add more types
@@ -110,11 +109,11 @@ enum { // TODO(alexander): add more types
 #define f_smm(x) FormatType_smm, (smm) (x)
 #define f_uint(x) FormatType_uint, (uint) (x)
 #define f_umm(x) FormatType_umm, (umm) (x)
-#define f_str(x) FormatType_str, (int) str_count(x), x
-#define f_cstr(x) FormatType_cstr, (cstr) (x)
+#define f_string(x) FormatType_string, (int) string_count(x), x
+#define f_cstring(x) FormatType_cstring, (cstr) (x)
 
-void pln(cstr format...);
-str str_format(cstr format...);
+void pln(cstring format...);
+string string_format(cstring format...);
 
 // TODO(alexander): implement this later, we use stb_ds for now!
 // NOTE(alexander): dynamic arrays, usage:
@@ -160,6 +159,7 @@ str str_format(cstr format...);
 #define array_count(a) arrlen(a)
 
 #define map_put(m, k, v) hmput(m, k, v)
+#define map_get(m, k) hmget(m, k)
 #define string_map_put(m, k, v) shput(m, k, v)
 #define string_map_get(m, k) shget(m, k)
 
@@ -205,7 +205,7 @@ _binary_search(void* arr, void* val, smm count, smm size,
     return result;
 }
 
-#define binary_search(arr, val, compare) _binary_search(arr, &val, array_count(arr), sizeof(arr), compare)
+#define binary_search(arr, val, compare) _binary_search(arr, &(val), array_count(arr), sizeof(arr), compare)
 
 // NOTE(alexander): hash map
 

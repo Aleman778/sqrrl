@@ -54,14 +54,14 @@ VAR(function) \
 VAR(infer)
 
 // NOTE(alexander): interning strings into ids
-typedef u32 str_id;
-global struct { cstr key; str_id value; }* vars_str_to_id = 0; // stb_ds hashmap maps strings to ids
-global cstr* vars_id_to_str = 0; // stb_ds array of strings where the index is the string id
+typedef u32 string_id;
+global struct { cstring key; string_id value; }* vars_str_to_id = 0; // stb_ds hashmap maps strings to ids
+global cstring* vars_id_to_str = 0; // stb_ds array of strings where the index is the string id
 global u32 vars_id_counter = 0;
 
-str_id
-vars_save_str(cstr s) {
-    str_id id = string_map_get(vars_str_to_id, s);
+string_id
+vars_save_string(cstring s) {
+    string_id id = string_map_get(vars_str_to_id, s);
     if (!id) {
         id = vars_id_counter++;
         string_map_put(vars_str_to_id, s, id);
@@ -70,8 +70,8 @@ vars_save_str(cstr s) {
     return id;
 }
 
-cstr
-vars_load_str(str_id id) {
+cstring
+vars_load_string(string_id id) {
     if (id < arrlen(vars_id_to_str)) {
         return vars_id_to_str[id];
     }
@@ -81,12 +81,12 @@ vars_load_str(str_id id) {
 void
 vars_initialize() {
     sh_new_arena(vars_str_to_id);
-#define VAR(symbol) vars_save_str(#symbol);
+#define VAR(symbol) vars_save_string(#symbol);
     DEF_VARS
 #undef VAR
 }
 
-typedef str_id Keyword;
+typedef string_id Keyword;
 enum {
 #define VAR(symbol) Kw_##symbol,
     DEF_VARS
@@ -101,6 +101,6 @@ global const u32 keyword_first = Kw_invalid;
 global const u32 keyword_last = Kw_infer;
 
 inline bool
-is_keyword(str_id id) {
+is_keyword(string_id id) {
     return id > keyword_first && id <= keyword_last;
 }

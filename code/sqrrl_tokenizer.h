@@ -66,13 +66,13 @@ TOKEN(Ellipsis,                "...")               \
 TOKEN(EOF,                     "end of file")       \
 TOKEN(Error,                   "error")
 
-global cstr token_type_repr[] = {
+global cstring token_type_repr[] = {
 #define TOKEN(name, str) str,
     DEF_TOKEN_TYPES
 #undef TOKEN
 };
 
-global cstr token_type_strings[] = {
+global cstring token_type_strings[] = {
 #define TOKEN(name, str) "Token_" #name,
     DEF_TOKEN_TYPES
 #undef TOKEN
@@ -95,9 +95,9 @@ enum {
 
 struct Token {
     Token_Type type;
-    str source;
+    string source;
     
-    str file;
+    string file;
     smm line;
     smm column;
     smm offset;
@@ -107,8 +107,8 @@ struct Token {
     smm num_hashes; // optionally defined for raw string literals.
 };
 
-#define f_token(x) FormatType_cstr, token_type_repr[x]
-#define f_token_name(x) FormatType_cstr, token_type_strings[x]
+#define f_token(x) FormatType_cstring, token_type_repr[x]
+#define f_token_name(x) FormatType_cstring, token_type_strings[x]
 
 struct Tokenizer {
     u8* start;
@@ -117,8 +117,8 @@ struct Tokenizer {
     u8* curr; // the current character
     u8* curr_line; // points to the first character of a new line.
     
-    str source;
-    str file;
+    string source;
+    string file;
     smm line_number; // starts at zero
     smm column_number; // starts at zero
     u32 curr_utf32_character; // the current character as unicode codepoint
@@ -129,9 +129,9 @@ struct Tokenizer {
 void utf8_advance_character(Tokenizer* tokenizer);
 
 inline void
-tokenizer_set_source(Tokenizer* tokenizer, str source, str file) {
+tokenizer_set_source(Tokenizer* tokenizer, string source, string file) {
     tokenizer->start = (u8*) source;
-    tokenizer->end = tokenizer->start + str_count(source);
+    tokenizer->end = tokenizer->start + string_count(source);
     tokenizer->next = tokenizer->start;
     tokenizer->source = source;
     tokenizer->curr = tokenizer->start;

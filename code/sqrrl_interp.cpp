@@ -1,13 +1,56 @@
 
+Interp_Value
+interp_resolve_identifier(Interp* interp, string_id ident) {
+    Interp_Value result = create_interp_value(interp);
+    Value* value = map_get(interp->symbol_table, ident);
+    if (!value) {
+        return result;
+    }
+
+    result.value = *value;
+    result.type = InterpValueType_Numeric;
+    return result;
+}
+
 Interp_Value 
 interp_expression(Interp* interp, Ast* ast) {
-    assert(is_ast_expr(ast));
+    assert(is_ast_expr(ast) || ast.type == Ast_Value || ast.type == Ast_Ident);
     
-    Interp_Value result = {};
-    
+    Interp_Value result = create_interp_value(interp);
+
     switch (ast->type) {
+        // TODO(alexander): do we want values to be expressions?
+        case Ast_Value: {
+            result.value = ast->Value;
+            result.type = InterpValueType_Numeric;
+        } break;
+        
+        // TODO(alexander): do we want identifiers to be expressions?
+        case Ast_Ident: {
+            result = interp_resolve_identifier(interp, ast->Ident);
+        } break;
+            
         case Ast_Unary_Expr: {
             Interp_Value first_op = interp_expression(interp, ast->Unary_Expr.first);
+            switch (ast->Unary_Expr.op) {
+                case UnaryOp_Negate: {
+                    
+                } break;
+
+                case UnaryOp_Not: {
+                    if (first_op.type == InterpValueType_Numeric) {
+                        result.value.boolean = !value_to_u64(first_op.value);
+                        result.type = InterpValueType_Numeric;
+                    } else {
+                        interp_error(interp, "not a number");
+                    }
+                } break;
+
+
+                case UnaryOp_Dereference: {
+                    
+                } break;
+            }
         } break;
         
         case Ast_Binary_Expr: {
@@ -83,12 +126,12 @@ interp_statement(Interp* interp, Ast* ast) {
         } break;
         
         case Ast_Break_Stmt: {
-            result.result_type = InterpResultType_Break;
+            result.type = InterpValueType_Break;
             result.label = ast->Break_Stmt.ident->Ident;
         } break;
         
         case Ast_Continue_Stmt: {
-            result.result_type = InterpResultType_Continue;
+            result.type = InterpValueType_Continue;
             result.label = ast->Continue_Stmt.ident->Ident;
         } break;
         
@@ -123,9 +166,9 @@ interp_block(Interp* interp, Ast* ast) {
         result = interp_statement(interp, ast->Compound.node);
         ast = ast->Compound.next;
         
-        if (result.result_type == InterpResultType_Return ||
-            result.result_type == InterpResultType_Continue ||
-            result.result_type == InterpResultType_Break) {
+        if (result.type == InterpValueType_Return ||
+            result.type == InterpValueType_Continue ||
+            result.type == InterpValueType_Break) {
             break;
         }
     }

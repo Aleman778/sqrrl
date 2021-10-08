@@ -26,7 +26,6 @@ enum Type_Kind {
     TypeKind_Pointer, // referenced type
 };
 
-
 struct Primitive_Type {
     Primitive_Type_Kind kind;
     s32 size;
@@ -44,3 +43,10 @@ struct Type {
     s32 cached_size;
     s32 cached_align;
 };
+
+global struct { string_id key; Type* value; }* global_type_table = 0;
+
+Type*
+get_type_definition(string_id ident) {
+    return map_get(global_type_table, ident);
+}

@@ -1,154 +1,154 @@
 
 // Define the different types of nodes in the Abstract Syntax Tree
-#define DEF_AST_TYPES                          \
-AST_GROUP(None,        "none")                 \
-AST(Abi,               "abi", str)             \
-AST(Value,             "value", Value)       \
-AST(Ident,             "identifier", str_id)   \
-AST(Argument,          "argument", struct {    \
-Ast* type;                                     \
-Ast* ident;                                    \
-Ast* assign;                                   \
-})                                             \
-AST(Compound,          "compound", struct {    \
-Ast* node;                                     \
-Ast* next;                                     \
-})                                             \
-AST_GROUP(Expr_Begin,  "expression")           \
-AST(Unary_Expr,        "unary", struct {       \
-Unary_Op op;                                   \
-Ast* first;                                    \
-})                                             \
-AST(Binary_Expr,       "binary", struct {      \
+#define DEF_AST_TYPES                           \
+AST_GROUP(None,        "none")                  \
+AST(Abi,               "abi", string)           \
+AST(Value,             "value", Value)          \
+AST(Ident,             "identifier", string_id) \
+AST(Argument,          "argument", struct {     \
+Ast* type;                                      \
+Ast* ident;                                     \
+Ast* assign;                                    \
+})                                              \
+AST(Compound,          "compound", struct {     \
+Ast* node;                                      \
+Ast* next;                                      \
+})                                              \
+AST_GROUP(Expr_Begin,  "expression")            \
+AST(Unary_Expr,        "unary", struct {        \
+Unary_Op op;                                    \
+Ast* first;                                     \
+})                                              \
+AST(Binary_Expr,       "binary", struct {       \
 Binary_Op op;                                   \
-Ast* first;                                    \
-Ast* second;                                   \
-})                                             \
-AST(Ternary_Expr,      "ternary", struct {     \
-Ast* first;                                    \
-Ast* second;                                   \
-Ast* third;                                    \
-})                                             \
-AST(Call_Expr,         "call", struct {        \
-Ast* ident;                                    \
-Ast* args;                                     \
-})                                             \
-AST(Field_Expr,        "field", struct {       \
-Ast* var;                                      \
-Ast* field;                                    \
-})                                             \
-AST(Cast_Expr,         "cast", struct {        \
-Ast* type;                                     \
-Ast* expr;                                     \
-})                                             \
-AST(Paren_Expr,        "parentheses", struct { \
-Ast* expr;                                     \
-})                                             \
-AST(Index_Expr,        "index", struct {       \
-Ast* array;                                    \
-Ast* index;                                    \
-})                                             \
-AST(Array_Expr,        "array", struct {       \
-Ast* type;                                     \
-Ast* elements;                                 \
-})                                             \
-AST(Struct_Expr,       "struct", struct {      \
-Ast* ident;                                    \
-Ast* fields;                                   \
-})                                             \
-AST(Tuple_Expr,        "tuple", struct {       \
-Ast* values;                                   \
-})                                             \
-AST_GROUP(Expr_End,    "expression")           \
-AST_GROUP(Stmt_Begin,  "statement")            \
-AST(Assign_Stmt,       "assignment", struct {  \
-Ast* type;                                     \
-Ast* ident;                                    \
-Ast* expr;                                     \
-})                                             \
-AST(Expr_Stmt,         "expression", Ast*)     \
-AST(Block_Stmt,        "block", struct {       \
-Ast* stmts;                                    \
-})                                             \
-AST(Break_Stmt,        "break", struct {       \
-Ast* ident;                                    \
-})                                             \
-AST(Continue_Stmt,     "continue", struct {    \
-Ast* ident;                                    \
-})                                             \
-AST(Decl_Stmt, "declaration", struct {         \
-Ast* ident;                                    \
-Ast* type;                                     \
-Ast* decl;                                     \
-})                                             \
-AST(If_Stmt,           "if", struct {          \
-Ast* cond;                                     \
-Ast* then_block;                               \
-Ast* else_block;                               \
-})                                             \
-AST(For_Stmt,          "for", struct {         \
-Ast* label;                                    \
-Ast* init;                                     \
-Ast* cond;                                     \
-Ast* update;                                   \
-Ast* block;                                    \
-})                                             \
-AST(While_Stmt,        "while", struct {       \
-Ast* label;                                    \
-Ast* cond;                                     \
-Ast* block;                                    \
-})                                             \
-AST(Loop_Stmt,         "loop", struct {        \
-Ast* label;                                    \
-Ast* block;                                    \
-})                                             \
-AST(Return_Stmt,       "return", struct {      \
-Ast* expr;                                     \
-})                                             \
-AST_GROUP(Stmt_End,    "statement")            \
-AST_GROUP(Type_Begin,  "type")                 \
-AST(Named_Type,        "named", Ast*)          \
-AST(Array_Type,        "array", struct {       \
-Ast* elem_type;                                \
-Ast* shape;                                    \
-})                                             \
-AST(Pointer_Type,      "pointer", Ast*)        \
-AST(Tuple_Type,        "tuple", struct {       \
-Ast* elem_types;                               \
-})                                             \
-AST(Infer_Type,        "infer", void*)         \
-AST(Function_Type,     "function", struct {    \
-Ast* ident;                                    \
-Ast* return_type;                              \
-Ast* arg_types;                                \
-})                                             \
-AST(Struct_Type,       "struct", struct {      \
-Ast* ident;                                    \
-Ast* fields;                                   \
-})                                             \
-AST(Union_Type,        "union", struct {       \
-Ast* ident;                                    \
-Ast* fields;                                   \
-})                                             \
-AST(Enum_Type,         "enum", struct {        \
-Ast* ident;                                    \
-Ast* elem_type;                                \
-Ast* fields;                                   \
-})                                             \
-AST(Typedef,           "typedef", struct {     \
-Ast* type;                                     \
-Ast* ident;                                    \
-})                                             \
-AST_GROUP(Type_End,    "type")                 \
-AST_GROUP(Decl_Begin,  "declaration")          \
-AST(Type_Decl,         "type", struct {        \
-Ast* ident;                                    \
-Ast* decl;                                     \
-Ast_Decl_Modifier mods;                        \
-})                                             \
+Ast* first;                                     \
+Ast* second;                                    \
+})                                              \
+AST(Ternary_Expr,      "ternary", struct {      \
+Ast* first;                                     \
+Ast* second;                                    \
+Ast* third;                                     \
+})                                              \
+AST(Call_Expr,         "call", struct {         \
+Ast* ident;                                     \
+Ast* args;                                      \
+})                                              \
+AST(Field_Expr,        "field", struct {        \
+Ast* var;                                       \
+Ast* field;                                     \
+})                                              \
+AST(Cast_Expr,         "cast", struct {         \
+Ast* type;                                      \
+Ast* expr;                                      \
+})                                              \
+AST(Paren_Expr,        "parentheses", struct {  \
+Ast* expr;                                      \
+})                                              \
+AST(Index_Expr,        "index", struct {        \
+Ast* array;                                     \
+Ast* index;                                     \
+})                                              \
+AST(Array_Expr,        "array", struct {        \
+Ast* type;                                      \
+Ast* elements;                                  \
+})                                              \
+AST(Struct_Expr,       "struct", struct {       \
+Ast* ident;                                     \
+Ast* fields;                                    \
+})                                              \
+AST(Tuple_Expr,        "tuple", struct {        \
+Ast* values;                                    \
+})                                              \
+AST_GROUP(Expr_End,    "expression")            \
+AST_GROUP(Stmt_Begin,  "statement")             \
+AST(Assign_Stmt,       "assignment", struct {   \
+Ast* type;                                      \
+Ast* ident;                                     \
+Ast* expr;                                      \
+})                                              \
+AST(Expr_Stmt,         "expression", Ast*)      \
+AST(Block_Stmt,        "block", struct {        \
+Ast* stmts;                                     \
+})                                              \
+AST(Break_Stmt,        "break", struct {        \
+Ast* ident;                                     \
+})                                              \
+AST(Continue_Stmt,     "continue", struct {     \
+Ast* ident;                                     \
+})                                              \
+AST(Decl_Stmt, "declaration", struct {          \
+Ast* ident;                                     \
+Ast* type;                                      \
+Ast* decl;                                      \
+})                                              \
+AST(If_Stmt,           "if", struct {           \
+Ast* cond;                                      \
+Ast* then_block;                                \
+Ast* else_block;                                \
+})                                              \
+AST(For_Stmt,          "for", struct {          \
+Ast* label;                                     \
+Ast* init;                                      \
+Ast* cond;                                      \
+Ast* update;                                    \
+Ast* block;                                     \
+})                                              \
+AST(While_Stmt,        "while", struct {        \
+Ast* label;                                     \
+Ast* cond;                                      \
+Ast* block;                                     \
+})                                              \
+AST(Loop_Stmt,         "loop", struct {         \
+Ast* label;                                     \
+Ast* block;                                     \
+})                                              \
+AST(Return_Stmt,       "return", struct {       \
+Ast* expr;                                      \
+})                                              \
+AST_GROUP(Stmt_End,    "statement")             \
+AST_GROUP(Type_Begin,  "type")                  \
+AST(Named_Type,        "named", Ast*)           \
+AST(Array_Type,        "array", struct {        \
+Ast* elem_type;                                 \
+Ast* shape;                                     \
+})                                              \
+AST(Pointer_Type,      "pointer", Ast*)         \
+AST(Tuple_Type,        "tuple", struct {        \
+Ast* elem_types;                                \
+})                                              \
+AST(Infer_Type,        "infer", void*)          \
+AST(Function_Type,     "function", struct {     \
+Ast* ident;                                     \
+Ast* return_type;                               \
+Ast* arg_types;                                 \
+})                                              \
+AST(Struct_Type,       "struct", struct {       \
+Ast* ident;                                     \
+Ast* fields;                                    \
+})                                              \
+AST(Union_Type,        "union", struct {        \
+Ast* ident;                                     \
+Ast* fields;                                    \
+})                                              \
+AST(Enum_Type,         "enum", struct {         \
+Ast* ident;                                     \
+Ast* elem_type;                                 \
+Ast* fields;                                    \
+})                                              \
+AST(Typedef,           "typedef", struct {      \
+Ast* type;                                      \
+Ast* ident;                                     \
+})                                              \
+AST_GROUP(Type_End,    "type")                  \
+AST_GROUP(Decl_Begin,  "declaration")           \
+AST(Type_Decl,         "type", struct {         \
+Ast* ident;                                     \
+Ast* decl;                                      \
+Ast_Decl_Modifier mods;                         \
+})                                              \
 AST_GROUP(Decl_End,    "declaration")
 
-global cstr ast_strings[] = {
+global cstring ast_strings[] = {
 #define AST(symbol, name, decl) name,
 #define AST_GROUP(symbol, name) name,
     DEF_AST_TYPES
@@ -156,7 +156,7 @@ global cstr ast_strings[] = {
 #undef AST
 };
 
-global cstr ast_struct_strings[] = {
+global cstring ast_struct_strings[] = {
 #define AST(symbol, ...) "Ast_" #symbol,
 #define AST_GROUP(symbol, ...) "Ast_" #symbol,
     DEF_AST_TYPES
@@ -200,7 +200,8 @@ struct Span_Data {
 Span_Data
 calculate_span_data(smm* lines, Span span) {
     Binary_Search_Result begin = binary_search(lines, (smm) span.base, compare_smm);
-    Binary_Search_Result end = binary_search(lines, (smm) span.base + (smm) span.count, compare_smm);
+    smm span_end = (smm) span.base + (smm) span.count;
+    Binary_Search_Result end = binary_search(lines, end, compare_smm);
     
     Span_Data result;
     result.begin_line = (u32) begin.index + 1;
@@ -214,7 +215,7 @@ global const Span empty_span = { 0 };
 
 inline Span 
 token_to_span(Token token) {
-    return { (u32) token.offset, (u16) str_count(token.source), 0 }; // TODO(alexander): what should index be?
+    return { (u32) token.offset, (u16) string_count(token.source), 0 }; // TODO(alexander): what should index be?
 }
 
 inline Span
@@ -247,7 +248,7 @@ struct Ast {
 };
 
 struct Ast_Decl_Entry {
-    str_id key;
+    string_id key;
     Ast* value;
 };
 
@@ -294,7 +295,7 @@ print_ast(Ast* node, Tokenizer* tokenizer, u32 spacing=0) {
         printf(" ");
         print_value(&node->Value);
     } else if (node->type == Ast_Ident) {
-        printf(" `%s`", vars_load_str(node->Ident));
+        printf(" `%s`", vars_load_string(node->Ident));
     } else if (node->type == Ast_Unary_Expr) {
         assert_enum(UnaryOp, node->Unary_Expr.op);
         printf("(%s)", unary_op_strings[node->Binary_Expr.op]);

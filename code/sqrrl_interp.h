@@ -1,5 +1,6 @@
 
 struct Interp {
+    struct { string_id key; Value* value; }* symbol_table;
     
     s32 block_depth;
     
@@ -8,25 +9,36 @@ struct Interp {
     smm base_pointer;
 };
 
-enum Interp_Result_Type {
-    InterpResultType_Void,
-    InterpResultType_Numeric,
-    InterpResultType_Return,
-    InterpResultType_Break,
-    InterpResultType_Continue,
+enum Interp_Value_Type {
+    InterpValueType_Void,
+    InterpValueType_Numeric,
+    InterpValueType_Return,
+    InterpValueType_Break,
+    InterpValueType_Continue,
 };
 
 struct Interp_Value {
-    Interp_Result_Type result_type;
+    Interp_Value_Type type;
     Value value;
     s32 block_depth;
-    str_id label;
+    string_id label;
 };
+
+inline Interp_Value
+create_interp_value(Interp* interp) {
+    Interp_Value result = {};
+    result.block_depth = interp->block_depth;
+    return result;
+}
 
 // TODO(alexander): better diagnostic, this will do for now!
 inline void
-interp_error(Interp* parser, Token token, str message) {
-    pln("%:%:%: error: %\n", f_str(token.file), f_smm(token.line + 1), f_smm(token.column + 1), f_str(message));
+interp_error(Interp* parser, string message) {
+    // TODO: need the line numbers to calculate this!
+    // Span_Data span = calculate_span_data(tokenizer->lines, node->span);
+    Span_Data span = {};
+    string filename = string_lit("examples/demo.sq"); // TODO: store names of source files somewhere!
+    pln("%:%:%: error: %\n", f_string(filename), f_smm(span.begin_line), f_smm(span.begin_col), f_string(message));
     DEBUG_log_backtrace();
 }
 
@@ -36,6 +48,8 @@ interp_stack_push(Interp* interp, smm size) {
     interp->stack_pointer += size;
     return memory;
 }
+
+Interp_Value interp_resolve_identifier(Interp* interp, string_id ident);
 
 Interp_Value interp_expression(Interp* interp, Ast* ast);
 Interp_Value interp_function_call(Interp* interp, Ast* ast);

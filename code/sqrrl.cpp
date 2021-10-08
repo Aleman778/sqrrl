@@ -12,11 +12,11 @@
 
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[]) {
-    str filepath;
+    string filepath;
     if (argc > 1) {
-        filepath = str_lit(argv[1]);
+        filepath = string_lit(argv[1]);
     } else {
-        filepath = str_lit("C:/Dev/sqrrl/examples/demo.sq");
+        filepath = string_lit("C:/Dev/sqrrl/examples/demo.sq");
     }
     
     // Setup string interning of variables
@@ -26,7 +26,7 @@ compiler_main_entry(int argc, char* argv[]) {
     FILE* file;
     fopen_s(&file, filepath, "rb");
     if (!file) {
-        pln("File `%` was not found!", f_str(filepath));
+        pln("File `%` was not found!", f_string(filepath));
         return -1;
     }
     
@@ -34,13 +34,13 @@ compiler_main_entry(int argc, char* argv[]) {
     umm file_size = ftell(file);
     fseek(file, 0, SEEK_SET);
     
-    str source = (str) malloc(file_size + 5) + 4;
+    string source = (string) malloc(file_size + 5) + 4;
     *((u32*) source - 1) = (u32) file_size;
-    fread(source, str_count(source), 1, file);
+    fread(source, string_count(source), 1, file);
     fclose(file);
     
     // TODO(alexander): temp printing source
-    pln("%", f_str(source));
+    pln("%", f_string(source));
     
     // Lexer
     Tokenizer tokenizer = {};

@@ -1,13 +1,13 @@
 
 internal void
-tokenization_error(Tokenizer* t, str message) {
-    pln("tokenization_error: %\n", f_str(message)); // TODO(alexander): real diagnostics
+tokenization_error(Tokenizer* t, string message) {
+    pln("tokenization_error: %\n", f_string(message)); // TODO(alexander): real diagnostics
     DEBUG_log_backtrace();
 }
 
 internal inline void
-tokenization_error(Tokenizer* t, cstr message) {
-    tokenization_error(t, str_lit(message));
+tokenization_error(Tokenizer* t, cstring message) {
+    tokenization_error(t, string_lit(message));
 }
 
 // NOTE(alexander): this is used to detect utf8 characters
@@ -155,10 +155,10 @@ scan_escape_character(Tokenizer* tokenizer, u8 quote) {
                 if (*tokenizer->next == '}') {
                     utf8_advance_character(tokenizer);
                 } else {
-                    tokenization_error(tokenizer, str_format("expected `}`, found `%c`", *tokenizer->next));
+                    tokenization_error(tokenizer, string_format("expected `}`, found `%c`", *tokenizer->next));
                 }
             } else {
-                tokenization_error(tokenizer, str_format("expected `{`, found `%c`", *tokenizer->next));
+                tokenization_error(tokenizer, string_format("expected `{`, found `%c`", *tokenizer->next));
             }
             break;
         }
@@ -169,7 +169,7 @@ scan_escape_character(Tokenizer* tokenizer, u8 quote) {
         
         default:
         utf8_advance_character(tokenizer);
-        tokenization_error(tokenizer, str_format("expected escape character, found `%c`", *tokenizer->curr));
+        tokenization_error(tokenizer, string_format("expected escape character, found `%c`", *tokenizer->curr));
         break;
     }
 }
@@ -195,7 +195,7 @@ scan_digits(Tokenizer* tokenizer, int base) {
         
         utf8_advance_character(tokenizer);
         if (d >= base) {
-            tokenization_error(tokenizer, str_format("expected digit with base %d, found `%c`", base, *tokenizer->curr));
+            tokenization_error(tokenizer, string_format("expected digit with base %d, found `%c`", base, *tokenizer->curr));
         }
         has_digits = true;
     }
@@ -254,7 +254,7 @@ scan_number(Tokenizer* tokenizer, Token& token) {
         token.type = Token_Float;
         utf8_advance_character(tokenizer);
         if (*tokenizer->curr != '+' && *tokenizer->curr != '-') {
-            tokenization_error(tokenizer, str_format("expected `+` or `-`, found `%c`", *tokenizer->curr));
+            tokenization_error(tokenizer, string_format("expected `+` or `-`, found `%c`", *tokenizer->curr));
             return;
         }
         
@@ -307,7 +307,7 @@ scan_raw_string(Tokenizer* tokenizer) {
         if (*tokenizer->curr == '"') {
             utf8_advance_character(tokenizer);
         } else {
-            tokenization_error(tokenizer, str_format("expected `\"`, found `%c`", *tokenizer->next));
+            tokenization_error(tokenizer, string_format("expected `\"`, found `%c`", *tokenizer->next));
         }
     } else {
         utf8_advance_character(tokenizer);
@@ -576,8 +576,8 @@ advance_token(Tokenizer* tokenizer) {
             default: {
                 u8 buffer[4];
                 smm count = (smm) utf32_convert_to_utf8(tokenizer->curr_utf32_character, buffer);
-                str character = str_lit((str) buffer, (u32) count);
-                tokenization_error(tokenizer, str_format("invalid character `%`", f_str(character)));
+                string character = string_lit((string) buffer, (u32) count);
+                tokenization_error(tokenizer, string_format("invalid character `%`", f_string(character)));
                 token.type = Token_Error;
                 
             } break;
@@ -585,7 +585,7 @@ advance_token(Tokenizer* tokenizer) {
     }
     
     if (advance_utf32_at_end) utf8_advance_character(tokenizer);
-    token.source = str_lit((char*) base, (u32) (tokenizer->curr - base));
+    token.source = string_lit((char*) base, (u32) (tokenizer->curr - base));
     return token;
 }
 

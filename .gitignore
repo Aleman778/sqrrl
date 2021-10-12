@@ -1,2 +1,6 @@
 # Build directory
 /build
+
+# Visual studio
+/.vs
+*.sln

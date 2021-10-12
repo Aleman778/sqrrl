@@ -6,7 +6,7 @@ interp_resolve_identifier(Interp* interp, string_id ident) {
     if (!value) {
         return result;
     }
-
+    
     result.value = *value;
     result.type = InterpValueType_Numeric;
     return result;
@@ -17,7 +17,7 @@ interp_expression(Interp* interp, Ast* ast) {
     assert(is_ast_expr(ast) || ast.type == Ast_Value || ast.type == Ast_Ident);
     
     Interp_Value result = create_interp_value(interp);
-
+    
     switch (ast->type) {
         // TODO(alexander): do we want values to be expressions?
         case Ast_Value: {
@@ -29,14 +29,16 @@ interp_expression(Interp* interp, Ast* ast) {
         case Ast_Ident: {
             result = interp_resolve_identifier(interp, ast->Ident);
         } break;
-            
+        
         case Ast_Unary_Expr: {
             Interp_Value first_op = interp_expression(interp, ast->Unary_Expr.first);
             switch (ast->Unary_Expr.op) {
                 case UnaryOp_Negate: {
-                    
+                    if (first_op.type == InterpValueType_Numeric) {
+                        result.value.signed_int = -first_op.value.signed_int;
+                    }
                 } break;
-
+                
                 case UnaryOp_Not: {
                     if (first_op.type == InterpValueType_Numeric) {
                         result.value.boolean = !value_to_u64(first_op.value);
@@ -45,8 +47,7 @@ interp_expression(Interp* interp, Ast* ast) {
                         interp_error(interp, "not a number");
                     }
                 } break;
-
-
+                
                 case UnaryOp_Dereference: {
                     
                 } break;
@@ -63,10 +64,22 @@ interp_expression(Interp* interp, Ast* ast) {
             Interp_Value second_op = interp_expression(interp, ast->Ternary_Expr.second);
             Interp_Value third_op = interp_expression(interp, ast->Ternary_Expr.third);
             
+            if (first_op.type == InterpValueType_Numeric) {
+                if (first_op.value.boolean) {
+                    return second_op;
+                } else {
+                    return third_op;
+                }
+            } else {
+                interp_error(interp, "type error: expected left operand to be of numeric type");
+            }
+            
+            
         } break;
         
         case Ast_Call_Expr: {
-            
+            string_id ident = ast->Call_Expr.ident->Ident;
+            interp_function_call(interp, ident);
         } break;
         
         case Ast_Field_Expr: {
@@ -102,8 +115,40 @@ interp_expression(Interp* interp, Ast* ast) {
 }
 
 Interp_Value
-interp_function_call(Interp* interp, Ast* ast) {
-    return {};
+interp_function_call(Interp* interp, string_id ident) {
+    
+    Interp_Value result = create_interp_value(interp);
+    
+    Ast* decl = map_get(interp->decls, ident);
+    if (decl) {
+        decl = decl->Type_Decl.decl;
+        if (decl->type == Ast_Decl_Stmt) {
+            Ast* type = decl->Decl_Stmt.type;
+            if (type->type == Ast_Function_Type) {
+                decl = decl->Decl_Stmt.decl;
+                
+                // Save sold base pointer on the stack
+                smm new_base = interp->stack_pointer;
+                smm* old_base = (smm*) interp_stack_push(interp, sizeof(smm));
+                *old_base = interp->base_pointer;
+                interp->base_pointer = new_base;
+                
+                result = interp_statement(interp, decl);
+                // TODO(alexander): only write to result if it is an actual return value!
+                
+                interp->stack_pointer = interp->base_pointer;
+                interp->base_pointer = *(smm*) ((u8*) interp->stack.base + interp->base_pointer);
+            } else {
+                interp_error(interp, string_format("`%` is not a function", f_string(vars_load_string(ident))));
+            }
+        } else {
+            interp_error(interp, string_format("`%` is not a function", f_string(vars_load_string(ident))));
+        }
+    } else {
+        interp_error(interp, string_format("unresolved identifier `%`", f_string(vars_load_string(ident))));
+    }
+    
+    return result;
 }
 
 Interp_Value
@@ -151,6 +196,7 @@ interp_statement(Interp* interp, Ast* ast) {
         } break;
         
         case Ast_Return_Stmt: {
+            result = interp_expression(interp, ast->Return_Stmt.expr);
         } break;
     }
     

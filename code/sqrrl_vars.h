@@ -1,5 +1,5 @@
 
-// Predefined keyword variables that are reserved by the compiler.
+// Predefined keywords variables that are reserved by the compiler.
 #define DEF_VARS  \
 VAR(invalid)  \
 VAR(break)    \

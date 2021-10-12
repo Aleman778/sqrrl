@@ -1,6 +1,7 @@
 
 struct Interp {
     struct { string_id key; Value* value; }* symbol_table;
+    Ast_Decl_Entry* decls;
     
     s32 block_depth;
     
@@ -33,7 +34,7 @@ create_interp_value(Interp* interp) {
 
 // TODO(alexander): better diagnostic, this will do for now!
 inline void
-interp_error(Interp* parser, string message) {
+interp_error(Interp* interp, string message) {
     // TODO: need the line numbers to calculate this!
     // Span_Data span = calculate_span_data(tokenizer->lines, node->span);
     Span_Data span = {};
@@ -52,6 +53,6 @@ interp_stack_push(Interp* interp, smm size) {
 Interp_Value interp_resolve_identifier(Interp* interp, string_id ident);
 
 Interp_Value interp_expression(Interp* interp, Ast* ast);
-Interp_Value interp_function_call(Interp* interp, Ast* ast);
+Interp_Value interp_function_call(Interp* interp, string_id ident);
 Interp_Value interp_statement(Interp* interp, Ast* ast);
 Interp_Value interp_block(Interp* interp, Ast* ast);

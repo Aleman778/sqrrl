@@ -42,9 +42,8 @@ VAR(u64)      \
 VAR(umm)      \
 VAR(f32)      \
 VAR(f64)      \
-VAR(b32)      \
 VAR(char)     \
-VAR(str)      \
+VAR(string)   \
 VAR(bool)     \
 VAR(void)     \
 VAR(pointer)  \
@@ -80,7 +79,7 @@ vars_load_string(string_id id) {
 
 void
 vars_initialize() {
-    sh_new_arena(vars_str_to_id);
+    string_map_new_arena(vars_str_to_id);
 #define VAR(symbol) vars_save_string(#symbol);
     DEF_VARS
 #undef VAR

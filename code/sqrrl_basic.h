@@ -162,6 +162,7 @@ string string_format(cstring format...);
 #define map_get(m, k) hmget(m, k)
 #define string_map_put(m, k, v) shput(m, k, v)
 #define string_map_get(m, k) shget(m, k)
+#define string_map_new_arena(m) sh_new_arena(m)
 
 int 
 compare_ints(void* a, void* b) {

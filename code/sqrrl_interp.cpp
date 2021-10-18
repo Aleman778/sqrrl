@@ -1,14 +1,47 @@
 
-Interp_Value
-interp_resolve_identifier(Interp* interp, string_id ident) {
-    Interp_Value result = create_interp_value(interp);
-    Value* value = map_get(interp->symbol_table, ident);
-    if (!value) {
-        return result;
+inline Entity
+symbol_table_resolve_identifier(Symbol_Table* table, string_id ident) {
+    return map_get(table, ident);
+}
+
+inline Value*
+symbol_table_resolve_value(Symbol_Table* table, string_id ident) {
+    Entity entity = symbol_table_resolve_identifier(table, ident);
+    if (entity.kind == EntityKind_Value) {
+        return entity.value;
     }
-    
-    result.value = *value;
-    result.type = InterpValueType_Numeric;
+    return 0;
+}
+
+// NOTE(Alexander): resolved type is a type definition and not a value that has a type.
+//                  typedef s32 b32; b32 resolves to a typedef,  s32 x = 10; x resolves to  null.
+inline Type*
+symbol_table_resolve_type(Symbol_Table* table, string_id ident) {
+    Entity entity = symbol_table_resolve_identifier(table, ident);
+    if (entity.kind == EntityKind_Type) {
+        return entity.type;
+    }
+    return 0;
+}
+
+Value*
+symbol_table_store_value(Symbol_Table* table, Arena* arena, string_id ident) {
+    Value* result = arena_push_struct(arena, Value);
+    Entity entity;
+    entity.kind = EntityKind_Value;
+    entity.value = result;
+    map_put(table, ident, entity);
+    return result;
+}
+
+// NOTE(Alexander): only type definitions
+Type*
+symbol_table_store_type(Symbol_Table* table, Arena* arena, string_id ident) {
+    Type* result = arena_push_struct(arena, Type);
+    Entity entity;
+    entity.kind = EntityKind_Type;
+    entity.type = result;
+    map_put(table, ident, entity);
     return result;
 }
 
@@ -27,7 +60,11 @@ interp_expression(Interp* interp, Ast* ast) {
         
         // TODO(alexander): do we want identifiers to be expressions?
         case Ast_Ident: {
-            result = interp_resolve_identifier(interp, ast->Ident);
+            Value* value = symbol_table_resolve_value(interp->symbol_table, ast->Ident);
+            if (value) {
+                result.value = *value;
+                result.type = InterpValueType_Numeric;
+            }
         } break;
         
         case Ast_Unary_Expr: {
@@ -83,11 +120,14 @@ interp_expression(Interp* interp, Ast* ast) {
         } break;
         
         case Ast_Field_Expr: {
+            //Value value = interp_expression(interp, ast->Field_Expr.var);
+            //assert(ast->Field_Expr.field == Ast_Ident);
             
         } break;
         
         case Ast_Cast_Expr: {
-            
+            Type* type = interp_type(interp, ast->Cast_Expr.type);
+            Interp_Value value = interp_expression(interp, ast->Cast_Expr.expr);
         } break;
         
         case Ast_Paren_Expr: {
@@ -145,7 +185,7 @@ interp_function_call(Interp* interp, string_id ident) {
             interp_error(interp, string_format("`%` is not a function", f_string(vars_load_string(ident))));
         }
     } else {
-        interp_error(interp, string_format("unresolved identifier `%`", f_string(vars_load_string(ident))));
+        interp_unresolved_identifier_error(interp, ident);
     }
     
     return result;
@@ -159,7 +199,10 @@ interp_statement(Interp* interp, Ast* ast) {
     
     switch (ast->type) {
         case Ast_Assign_Stmt: {
-            
+            Interp_Value expr = interp_expression(ast->Assign_Stmt.expr);
+            Type* type = interp_type(interp, ast->Assign_Stmt.type);
+            string_id ident = ast->Assign_Stmt.ident->Ident;
+            Value* value = symbol_table_store_value();
         } break;
         
         case Ast_Expr_Stmt: {
@@ -220,5 +263,29 @@ interp_block(Interp* interp, Ast* ast) {
     }
     
     interp->block_depth--;
+    return result;
+}
+
+Type*
+interp_type(Interp* interp, Ast* ast) {
+    assert(is_ast_type(ast));
+    
+    Type* result = 0;
+    switch (ast->type) {
+        case Ast_Named_Type: {
+            string_id ident = ast->Named_Type->Ident;
+            Type* type = symbol_table_resolve_type(interp->symbol_table, ident);
+            if (type) {
+                result = type;
+            } else {
+                interp_unresolved_identifier_error(interp, ident);
+            }
+        } break;
+        
+        case Ast_Array_Type: {
+            //Type type = interp_type();
+        } break;
+    }
+    
     return result;
 }

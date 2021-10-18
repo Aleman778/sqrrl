@@ -283,7 +283,7 @@ arena_push_size(Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT, umm flags=0
     return result;
 }
 
-#define arena_push_struct(arena, type, flags) (type*) arena_push_size(arena, (umm) sizeof(type), (umm) alignof(type), flags)
+#define arena_push_struct(arena, type, ...) (type*) arena_push_size(arena, (umm) sizeof(type), (umm) alignof(type), __VA_ARGS__)
 
 inline void
 arena_rewind(Arena* arena) {

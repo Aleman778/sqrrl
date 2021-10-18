@@ -32,7 +32,7 @@ enum Type_Kind {
     TypeKind_Unresolved
 };
 
-typedef struct { string_id key; Type* value; }* Type_Table;
+typedef struct { string_id key; Type* value; } Type_Table;
 
 struct Type {
     Type_Kind kind;
@@ -70,10 +70,6 @@ struct Type {
         struct {
             Type* type;
         } Pointer;
-        
-        struct {
-            string_id ident;
-        } Unresolved;
     };
     
     s32 cached_size;
@@ -81,14 +77,14 @@ struct Type {
 };
 
 // TODO(alexander): thesea are globals for now, this code is temporary
-global Type_Table global_type_table = 0;
+global Type_Table* global_type_table = 0;
 
 void
-put_type_definition(string_id ident, Type type) {
-    map_put(ident, type);
+put_type_definition(string_id ident, Type* type) {
+    map_put(global_type_table, ident, type);
 }
 
 Type*
 get_type_definition(string_id ident) {
-    return map_get(ident);
+    return map_get(global_type_table, ident);
 }

@@ -1,6 +1,25 @@
 
+enum Entity_Kind {
+    EntityKind_Value,
+    EntityKind_Type,
+};
+
+struct Entity {
+    Entity_Kind kind;
+    union  {
+        Value* value;
+        Type* type;
+        b32 is_initialized;
+    };
+};
+
+struct Symbol_Table {
+    string_id key; 
+    Entity value;
+};
+
 struct Interp {
-    struct { string_id key; Value* value; }* symbol_table;
+    Symbol_Table* symbol_table;
     Ast_Decl_Entry* decls;
     
     s32 block_depth;
@@ -13,6 +32,7 @@ struct Interp {
 enum Interp_Value_Type {
     InterpValueType_Void,
     InterpValueType_Numeric,
+    InterpValueType_Struct,
     InterpValueType_Return,
     InterpValueType_Break,
     InterpValueType_Continue,
@@ -43,6 +63,11 @@ interp_error(Interp* interp, string message) {
     DEBUG_log_backtrace();
 }
 
+inline void
+interp_unresolved_identifier_error(Interp* interp, string_id ident) {
+    interp_error(interp, string_format("unresolved identifier `%`", f_string(vars_load_string(ident))));
+}
+
 inline void*
 interp_stack_push(Interp* interp, smm size) {
     void* memory = arena_push_size(&interp->stack, size, 1);
@@ -50,9 +75,15 @@ interp_stack_push(Interp* interp, smm size) {
     return memory;
 }
 
-Interp_Value interp_resolve_identifier(Interp* interp, string_id ident);
+inline Entity symbol_table_resolve_identifier(Symbol_Table* table, string_id ident);
+inline Value* symbol_table_resolve_value(Symbol_Table* table, string_id ident);
+inline Type* symbol_table_resolve_type(Symbol_Table* table, string_id ident);
+Value* symbol_table_store_value(Symbol_Table* table, Arena* arena, string_id ident);
+Type* symbol_table_store_type(Symbol_Table* table, Arena* arena, string_id ident);
 
 Interp_Value interp_expression(Interp* interp, Ast* ast);
 Interp_Value interp_function_call(Interp* interp, string_id ident);
 Interp_Value interp_statement(Interp* interp, Ast* ast);
 Interp_Value interp_block(Interp* interp, Ast* ast);
+
+Type* interp_type(Interp* interp, Ast* ast);

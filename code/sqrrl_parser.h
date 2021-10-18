@@ -5,6 +5,8 @@ struct Parser {
     Token peeked_tokens[2];
     s32 num_peeked_tokens;
     
+    Type_Table types;
+    
     Arena ast_arena;
 };
 

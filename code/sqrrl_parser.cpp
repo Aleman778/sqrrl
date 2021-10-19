@@ -164,7 +164,7 @@ parse_string(Parser* parser) {
         for (; n > 1; n--) *sb_curr++ = *curr++;
     }
     *sb_curr++ = 0;
-
+    
     string result = string_alloc(sb_count);
     memcpy(result, sb, sb_count);
     
@@ -522,119 +522,121 @@ parse_statement(Parser* parser) {
     Ast* result = 0;
     
     if (token.type == Token_Ident) {
-        Token second_token = peek_second_token(parser);
-        if (second_token.type == Token_Ident) {
-            result = push_ast_node(parser, &token);
-            Ast* type = parse_type(parser);
+        Keyword keyword = (Keyword) vars_save_string(token.source);
+        switch (keyword) {
+            case Kw_break: {
+                next_token(parser);
+                result = push_ast_node(parser, &token);
+                result->type = Ast_Break_Stmt;
+                result->Break_Stmt.ident = parse_identifier(parser, false);
+            } break;
             
-            switch (type->type) {
-                case Ast_Struct_Type:
-                case Ast_Union_Type:
-                case Ast_Enum_Type: {
-                    result->type = Ast_Decl_Stmt;
-                    result->Decl_Stmt.ident = type->children[0];
-                    result->Decl_Stmt.type = type;
-                } break;
-                
-                case Ast_Function_Type: {
-                    result->type = Ast_Decl_Stmt;
-                    result->Decl_Stmt.ident = type->Function_Type.ident;
-                    result->Decl_Stmt.type = type;
-                    // TODO(alexander): this is a little bit strange
-                    result->Decl_Stmt.decl = parse_block_statement(parser);
-                } break;
-                
-                case Ast_Typedef: {
-                    result->type = Ast_Decl_Stmt;
-                    result->Decl_Stmt.type = type;
-                    result->Decl_Stmt.ident = parse_identifier(parser);
-                } break;
-                
-                default: {
-                    result->type = Ast_Assign_Stmt;
-                    result->Assign_Stmt.type = type;
-                    result->Assign_Stmt.ident = parse_identifier(parser);
+            case Kw_continue: {
+                next_token(parser);
+                result = push_ast_node(parser, &token);
+                result->type = Ast_Continue_Stmt;
+                result->Continue_Stmt.ident = parse_identifier(parser, false);
+            } break;
+            
+            case Kw_if: {
+                next_token(parser);
+                result = push_ast_node(parser, &token);
+                result->type = Ast_If_Stmt;
+                bool opened_paren = next_token_if_matched(parser, Token_Open_Paren, false);
+                result->If_Stmt.cond = parse_expression(parser);
+                next_token_if_matched(parser, Token_Close_Paren, opened_paren);
+                result->If_Stmt.then_block = parse_statement(parser);
+                result->If_Stmt.else_block = parse_statement(parser);
+            } break;
+            
+            case Kw_for: {
+                next_token(parser);
+                result = push_ast_node(parser, &token);
+                result->type = Ast_For_Stmt;
+                result->For_Stmt.label = parse_identifier(parser, false);
+                if (result->For_Stmt.label->type != Ast_None) {
+                    next_token_if_matched(parser, Token_Colon);
+                }
+                bool opened_paren = next_token_if_matched(parser, Token_Open_Paren, false);
+                // TODO(alexander): should probably not be statement, move out variable decl
+                result->For_Stmt.init = parse_statement(parser);
+                result->For_Stmt.cond = parse_statement(parser);
+                result->For_Stmt.update = parse_statement(parser);
+                next_token_if_matched(parser, Token_Close_Paren, opened_paren);
+                result->For_Stmt.block = parse_statement(parser);
+            } break;
+            
+            case Kw_while: {
+                next_token(parser);
+                result = push_ast_node(parser, &token);
+                result->type = Ast_While_Stmt;
+                result->While_Stmt.label = parse_identifier(parser, false);
+                if (result->While_Stmt.label->type != Ast_None) {
+                    next_token_if_matched(parser, Token_Colon);
+                }
+                bool opened_paren = next_token_if_matched(parser, Token_Open_Paren, false);
+                result->While_Stmt.cond = parse_expression(parser);
+                next_token_if_matched(parser, Token_Close_Paren, opened_paren);
+                result->While_Stmt.block = parse_statement(parser);
+            } break;
+            
+            case Kw_loop: {
+                next_token(parser);
+                result = push_ast_node(parser, &token);
+                result->type = Ast_Loop_Stmt;
+                result->Loop_Stmt.label = parse_identifier(parser, false);
+            } break;
+            
+            case Kw_return: {
+                next_token(parser);
+                result = push_ast_node(parser, &token);
+                result->type = Ast_Return_Stmt;
+                result->Return_Stmt.expr = parse_expression(parser, false);
+            } break;
+            
+            default: {
+                Token second_token = peek_second_token(parser);
+                if (second_token.type == Token_Ident) {
+                    result = push_ast_node(parser, &token);
+                    Ast* type = parse_type(parser);
                     
-                    if (next_token_if_matched(parser, Token_Assign, false)) {
-                        // TODO(alexander): add support for int x = 5, y = 10;
-                        result->Assign_Stmt.expr = parse_expression(parser);
-                    } else {
-                        result->Assign_Stmt.expr = push_ast_node(parser);
+                    switch (type->type) {
+                        case Ast_Struct_Type:
+                        case Ast_Union_Type:
+                        case Ast_Enum_Type: {
+                            result->type = Ast_Decl_Stmt;
+                            result->Decl_Stmt.ident = type->children[0];
+                            result->Decl_Stmt.type = type;
+                        } break;
+                        
+                        case Ast_Function_Type: {
+                            result->type = Ast_Decl_Stmt;
+                            result->Decl_Stmt.ident = type->Function_Type.ident;
+                            result->Decl_Stmt.type = type;
+                            // TODO(alexander): this is a little bit strange
+                            result->Decl_Stmt.decl = parse_block_statement(parser);
+                        } break;
+                        
+                        case Ast_Typedef: {
+                            result->type = Ast_Decl_Stmt;
+                            result->Decl_Stmt.type = type;
+                            result->Decl_Stmt.ident = parse_identifier(parser);
+                        } break;
+                        
+                        default: {
+                            result->type = Ast_Assign_Stmt;
+                            result->Assign_Stmt.type = type;
+                            result->Assign_Stmt.ident = parse_identifier(parser);
+                            
+                            if (next_token_if_matched(parser, Token_Assign, false)) {
+                                // TODO(alexander): add support for int x = 5, y = 10;
+                                result->Assign_Stmt.expr = parse_expression(parser);
+                            } else {
+                                result->Assign_Stmt.expr = push_ast_node(parser);
+                            }
+                        } break;
                     }
-                } break;
-            }
-        } else {
-            Keyword keyword = (Keyword) vars_save_string(token.source);
-            switch (keyword) {
-                case Kw_break: {
-                    next_token(parser);
-                    result = push_ast_node(parser, &token);
-                    result->type = Ast_Break_Stmt;
-                    result->Break_Stmt.ident = parse_identifier(parser, false);
-                } break;
-                
-                case Kw_continue: {
-                    next_token(parser);
-                    result = push_ast_node(parser, &token);
-                    result->type = Ast_Continue_Stmt;
-                    result->Continue_Stmt.ident = parse_identifier(parser, false);
-                } break;
-                
-                case Kw_if: {
-                    next_token(parser);
-                    result = push_ast_node(parser, &token);
-                    result->type = Ast_If_Stmt;
-                    bool opened_paren = next_token_if_matched(parser, Token_Open_Paren, false);
-                    result->If_Stmt.cond = parse_expression(parser);
-                    next_token_if_matched(parser, Token_Close_Paren, opened_paren);
-                    result->If_Stmt.then_block = parse_statement(parser);
-                    result->If_Stmt.else_block = parse_statement(parser);
-                } break;
-                
-                case Kw_for: {
-                    next_token(parser);
-                    result = push_ast_node(parser, &token);
-                    result->type = Ast_For_Stmt;
-                    result->For_Stmt.label = parse_identifier(parser, false);
-                    if (result->For_Stmt.label->type != Ast_None) {
-                        next_token_if_matched(parser, Token_Colon);
-                    }
-                    bool opened_paren = next_token_if_matched(parser, Token_Open_Paren, false);
-                    // TODO(alexander): should probably not be statement, move out variable decl
-                    result->For_Stmt.init = parse_statement(parser);
-                    result->For_Stmt.cond = parse_statement(parser);
-                    result->For_Stmt.update = parse_statement(parser);
-                    next_token_if_matched(parser, Token_Close_Paren, opened_paren);
-                    result->For_Stmt.block = parse_statement(parser);
-                } break;
-                
-                case Kw_while: {
-                    next_token(parser);
-                    result = push_ast_node(parser, &token);
-                    result->type = Ast_While_Stmt;
-                    result->While_Stmt.label = parse_identifier(parser, false);
-                    if (result->While_Stmt.label->type != Ast_None) {
-                        next_token_if_matched(parser, Token_Colon);
-                    }
-                    bool opened_paren = next_token_if_matched(parser, Token_Open_Paren, false);
-                    result->While_Stmt.cond = parse_expression(parser);
-                    next_token_if_matched(parser, Token_Close_Paren, opened_paren);
-                    result->While_Stmt.block = parse_statement(parser);
-                } break;
-                
-                case Kw_loop: {
-                    next_token(parser);
-                    result = push_ast_node(parser, &token);
-                    result->type = Ast_Loop_Stmt;
-                    result->Loop_Stmt.label = parse_identifier(parser, false);
-                } break;
-                
-                case Kw_return: {
-                    next_token(parser);
-                    result = push_ast_node(parser, &token);
-                    result->type = Ast_Return_Stmt;
-                    result->Return_Stmt.expr = parse_expression(parser, false);
-                } break;
+                }
             }
         }
     } else if (token.type == Token_Open_Brace) {

@@ -20,7 +20,6 @@ struct Symbol_Table {
 
 struct Interp {
     Symbol_Table* symbol_table;
-    Ast_Decl_Entry* decls;
     
     s32 block_depth;
     
@@ -87,3 +86,5 @@ Interp_Value interp_statement(Interp* interp, Ast* ast);
 Interp_Value interp_block(Interp* interp, Ast* ast);
 
 Type* interp_type(Interp* interp, Ast* ast);
+
+void interp_ast_declarations(Interp* interp, Ast_Decl_Entry* decls);

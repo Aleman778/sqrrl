@@ -30,6 +30,34 @@
 #undef assert
 #endif
 
+
+#undef INT_MIN
+#undef INT_MAX
+#undef UINT_MAX
+#undef CHAR_MIN
+#undef CHAR_MAX
+
+#define S8_MIN (-128)
+#define S8_MAX 127
+#define S16_MIN (-32768)
+#define S16_MAX 32767
+#define S32_MIN (-2147483647 - 1)
+#define S32_MAX 2147483647
+#define S64_MAX 9223372036854775807ll
+#define S64_MIN (-9223372036854775807ll - 1)
+#define INT_MIN S32_MIN
+#define INT_MAX S32_MAX
+#define U8_MAX 0xffU
+#define U16_MAX 0xffffU
+#define U32_MAX 0xffffffffU
+#define U64_MAX 0xffffffffffffffffull
+#define UINT_MAX U32_MAX
+#define BOOL_MAX S8_MAX
+#define BOOL_MIN S8_MIN
+#define CHAR_MAX U8_MAX
+#define CHAR_MIN 0U
+
+
 #if BUILD_DEBUG
 void
 __assert(cstr expression, cstr file, int line) {
@@ -158,8 +186,11 @@ string string_format(cstring format...);
 #define array_get_capacity(a) arrcap(a)
 #define array_count(a) arrlen(a)
 
+#define map_count(m) hmlen(m)
 #define map_put(m, k, v) hmput(m, k, v)
 #define map_get(m, k) hmget(m, k)
+
+#define string_map_count(m) shlen(m)
 #define string_map_put(m, k, v) shput(m, k, v)
 #define string_map_get(m, k) shget(m, k)
 #define string_map_new_arena(m) sh_new_arena(m)

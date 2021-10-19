@@ -1,23 +1,30 @@
 
+
+#define DEF_PRIMITIVE_TYPES \
+PRIMITIVE(int, 4, signed, INT_MAX, INT_MIN) \
+PRIMITIVE(s8, 1, signed, S8_MAX, S8_MIN) \
+PRIMITIVE(s16, 2, signed, S16_MAX, S16_MIN) \
+PRIMITIVE(s32, 4, signed, S32_MAX, S32_MIN) \
+PRIMITIVE(s64, 8, signed, S64_MAX, S64_MIN) \
+PRIMITIVE(smm, 0, signed, 0, 0) \
+PRIMITIVE(uint, 4, unsigned, UINT_MAX, 0) \
+PRIMITIVE(u8, 1, unsigned, U8_MAX, 0) \
+PRIMITIVE(u16, 2, unsigned, U16_MAX, 0) \
+PRIMITIVE(u32, 4, unsigned, U32_MAX, 0) \
+PRIMITIVE(u64, 8, unsigned, U64_MAX, 0) \
+PRIMITIVE(umm, 0, unsigned, 0, 0) \
+PRIMITIVE(f32, 4, signed, 0, 0) \
+PRIMITIVE(f64, 8, signed, 0, 0) \
+PRIMITIVE(char, 1, unsigned, CHAR_MAX, CHAR_MIN) \
+PRIMITIVE(string, 0, unsigned, 0, 0) \
+PRIMITIVE(bool, 1, signed, BOOL_MAX, BOOL_MIN) \
+PRIMITIVE(void, 0, unsigned, 0, 0)
+
+
 enum Primitive_Type_Kind {
-    PrimitiveTypeKind_int,
-    PrimitiveTypeKind_s8,
-    PrimitiveTypeKind_s16,
-    PrimitiveTypeKind_s32,
-    PrimitiveTypeKind_s64,
-    PrimitiveTypeKind_smm,
-    PrimitiveTypeKind_uint,
-    PrimitiveTypeKind_u8,
-    PrimitiveTypeKind_u16,
-    PrimitiveTypeKind_u32,
-    PrimitiveTypeKind_u64,
-    PrimitiveTypeKind_umm,
-    PrimitiveTypeKind_f32,
-    PrimitiveTypeKind_f64,
-    PrimitiveTypeKind_char,
-    PrimitiveTypeKind_string,
-    PrimitiveTypeKind_bool,
-    PrimitiveTypeKind_void
+#define PRIMITIVE(symbol, ...) PrimitiveTypeKind_##symbol,
+    DEF_PRIMITIVE_TYPES
+#undef PRIMITIVE
 };
 
 enum Type_Kind {
@@ -76,15 +83,15 @@ struct Type {
     s32 cached_align;
 };
 
-// TODO(alexander): thesea are globals for now, this code is temporary
-global Type_Table* global_type_table = 0;
-
-void
-put_type_definition(string_id ident, Type* type) {
-    map_put(global_type_table, ident, type);
-}
-
-Type*
-get_type_definition(string_id ident) {
-    return map_get(global_type_table, ident);
-}
+global Type global_primitive_types[] = {
+#define VAL(signedness, val) create_##signedness##_int_value(val)
+#define PRIMITIVE(symbol, size, sign, max, min) { \
+TypeKind_Primitive, { \
+PrimitiveTypeKind_##symbol, size, false, VAL(sign, max), VAL(sign, min)  \
+}, \
+size, size \
+},
+    DEF_PRIMITIVE_TYPES
+#undef PRIMITIVE
+#undef VAL
+};

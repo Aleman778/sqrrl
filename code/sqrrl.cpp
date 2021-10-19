@@ -52,7 +52,7 @@ compiler_main_entry(int argc, char* argv[]) {
     Ast_File ast_file = parse_file(&parser);
     
     Interp interp = {};
-    interp.decls = ast_file.decls;
+    interp_ast_declarations(&interp, ast_file.decls);
     Interp_Value result = interp_function_call(&interp, vars_save_string("main"));
     if (result.type == InterpValueType_Numeric) {
         pln("Interpreter exited with code %", f_int((int) result.value.signed_int));

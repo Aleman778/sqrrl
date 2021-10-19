@@ -160,7 +160,7 @@ inline Value
 create_signed_int_value(s64 value) {
     Value result;
     result.type = Value_signed_int;
-    result.signed_int = (u64) value;
+    result.signed_int = value;
     return result;
 }
 
@@ -168,7 +168,7 @@ inline Value
 create_unsigned_int_value(u64 value) {
     Value result;
     result.type = Value_unsigned_int;
-    result.unsigned_int = (u64) value;
+    result.unsigned_int = value;
     return result;
 }
 

@@ -159,7 +159,7 @@ interp_function_call(Interp* interp, string_id ident) {
     
     Interp_Value result = create_interp_value(interp);
     
-    Ast* decl = map_get(interp->decls, ident);
+    Ast* decl = 0; // TODO!
     if (decl) {
         decl = decl->Type_Decl.decl;
         if (decl->type == Ast_Decl_Stmt) {
@@ -199,10 +199,10 @@ interp_statement(Interp* interp, Ast* ast) {
     
     switch (ast->type) {
         case Ast_Assign_Stmt: {
-            Interp_Value expr = interp_expression(ast->Assign_Stmt.expr);
+            Interp_Value expr = interp_expression(interp, ast->Assign_Stmt.expr);
             Type* type = interp_type(interp, ast->Assign_Stmt.type);
             string_id ident = ast->Assign_Stmt.ident->Ident;
-            Value* value = symbol_table_store_value();
+            Value* value = symbol_table_store_value(interp->symbol_table, &interp->stack, ident);
         } break;
         
         case Ast_Expr_Stmt: {
@@ -288,4 +288,20 @@ interp_type(Interp* interp, Ast* ast) {
     }
     
     return result;
+}
+
+void
+interp_register_primitive_types(Interp* interp) {
+}
+
+void
+interp_ast_declarations(Interp* interp, Ast_Decl_Entry* decls) {
+    for (int i = 0; i < map_count(decls); i++) {
+        Ast_Decl_Entry decl = decls[0];
+        Type* type = interp_type(interp, decl.value);
+        Entity entity;
+        entity.kind = EntityKind_Type;
+        entity.type = type;
+        map_put(interp->symbol_table, decl.key, entity);
+    }
 }

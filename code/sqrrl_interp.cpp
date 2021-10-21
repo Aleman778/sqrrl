@@ -156,16 +156,14 @@ interp_expression(Interp* interp, Ast* ast) {
 
 Interp_Value
 interp_function_call(Interp* interp, string_id ident) {
-    
     Interp_Value result = create_interp_value(interp);
     
-    Ast* decl = 0; // TODO!
-    if (decl) {
-        decl = decl->Type_Decl.decl;
-        if (decl->type == Ast_Decl_Stmt) {
-            Ast* type = decl->Decl_Stmt.type;
-            if (type->type == Ast_Function_Type) {
-                decl = decl->Decl_Stmt.decl;
+    Type* decl_type = symbol_table_resolve_type(interp->symbol_table, ident);
+    if (decl_type) {
+        
+        if (decl_type->kind == TypeKind_Function) {
+            Ast* block = decl_type->Function.block;
+            if (block) {
                 
                 // Save sold base pointer on the stack
                 smm new_base = interp->stack_pointer;
@@ -173,13 +171,14 @@ interp_function_call(Interp* interp, string_id ident) {
                 *old_base = interp->base_pointer;
                 interp->base_pointer = new_base;
                 
-                result = interp_statement(interp, decl);
+                result = interp_statement(interp, block);
                 // TODO(alexander): only write to result if it is an actual return value!
                 
                 interp->stack_pointer = interp->base_pointer;
                 interp->base_pointer = *(smm*) ((u8*) interp->stack.base + interp->base_pointer);
             } else {
-                interp_error(interp, string_format("`%` is not a function", f_string(vars_load_string(ident))));
+                // TODO(Alexander): this is not supposed to ever be the case, maybe assert instead!
+                interp_error(interp, string_format("`%` function has no definition", f_string(vars_load_string(ident))));
             }
         } else {
             interp_error(interp, string_format("`%` is not a function", f_string(vars_load_string(ident))));

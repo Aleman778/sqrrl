@@ -41,6 +41,9 @@ enum Type_Kind {
 
 typedef struct { string_id key; Type* value; } Type_Table;
 
+// NOTE(Alexander): forward declare
+struct Ast;
+
 struct Type {
     Type_Kind kind;
     union {
@@ -72,6 +75,7 @@ struct Type {
         struct {
             Type_Table arguments;
             Type* return_value;
+            Ast* block;
         } Function;
         
         struct {

@@ -148,6 +148,17 @@ value_to_u64(Value value) {
     }
 }
 
+// TODO(Alexander): add more types, via macro
+inline smm
+value_to_smm(Value value) {
+    switch (value.type) {
+        case Value_boolean: return value.boolean == true ? 1 : 0;
+        case Value_signed_int: return (smm) value.signed_int;
+        case Value_floating: return (smm) value.floating;
+        default: return (smm) value.unsigned_int;
+    }
+}
+
 inline Value
 create_boolean_value(bool value) {
     Value result;

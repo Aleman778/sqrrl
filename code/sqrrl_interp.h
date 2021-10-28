@@ -24,7 +24,6 @@ struct Interp {
     s32 block_depth;
     
     Arena stack;
-    smm stack_pointer;
     smm base_pointer;
 };
 
@@ -65,13 +64,6 @@ interp_error(Interp* interp, string message) {
 inline void
 interp_unresolved_identifier_error(Interp* interp, string_id ident) {
     interp_error(interp, string_format("unresolved identifier `%`", f_string(vars_load_string(ident))));
-}
-
-inline void*
-interp_stack_push(Interp* interp, smm size) {
-    void* memory = arena_push_size(&interp->stack, size, 1);
-    interp->stack_pointer += size;
-    return memory;
 }
 
 inline Entity symbol_table_resolve_identifier(Symbol_Table* table, string_id ident);

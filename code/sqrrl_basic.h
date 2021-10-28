@@ -185,6 +185,7 @@ string string_format(cstring format...);
 #define array_set_capacity(a, c) arrsetcap(a, c)
 #define array_get_capacity(a) arrcap(a)
 #define array_count(a) arrlen(a)
+#define array_set_count(a, c) arrsetlen(a, c)
 
 #define map_count(m) hmlen(m)
 #define map_put(m, k, v) hmput(m, k, v)

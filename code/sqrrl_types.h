@@ -57,7 +57,7 @@ struct Type {
         
         struct {
             Type* type;
-            smm capacity;
+            smm capacity; // zero 
         } Array;
         
         struct {
@@ -73,14 +73,13 @@ struct Type {
         } Union;
         
         struct {
-            Type_Table arguments;
+            Type_Table* arguments;
             Type* return_value;
             Ast* block;
+            string_id ident;
         } Function;
         
-        struct {
-            Type* type;
-        } Pointer;
+        Type* Pointer;
     };
     
     s32 cached_size;

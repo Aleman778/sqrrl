@@ -947,8 +947,8 @@ parse_top_level_declaration(Parser* parser) {
     Token peek = peek_token(parser);
     Ast* decl = push_ast_node(parser, &peek);
     
-    decl->type = Ast_Type_Decl;
-    decl->Type_Decl.mods = AstDeclModifier_None;
+    decl->type = Ast_Decl;
+    decl->Decl.mods = AstDeclModifier_None;
     result.value = decl;
     
     while (true) {
@@ -964,31 +964,31 @@ parse_top_level_declaration(Parser* parser) {
             case Kw_inline: {
                 next_token(parser);
                 // TODO(alexander): check if we already have inline/no_inline bit set
-                decl->Type_Decl.mods |= AstDeclModifier_Inline;
+                decl->Decl.mods |= AstDeclModifier_Inline;
             } break;
             
             case Kw_no_inline: {
                 next_token(parser);
                 // TODO(alexander): check if we already have inline/no_inline bit set
-                decl->Type_Decl.mods |= AstDeclModifier_No_Inline;
+                decl->Decl.mods |= AstDeclModifier_No_Inline;
             } break;
             
             // TODO(alexander): we might want to change this to annotation syntax
             case Kw_internal: {
                 next_token(parser);
                 // TODO(alexander): check if we already have internal bit set
-                decl->Type_Decl.mods |= AstDeclModifier_Internal;
+                decl->Decl.mods |= AstDeclModifier_Internal;
             } break;
             
             case Kw_global: {
                 next_token(parser);
                 // TODO(alexander): check if we already have global bit set
-                decl->Type_Decl.mods |= AstDeclModifier_Global;
+                decl->Decl.mods |= AstDeclModifier_Global;
             } break;
             
             default: {
                 Ast* decl_stmt = parse_statement(parser);
-                decl->Type_Decl.decl = decl_stmt;
+                decl->Decl.stmt = decl_stmt;
                 
                 // TODO(alexander): report error
                 if (decl_stmt->type < Ast_Stmt_Begin && decl_stmt->type > Ast_Stmt_End) {
@@ -1004,7 +1004,7 @@ parse_top_level_declaration(Parser* parser) {
                     Ast* node = decl_stmt->children[i];
                     if (!node) continue;
                     if (node->type == Ast_Ident) {
-                        decl->Type_Decl.ident = node;
+                        decl->Decl.ident = node;
                         result.key = node->Ident;
                         return result;
                     }

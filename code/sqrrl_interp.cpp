@@ -166,15 +166,15 @@ interp_function_call(Interp* interp, string_id ident) {
             if (block) {
                 
                 // Save sold base pointer on the stack
-                smm new_base = interp->stack_pointer;
-                smm* old_base = (smm*) interp_stack_push(interp, sizeof(smm));
+                smm new_base = interp->stack.curr_used;
+                smm* old_base = (smm*) arena_push_size(&interp->stack, sizeof(smm));
                 *old_base = interp->base_pointer;
                 interp->base_pointer = new_base;
                 
                 result = interp_statement(interp, block);
                 // TODO(alexander): only write to result if it is an actual return value!
                 
-                interp->stack_pointer = interp->base_pointer;
+                interp->stack.curr_used = interp->base_pointer;
                 interp->base_pointer = *(smm*) ((u8*) interp->stack.base + interp->base_pointer);
             } else {
                 // TODO(Alexander): this is not supposed to ever be the case, maybe assert instead!
@@ -268,6 +268,8 @@ interp_block(Interp* interp, Ast* ast) {
 Type*
 interp_type(Interp* interp, Ast* ast) {
     assert(is_ast_type(ast));
+    // TODO(Alexander): right now we store types on the stack, maybe use separate storage?
+    // since this will likely get used elsewhere in the system.
     
     Type* result = 0;
     switch (ast->type) {
@@ -282,7 +284,79 @@ interp_type(Interp* interp, Ast* ast) {
         } break;
         
         case Ast_Array_Type: {
-            //Type type = interp_type();
+            Type* elem_type = interp_type(interp, ast->Array_Type.elem_type);
+            result = arena_push_struct(&interp->stack, Type);
+            result->kind = TypeKind_Array;
+            result->Array.type = elem_type;
+            // TODO(Alexander): what is the shape, expression, I assume right now it's an integer?
+            Interp_Value capacity = interp_expression(interp, ast->Array_Type.shape); 
+            if (capacity.type == InterpValueType_Numeric) {
+                result->Array.capacity= value_to_smm(capacity.value);
+            } else {
+                result->Array.capacity = 0;
+            }
+        } break;
+        
+        
+        case Ast_Pointer_Type: {
+            result = arena_push_struct(&interp->stack, Type);
+            result->kind = TypeKind_Pointer;
+            result->Pointer = interp_type(interp, ast->Pointer_Type);
+        } break;
+        
+        case Ast_Tuple_Type: {
+            // TODO(Alexander): implement this
+            assert(0);
+        } break;
+        
+        case Ast_Infer_Type: {
+            // TODO(Alexander): implement this
+            assert(0);
+        } break;
+        
+        case Ast_Function_Type: {
+            
+            result = arena_push_struct(&interp->stack, Type);
+            result->kind = TypeKind_Function;
+            
+            // NOTE(Alexander): Loads in the function arguments
+            Ast* compount = ast->Function_Type.arg_types;
+            while (compount && compount->type == Ast_Compound) {
+                Ast* argument = compount->Compound.node;
+                compount = compount->Compound.next;
+                assert(argument->type == Ast_Argument);
+                
+                Type* type = interp_type(interp, argument->Argument.type);
+                string_id ident = argument->Argument.ident->Ident;
+                
+                // TODO(Alexander): NEED TO HANDLE THE TYPE TABLE HASH MAP MEMORY
+                map_put(result->Function.arguments, ident, type);
+            }
+            
+            result->Function.return_value = interp_type(interp, ast->Function_Type.return_type);
+            assert(ast->Function_Type.ident && ast->Function_Type.ident->type == Ast_Ident);
+            result->Function.ident = ast->Function_Type.ident->Ident;
+        } break;
+        
+        case Ast_Struct_Type: {
+            Ast* compount = ast->Function_Type.arg_types;
+            while (compount && compount->type == Ast_Compound) {
+                Ast* argument = compount->Compound.node;
+                compount = compount->Compound.next;
+                assert(argument->type == Ast_Argument);
+            }
+        } break;
+        
+        case Ast_Union_Type: {
+            
+        } break;
+        
+        case Ast_Enum_Type: {
+            
+        } break;
+        
+        case Ast_Typedef: {
+            result = interp_type(interp, ast->Typedef.type);
         } break;
     }
     
@@ -291,16 +365,55 @@ interp_type(Interp* interp, Ast* ast) {
 
 void
 interp_register_primitive_types(Interp* interp) {
+    for (int i = 0; i < fixed_array_count(global_primitive_types); i++) {
+        Type* type = &global_primitive_types[i];
+        string_id ident = (string_id) (Kw_int + type->Primitive.kind);
+        Entity entity;
+        entity.kind = EntityKind_Type;
+        entity.type = type;
+        map_put(interp->symbol_table, ident, entity);
+    }
 }
 
 void
 interp_ast_declarations(Interp* interp, Ast_Decl_Entry* decls) {
+    Ast** interp_statements = 0;
+    
     for (int i = 0; i < map_count(decls); i++) {
-        Ast_Decl_Entry decl = decls[0];
-        Type* type = interp_type(interp, decl.value);
-        Entity entity;
-        entity.kind = EntityKind_Type;
-        entity.type = type;
-        map_put(interp->symbol_table, decl.key, entity);
+        Ast_Decl_Entry decl = decls[i];
+        assert(decl.value->type == Ast_Type_Decl);
+        Ast* stmt = decl.value->Decl.stmt;
+        
+        Entity entity = {};
+        if (stmt->type == Ast_Decl_Stmt) {
+            Type* type = interp_type(interp, stmt->Decl_Stmt.type);
+            if (type->kind == TypeKind_Function) {
+                type->Function.block = stmt;
+            }
+            entity.kind = EntityKind_Type;
+            entity.type = type;
+            map_put(interp->symbol_table, decl.key, entity);
+        }
+    }
+    
+    // HACK(alexander): this should be merged with the loop above,
+    // but for the time being we don't want to run any code before injecting the types.
+    for (int i = 0; i < map_count(decls); i++) {
+        Ast_Decl_Entry decl = decls[i];
+        assert(decl.value->type == Ast_Type_Decl);
+        Ast* stmt = decl.value->Decl.stmt;
+        
+        Entity entity = {};
+        if (stmt->type != Ast_Decl_Stmt) {
+            Interp_Value interp_result = interp_statement(interp, stmt);
+            if (interp_result.type != InterpValueType_Void) {
+                Value* value = arena_push_struct(&interp->stack, Value);
+                *value = interp_result.value;
+                
+                entity.kind = EntityKind_Value;
+                entity.value = value;
+                map_put(interp->symbol_table, decl.key, entity);
+            }
+        }
     }
 }

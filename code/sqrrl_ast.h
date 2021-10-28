@@ -5,6 +5,11 @@ AST_GROUP(None,        "none")                  \
 AST(Abi,               "abi", string)           \
 AST(Value,             "value", Value)          \
 AST(Ident,             "identifier", string_id) \
+AST(Decl, "top level declaration", struct {  \
+Ast* ident;                                     \
+Ast* stmt;                                      \
+Ast_Decl_Modifier mods;                         \
+})                                              \
 AST(Argument,          "argument", struct {     \
 Ast* type;                                      \
 Ast* ident;                                     \
@@ -76,7 +81,7 @@ Ast* ident;                                     \
 AST(Continue_Stmt,     "continue", struct {     \
 Ast* ident;                                     \
 })                                              \
-AST(Decl_Stmt, "declaration", struct {          \
+AST(Decl_Stmt,         "declaration", struct {  \
 Ast* ident;                                     \
 Ast* type;                                      \
 Ast* decl;                                      \
@@ -139,14 +144,7 @@ AST(Typedef,           "typedef", struct {      \
 Ast* type;                                      \
 Ast* ident;                                     \
 })                                              \
-AST_GROUP(Type_End,    "type")                  \
-AST_GROUP(Decl_Begin,  "declaration")           \
-AST(Type_Decl,         "type", struct {         \
-Ast* ident;                                     \
-Ast* decl;                                      \
-Ast_Decl_Modifier mods;                         \
-})                                              \
-AST_GROUP(Decl_End,    "declaration")
+AST_GROUP(Type_End,    "type")
 
 global cstring ast_strings[] = {
 #define AST(symbol, name, decl) name,
@@ -257,6 +255,11 @@ struct Ast_File {
 };
 
 inline bool
+is_ast_decl(Ast* ast) {
+    return ast->type == Ast_Decl;
+}
+
+inline bool
 is_ast_expr(Ast* ast) {
     return ast->type > Ast_Expr_Begin && ast->type < Ast_Expr_End;
 }
@@ -269,11 +272,6 @@ is_ast_stmt(Ast* ast) {
 inline bool
 is_ast_type(Ast* ast) {
     return ast->type > Ast_Type_Begin && ast->type < Ast_Type_End;
-}
-
-inline bool
-is_ast_decl(Ast* ast) {
-    return ast->type > Ast_Decl_Begin && ast->type < Ast_Decl_End;
 }
 
 void
@@ -305,22 +303,22 @@ print_ast(Ast* node, Tokenizer* tokenizer, u32 spacing=0) {
         printf("(%s)", binary_op_strings[node->Binary_Expr.op]);
         print_ast(node->Binary_Expr.first, tokenizer, spacing);
         print_ast(node->Binary_Expr.second, tokenizer, spacing);
-    } else if (node->type == Ast_Type_Decl) {
+    } else if (node->type == Ast_Decl) {
         printf("( ");
-        if (is_bitflag_set(node->Type_Decl.mods, AstDeclModifier_Inline)) {
+        if (is_bitflag_set(node->Decl.mods, AstDeclModifier_Inline)) {
             printf("inline ");
         }
-        if (is_bitflag_set(node->Type_Decl.mods, AstDeclModifier_No_Inline)) {
+        if (is_bitflag_set(node->Decl.mods, AstDeclModifier_No_Inline)) {
             printf("no_inline ");
         }
-        if (is_bitflag_set(node->Type_Decl.mods, AstDeclModifier_Internal)) {
+        if (is_bitflag_set(node->Decl.mods, AstDeclModifier_Internal)) {
             printf("internal ");
         }
-        if (is_bitflag_set(node->Type_Decl.mods, AstDeclModifier_Global)) {
+        if (is_bitflag_set(node->Decl.mods, AstDeclModifier_Global)) {
             printf("global ");
         }
         printf(")");
-        print_ast(node->Type_Decl.decl, tokenizer, spacing);
+        print_ast(node->Decl.stmt, tokenizer, spacing);
     } else {
         // otherwise parse all possible children
         print_ast(node->children[0], tokenizer, spacing);

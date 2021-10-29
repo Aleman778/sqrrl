@@ -202,6 +202,7 @@ interp_statement(Interp* interp, Ast* ast) {
             Type* type = interp_type(interp, ast->Assign_Stmt.type);
             string_id ident = ast->Assign_Stmt.ident->Ident;
             Value* value = symbol_table_store_value(interp->symbol_table, &interp->stack, ident);
+            *value = expr.value;
         } break;
         
         case Ast_Expr_Stmt: {
@@ -265,6 +266,30 @@ interp_block(Interp* interp, Ast* ast) {
     return result;
 }
 
+
+internal Type_Table*
+interp_formal_arguments(Interp* interp, Ast* arguments) {
+    Type_Table* result = 0;
+    while (arguments && arguments->type == Ast_Compound) {
+        Ast* argument = arguments->Compound.node;
+        arguments = arguments->Compound.next;
+        assert(argument->type == Ast_Argument);
+        
+        
+        if (!argument->Argument.type) {
+            break;
+        }
+        
+        Type* type = interp_type(interp, argument->Argument.type);
+        string_id ident = argument->Argument.ident->Ident;
+        
+        // TODO(Alexander): NEED TO HANDLE THE TYPE TABLE HASH MAP MEMORY
+        map_put(result, ident, type);
+    }
+    
+    return result;
+}
+
 Type*
 interp_type(Interp* interp, Ast* ast) {
     assert(is_ast_type(ast));
@@ -306,12 +331,12 @@ interp_type(Interp* interp, Ast* ast) {
         
         case Ast_Tuple_Type: {
             // TODO(Alexander): implement this
-            assert(0);
+            assert(0 && "unimplemented");
         } break;
         
         case Ast_Infer_Type: {
             // TODO(Alexander): implement this
-            assert(0);
+            assert(0 && "unimplemented");
         } break;
         
         case Ast_Function_Type: {
@@ -320,18 +345,7 @@ interp_type(Interp* interp, Ast* ast) {
             result->kind = TypeKind_Function;
             
             // NOTE(Alexander): Loads in the function arguments
-            Ast* compount = ast->Function_Type.arg_types;
-            while (compount && compount->type == Ast_Compound) {
-                Ast* argument = compount->Compound.node;
-                compount = compount->Compound.next;
-                assert(argument->type == Ast_Argument);
-                
-                Type* type = interp_type(interp, argument->Argument.type);
-                string_id ident = argument->Argument.ident->Ident;
-                
-                // TODO(Alexander): NEED TO HANDLE THE TYPE TABLE HASH MAP MEMORY
-                map_put(result->Function.arguments, ident, type);
-            }
+            result->Function.arguments = interp_formal_arguments(interp, ast->Function_Type.arg_types);
             
             result->Function.return_value = interp_type(interp, ast->Function_Type.return_type);
             assert(ast->Function_Type.ident && ast->Function_Type.ident->type == Ast_Ident);
@@ -339,20 +353,20 @@ interp_type(Interp* interp, Ast* ast) {
         } break;
         
         case Ast_Struct_Type: {
-            Ast* compount = ast->Function_Type.arg_types;
-            while (compount && compount->type == Ast_Compound) {
-                Ast* argument = compount->Compound.node;
-                compount = compount->Compound.next;
-                assert(argument->type == Ast_Argument);
-            }
+            result = arena_push_struct(&interp->stack, Type);
+            result->kind = TypeKind_Struct;
+            result->Struct.fields = interp_formal_arguments(interp, ast->Struct_Type.fields);
         } break;
         
         case Ast_Union_Type: {
-            
+            result = arena_push_struct(&interp->stack, Type);
+            result->kind = TypeKind_Union;
+            result->Union.fields = interp_formal_arguments(interp, ast->Union_Type.fields);
         } break;
         
         case Ast_Enum_Type: {
-            
+            // TODO(Alexander): implement this
+            assert(0 && "unimplemented");
         } break;
         
         case Ast_Typedef: {
@@ -388,7 +402,7 @@ interp_ast_declarations(Interp* interp, Ast_Decl_Entry* decls) {
         if (stmt->type == Ast_Decl_Stmt) {
             Type* type = interp_type(interp, stmt->Decl_Stmt.type);
             if (type->kind == TypeKind_Function) {
-                type->Function.block = stmt;
+                type->Function.block = stmt->Decl_Stmt.decl;;
             }
             entity.kind = EntityKind_Type;
             entity.type = type;

@@ -57,7 +57,7 @@ struct Type {
         
         struct {
             Type* type;
-            smm capacity; // zero 
+            smm capacity; // zero means infinite
         } Array;
         
         struct {
@@ -65,12 +65,17 @@ struct Type {
         } Tuple;
         
         struct {
-            Type_Table fields;
+            Type_Table* fields;
         } Struct;
         
         struct {
-            Type_Table fields;
+            Type_Table* fields;
         } Union;
+        
+        struct {
+            Type* type;
+            Value* values;
+        } Enum;
         
         struct {
             Type_Table* arguments;

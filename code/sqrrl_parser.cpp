@@ -1020,7 +1020,7 @@ parse_top_level_declaration(Parser* parser) {
 }
 
 Ast_File
-parse_file(Parser* parser) {
+parse_file(Parser* parser, bool print_resulting_ast=false) {
     Ast_File result = {};
     
     
@@ -1034,7 +1034,9 @@ parse_file(Parser* parser) {
         update_span(parser, decl.value);
         
         map_put(result.decls, decl.key, decl.value);
-        print_ast(decl.value, parser->tokenizer);
+        if (print_resulting_ast) {
+            print_ast(decl.value, parser->tokenizer);
+        }
     }
     
     return result;

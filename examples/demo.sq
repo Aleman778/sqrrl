@@ -6,12 +6,6 @@ struct v2 {
 
 global s32 timer = 0;
 
-int main(str[] args) {
-    s32 x = 10;
-    return x;
-}
-
-
 void variable_assignment() {
     // Assigning variables
     s32 points = 10;  // 32-bit (s)igned integer
@@ -24,9 +18,9 @@ void variable_assignment() {
     s32 points2;
 
     points2 = 0;
-    
-    
-    
-    
-    
+}
+
+int main(string[] args) {
+    s32 x = 10;
+    return x;
 }

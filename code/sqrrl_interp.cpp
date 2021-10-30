@@ -94,6 +94,52 @@ interp_expression(Interp* interp, Ast* ast) {
         case Ast_Binary_Expr: {
             Interp_Value first_op = interp_expression(interp, ast->Binary_Expr.first);
             Interp_Value second_op = interp_expression(interp, ast->Binary_Expr.second);
+            
+            // TODO(Alexander): check illegal types such as arrays and struct literals!
+            
+            if (first_op.type  == InterpValueType_Numeric &&
+                second_op.type == InterpValueType_Numeric) {
+                
+                Value first = first_op.value;
+                Value second = second_op.value;
+                
+                // NOTE(Alexander): Type rules
+                // int + int;
+                // float + int -> float + float;
+                // int + float -> float + float;
+                // float -x-> int (is a no no has to be explicit cast)
+                
+                
+                if (is_floating(first) || is_floating(second)) {
+                    // NOTE(Alexander): Make sure both types are floating
+                    if (is_integer(first)) {
+                        first.type = Value_floating;
+                        first.floating  = value_to_f64(first);
+                    }
+                    if (is_integer(second)) {
+                        second.type = Value_floating;
+                        second.floating = value_to_f64(second);
+                    }
+                    
+                    first.floating = value_floating_binary_operation(first, second, ast->Binary_Expr.op);
+                    
+                    // TODO(Alexander): for assign update memory
+                    result.type = InterpValueType_Numeric;
+                    result.value = first;
+                } else if (is_integer(first) || is_integer(second)) {
+                    // NOTE(Alexander): integer math
+                    
+                    first.signed_int = value_integer_binary_operation(first, second, ast->Binary_Expr.op);
+                    
+                    // TODO(Alexander): for assign update memory
+                    result.type = InterpValueType_Numeric;
+                    result.value = first;
+                } else {
+                    interp_error(interp, "type error: mismatched types");
+                }
+            } else {
+                interp_error(interp, "type error: expected numeric value");
+            }
         } break;
         
         case Ast_Ternary_Expr: {

@@ -51,14 +51,24 @@ compiler_main_entry(int argc, char* argv[]) {
     parser.tokenizer = &tokenizer;
     Ast_File ast_file = parse_file(&parser, false);
     
+    if (ast_file.error_count > 0) {
+        pln("\nErrors found during parsing, exiting...\n");
+        return 0;
+    }
+    
     // NOTE(Alexander): Interpreter pass
     Interp interp = {};
     interp_register_primitive_types(&interp);
     interp_ast_declarations(&interp, ast_file.decls);
     Interp_Value result = interp_function_call(&interp, vars_save_string("main"));
     if (result.type == InterpValueType_Numeric) {
-        pln("Interpreter exited with code %", f_int((int) result.value.signed_int));
+        if (is_integer(result.value)) {
+            pln("Interpreter exited with code %", f_int((int) result.value.signed_int));
+        } else {
+            pln("Interpreter exited with code 0");
+        }
     }
+    
     
     return 0;
 }

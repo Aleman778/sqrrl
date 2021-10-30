@@ -5,7 +5,7 @@ UNOP(Negate,      "-") \
 UNOP(Not,         "!") \
 UNOP(Bitwise_Not, "~") \
 UNOP(Address_Of,  "&") \
-UNOP(Dereference,   "*")
+UNOP(Dereference, "*")
 
 #define DEF_BINARY_OPS \
 BINOP(None,               "",   0,  Assoc_Left) \
@@ -114,8 +114,7 @@ struct Array_Value {
 };
 
 // TODO(alexander): add more value types
-typedef s32 Value_Type;
-enum {
+enum Value_Type {
     Value_boolean,
     Value_signed_int,
     Value_unsigned_int,
@@ -138,12 +137,26 @@ struct Value {
     };
 };
 
+inline bool
+is_integer(Value value) {
+    return value.type == Value_boolean   ||
+        value.type == Value_signed_int   ||
+        value.type == Value_unsigned_int ||
+        value.type == Value_pointer;
+}
+
+inline bool
+is_floating(Value value) {
+    return value.type == Value_floating;
+}
+
 inline u64
 value_to_u64(Value value) {
     switch (value.type) {
         case Value_boolean: return value.boolean == true ? 1 : 0;
         case Value_signed_int: return (u64) value.signed_int;
         case Value_floating: return (u64) value.floating;
+        case Value_pointer: return (u64) value.pointer.address;
         default: return (u64) value.unsigned_int;
     }
 }
@@ -155,9 +168,172 @@ value_to_smm(Value value) {
         case Value_boolean: return value.boolean == true ? 1 : 0;
         case Value_signed_int: return (smm) value.signed_int;
         case Value_floating: return (smm) value.floating;
+        case Value_pointer: return value.pointer.address;
         default: return (smm) value.unsigned_int;
     }
 }
+
+inline f64
+value_to_f64(Value value) {
+    switch (value.type) {
+        case Value_boolean: return value.boolean == true ? 1.0 : 0.0;
+        case Value_signed_int: return (f64) value.signed_int;
+        case Value_unsigned_int: return (f64) value.unsigned_int;
+        case Value_pointer: return (f64) value.pointer.address;
+        default: return value.floating;
+    }
+}
+
+inline s64
+value_integer_binary_operation(Value first, Value second, Binary_Op op) {
+    switch (op) {
+        case BinaryOp_Multiply: 
+        case BinaryOp_Multiply_Assign: {
+            return first.signed_int * second.signed_int;
+        }
+        
+        case BinaryOp_Divide:
+        case BinaryOp_Divide_Assign:{
+            return first.signed_int / second.signed_int;
+        }
+        
+        case BinaryOp_Modulo:
+        case BinaryOp_Modulo_Assign:{
+            return first.signed_int % second.signed_int;
+        }
+        
+        case BinaryOp_Add:
+        case BinaryOp_Add_Assign:{
+            return first.signed_int + second.signed_int;
+        }
+        
+        case BinaryOp_Subtract:
+        case BinaryOp_Subtract_Assign:{
+            return first.signed_int - second.signed_int;
+        }
+        
+        case BinaryOp_Shift_Left:
+        case BinaryOp_Shift_Left_Assign: {
+            return first.signed_int << second.signed_int;
+        }
+        
+        case BinaryOp_Shift_Right:
+        case BinaryOp_Shift_Right_Assign:{
+            return first.signed_int >> second.signed_int;
+        }
+        
+        
+        case BinaryOp_Bitwise_And:
+        case BinaryOp_Bitwise_And_Assign:{
+            return first.signed_int & second.signed_int;
+        }
+        
+        case BinaryOp_Bitwise_Or:
+        case BinaryOp_Bitwise_Or_Assign:{
+            return first.signed_int | second.signed_int;
+        }
+        
+        case BinaryOp_Bitwise_Xor:
+        case BinaryOp_Bitwise_Xor_Assign:{
+            return first.signed_int ^ second.signed_int;
+        }
+        
+        case BinaryOp_Less_Than: {
+            return first.signed_int < second.signed_int;
+        }
+        
+        case BinaryOp_Less_Equals: {
+            return first.signed_int <= second.signed_int;
+        }
+        
+        case BinaryOp_Greater_Than: {
+            return first.signed_int > second.signed_int;
+        }
+        
+        case BinaryOp_Greater_Equals: {
+            return first.signed_int >= second.signed_int;
+        }
+        
+        case BinaryOp_Equals: {
+            return first.signed_int == second.signed_int;
+        }
+        
+        case BinaryOp_Not_Equals: {
+            return first.signed_int != second.signed_int;
+        }
+        
+        case BinaryOp_Assign: {
+            return second.signed_int;
+        }
+        
+        default: {
+            assert(0 && "unimplemented");
+        }
+    }
+    
+    return 0;
+}
+
+
+inline f64
+value_floating_binary_operation(Value first, Value second, Binary_Op op) {
+    switch (op) {
+        case BinaryOp_Multiply: 
+        case BinaryOp_Multiply_Assign: {
+            return first.floating * second.floating;
+        }
+        
+        case BinaryOp_Divide:
+        case BinaryOp_Divide_Assign:{
+            return first.floating / second.floating;
+        }
+        
+        case BinaryOp_Add:
+        case BinaryOp_Add_Assign:{
+            return first.floating + second.floating;
+        }
+        
+        case BinaryOp_Subtract:
+        case BinaryOp_Subtract_Assign:{
+            return first.floating - second.floating;
+        }
+        
+        case BinaryOp_Less_Than: {
+            return first.floating < second.floating;
+        }
+        
+        case BinaryOp_Less_Equals: {
+            return first.floating <= second.floating;
+        }
+        
+        case BinaryOp_Greater_Than: {
+            return first.floating > second.floating;
+        }
+        
+        case BinaryOp_Greater_Equals: {
+            return first.floating >= second.floating;
+        }
+        
+        case BinaryOp_Equals: {
+            return first.floating == second.floating;
+        }
+        
+        case BinaryOp_Not_Equals: {
+            return first.floating != second.floating;
+        }
+        
+        case BinaryOp_Assign: {
+            return second.floating;
+        }
+        
+        default: {
+            assert(0 && "unimplemented");
+        }
+    }
+    
+    return 0;
+}
+
 
 inline Value
 create_boolean_value(bool value) {

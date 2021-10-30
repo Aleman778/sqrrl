@@ -2,6 +2,7 @@
 // Predefined keywords variables that are reserved by the compiler.
 #define DEF_VARS  \
 VAR(invalid)  \
+VAR(asm)      \
 VAR(break)    \
 VAR(cast)     \
 VAR(continue) \

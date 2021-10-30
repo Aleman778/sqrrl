@@ -10,7 +10,7 @@ void variable_assignment() {
     // Assigning variables
     s32 points = 10;  // 32-bit (s)igned integer
     u32 counter = 24; // 32-bit (u)nsigned integer
-    f32 value = 0.64; // 32-bit (f)loating point number
+    f32 value = 0.64; // 32-bit (f)loating point numberca
     // pln("%\n%\n%", #points, #counter, #value); // printing the result
     // NOTE: There also exists 8-bit, 16-bit, 64-bit and CPU architecture dependant variants
 
@@ -20,7 +20,8 @@ void variable_assignment() {
     points2 = 0;
 }
 
-int main(string[] args) {
-    s32 x = 10;
-    return x;
+int
+main(string[] args) {
+    int x = 10 + 10;
+    return x / 10;
 }

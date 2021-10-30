@@ -1039,6 +1039,7 @@ parse_file(Parser* parser, bool print_resulting_ast=false) {
         }
     }
     
+    result.error_count = parser->error_count;
     return result;
 }
 

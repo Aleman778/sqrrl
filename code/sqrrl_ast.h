@@ -252,6 +252,7 @@ struct Ast_Decl_Entry {
 
 struct Ast_File {
     Ast_Decl_Entry* decls;
+    s32 error_count;
 };
 
 inline bool

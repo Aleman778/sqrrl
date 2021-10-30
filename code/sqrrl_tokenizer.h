@@ -78,15 +78,13 @@ global cstring token_type_strings[] = {
 #undef TOKEN
 };
 
-typedef s32 Token_Type;
-enum {
+enum Token_Type {
 #define TOKEN(name, str) Token_##name,
     DEF_TOKEN_TYPES
 #undef TOKEN
 };
 
-typedef s32 Int_Base;
-enum {
+enum Int_Base {
     IntBase_Decimal,
     IntBase_Binary,
     IntBase_Octal,

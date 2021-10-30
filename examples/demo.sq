@@ -1,27 +1,6 @@
 
-struct v2 {
-  f32 x;
-  f32 y;
-}
-
-global s32 timer = 0;
-
-void variable_assignment() {
-    // Assigning variables
-    s32 points = 10;  // 32-bit (s)igned integer
-    u32 counter = 24; // 32-bit (u)nsigned integer
-    f32 value = 0.64; // 32-bit (f)loating point numberca
-    // pln("%\n%\n%", #points, #counter, #value); // printing the result
-    // NOTE: There also exists 8-bit, 16-bit, 64-bit and CPU architecture dependant variants
-
-    // Declaring variables without assignment
-    s32 points2;
-
-    points2 = 0;
-}
-
 int
 main(string[] args) {
     int x = 10 + 10;
-    return x / 10;
+    return x > 10 ? 10 : x + 30 > 10 ? 33 : 44;
 }

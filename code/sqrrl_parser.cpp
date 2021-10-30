@@ -436,15 +436,6 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec) {
             lhs_expr->Field_Expr.field = parse_expression(parser);
         } break;
         
-        case Token_Question: {
-            next_token(parser);
-            lhs_expr = push_ast_node(parser);
-            lhs_expr->type = Ast_Ternary_Expr;
-            lhs_expr->Ternary_Expr.first = atom_expr;
-            lhs_expr->Ternary_Expr.second = parse_expression(parser);
-            lhs_expr->Ternary_Expr.third = parse_expression(parser);
-        } break;
-        
         case Token_Open_Paren: {
             lhs_expr = push_ast_node(parser);
             lhs_expr->type = Ast_Call_Expr;
@@ -478,9 +469,19 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec) {
     
     // Parse binary expression using precedence climbing, is applicable
     Binary_Op binary_op = parse_binary_op(parser);
-    while (binary_op) {
-        u8 prec = binary_get_prec(binary_op);
-        Assoc assoc = binary_get_assoc(binary_op);
+    token = peek_token(parser); // HACK(Alexander): want to get ternary to fix precedence
+    while (binary_op || token.type == Token_Question) {
+        u8 prec;
+        Assoc assoc;
+        
+        // Parse ternary operation last
+        if (token.type == Token_Question) {
+            prec = 1;
+            assoc = Assoc_Right;
+        } else {
+            prec = binary_get_prec(binary_op);
+            assoc = binary_get_assoc(binary_op);
+        }
         
         if (prec < min_prec) {
             break;
@@ -492,15 +493,27 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec) {
         }
         
         next_token(parser);
-        Ast* rhs_expr = parse_expression(parser, true, next_min_prec);
-        Ast* node = push_ast_node(parser);
-        node->type = Ast_Binary_Expr;
-        node->Binary_Expr.op = binary_op;
-        node->Binary_Expr.first = lhs_expr;
-        node->Binary_Expr.second = rhs_expr;
-        node->span = span_combine(lhs_expr->span, rhs_expr->span);
-        lhs_expr = node;
+        if (token.type == Token_Question) {
+            Ast* ternary_expr = push_ast_node(parser);
+            ternary_expr->type = Ast_Ternary_Expr;
+            ternary_expr->Ternary_Expr.first = lhs_expr;
+            ternary_expr->Ternary_Expr.second = parse_expression(parser);
+            next_token_if_matched(parser, Token_Colon);
+            ternary_expr->Ternary_Expr.third = parse_expression(parser);
+            lhs_expr = ternary_expr;
+        } else {
+            Ast* rhs_expr = parse_expression(parser, true, next_min_prec);
+            Ast* node = push_ast_node(parser);
+            node->type = Ast_Binary_Expr;
+            node->Binary_Expr.op = binary_op;
+            node->Binary_Expr.first = lhs_expr;
+            node->Binary_Expr.second = rhs_expr;
+            node->span = span_combine(lhs_expr->span, rhs_expr->span);
+            lhs_expr = node;
+        }
+        
         binary_op = parse_binary_op(parser);
+        token = peek_token(parser);
     }
     
     return lhs_expr;
@@ -1020,7 +1033,7 @@ parse_top_level_declaration(Parser* parser) {
 }
 
 Ast_File
-parse_file(Parser* parser, bool print_resulting_ast=false) {
+parse_file(Parser* parser) {
     Ast_File result = {};
     
     
@@ -1034,9 +1047,7 @@ parse_file(Parser* parser, bool print_resulting_ast=false) {
         update_span(parser, decl.value);
         
         map_put(result.decls, decl.key, decl.value);
-        if (print_resulting_ast) {
-            print_ast(decl.value, parser->tokenizer);
-        }
+        //print_ast(decl.value, parser->tokenizer);
     }
     
     result.error_count = parser->error_count;

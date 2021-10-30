@@ -86,7 +86,7 @@ interp_expression(Interp* interp, Ast* ast) {
                 } break;
                 
                 case UnaryOp_Dereference: {
-                    
+                    assert(0 && "unimplemented :(");
                 } break;
             }
         } break;
@@ -147,14 +147,14 @@ interp_expression(Interp* interp, Ast* ast) {
             Interp_Value second_op = interp_expression(interp, ast->Ternary_Expr.second);
             Interp_Value third_op = interp_expression(interp, ast->Ternary_Expr.third);
             
-            if (first_op.type == InterpValueType_Numeric) {
+            if (first_op.type == InterpValueType_Numeric && is_integer(first_op.value)) {
                 if (first_op.value.boolean) {
-                    return second_op;
+                    result = second_op;
                 } else {
-                    return third_op;
+                    result = third_op;
                 }
             } else {
-                interp_error(interp, "type error: expected left operand to be of numeric type");
+                interp_error(interp, "type error: expected left operand to a boolean");
             }
             
             
@@ -177,7 +177,7 @@ interp_expression(Interp* interp, Ast* ast) {
         } break;
         
         case Ast_Paren_Expr: {
-            
+            result = interp_expression(interp, ast->Paren_Expr.expr);
         } break;
         
         case Ast_Index_Expr: {

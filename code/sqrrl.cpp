@@ -49,7 +49,7 @@ compiler_main_entry(int argc, char* argv[]) {
     
     Parser parser = {};
     parser.tokenizer = &tokenizer;
-    Ast_File ast_file = parse_file(&parser, false);
+    Ast_File ast_file = parse_file(&parser);
     
     if (ast_file.error_count > 0) {
         pln("\nErrors found during parsing, exiting...\n");
@@ -69,6 +69,10 @@ compiler_main_entry(int argc, char* argv[]) {
         }
     }
     
+    //int x = 10 + 10;
+    //return x > 10 ? 10 : x;
     
-    return 0;
+    
+    int x = 10 + 10;
+    return x > 10 ? 10 : x + 30 > 10 ? 33 : 44;
 }

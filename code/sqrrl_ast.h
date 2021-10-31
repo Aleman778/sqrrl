@@ -54,7 +54,6 @@ Ast* array;                                     \
 Ast* index;                                     \
 })                                              \
 AST(Array_Expr,        "array", struct {        \
-Ast* type;                                      \
 Ast* elements;                                  \
 })                                              \
 AST(Struct_Expr,       "struct", struct {       \
@@ -305,20 +304,22 @@ print_ast(Ast* node, Tokenizer* tokenizer, u32 spacing=0) {
         print_ast(node->Binary_Expr.first, tokenizer, spacing);
         print_ast(node->Binary_Expr.second, tokenizer, spacing);
     } else if (node->type == Ast_Decl) {
-        printf("( ");
-        if (is_bitflag_set(node->Decl.mods, AstDeclModifier_Inline)) {
-            printf("inline ");
+        if (node->Decl.mods > 0) {
+            printf("( ");
+            if (is_bitflag_set(node->Decl.mods, AstDeclModifier_Inline)) {
+                printf("inline ");
+            }
+            if (is_bitflag_set(node->Decl.mods, AstDeclModifier_No_Inline)) {
+                printf("no_inline ");
+            }
+            if (is_bitflag_set(node->Decl.mods, AstDeclModifier_Internal)) {
+                printf("internal ");
+            }
+            if (is_bitflag_set(node->Decl.mods, AstDeclModifier_Global)) {
+                printf("global ");
+            }
+            printf(")");
         }
-        if (is_bitflag_set(node->Decl.mods, AstDeclModifier_No_Inline)) {
-            printf("no_inline ");
-        }
-        if (is_bitflag_set(node->Decl.mods, AstDeclModifier_Internal)) {
-            printf("internal ");
-        }
-        if (is_bitflag_set(node->Decl.mods, AstDeclModifier_Global)) {
-            printf("global ");
-        }
-        printf(")");
         print_ast(node->Decl.stmt, tokenizer, spacing);
     } else {
         // otherwise parse all possible children
@@ -328,9 +329,11 @@ print_ast(Ast* node, Tokenizer* tokenizer, u32 spacing=0) {
         print_ast(node->children[3], tokenizer, spacing);
     }
     
+#if 0
     // HACK(alexander): this is for debugging spans
     Span_Data span = calculate_span_data(tokenizer->lines, node->span);
     printf(" in examples/demo.sq:%u:%u to %u:%u", span.begin_line, span.begin_col, span.end_line, span.end_col);
+#endif
     
     spacing -= 2;
     printf(")");

@@ -54,16 +54,14 @@ interp_expression(Interp* interp, Ast* ast) {
     switch (ast->type) {
         // TODO(alexander): do we want values to be expressions?
         case Ast_Value: {
-            result.value = ast->Value;
-            result.type = InterpValueType_Numeric;
+            result = value_to_interp_value(interp, ast->Value);
         } break;
         
         // TODO(alexander): do we want identifiers to be expressions?
         case Ast_Ident: {
             Value* value = symbol_table_resolve_value(interp->symbol_table, ast->Ident);
             if (value) {
-                result.value = *value;
-                result.type = InterpValueType_Numeric;
+                result = value_to_interp_value(interp, *value);
             }
         } break;
         
@@ -81,7 +79,7 @@ interp_expression(Interp* interp, Ast* ast) {
                         result.value.boolean = !value_to_u64(first_op.value);
                         result.type = InterpValueType_Numeric;
                     } else {
-                        interp_error(interp, "not a number");
+                        interp_error(interp, string_lit("not a number"));
                     }
                 } break;
                 
@@ -107,8 +105,7 @@ interp_expression(Interp* interp, Ast* ast) {
                 // int + int;
                 // float + int -> float + float;
                 // int + float -> float + float;
-                // float -x-> int (is a no no has to be explicit cast)
-                
+                // float -x-> int (is a no no, it has to be an explicit cast)
                 
                 if (is_floating(first) || is_floating(second)) {
                     // NOTE(Alexander): Make sure both types are floating
@@ -135,10 +132,10 @@ interp_expression(Interp* interp, Ast* ast) {
                     result.type = InterpValueType_Numeric;
                     result.value = first;
                 } else {
-                    interp_error(interp, "type error: mismatched types");
+                    interp_error(interp, string_lit("type error: mismatched types"));
                 }
             } else {
-                interp_error(interp, "type error: expected numeric value");
+                interp_error(interp, string_lit("type error: expected numeric value"));
             }
         } break;
         
@@ -154,7 +151,7 @@ interp_expression(Interp* interp, Ast* ast) {
                     result = third_op;
                 }
             } else {
-                interp_error(interp, "type error: expected left operand to a boolean");
+                interp_error(interp, string_lit("type error: expected left operand to a boolean"));
             }
             
             
@@ -181,11 +178,56 @@ interp_expression(Interp* interp, Ast* ast) {
         } break;
         
         case Ast_Index_Expr: {
+            Interp_Value array = interp_expression(interp, ast->Index_Expr.array);
             
+            // TODO(Alexander): also allow pointer numerics
+            if (array.type == InterpValueType_Array) {
+                
+                Interp_Value index = interp_expression(interp, ast->Index_Expr.index);
+                if (index.type == InterpValueType_Numeric && is_integer(index.value)) {
+                    Array_Value array_value = array.value.array;
+                    Value* elements = array_value.elements;
+                    
+                    smm array_index = value_to_smm(index.value);
+                    if (array_index < array_value.count) {
+                        result.value = elements[array_index];
+                        result.type = InterpValueType_Numeric; // TODO(Alexander): not always numeric!!!
+                    } else {
+                        interp_error(interp, string_lit("array index out of bounds"));
+                    }
+                } else {
+                    interp_error(interp, string_lit("type error: expected numeric array index"));
+                }
+            } else {
+                interp_error(interp, string_lit("type error: expected array value"));
+            }
         } break;
         
         case Ast_Array_Expr: {
+            Ast* elements = ast->Array_Expr.elements;
             
+            Array_Value array = {};
+            
+            while (elements && elements->type == Ast_Compound) {
+                Ast* element = elements->Compound.node;
+                elements = elements->Compound.next;
+                
+                Interp_Value elem = interp_expression(interp, element);
+                if (elem.type == InterpValueType_Numeric) {
+                    Value* value = arena_push_struct(&interp->stack, Value);
+                    *value = elem.value;
+                    array.count++;
+                    if (!array.elements) {
+                        array.elements = value;
+                    }
+                } else {
+                    interp_error(interp, string_lit("type error: expected literal value"));
+                }
+            }
+            
+            result.type = InterpValueType_Array;
+            result.value.type = Value_array;
+            result.value.array = array;
         } break;
         
         case Ast_Struct_Expr: {

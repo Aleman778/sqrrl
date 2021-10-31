@@ -56,6 +56,14 @@ compiler_main_entry(int argc, char* argv[]) {
         return 0;
     }
     
+#if 1
+    // NOTE(Alexander): Print the AST
+    for (int i = 0; i < map_count(ast_file.decls); i++) {
+        Ast_Decl_Entry entry = ast_file.decls[i];
+        print_ast(entry.value, &tokenizer);
+    }
+#endif
+    
     // NOTE(Alexander): Interpreter pass
     Interp interp = {};
     interp_register_primitive_types(&interp);

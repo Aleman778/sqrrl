@@ -1,6 +1,8 @@
 
+int[] arr = { 0, 10, 20, 30, 40, 50 };
+
 int
 main(string[] args) {
-    int x = 10 + 10;
-    return x > 10 ? 10 : x + 30 > 10 ? 33 : 44;
+    int x = 4;
+    return arr[x];
 }

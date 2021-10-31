@@ -30,7 +30,9 @@ struct Interp {
 enum Interp_Value_Type {
     InterpValueType_Void,
     InterpValueType_Numeric,
+    InterpValueType_Array,
     InterpValueType_Struct,
+    InterpValueType_String,
     InterpValueType_Return,
     InterpValueType_Break,
     InterpValueType_Continue,
@@ -47,6 +49,36 @@ inline Interp_Value
 create_interp_value(Interp* interp) {
     Interp_Value result = {};
     result.block_depth = interp->block_depth;
+    return result;
+}
+
+Interp_Value
+value_to_interp_value(Interp* interp, Value value) {
+    Interp_Value result = create_interp_value(interp);
+    result.value = value;
+    
+    switch (value.type) {
+        case Value_void: {
+            result.type = InterpValueType_Void;
+        } break;
+        
+        case Value_boolean:
+        case Value_signed_int:
+        case Value_unsigned_int: 
+        case Value_floating:
+        case Value_pointer: {
+            result.type = InterpValueType_Numeric;
+        } break;
+        
+        case Value_array: {
+            result.type = InterpValueType_Array;
+        } break;
+        
+        case Value_string: {
+            result.type = InterpValueType_String;
+        } break;
+    }
+    
     return result;
 }
 

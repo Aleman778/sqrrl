@@ -115,6 +115,7 @@ struct Array_Value {
 
 // TODO(alexander): add more value types
 enum Value_Type {
+    Value_void,
     Value_boolean,
     Value_signed_int,
     Value_unsigned_int,
@@ -136,6 +137,11 @@ struct Value {
         string str;
     };
 };
+
+inline bool
+is_void(Value value) {
+    return value.type == Value_void;
+}
 
 inline bool
 is_integer(Value value) {

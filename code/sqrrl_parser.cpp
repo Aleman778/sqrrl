@@ -413,6 +413,16 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec) {
                 }
             }
         } break;
+        
+        case Token_Open_Brace: {
+            atom_expr = push_ast_node(parser, &token);
+            atom_expr->type = Ast_Array_Expr;
+            atom_expr->Array_Expr.elements = parse_compound(parser, 
+                                                            Token_Open_Brace, 
+                                                            Token_Close_Brace, 
+                                                            Token_Comma, 
+                                                            &parse_actual_argument);
+        } break;
     }
     
     if (!atom_expr) {
@@ -451,7 +461,7 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec) {
             lhs_expr->type = Ast_Index_Expr;
             lhs_expr->Index_Expr.array = atom_expr;
             lhs_expr->Index_Expr.index = parse_expression(parser);
-            next_token_if_matched(parser, Token_Close_Brace);
+            next_token_if_matched(parser, Token_Close_Bracket);
         } break;
         
         case Token_Open_Brace: {
@@ -608,10 +618,11 @@ parse_statement(Parser* parser) {
             } break;
             
             default: {
-                Token second_token = peek_second_token(parser);
-                if (second_token.type == Token_Ident) {
+                // TODO(Alexander): restore if type parsing failed
+                Ast* type = parse_type(parser, false);
+                
+                if (type) {
                     result = push_ast_node(parser, &token);
-                    Ast* type = parse_type(parser);
                     
                     switch (type->type) {
                         case Ast_Struct_Type:
@@ -821,7 +832,7 @@ parse_compound(Parser* parser,
 }
 
 Ast*
-parse_type(Parser* parser) {
+parse_type(Parser* parser, bool report_error) {
     Token token = peek_token(parser);
     
     if (token.type == Token_Open_Paren) {
@@ -829,13 +840,15 @@ parse_type(Parser* parser) {
     }
     
     if (token.type != Token_Ident) {
-        parse_error(parser, token, string_format("expected `type` found `%`", f_string(token.source)));
+        if (report_error) {
+            parse_error(parser, token, string_format("expected `type` found `%`", f_string(token.source)));
+        }
         return 0;
     }
     
     next_token(parser);
     
-    Ast* base = push_ast_node(parser);
+    Ast* base = 0;
     string_id ident = vars_save_string(token.source);
     
     if (ident >= builtin_types_begin && ident <= builtin_types_end || ident > keyword_last) {
@@ -885,14 +898,17 @@ parse_type(Parser* parser) {
             } break;
             
             default: {
-                parse_error(parser, token, string_format("expected `type` found `%`", f_string(token.source)));
+                if (report_error) {
+                    parse_error(parser, token,
+                                string_format("expected `type` found `%`", f_string(token.source)));
+                }
                 return 0;
             } break;
         }
     }
     
     Ast* result = base;
-    if (base->type != Ast_None) {
+    if (base) {
         Token second_token = peek_token(parser);
         switch (second_token.type) {
             case Token_Ident: {
@@ -947,6 +963,11 @@ parse_type(Parser* parser) {
                 result->type = Ast_Pointer_Type;
                 result->Pointer_Type = base;
             } break;
+        }
+    } else {
+        if (report_error) {
+            parse_error(parser, token,
+                        string_format("expected `type` found `%`", f_string(token.source)));
         }
     }
     
@@ -1047,7 +1068,6 @@ parse_file(Parser* parser) {
         update_span(parser, decl.value);
         
         map_put(result.decls, decl.key, decl.value);
-        //print_ast(decl.value, parser->tokenizer);
     }
     
     result.error_count = parser->error_count;

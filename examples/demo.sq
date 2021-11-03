@@ -1,8 +1,13 @@
 
 int[] arr = { 0, 10, 20, 30, 40, 50 };
 
+int 
+square(int num) {
+    return num * num;
+}
+
 int
-main(string[] args) {
+main() {
     int x = 4;
-    return arr[x];
+    return square(arr[x]) + arr[2];
 }

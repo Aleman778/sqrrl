@@ -39,7 +39,11 @@ enum Type_Kind {
     TypeKind_Unresolved
 };
 
-typedef struct { string_id key; Type* value; } Type_Table;
+struct Type_Table {
+    struct { string_id key; Type* value; }* ident_to_type;
+    string_id* idents;
+    int count;
+};
 
 // NOTE(Alexander): forward declare
 struct Ast;
@@ -65,11 +69,11 @@ struct Type {
         } Tuple;
         
         struct {
-            Type_Table* fields;
+            Type_Table fields;
         } Struct;
         
         struct {
-            Type_Table* fields;
+            Type_Table fields;
         } Union;
         
         struct {
@@ -78,7 +82,7 @@ struct Type {
         } Enum;
         
         struct {
-            Type_Table* arguments;
+            Type_Table arguments;
             Type* return_value;
             Ast* block;
             string_id ident;

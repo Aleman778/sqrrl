@@ -94,48 +94,41 @@ interp_expression(Interp* interp, Ast* ast) {
             Interp_Value second_op = interp_expression(interp, ast->Binary_Expr.second);
             
             // TODO(Alexander): check illegal types such as arrays and struct literals!
+            Value first = first_op.value;
+            Value second = second_op.value;
             
-            if (first_op.type  == InterpValueType_Numeric &&
-                second_op.type == InterpValueType_Numeric) {
-                
-                Value first = first_op.value;
-                Value second = second_op.value;
-                
-                // NOTE(Alexander): Type rules
-                // int + int;
-                // float + int -> float + float;
-                // int + float -> float + float;
-                // float -x-> int (is a no no, it has to be an explicit cast)
-                
-                if (is_floating(first) || is_floating(second)) {
-                    // NOTE(Alexander): Make sure both types are floating
-                    if (is_integer(first)) {
-                        first.type = Value_floating;
-                        first.floating  = value_to_f64(first);
-                    }
-                    if (is_integer(second)) {
-                        second.type = Value_floating;
-                        second.floating = value_to_f64(second);
-                    }
-                    
-                    first.floating = value_floating_binary_operation(first, second, ast->Binary_Expr.op);
-                    
-                    // TODO(Alexander): for assign update memory
-                    result.type = InterpValueType_Numeric;
-                    result.value = first;
-                } else if (is_integer(first) || is_integer(second)) {
-                    // NOTE(Alexander): integer math
-                    
-                    first.signed_int = value_integer_binary_operation(first, second, ast->Binary_Expr.op);
-                    
-                    // TODO(Alexander): for assign update memory
-                    result.type = InterpValueType_Numeric;
-                    result.value = first;
-                } else {
-                    interp_error(interp, string_lit("type error: mismatched types"));
+            // NOTE(Alexander): Type rules
+            // int + int;
+            // float + int -> float + float;
+            // int + float -> float + float;
+            // float -x-> int (is a no no, it has to be an explicit cast)
+            
+            if (is_floating(first) || is_floating(second)) {
+                // NOTE(Alexander): Make sure both types are floating
+                if (is_integer(first)) {
+                    first.type = Value_floating;
+                    first.floating  = value_to_f64(first);
                 }
+                if (is_integer(second)) {
+                    second.type = Value_floating;
+                    second.floating = value_to_f64(second);
+                }
+                
+                first.floating = value_floating_binary_operation(first, second, ast->Binary_Expr.op);
+                
+                // TODO(Alexander): for assign update memory
+                result.type = InterpValueType_Numeric;
+                result.value = first;
+            } else if (is_integer(first) || is_integer(second)) {
+                // NOTE(Alexander): integer math
+                
+                first.signed_int = value_integer_binary_operation(first, second, ast->Binary_Expr.op);
+                
+                // TODO(Alexander): for assign update memory
+                result.type = InterpValueType_Numeric;
+                result.value = first;
             } else {
-                interp_error(interp, string_lit("type error: expected numeric value"));
+                interp_error(interp, string_lit("type error: mismatched types"));
             }
         } break;
         
@@ -159,7 +152,7 @@ interp_expression(Interp* interp, Ast* ast) {
         
         case Ast_Call_Expr: {
             string_id ident = ast->Call_Expr.ident->Ident;
-            interp_function_call(interp, ident);
+            result = interp_function_call(interp, ident, ast->Call_Expr.args);
         } break;
         
         case Ast_Field_Expr: {
@@ -171,6 +164,7 @@ interp_expression(Interp* interp, Ast* ast) {
         case Ast_Cast_Expr: {
             Type* type = interp_type(interp, ast->Cast_Expr.type);
             Interp_Value value = interp_expression(interp, ast->Cast_Expr.expr);
+            assert(0 && "not done yet!");
         } break;
         
         case Ast_Paren_Expr: {
@@ -243,7 +237,7 @@ interp_expression(Interp* interp, Ast* ast) {
 }
 
 Interp_Value
-interp_function_call(Interp* interp, string_id ident) {
+interp_function_call(Interp* interp, string_id ident, Ast* args) {
     Interp_Value result = create_interp_value(interp);
     
     Type* decl_type = symbol_table_resolve_type(interp->symbol_table, ident);
@@ -251,17 +245,54 @@ interp_function_call(Interp* interp, string_id ident) {
         
         if (decl_type->kind == TypeKind_Function) {
             Ast* block = decl_type->Function.block;
+            Type_Table* formal_arguments = &decl_type->Function.arguments;
+            
             if (block) {
                 
-                // Save sold base pointer on the stack
+                // Push a new context by updating the base pointer
                 smm new_base = interp->stack.curr_used;
                 smm* old_base = (smm*) arena_push_size(&interp->stack, sizeof(smm));
                 *old_base = interp->base_pointer;
                 interp->base_pointer = new_base;
                 
+                // NOTE(Alexander): push arguments on stack
+                if (args) {
+                    int arg_index = 0;
+                    while (args && args->type == Ast_Compound) {
+                        Ast* expr = args->Compound.node;
+                        args = args->Compound.next;
+                        
+                        // NOTE(Alexander): only interpret as many args as formally declared
+                        if (arg_index < formal_arguments->count) {
+                            // TODO(Alexander): assign binary expressions needs to be handled here
+                            Interp_Value arg = interp_expression(interp, expr);
+                            string_id arg_ident = formal_arguments->idents[arg_index];
+                            Value* value = symbol_table_store_value(interp->symbol_table, &interp->stack, arg_ident);
+                            
+                            // TODO(Alexander): maybe want to convert struct/union to pointers here
+                            *value = arg.value;
+                        }
+                        
+                        arg_index++;
+                    }
+                    
+                    if (arg_index > formal_arguments->count) {
+                        interp_error(interp, string_format("function `%` did not take % arguments, expected % arguments", 
+                                                           f_string(vars_load_string(ident)), 
+                                                           f_int(arg_index), 
+                                                           f_int(formal_arguments->count)));
+                        return result;
+                    }
+                } else if (formal_arguments->count != 0) {
+                    interp_error(interp, string_format("function `%` expected % arguments",
+                                                       f_string(vars_load_string(ident)),
+                                                       f_int(formal_arguments->count)));
+                }
+                
                 result = interp_statement(interp, block);
                 // TODO(alexander): only write to result if it is an actual return value!
                 
+                // Pop the context by fetching the old base pointer and updating the stack
                 interp->stack.curr_used = interp->base_pointer;
                 interp->base_pointer = *(smm*) ((u8*) interp->stack.base + interp->base_pointer);
             } else {
@@ -328,6 +359,7 @@ interp_statement(Interp* interp, Ast* ast) {
         
         case Ast_Return_Stmt: {
             result = interp_expression(interp, ast->Return_Stmt.expr);
+            result.type = InterpValueType_Return;
         } break;
     }
     
@@ -355,9 +387,9 @@ interp_block(Interp* interp, Ast* ast) {
 }
 
 
-internal Type_Table*
+internal Type_Table
 interp_formal_arguments(Interp* interp, Ast* arguments) {
-    Type_Table* result = 0;
+    Type_Table result = {};
     while (arguments && arguments->type == Ast_Compound) {
         Ast* argument = arguments->Compound.node;
         arguments = arguments->Compound.next;
@@ -372,7 +404,9 @@ interp_formal_arguments(Interp* interp, Ast* arguments) {
         string_id ident = argument->Argument.ident->Ident;
         
         // TODO(Alexander): NEED TO HANDLE THE TYPE TABLE HASH MAP MEMORY
-        map_put(result, ident, type);
+        map_put(result.ident_to_type, ident, type);
+        array_push(result.idents, ident);
+        result.count++;
     }
     
     return result;

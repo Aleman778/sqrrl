@@ -7,8 +7,6 @@ struct Parser {
     
     s32 error_count;
     
-    Type_Table types;
-    
     Arena ast_arena;
 };
 
@@ -54,6 +52,11 @@ parse_error(Parser* parser, Token token, string message) {
 inline void
 parse_error_unexpected_token(Parser* parser, Token_Type expected, Token found) {
     parse_error(parser, found, string_format("expected token `%` found `%`", f_token(expected), f_token(found.type)));
+}
+
+inline void
+parse_error_unexpected_token(Parser* parser, Token found) {
+    parse_error(parser, found, string_format("unexpected token `%`", f_token(found.type)));
 }
 
 bool next_token_if_matched(Parser* parser, Token_Type expected, bool report_error=true);

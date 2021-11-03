@@ -68,8 +68,8 @@ compiler_main_entry(int argc, char* argv[]) {
     Interp interp = {};
     interp_register_primitive_types(&interp);
     interp_ast_declarations(&interp, ast_file.decls);
-    Interp_Value result = interp_function_call(&interp, vars_save_string("main"));
-    if (result.type == InterpValueType_Numeric) {
+    Interp_Value result = interp_function_call(&interp, vars_save_string("main"), 0);
+    if (result.type == InterpValueType_Return) {
         if (is_integer(result.value)) {
             pln("Interpreter exited with code %", f_int((int) result.value.signed_int));
         } else {

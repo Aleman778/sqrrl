@@ -428,7 +428,7 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec) {
     if (!atom_expr) {
         atom_expr = push_ast_node(parser);
         if (report_error) {
-            parse_error(parser, token, "expected expression");
+            parse_error_unexpected_token(parser, token);
         }
         return atom_expr;
     }

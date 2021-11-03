@@ -105,7 +105,7 @@ Value* symbol_table_store_value(Symbol_Table* table, Arena* arena, string_id ide
 Type* symbol_table_store_type(Symbol_Table* table, Arena* arena, string_id ident);
 
 Interp_Value interp_expression(Interp* interp, Ast* ast);
-Interp_Value interp_function_call(Interp* interp, string_id ident);
+Interp_Value interp_function_call(Interp* interp, string_id ident, Ast* args);
 Interp_Value interp_statement(Interp* interp, Ast* ast);
 Interp_Value interp_block(Interp* interp, Ast* ast);
 

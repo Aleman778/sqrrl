@@ -146,6 +146,44 @@ tokenizer_set_source(Tokenizer* tokenizer, string source, string file) {
     array_push(tokenizer->lines, 0);
 }
 
+struct Tokenizer_State {
+    Tokenizer* tokenizer;
+    u8* next;
+    u8* curr;
+    u8* curr_line;
+    smm line_number;
+    smm column_number;
+    u32 curr_utf32_character;
+};
+
+inline Tokenizer_State
+save_tokenizer(Tokenizer* t) {
+    Tokenizer_State result;
+    result.tokenizer = t;
+    result.next = t->next;
+    result.curr = t->curr;
+    result.curr_line = t->curr_line;
+    result.line_number = t->line_number;
+    result.column_number = t->column_number;
+    result.curr_utf32_character = t->curr_utf32_character;
+    return result;
+}
+
+inline void
+restore_tokenizer(Tokenizer_State* state) {
+    Tokenizer* t = state->tokenizer;
+    smm delta_lines =  state->line_number - t->line_number;
+    t->next = state->next;
+    t->curr = state->curr;
+    t->curr_line = state->curr_line;
+    t->line_number = state->line_number;
+    t->column_number = state->column_number;
+    t->curr_utf32_character = state->curr_utf32_character;
+    for (int i = 0; i < delta_lines && array_count(t->lines) > 0; i++) {
+        array_pop(t->lines);
+    }
+}
+
 inline bool
 is_hex_digit(u8 c) {
     return ('0' <= c && c <= '9')

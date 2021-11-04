@@ -320,119 +320,123 @@ parse_float(Parser* parser) {
 }
 
 Ast*
-parse_expression(Parser* parser, bool report_error, u8 min_prec) {
+parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr) {
     Token token = peek_token(parser);
-    Ast* atom_expr = 0;
-    
-    switch (token.type) {
-        case Token_Ident: {
-            string_id sym = vars_save_string(token.source);
-            switch (sym) {
-                case Kw_false: {
-                    next_token(parser);
-                    atom_expr = push_ast_value(parser, create_boolean_value(false));
-                } break;
-                
-                case Kw_true: {
-                    next_token(parser);
-                    atom_expr = push_ast_value(parser, create_boolean_value(true));
-                } break;
-                
-                case Kw_cast: {
-                    next_token(parser);
-                    next_token_if_matched(parser, Token_Open_Paren);
-                    Ast* type = parse_type(parser);
-                    next_token_if_matched(parser, Token_Close_Paren);
-                    
-                    Ast* inner_expr = parse_expression(parser);
-                    Ast* node = push_ast_node(parser);
-                    node->type = Ast_Cast_Expr;
-                    node->Cast_Expr.type = type;
-                    node->Cast_Expr.expr = inner_expr;
-                    atom_expr = node;
-                } break;
-                
-                default: {
-                    atom_expr = parse_identifier(parser);
-                } break;
-            }
-            
-        } break;
-        
-        case Token_Raw_Ident: {
-            atom_expr = parse_identifier(parser);
-        } break;
-        
-        case Token_Int: {
-            next_token(parser);
-            atom_expr = parse_int(parser);
-        } break;
-        
-        case Token_Float: {
-            next_token(parser);
-            atom_expr = parse_float(parser);
-        } break;
-        
-        case Token_Char: {
-            next_token(parser);
-            atom_expr = parse_char(parser);
-        } break;
-        
-        case Token_String: {
-            next_token(parser);
-            atom_expr = parse_string(parser);
-        } break;
-        
-        case Token_Open_Paren: {
-            next_token(parser);
-            atom_expr = push_ast_node(parser, &token);
-            Ast* inner_expr = parse_expression(parser, report_error);
-            if (inner_expr == 0) {
-                return inner_expr;
-            }
-            
-            Token peek = peek_token(parser);
-            switch (peek.type) {
-                case Token_Close_Paren: {
-                    next_token(parser);
-                    atom_expr->type = Ast_Paren_Expr;
-                    atom_expr->Paren_Expr.expr = inner_expr;
-                    update_span(parser, atom_expr);
-                } break;
-                
-                case Token_Comma: {
-                    atom_expr = parse_compound(parser, 
-                                               Token_Comma, Token_Close_Paren, Token_Comma, 
-                                               &parse_actual_argument);
-                } break;
-                
-                default: {
-                    if (report_error) {
-                        parse_error(parser, peek, string_format("expected `)` or `,` found `%` ", f_token(peek.type)));
-                    }
-                }
-            }
-        } break;
-        
-        case Token_Open_Brace: {
-            atom_expr = push_ast_node(parser, &token);
-            atom_expr->type = Ast_Array_Expr;
-            atom_expr->Array_Expr.elements = parse_compound(parser, 
-                                                            Token_Open_Brace, 
-                                                            Token_Close_Brace, 
-                                                            Token_Comma, 
-                                                            &parse_actual_argument);
-        } break;
-    }
     
     if (!atom_expr) {
-        atom_expr = push_ast_node(parser);
-        if (report_error) {
-            parse_error_unexpected_token(parser, token);
+        switch (token.type) {
+            case Token_Ident: {
+                string_id sym = vars_save_string(token.source);
+                switch (sym) {
+                    case Kw_false: {
+                        next_token(parser);
+                        atom_expr = push_ast_value(parser, create_boolean_value(false));
+                    } break;
+                    
+                    case Kw_true: {
+                        next_token(parser);
+                        atom_expr = push_ast_value(parser, create_boolean_value(true));
+                    } break;
+                    
+                    case Kw_cast: {
+                        next_token(parser);
+                        next_token_if_matched(parser, Token_Open_Paren);
+                        Ast* type = parse_type(parser);
+                        next_token_if_matched(parser, Token_Close_Paren);
+                        
+                        Ast* inner_expr = parse_expression(parser);
+                        Ast* node = push_ast_node(parser);
+                        node->type = Ast_Cast_Expr;
+                        node->Cast_Expr.type = type;
+                        node->Cast_Expr.expr = inner_expr;
+                        atom_expr = node;
+                    } break;
+                    
+                    default: {
+                        atom_expr = parse_identifier(parser, report_error);
+                    } break;
+                }
+                
+            } break;
+            
+            case Token_Raw_Ident: {
+                atom_expr = parse_identifier(parser);
+            } break;
+            
+            case Token_Int: {
+                next_token(parser);
+                atom_expr = parse_int(parser);
+            } break;
+            
+            case Token_Float: {
+                next_token(parser);
+                atom_expr = parse_float(parser);
+            } break;
+            
+            case Token_Char: {
+                next_token(parser);
+                atom_expr = parse_char(parser);
+            } break;
+            
+            case Token_String: {
+                next_token(parser);
+                atom_expr = parse_string(parser);
+            } break;
+            
+            case Token_Open_Paren: {
+                next_token(parser);
+                atom_expr = push_ast_node(parser, &token);
+                Ast* inner_expr = parse_expression(parser, false);
+                if (inner_expr == 0) {
+                    assert(0 && "hello");
+                    
+                    return inner_expr;
+                }
+                
+                Token peek = peek_token(parser);
+                switch (peek.type) {
+                    case Token_Close_Paren: {
+                        next_token(parser);
+                        atom_expr->type = Ast_Paren_Expr;
+                        atom_expr->Paren_Expr.expr = inner_expr;
+                        update_span(parser, atom_expr);
+                    } break;
+                    
+                    case Token_Comma: {
+                        atom_expr = parse_compound(parser, 
+                                                   Token_Comma, Token_Close_Paren, Token_Comma, 
+                                                   &parse_actual_argument);
+                    } break;
+                    
+                    default: {
+                        if (report_error) {
+                            parse_error(parser, peek, string_format("expected `)` or `,` found `%` ", f_token(peek.type)));
+                        }
+                    }
+                }
+            } break;
+            
+            case Token_Open_Brace: {
+                atom_expr = push_ast_node(parser, &token);
+                atom_expr->type = Ast_Array_Expr;
+                atom_expr->Array_Expr.elements = parse_compound(parser, 
+                                                                Token_Open_Brace, 
+                                                                Token_Close_Brace, 
+                                                                Token_Comma, 
+                                                                &parse_actual_argument);
+            } break;
         }
-        return atom_expr;
+        
+        if (!atom_expr) {
+            atom_expr = push_ast_node(parser);
+            if (report_error) {
+                parse_error_unexpected_token(parser, token);
+            }
+            return atom_expr;
+        }
+        
+        update_span(parser, atom_expr);
     }
-    update_span(parser, atom_expr);
     
     // Some expressions are build by combining multiple expressiosn e.g. `atom1[atom2]`.
     token = peek_token(parser);
@@ -529,7 +533,24 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec) {
     return lhs_expr;
 }
 
-internal Ast*
+inline internal Ast*
+parse_assign_statement(Parser* parser, Ast* type) {
+    Ast* result = push_ast_node(parser);
+    result->type = Ast_Assign_Stmt;
+    result->Assign_Stmt.type = type;
+    result->Assign_Stmt.ident = parse_identifier(parser);
+    
+    if (next_token_if_matched(parser, Token_Assign, false)) {
+        // TODO(alexander): add support for int x = 5, y = 10;
+        result->Assign_Stmt.expr = parse_expression(parser);
+    } else {
+        result->Assign_Stmt.expr = push_ast_node(parser);
+    }
+    
+    return result;
+}
+
+inline internal Ast*
 parse_block_statement(Parser* parser, Token* token=0) {
     Ast* result = push_ast_node(parser, token);
     result->type = Ast_Block_Stmt;
@@ -537,7 +558,6 @@ parse_block_statement(Parser* parser, Token* token=0) {
                                               &parse_statement);
     return result;
 }
-
 
 Ast*
 parse_statement(Parser* parser) {
@@ -618,22 +638,21 @@ parse_statement(Parser* parser) {
             } break;
             
             default: {
-                // TODO(Alexander): restore if type parsing failed
                 Ast* type = parse_type(parser, false);
                 
                 if (type) {
-                    result = push_ast_node(parser, &token);
-                    
                     switch (type->type) {
                         case Ast_Struct_Type:
                         case Ast_Union_Type:
                         case Ast_Enum_Type: {
+                            result = push_ast_node(parser, &token);
                             result->type = Ast_Decl_Stmt;
                             result->Decl_Stmt.ident = type->children[0];
                             result->Decl_Stmt.type = type;
                         } break;
                         
                         case Ast_Function_Type: {
+                            result = push_ast_node(parser, &token);
                             result->type = Ast_Decl_Stmt;
                             result->Decl_Stmt.ident = type->Function_Type.ident;
                             result->Decl_Stmt.type = type;
@@ -642,22 +661,24 @@ parse_statement(Parser* parser) {
                         } break;
                         
                         case Ast_Typedef: {
+                            result = push_ast_node(parser, &token);
                             result->type = Ast_Decl_Stmt;
                             result->Decl_Stmt.type = type;
                             result->Decl_Stmt.ident = parse_identifier(parser);
                         } break;
                         
-                        default: {
-                            result->type = Ast_Assign_Stmt;
-                            result->Assign_Stmt.type = type;
-                            result->Assign_Stmt.ident = parse_identifier(parser);
-                            
-                            if (next_token_if_matched(parser, Token_Assign, false)) {
-                                // TODO(alexander): add support for int x = 5, y = 10;
-                                result->Assign_Stmt.expr = parse_expression(parser);
+                        case Ast_Named_Type: {
+                            Token peek = peek_token(parser);
+                            if (peek.type == Token_Ident) {
+                                result = parse_assign_statement(parser, type);
                             } else {
-                                result->Assign_Stmt.expr = push_ast_node(parser);
+                                Ast* ident = type->Named_Type;
+                                result = parse_expression(parser, true, 1, ident);
                             }
+                        } break;
+                        
+                        default: {
+                            result = parse_assign_statement(parser, type);
                         } break;
                     }
                 }

@@ -1,13 +1,30 @@
 
 int[] arr = { 0, 10, 20, 30, 40, 50 };
 
+struct v2 {
+    f32 x;
+    f32 y;
+}
+
 int 
 square(int num) {
     return num * num;
 }
 
+v2
+add(v2 a, v2 b) {
+    v2 result;
+    result.x = a.x + b.x;
+    result.y = a.y + b.y;
+    return result;
+}
+
 int
 main() {
-    int x = 4;
-    return square(arr[x]) + arr[2];
+    v2 vec2_zero = {};
+    v2 vec2_up = v2 { x: 0.0, y: 1.0 };
+    v2 vec2_right = v2 { x: 1.0, y: 0.0 };
+    v2 vec2_diag = add(vec2_up, vec2_down);
+    
+    return (int) (vec2_diag.x);
 }

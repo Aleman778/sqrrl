@@ -34,7 +34,7 @@ Ast*
 parse_identifier(Parser* parser, bool report_error) {
     Ast* result = push_ast_node(parser);
     
-    Token token = next_token(parser);
+    Token token = peek_token(parser);
     if (token.type == Token_Ident) {
         string_id id = vars_save_string(token.source);
         if (id < keyword_last) {
@@ -43,6 +43,7 @@ parse_identifier(Parser* parser, bool report_error) {
             return 0;
         }
         
+        next_token(parser);
         result = push_ast_node(parser);
         result->type = Ast_Ident;
         result->Ident = vars_save_string(token.source);
@@ -387,10 +388,17 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
                 next_token(parser);
                 atom_expr = push_ast_node(parser, &token);
                 Ast* inner_expr = parse_expression(parser, false);
-                if (inner_expr == 0) {
-                    assert(0 && "hello");
+                if (inner_expr && inner_expr->type == Ast_None) {
                     
-                    return inner_expr;
+                    inner_expr = parse_type(parser, false);
+                    
+                    //if (report_error) {
+                    //assert(0 && "this should likely be a parsing error");
+                    //}
+                    
+                    if (!inner_expr) {
+                        return inner_expr;
+                    }
                 }
                 
                 Token peek = peek_token(parser);

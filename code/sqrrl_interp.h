@@ -1,16 +1,7 @@
 
-enum Entity_Kind {
-    EntityKind_Value,
-    EntityKind_Type,
-};
-
 struct Entity {
-    Entity_Kind kind;
-    union  {
-        Value* value;
-        Type* type;
-        b32 is_initialized;
-    };
+    void* data;
+    Type* type;
 };
 
 struct Symbol_Table {
@@ -27,21 +18,17 @@ struct Interp {
     smm base_pointer;
 };
 
-enum Interp_Value_Type {
-    InterpValueType_Void,
-    InterpValueType_Numeric,
-    InterpValueType_Array,
-    InterpValueType_Struct,
-    InterpValueType_String,
-    InterpValueType_Return,
-    InterpValueType_Break,
-    InterpValueType_Continue,
+enum Interp_Value_Mod {
+    InterpValueMod_Return,
+    InterpValueMod_Break,
+    InterpValueMod_Continue,
 };
 
 struct Interp_Value {
-    Interp_Value_Type type;
     Value value;
+    Type* type;
     s32 block_depth;
+    Interp_Value_Mod modifier;
     string_id label;
 };
 
@@ -56,29 +43,6 @@ Interp_Value
 value_to_interp_value(Interp* interp, Value value) {
     Interp_Value result = create_interp_value(interp);
     result.value = value;
-    
-    switch (value.type) {
-        case Value_void: {
-            result.type = InterpValueType_Void;
-        } break;
-        
-        case Value_boolean:
-        case Value_signed_int:
-        case Value_unsigned_int: 
-        case Value_floating:
-        case Value_pointer: {
-            result.type = InterpValueType_Numeric;
-        } break;
-        
-        case Value_array: {
-            result.type = InterpValueType_Array;
-        } break;
-        
-        case Value_string: {
-            result.type = InterpValueType_String;
-        } break;
-    }
-    
     return result;
 }
 
@@ -98,11 +62,22 @@ interp_unresolved_identifier_error(Interp* interp, string_id ident) {
     interp_error(interp, string_format("unresolved identifier `%`", f_string(vars_load_string(ident))));
 }
 
-inline Entity symbol_table_resolve_identifier(Symbol_Table* table, string_id ident);
-inline Value* symbol_table_resolve_value(Symbol_Table* table, string_id ident);
-inline Type* symbol_table_resolve_type(Symbol_Table* table, string_id ident);
-Value* symbol_table_store_value(Symbol_Table* table, Arena* arena, string_id ident);
-Type* symbol_table_store_type(Symbol_Table* table, Arena* arena, string_id ident);
+void* interp_push_value(Interp* interp, Type* type, Value value);
+Interp_Value interp_resolve_value(Interp* interp, Type* type, void* data);
+
+inline Interp_Value
+interp_resolve_value(Interp* interp, string_id ident) {
+    Entity entity = map_get(interp->symbol_table, ident);
+    if (!entity.data || !entity.type) {
+        if (entity.type) {
+            interp_error(interp, string_format("`%`: declared but not assigned", f_string(vars_load_string(ident))));
+        } else {
+            interp_error(interp, string_format("`%`: undeclared identifier ", f_string(vars_load_string(ident))));
+        }
+    }
+    
+    return interp_resolve_value(interp, entity.type, entity.data);
+}
 
 Interp_Value interp_expression(Interp* interp, Ast* ast);
 Interp_Value interp_function_call(Interp* interp, string_id ident, Ast* args);

@@ -107,13 +107,10 @@ struct Pointer_Value {
 struct Value;
 
 struct Array_Value {
-    Type* element_type;
-    Value* elements;
+    void* elements;
     smm count;
-    smm capacity;
 };
 
-// TODO(alexander): add more value types
 enum Value_Type {
     Value_void,
     Value_boolean,
@@ -122,6 +119,7 @@ enum Value_Type {
     Value_floating,
     Value_pointer,
     Value_array,
+    Value_struct,
     Value_string,
 };
 
@@ -134,6 +132,7 @@ struct Value {
         f64 floating;
         Pointer_Value pointer;
         Array_Value array;
+        void* data;
         string str;
     };
 };
@@ -145,15 +144,24 @@ is_void(Value value) {
 
 inline bool
 is_integer(Value value) {
-    return value.type == Value_boolean   ||
-        value.type == Value_signed_int   ||
-        value.type == Value_unsigned_int ||
-        value.type == Value_pointer;
+    switch (value.type) {
+        case Value_boolean:
+        case Value_signed_int:
+        case Value_unsigned_int:
+        case Value_pointer:
+        return true;
+    }
+    return false;
 }
 
 inline bool
 is_floating(Value value) {
     return value.type == Value_floating;
+}
+
+inline bool
+is_numeric(Value value) {
+    return is_integer(value) && is_floating(value);
 }
 
 inline u64
@@ -167,7 +175,6 @@ value_to_u64(Value value) {
     }
 }
 
-// TODO(Alexander): add more types, via macro
 inline smm
 value_to_smm(Value value) {
     switch (value.type) {
@@ -227,7 +234,6 @@ value_integer_binary_operation(Value first, Value second, Binary_Op op) {
         case BinaryOp_Shift_Right_Assign:{
             return first.signed_int >> second.signed_int;
         }
-        
         
         case BinaryOp_Bitwise_And:
         case BinaryOp_Bitwise_And_Assign:{
@@ -382,14 +388,6 @@ create_pointer_value(smm value) {
 }
 
 inline Value
-create_array_value(Value* values, smm count, smm capacity) {
-    Value result;
-    result.type = Value_array;
-    result.array = { 0, values, count, capacity };
-    return result;
-}
-
-inline Value
 create_string_value(string value) {
     Value result;
     result.type = Value_string;
@@ -397,6 +395,7 @@ create_string_value(string value) {
     return result;
 }
 
+// TODO(Alexander): print actual types from memory by specifiying the type as well
 void print_value(Value* val) {
     switch (val->type) {
         case Value_boolean: {
@@ -420,13 +419,15 @@ void print_value(Value* val) {
         } break;
         
         case Value_array: {
-            printf("[");
-            Array_Value* arr = &val->array;
-            for (smm index = 0; index < arr->count; index++) {
-                if (index > 0) printf(", ");
-                print_value(&arr->elements[index]);
-            }
-            printf("[");
+            printf("0x%I64X", (smm) val->array.elements);
+            // TODO(Alexander): can't know what elements there are without the type!
+            //printf("[");
+            //Array_Value* arr = &val->array;
+            //for (smm index = 0; index < arr->count; index++) {
+            //if (index > 0) printf(", ");
+            //print_value(&arr->elements[index]);
+            //}
+            //printf("]");
         } break;
         
         case Value_string: {

@@ -1,5 +1,4 @@
 
-
 #define DEF_PRIMITIVE_TYPES \
 PRIMITIVE(int, 4, signed, INT_MAX, INT_MIN) \
 PRIMITIVE(s8, 1, signed, S8_MAX, S8_MIN) \
@@ -16,8 +15,8 @@ PRIMITIVE(umm, 0, unsigned, 0, 0) \
 PRIMITIVE(f32, 4, signed, 0, 0) \
 PRIMITIVE(f64, 8, signed, 0, 0) \
 PRIMITIVE(char, 1, unsigned, CHAR_MAX, CHAR_MIN) \
-PRIMITIVE(string, 0, unsigned, 0, 0) \
 PRIMITIVE(bool, 1, signed, BOOL_MAX, BOOL_MIN) \
+PRIMITIVE(b32, 1, signed, S32_MAX, S32_MIN) \
 PRIMITIVE(void, 0, unsigned, 0, 0)
 
 
@@ -31,6 +30,7 @@ enum Type_Kind {
     TypeKind_Void,
     TypeKind_Primitive,
     TypeKind_Array,
+    TypeKind_String,
     TypeKind_Tuple,
     TypeKind_Struct,
     TypeKind_Union,

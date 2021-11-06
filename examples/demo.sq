@@ -21,10 +21,12 @@ add(v2 a, v2 b) {
 
 int
 main() {
-    v2 vec2_zero = {};
-    v2 vec2_up = v2 { x: 0.0, y: 1.0 };
-    v2 vec2_right = v2 { x: 1.0, y: 0.0 };
-    v2 vec2_diag = add(vec2_up, vec2_down);
+    //v2 vec2_zero = {};
+    //v2 vec2_up = v2 { x: 0.0, y: 1.0 };
+    //v2 vec2_right = v2 { x: 1.0, y: 0.0 };
+    //v2 vec2_diag = add(vec2_up, vec2_down);
     
-    return (int) (vec2_diag.x);
+    //return (int) (vec2_diag.x);
+    
+    return arr[4];
 }

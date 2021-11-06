@@ -1,47 +1,141 @@
 
-inline Entity
-symbol_table_resolve_identifier(Symbol_Table* table, string_id ident) {
-    return map_get(table, ident);
-}
-
-inline Value*
-symbol_table_resolve_value(Symbol_Table* table, string_id ident) {
-    Entity entity = symbol_table_resolve_identifier(table, ident);
-    if (entity.kind == EntityKind_Value) {
-        return entity.value;
+void*
+interp_push_value(Interp* interp, Type* type, Value value) {
+    void* result = 0;
+    
+    // TODO(Alexander): handle type errors here
+    switch (type->kind) {
+        case TypeKind_Void:
+        case TypeKind_Unresolved:
+        case TypeKind_Function: {
+            assert(0 && "not a value");
+        } break;
+        
+        case TypeKind_Primitive: {
+            if (type->cached_size <= 0) {
+                assert(0 && "not a valid size");
+            }
+            
+            result = arena_push_size(&interp->stack, type->cached_size, type->cached_align);
+            
+#define PCASE(T, V) case PrimitiveTypeKind_##T: { \
+*((T*) result) = (T) (V); \
+} break;
+            switch (type->Primitive.kind) {
+                PCASE(int, value.signed_int);
+                PCASE(s8, value.signed_int);
+                PCASE(s16, value.signed_int);
+                PCASE(s32, value.signed_int);
+                PCASE(s64, value.signed_int);
+                PCASE(smm, value.signed_int);
+                PCASE(uint, value.unsigned_int);
+                PCASE(u8, value.unsigned_int);
+                PCASE(u16, value.unsigned_int);
+                PCASE(u32, value.unsigned_int);
+                PCASE(u64, value.unsigned_int);
+                PCASE(umm, value.unsigned_int);
+                PCASE(f32, value.floating);
+                PCASE(f64, value.floating);
+                case PrimitiveTypeKind_char: *((u8*) result) = (char) value.unsigned_int; break;
+                PCASE(bool, value.boolean);
+                PCASE(b32, value.signed_int);
+                default: {
+                    assert(0 && "invalid primitive type");
+                } break;
+            }
+#undef PCASE
+        } break;
+        
+        case TypeKind_Array: {
+            smm* count = (smm*) arena_push_size(&interp->stack, sizeof(smm), alignof(smm));
+            *count = value.array.count;
+            result = arena_push_size(&interp->stack, sizeof(smm), alignof(smm));
+            *((smm*) result) = (smm) value.array.elements;
+        }
+        
+        case TypeKind_String: {
+            u32 count = string_count(value.str);
+            u32* result_count = (u32*) arena_push_size(&interp->stack, sizeof(u32), alignof(u32));
+            *result_count = count;
+            result = arena_push_size(&interp->stack, sizeof(smm), alignof(smm));
+            memcpy(result, value.str, count);
+        }
+        
+        case TypeKind_Struct: {
+            result = arena_push_size(&interp->stack, sizeof(smm), alignof(smm));
+            *((smm*) result) = (smm) value.data;
+        }
     }
-    return 0;
-}
-
-// NOTE(Alexander): resolved type is a type definition and not a value that has a type.
-//                  typedef s32 b32; b32 resolves to a typedef,  s32 x = 10; x resolves to  null.
-inline Type*
-symbol_table_resolve_type(Symbol_Table* table, string_id ident) {
-    Entity entity = symbol_table_resolve_identifier(table, ident);
-    if (entity.kind == EntityKind_Type) {
-        return entity.type;
-    }
-    return 0;
-}
-
-Value*
-symbol_table_store_value(Symbol_Table* table, Arena* arena, string_id ident) {
-    Value* result = arena_push_struct(arena, Value);
-    Entity entity;
-    entity.kind = EntityKind_Value;
-    entity.value = result;
-    map_put(table, ident, entity);
+    
     return result;
 }
 
-// NOTE(Alexander): only type definitions
-Type*
-symbol_table_store_type(Symbol_Table* table, Arena* arena, string_id ident) {
-    Type* result = arena_push_struct(arena, Type);
-    Entity entity;
-    entity.kind = EntityKind_Type;
-    entity.type = result;
-    map_put(table, ident, entity);
+Interp_Value
+interp_resolve_value(Interp* interp, Type* type, void* data) {
+    Value value = {};
+    
+    switch (type->kind) {
+        case TypeKind_Void:
+        case TypeKind_Unresolved:
+        case TypeKind_Function: {
+            assert(0 && "not a value");
+        } break;
+        
+        case TypeKind_Primitive: {
+            if (type->cached_size <= 0) {
+                assert(0 && "not a valid size");
+            }
+            
+#define PCASE(T, V) case PrimitiveTypeKind_##T: { \
+value.type = Value_##V; \
+value.##V = *((T*) data); \
+} break;
+            
+            switch (type->Primitive.kind) {
+                PCASE(int, signed_int);
+                PCASE(s8, signed_int);
+                PCASE(s16, signed_int);
+                PCASE(s32, signed_int);
+                PCASE(s64, signed_int);
+                PCASE(smm, signed_int);
+                PCASE(uint, unsigned_int);
+                PCASE(u8, unsigned_int);
+                PCASE(u16, unsigned_int);
+                PCASE(u32, unsigned_int);
+                PCASE(u64, unsigned_int);
+                PCASE(umm, unsigned_int);
+                PCASE(f32, floating);
+                PCASE(f64, floating);
+                case PrimitiveTypeKind_char: {
+                    value.type = Value_unsigned_int;
+                    value.unsigned_int = *((u8*) data);
+                } break;
+                PCASE(bool, boolean);
+                PCASE(b32, signed_int);
+                default: {
+                    assert(0 && "invalid primitive type");
+                } break;
+            }
+#undef PCASE
+        } break;
+        
+        case TypeKind_Array: {
+            value.array.count = *((smm*) data - 1);
+            value.array.elements = data;
+        }
+        
+        case TypeKind_String: {
+            value.str = (string) data;
+        }
+        
+        case TypeKind_Struct: {
+            value.data = data;
+        }
+    }
+    
+    Interp_Value result = create_interp_value(interp);
+    result.value = value;
+    result.type = type;
     return result;
 }
 
@@ -54,32 +148,32 @@ interp_expression(Interp* interp, Ast* ast) {
     switch (ast->type) {
         // TODO(alexander): do we want values to be expressions?
         case Ast_Value: {
-            result = value_to_interp_value(interp, ast->Value);
+            result.value = ast->Value;
         } break;
         
         // TODO(alexander): do we want identifiers to be expressions?
         case Ast_Ident: {
-            Value* value = symbol_table_resolve_value(interp->symbol_table, ast->Ident);
-            if (value) {
-                result = value_to_interp_value(interp, *value);
-            }
+            result = interp_resolve_value(interp, ast->Ident);
         } break;
         
         case Ast_Unary_Expr: {
             Interp_Value first_op = interp_expression(interp, ast->Unary_Expr.first);
             switch (ast->Unary_Expr.op) {
                 case UnaryOp_Negate: {
-                    if (first_op.type == InterpValueType_Numeric) {
+                    if (is_integer(first_op.value)) {
                         result.value.signed_int = -first_op.value.signed_int;
+                    } else if(is_floating(first_op.value)) {
+                        result.value.floating = -first_op.value.floating;
+                    } else {
+                        interp_error(interp, string_lit("expected numeric type"));
                     }
                 } break;
                 
                 case UnaryOp_Not: {
-                    if (first_op.type == InterpValueType_Numeric) {
+                    if (is_integer(first_op.value)) {
                         result.value.boolean = !value_to_u64(first_op.value);
-                        result.type = InterpValueType_Numeric;
                     } else {
-                        interp_error(interp, string_lit("not a number"));
+                        interp_error(interp, string_lit("expected integer type"));
                     }
                 } break;
                 
@@ -117,7 +211,6 @@ interp_expression(Interp* interp, Ast* ast) {
                 first.floating = value_floating_binary_operation(first, second, ast->Binary_Expr.op);
                 
                 // TODO(Alexander): for assign update memory
-                result.type = InterpValueType_Numeric;
                 result.value = first;
             } else if (is_integer(first) || is_integer(second)) {
                 // NOTE(Alexander): integer math
@@ -125,7 +218,6 @@ interp_expression(Interp* interp, Ast* ast) {
                 first.signed_int = value_integer_binary_operation(first, second, ast->Binary_Expr.op);
                 
                 // TODO(Alexander): for assign update memory
-                result.type = InterpValueType_Numeric;
                 result.value = first;
             } else {
                 interp_error(interp, string_lit("type error: mismatched types"));
@@ -137,7 +229,7 @@ interp_expression(Interp* interp, Ast* ast) {
             Interp_Value second_op = interp_expression(interp, ast->Ternary_Expr.second);
             Interp_Value third_op = interp_expression(interp, ast->Ternary_Expr.third);
             
-            if (first_op.type == InterpValueType_Numeric && is_integer(first_op.value)) {
+            if (is_integer(first_op.value)) {
                 if (first_op.value.boolean) {
                     result = second_op;
                 } else {
@@ -175,17 +267,23 @@ interp_expression(Interp* interp, Ast* ast) {
             Interp_Value array = interp_expression(interp, ast->Index_Expr.array);
             
             // TODO(Alexander): also allow pointer numerics
-            if (array.type == InterpValueType_Array) {
+            if (array.value.type == Value_array) {
                 
                 Interp_Value index = interp_expression(interp, ast->Index_Expr.index);
-                if (index.type == InterpValueType_Numeric && is_integer(index.value)) {
+                if (is_integer(index.value)) {
                     Array_Value array_value = array.value.array;
-                    Value* elements = array_value.elements;
                     
                     smm array_index = value_to_smm(index.value);
                     if (array_index < array_value.count) {
-                        result.value = elements[array_index];
-                        result.type = InterpValueType_Numeric; // TODO(Alexander): not always numeric!!!
+                        // TODO(Alexander): do we need null checking here?
+                        Type* elem_type = array.type->Array.type;
+                        smm elem_size = elem_type->cached_size;
+                        assert(elem_size > 0 && "not valid array element size");
+                        
+                        void* data = (void*) array_value.elements;
+                        data = (u8*) data + array_index * elem_size;
+                        
+                        result = interp_resolve_value(interp, elem_type, data);
                     } else {
                         interp_error(interp, string_lit("array index out of bounds"));
                     }
@@ -207,7 +305,7 @@ interp_expression(Interp* interp, Ast* ast) {
                 elements = elements->Compound.next;
                 
                 Interp_Value elem = interp_expression(interp, element);
-                if (elem.type == InterpValueType_Numeric) {
+                if (!is_void(elem.value)) {
                     Value* value = arena_push_struct(&interp->stack, Value);
                     *value = elem.value;
                     array.count++;
@@ -219,7 +317,6 @@ interp_expression(Interp* interp, Ast* ast) {
                 }
             }
             
-            result.type = InterpValueType_Array;
             result.value.type = Value_array;
             result.value.array = array;
         } break;
@@ -240,12 +337,12 @@ Interp_Value
 interp_function_call(Interp* interp, string_id ident, Ast* args) {
     Interp_Value result = create_interp_value(interp);
     
-    Type* decl_type = symbol_table_resolve_type(interp->symbol_table, ident);
-    if (decl_type) {
+    Entity decl = map_get(interp->symbol_table, ident);
+    if (decl.type) {
         
-        if (decl_type->kind == TypeKind_Function) {
-            Ast* block = decl_type->Function.block;
-            Type_Table* formal_arguments = &decl_type->Function.arguments;
+        if (decl.type->kind == TypeKind_Function) {
+            Ast* block = decl.type->Function.block;
+            Type_Table* formal_arguments = &decl.type->Function.arguments;
             
             if (block) {
                 
@@ -267,10 +364,12 @@ interp_function_call(Interp* interp, string_id ident, Ast* args) {
                             // TODO(Alexander): assign binary expressions needs to be handled here
                             Interp_Value arg = interp_expression(interp, expr);
                             string_id arg_ident = formal_arguments->idents[arg_index];
-                            Value* value = symbol_table_store_value(interp->symbol_table, &interp->stack, arg_ident);
                             
-                            // TODO(Alexander): maybe want to convert struct/union to pointers here
-                            *value = arg.value;
+                            void* data = interp_push_value(interp, arg.type, arg.value);
+                            Entity entity;
+                            entity.data = data;
+                            entity.type = arg.type;
+                            map_put(interp->symbol_table, arg_ident, entity);
                         }
                         
                         arg_index++;
@@ -318,10 +417,14 @@ interp_statement(Interp* interp, Ast* ast) {
     switch (ast->type) {
         case Ast_Assign_Stmt: {
             Interp_Value expr = interp_expression(interp, ast->Assign_Stmt.expr);
+            // TODO(Alexander): check expr.type and type
             Type* type = interp_type(interp, ast->Assign_Stmt.type);
             string_id ident = ast->Assign_Stmt.ident->Ident;
-            Value* value = symbol_table_store_value(interp->symbol_table, &interp->stack, ident);
-            *value = expr.value;
+            void* data = interp_push_value(interp, type, expr.value);
+            Entity entity;
+            entity.data = data;
+            entity.type = type;
+            map_put(interp->symbol_table, ident, entity);
         } break;
         
         case Ast_Expr_Stmt: {
@@ -333,12 +436,12 @@ interp_statement(Interp* interp, Ast* ast) {
         } break;
         
         case Ast_Break_Stmt: {
-            result.type = InterpValueType_Break;
+            result.modifier = InterpValueMod_Break;
             result.label = ast->Break_Stmt.ident->Ident;
         } break;
         
         case Ast_Continue_Stmt: {
-            result.type = InterpValueType_Continue;
+            result.modifier = InterpValueMod_Continue;
             result.label = ast->Continue_Stmt.ident->Ident;
         } break;
         
@@ -359,7 +462,7 @@ interp_statement(Interp* interp, Ast* ast) {
         
         case Ast_Return_Stmt: {
             result = interp_expression(interp, ast->Return_Stmt.expr);
-            result.type = InterpValueType_Return;
+            result.modifier = InterpValueMod_Return;
         } break;
     }
     
@@ -375,9 +478,9 @@ interp_block(Interp* interp, Ast* ast) {
         result = interp_statement(interp, ast->Compound.node);
         ast = ast->Compound.next;
         
-        if (result.type == InterpValueType_Return ||
-            result.type == InterpValueType_Continue ||
-            result.type == InterpValueType_Break) {
+        if (result.modifier == InterpValueMod_Return ||
+            result.modifier == InterpValueMod_Continue ||
+            result.modifier == InterpValueMod_Break) {
             break;
         }
     }
@@ -422,7 +525,7 @@ interp_type(Interp* interp, Ast* ast) {
     switch (ast->type) {
         case Ast_Named_Type: {
             string_id ident = ast->Named_Type->Ident;
-            Type* type = symbol_table_resolve_type(interp->symbol_table, ident);
+            Type* type = map_get(interp->symbol_table, ident).type;
             if (type) {
                 result = type;
             } else {
@@ -437,10 +540,11 @@ interp_type(Interp* interp, Ast* ast) {
             result->Array.type = elem_type;
             // TODO(Alexander): what is the shape, expression, I assume right now it's an integer?
             Interp_Value capacity = interp_expression(interp, ast->Array_Type.shape); 
-            if (capacity.type == InterpValueType_Numeric) {
+            result->Array.capacity = 0;
+            if (is_integer(capacity.value)) {
                 result->Array.capacity= value_to_smm(capacity.value);
-            } else {
-                result->Array.capacity = 0;
+            } else if (!is_void(capacity.value)) {
+                interp_error(interp, string_lit("expected integer value"));
             }
         } break;
         
@@ -505,7 +609,7 @@ interp_register_primitive_types(Interp* interp) {
         Type* type = &global_primitive_types[i];
         string_id ident = (string_id) (Kw_int + type->Primitive.kind);
         Entity entity;
-        entity.kind = EntityKind_Type;
+        entity.data = 0;
         entity.type = type;
         map_put(interp->symbol_table, ident, entity);
     }
@@ -526,7 +630,7 @@ interp_ast_declarations(Interp* interp, Ast_Decl_Entry* decls) {
             if (type->kind == TypeKind_Function) {
                 type->Function.block = stmt->Decl_Stmt.decl;;
             }
-            entity.kind = EntityKind_Type;
+            entity.data = 0;
             entity.type = type;
             map_put(interp->symbol_table, decl.key, entity);
         }
@@ -539,16 +643,16 @@ interp_ast_declarations(Interp* interp, Ast_Decl_Entry* decls) {
         assert(decl.value->type == Ast_Type_Decl);
         Ast* stmt = decl.value->Decl.stmt;
         
-        Entity entity = {};
         if (stmt->type != Ast_Decl_Stmt) {
             Interp_Value interp_result = interp_statement(interp, stmt);
-            if (interp_result.type != InterpValueType_Void) {
-                Value* value = arena_push_struct(&interp->stack, Value);
-                *value = interp_result.value;
-                
-                entity.kind = EntityKind_Value;
-                entity.value = value;
-                map_put(interp->symbol_table, decl.key, entity);
+            if (!is_void(interp_result.value)) {
+                void* data= interp_push_value(interp, interp_result.type, interp_result.value);
+                if (!data) {
+                    Entity entity;
+                    entity.data = data;
+                    entity.type = interp_result.type;
+                    map_put(interp->symbol_table, decl.key, entity);
+                }
             }
         }
     }

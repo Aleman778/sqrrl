@@ -121,7 +121,11 @@ enum Value_Type {
     Value_array,
     Value_struct,
     Value_string,
+    Value_ast_node,
 };
+
+// NOTE(Alexander): forward declare
+struct Ast;
 
 struct Value {
     Value_Type type;
@@ -134,6 +138,7 @@ struct Value {
         Array_Value array;
         void* data;
         string str;
+        Ast* ast;
     };
 };
 
@@ -162,6 +167,11 @@ is_floating(Value value) {
 inline bool
 is_numeric(Value value) {
     return is_integer(value) && is_floating(value);
+}
+
+inline bool
+is_ast_node(Value value) {
+    return value.type == Value_ast_node;
 }
 
 inline u64

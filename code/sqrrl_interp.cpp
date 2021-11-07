@@ -51,7 +51,7 @@ interp_push_value(Interp* interp, Type* type, Value value) {
             *count = value.array.count;
             result = arena_push_size(&interp->stack, sizeof(smm), alignof(smm));
             *((smm*) result) = (smm) value.array.elements;
-        }
+        } break;
         
         case TypeKind_String: {
             u32 count = string_count(value.str);
@@ -59,12 +59,12 @@ interp_push_value(Interp* interp, Type* type, Value value) {
             *result_count = count;
             result = arena_push_size(&interp->stack, sizeof(smm), alignof(smm));
             memcpy(result, value.str, count);
-        }
+        } break;
         
         case TypeKind_Struct: {
             result = arena_push_size(&interp->stack, sizeof(smm), alignof(smm));
             *((smm*) result) = (smm) value.data;
-        }
+        } break;
     }
     
     return result;
@@ -121,16 +121,19 @@ value.##V = *((T*) data); \
         
         case TypeKind_Array: {
             value.array.count = *((smm*) data - 1);
-            value.array.elements = data;
-        }
+            value.array.elements = *((void**) data);
+            value.type = Value_array;
+        } break;
         
         case TypeKind_String: {
             value.str = (string) data;
-        }
+            value.type = Value_string;
+        } break;
         
         case TypeKind_Struct: {
             value.data = data;
-        }
+            value.type = Value_struct;
+        } break;
     }
     
     Interp_Value result = create_interp_value(interp);
@@ -297,28 +300,8 @@ interp_expression(Interp* interp, Ast* ast) {
         
         case Ast_Array_Expr: {
             Ast* elements = ast->Array_Expr.elements;
-            
-            Array_Value array = {};
-            
-            while (elements && elements->type == Ast_Compound) {
-                Ast* element = elements->Compound.node;
-                elements = elements->Compound.next;
-                
-                Interp_Value elem = interp_expression(interp, element);
-                if (!is_void(elem.value)) {
-                    Value* value = arena_push_struct(&interp->stack, Value);
-                    *value = elem.value;
-                    array.count++;
-                    if (!array.elements) {
-                        array.elements = value;
-                    }
-                } else {
-                    interp_error(interp, string_lit("type error: expected literal value"));
-                }
-            }
-            
-            result.value.type = Value_array;
-            result.value.array = array;
+            result.value.type = Value_ast_node;
+            result.value.ast = elements;
         } break;
         
         case Ast_Struct_Expr: {
@@ -417,14 +400,59 @@ interp_statement(Interp* interp, Ast* ast) {
     switch (ast->type) {
         case Ast_Assign_Stmt: {
             Interp_Value expr = interp_expression(interp, ast->Assign_Stmt.expr);
+            
             // TODO(Alexander): check expr.type and type
             Type* type = interp_type(interp, ast->Assign_Stmt.type);
             string_id ident = ast->Assign_Stmt.ident->Ident;
-            void* data = interp_push_value(interp, type, expr.value);
-            Entity entity;
-            entity.data = data;
-            entity.type = type;
-            map_put(interp->symbol_table, ident, entity);
+            
+            if (is_ast_node(expr.value)) {
+                switch (type->kind) {
+                    case TypeKind_Array: {
+                        Array_Value array = {};
+                        Ast* elements = expr.value.ast;
+                        
+                        Type* elem_type = type->Array.type;
+                        
+                        while (elements && elements->type == Ast_Compound) {
+                            Ast* element = elements->Compound.node;
+                            elements = elements->Compound.next;
+                            
+                            Value elem_value = interp_expression(interp, element).value;
+                            if (!is_void(elem_value)) {
+                                void* elem = interp_push_value(interp, elem_type, elem_value);
+                                array.count++;
+                                if (!array.elements) {
+                                    array.elements = elem;
+                                }
+                            } else {
+                                interp_error(interp, string_lit("type error: expected literal value"));
+                            }
+                        }
+                        
+                        Value value;
+                        value.type = Value_array;
+                        value.array = array;
+                        void* data = interp_push_value(interp, type, value);
+                        
+                        Entity entity;
+                        entity.data = data;
+                        entity.type = type;
+                        map_put(interp->symbol_table, ident, entity);
+                    } break;
+                    
+                    default: {
+                        assert(0 && "unsupported");
+                    } break;
+                }
+            } else {
+                
+                void* data = interp_push_value(interp, type, expr.value);
+                
+                Entity entity;
+                entity.data = data;
+                entity.type = type;
+                map_put(interp->symbol_table, ident, entity);
+            }
         } break;
         
         case Ast_Expr_Stmt: {

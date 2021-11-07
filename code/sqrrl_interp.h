@@ -19,6 +19,7 @@ struct Interp {
 };
 
 enum Interp_Value_Mod {
+    InterpValueMod_None,
     InterpValueMod_Return,
     InterpValueMod_Break,
     InterpValueMod_Continue,
@@ -27,6 +28,7 @@ enum Interp_Value_Mod {
 struct Interp_Value {
     Value value;
     Type* type;
+    void* data;
     s32 block_depth;
     Interp_Value_Mod modifier;
     string_id label;
@@ -62,21 +64,54 @@ interp_unresolved_identifier_error(Interp* interp, string_id ident) {
     interp_error(interp, string_format("unresolved identifier `%`", f_string(vars_load_string(ident))));
 }
 
-void* interp_push_value(Interp* interp, Type* type, Value value);
+void interp_save_value(Interp* interp, Type* type, void* storage, Value value);
 Interp_Value interp_resolve_value(Interp* interp, Type* type, void* data);
 
-inline Interp_Value
-interp_resolve_value(Interp* interp, string_id ident) {
-    Entity entity = map_get(interp->symbol_table, ident);
-    if (!entity.data || !entity.type) {
-        if (entity.type) {
+inline void*
+interp_push_value(Interp* interp, Type* type, Value value) {
+    assert(type->cached_size > 0 && "bad size");
+    assert(type->cached_align > 0 && "bad align");
+    
+    void* result = arena_push_size(&interp->stack, type->cached_size, type->cached_align);
+    interp_save_value(interp, type, result, value);
+    
+    return result;
+}
+
+inline bool
+interp_entity_is_assigned(Interp* interp, Entity* entity, string_id ident) {
+    if (!entity->data || !entity->type) {
+        if (entity->type) {
             interp_error(interp, string_format("`%`: declared but not assigned", f_string(vars_load_string(ident))));
         } else {
             interp_error(interp, string_format("`%`: undeclared identifier ", f_string(vars_load_string(ident))));
         }
+        return false;
     }
     
-    return interp_resolve_value(interp, entity.type, entity.data);
+    return true;
+}
+
+inline bool
+interp_entity_is_declared(Interp* interp, Entity* entity, string_id ident) {
+    if (!entity->type) {
+        interp_error(interp, string_format("`%`: undeclared identifier ", f_string(vars_load_string(ident))));
+        // TODO(Alexander): what about int maybe primitives and types should get its own symbol table?
+        return false;
+    }
+    return true;
+}
+
+inline Interp_Value
+interp_resolve_value(Interp* interp, string_id ident) {
+    Interp_Value result = {};
+    
+    Entity entity = map_get(interp->symbol_table, ident);
+    if (interp_entity_is_assigned(interp, &entity, ident)) {
+        result =interp_resolve_value(interp, entity.type, entity.data);
+    }
+    
+    return result;
 }
 
 Interp_Value interp_expression(Interp* interp, Ast* ast);

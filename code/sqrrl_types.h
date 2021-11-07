@@ -70,6 +70,7 @@ struct Type {
         
         struct {
             Type_Table fields;
+            struct { string_id key; smm value; }* ident_to_offset;
         } Struct;
         
         struct {
@@ -107,3 +108,33 @@ size, size \
 #undef PRIMITIVE
 #undef VAL
 };
+
+bool
+type_equals(Type* a, Type* b) {
+    if (a->kind != b->kind) {
+        return false;
+    }
+    
+    switch (a->kind) {
+        case TypeKind_Primitive: {
+            if (a->Primitive.kind != b->Primitive.kind) {
+                return false;
+            }
+        } break;
+        
+        case TypeKind_Array: {
+            if (!type_equals(a->Array.type, b->Array.type)) {
+                return false;
+            }
+            if (a->Array.capacity != b->Array.capacity) {
+                return false;
+            }
+        } break;
+        
+        default: {
+            assert(0 && "not implemented");
+        } break;
+    }
+    
+    return true;
+}

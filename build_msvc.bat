@@ -19,8 +19,8 @@ if ["%~1"]==["release"] (
     rem set compiler_flags=-O2 -DNDEBUG=1 %compiler_flags%
 ) else (
     rem Debug Compiler Flags
-    set compiler_flags=-Od -DDEBUG=1 -DBUILD_DEBUG=1
-    set compiler_flags= -DBUILD_INTERNAL=1 -DBUILD_MAX_DEBUG=1 %compiler_flags%
+    set compiler_flags=-Od -DDEBUG=1 -DBUILD_DEBUG=1 %compiler_flags%
+    set compiler_flags=-DBUILD_INTERNAL=1 -DBUILD_MAX_DEBUG=1 %compiler_flags%
 
     rem Debug linker flags
     set linker_flags=dbghelp.lib %linker_flags%

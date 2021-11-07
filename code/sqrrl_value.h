@@ -91,17 +91,19 @@ binary_get_assoc(Binary_Op op) {
     return Assoc_Left;
 }
 
+bool
+is_binary_assign(Binary_Op op) {
+    // HACK(Alexander): using assoicativity to figure this out isn't guaranteed to be
+    // correct if we modify this later.
+    return binary_get_assoc(op) == Assoc_Right;
+}
+
 enum Ternary_Op {
     TernaryOp_Conditional, // expr ? true : false
 };
 
 // Forward declare type
 struct Type;
-
-struct Pointer_Value {
-    smm address;
-    Type* type;
-};
 
 // NOTE(alexander): forward declare.
 struct Value;
@@ -119,7 +121,6 @@ enum Value_Type {
     Value_floating,
     Value_pointer,
     Value_array,
-    Value_struct,
     Value_string,
     Value_ast_node,
 };
@@ -134,11 +135,11 @@ struct Value {
         s64 signed_int;
         u64 unsigned_int;
         f64 floating;
-        Pointer_Value pointer;
+        smm pointer;
         Array_Value array;
-        void* data;
         string str;
         Ast* ast;
+        void* data;
     };
 };
 
@@ -180,7 +181,7 @@ value_to_u64(Value value) {
         case Value_boolean: return value.boolean == true ? 1 : 0;
         case Value_signed_int: return (u64) value.signed_int;
         case Value_floating: return (u64) value.floating;
-        case Value_pointer: return (u64) value.pointer.address;
+        case Value_pointer: return (u64) value.pointer;
         default: return (u64) value.unsigned_int;
     }
 }
@@ -191,7 +192,7 @@ value_to_smm(Value value) {
         case Value_boolean: return value.boolean == true ? 1 : 0;
         case Value_signed_int: return (smm) value.signed_int;
         case Value_floating: return (smm) value.floating;
-        case Value_pointer: return value.pointer.address;
+        case Value_pointer: return value.pointer;
         default: return (smm) value.unsigned_int;
     }
 }
@@ -202,7 +203,7 @@ value_to_f64(Value value) {
         case Value_boolean: return value.boolean == true ? 1.0 : 0.0;
         case Value_signed_int: return (f64) value.signed_int;
         case Value_unsigned_int: return (f64) value.unsigned_int;
-        case Value_pointer: return (f64) value.pointer.address;
+        case Value_pointer: return (f64) value.pointer;
         default: return value.floating;
     }
 }
@@ -425,7 +426,7 @@ void print_value(Value* val) {
         } break;
         
         case Value_pointer: {
-            printf("0x%I64X", val->pointer.address);
+            printf("0x%I64X", val->pointer);
         } break;
         
         case Value_array: {

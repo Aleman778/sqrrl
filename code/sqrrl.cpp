@@ -76,9 +76,13 @@ compiler_main_entry(int argc, char* argv[]) {
         }
     }
     
+    int arr[] = {0, 1, 2, 3, 4, 5};
+    
+    return arr[1 + 2];
+    
     //int x = 10 + 10;
     //return x > 10 ? 10 : x;
     
-    int x = 10 + 10;
-    return x > 10 ? 10 : x + 30 > 10 ? 33 : 44;
+    //int x = 10 + 10;
+    //return x > 10 ? 10 : x + 30 > 10 ? 33 : 44;
 }

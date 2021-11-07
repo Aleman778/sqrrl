@@ -321,133 +321,141 @@ parse_float(Parser* parser) {
 }
 
 Ast*
-parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr) {
+parse_atom(Parser* parser, bool report_error) {
+    Ast* result = {};
     Token token = peek_token(parser);
     
-    if (!atom_expr) {
-        switch (token.type) {
-            case Token_Ident: {
-                string_id sym = vars_save_string(token.source);
-                switch (sym) {
-                    case Kw_false: {
-                        next_token(parser);
-                        atom_expr = push_ast_value(parser, create_boolean_value(false));
-                    } break;
-                    
-                    case Kw_true: {
-                        next_token(parser);
-                        atom_expr = push_ast_value(parser, create_boolean_value(true));
-                    } break;
-                    
-                    case Kw_cast: {
-                        next_token(parser);
-                        next_token_if_matched(parser, Token_Open_Paren);
-                        Ast* type = parse_type(parser);
-                        next_token_if_matched(parser, Token_Close_Paren);
-                        
-                        Ast* inner_expr = parse_expression(parser);
-                        Ast* node = push_ast_node(parser);
-                        node->type = Ast_Cast_Expr;
-                        node->Cast_Expr.type = type;
-                        node->Cast_Expr.expr = inner_expr;
-                        atom_expr = node;
-                    } break;
-                    
-                    default: {
-                        atom_expr = parse_identifier(parser, report_error);
-                    } break;
-                }
+    switch (token.type) {
+        case Token_Ident: {
+            string_id sym = vars_save_string(token.source);
+            switch (sym) {
+                case Kw_false: {
+                    next_token(parser);
+                    result = push_ast_value(parser, create_boolean_value(false));
+                } break;
                 
-            } break;
-            
-            case Token_Raw_Ident: {
-                atom_expr = parse_identifier(parser);
-            } break;
-            
-            case Token_Int: {
-                next_token(parser);
-                atom_expr = parse_int(parser);
-            } break;
-            
-            case Token_Float: {
-                next_token(parser);
-                atom_expr = parse_float(parser);
-            } break;
-            
-            case Token_Char: {
-                next_token(parser);
-                atom_expr = parse_char(parser);
-            } break;
-            
-            case Token_String: {
-                next_token(parser);
-                atom_expr = parse_string(parser);
-            } break;
-            
-            case Token_Open_Paren: {
-                next_token(parser);
-                atom_expr = push_ast_node(parser, &token);
-                Ast* inner_expr = parse_expression(parser, false);
-                if (inner_expr && inner_expr->type == Ast_None) {
+                case Kw_true: {
+                    next_token(parser);
+                    result = push_ast_value(parser, create_boolean_value(true));
+                } break;
+                
+                case Kw_cast: {
+                    next_token(parser);
+                    next_token_if_matched(parser, Token_Open_Paren);
+                    Ast* type = parse_type(parser);
+                    next_token_if_matched(parser, Token_Close_Paren);
                     
-                    inner_expr = parse_type(parser, false);
-                    
-                    //if (report_error) {
-                    //assert(0 && "this should likely be a parsing error");
-                    //}
-                    
-                    if (!inner_expr) {
-                        return inner_expr;
-                    }
-                }
+                    Ast* inner_expr = parse_expression(parser);
+                    Ast* node = push_ast_node(parser);
+                    node->type = Ast_Cast_Expr;
+                    node->Cast_Expr.type = type;
+                    node->Cast_Expr.expr = inner_expr;
+                    result = node;
+                } break;
+                
+                default: {
+                    result = parse_identifier(parser, report_error);
+                } break;
+            }
+            
+        } break;
+        
+        case Token_Raw_Ident: {
+            result = parse_identifier(parser);
+        } break;
+        
+        case Token_Int: {
+            next_token(parser);
+            result = parse_int(parser);
+        } break;
+        
+        case Token_Float: {
+            next_token(parser);
+            result = parse_float(parser);
+        } break;
+        
+        case Token_Char: {
+            next_token(parser);
+            result = parse_char(parser);
+        } break;
+        
+        case Token_String: {
+            next_token(parser);
+            result = parse_string(parser);
+        } break;
+        
+        case Token_Open_Paren: {
+            next_token(parser);
+            result = push_ast_node(parser, &token);
+            Ast* inner_expr = parse_expression(parser, false);
+            if (inner_expr && inner_expr->type == Ast_None) {
+                
+                result->type = Ast_Cast_Expr;
+                result->Cast_Expr.type = parse_type(parser, true);
+                next_token_if_matched(parser, Token_Close_Paren);
+                result->Cast_Expr.expr = parse_expression(parser, true);
+            } else {
                 
                 Token peek = peek_token(parser);
                 switch (peek.type) {
                     case Token_Close_Paren: {
                         next_token(parser);
-                        atom_expr->type = Ast_Paren_Expr;
-                        atom_expr->Paren_Expr.expr = inner_expr;
-                        update_span(parser, atom_expr);
+                        result->type = Ast_Paren_Expr;
+                        result->Paren_Expr.expr = inner_expr;
+                        update_span(parser, result);
                     } break;
                     
                     case Token_Comma: {
-                        atom_expr = parse_compound(parser, 
-                                                   Token_Comma, Token_Close_Paren, Token_Comma, 
-                                                   &parse_actual_argument);
+                        result = parse_compound(parser, 
+                                                Token_Comma, Token_Close_Paren, Token_Comma, 
+                                                &parse_actual_argument);
                     } break;
                     
                     default: {
                         if (report_error) {
                             parse_error(parser, peek, string_format("expected `)` or `,` found `%` ", f_token(peek.type)));
                         }
-                    }
+                    } break;
                 }
-            } break;
-            
-            case Token_Open_Brace: {
-                atom_expr = push_ast_node(parser, &token);
-                atom_expr->type = Ast_Array_Expr;
-                atom_expr->Array_Expr.elements = parse_compound(parser, 
-                                                                Token_Open_Brace, 
-                                                                Token_Close_Brace, 
-                                                                Token_Comma, 
-                                                                &parse_actual_argument);
-            } break;
+            }
+        } break;
+        
+        case Token_Open_Brace: {
+            result = push_ast_node(parser, &token);
+            result->type = Ast_Array_Expr;
+            result->Array_Expr.elements = parse_compound(parser, 
+                                                         Token_Open_Brace, 
+                                                         Token_Close_Brace, 
+                                                         Token_Comma, 
+                                                         &parse_actual_argument);
+        } break;
+    }
+    
+    if (!result) {
+        if (report_error) {
+            parse_error_unexpected_token(parser, token);
         }
+        return result;
+    }
+    
+    update_span(parser, result);
+    
+    return result;
+}
+
+Ast*
+parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr) {
+    if (!atom_expr) {
+        atom_expr = parse_atom(parser, report_error);
         
         if (!atom_expr) {
             atom_expr = push_ast_node(parser);
-            if (report_error) {
-                parse_error_unexpected_token(parser, token);
-            }
             return atom_expr;
         }
-        
-        update_span(parser, atom_expr);
     }
     
-    // Some expressions are build by combining multiple expressiosn e.g. `atom1[atom2]`.
-    token = peek_token(parser);
+    // Some expressions are build by combining multiple atoms e.g. `atom1[atom2]`.
+    Token token = peek_token(parser);
     Ast* lhs_expr = atom_expr;
     switch (token.type) {
         case Token_Dot: {
@@ -455,7 +463,7 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
             lhs_expr = push_ast_node(parser);
             lhs_expr->type = Ast_Field_Expr;
             lhs_expr->Field_Expr.var = atom_expr;
-            lhs_expr->Field_Expr.field = parse_expression(parser);
+            lhs_expr->Field_Expr.field = parse_atom(parser, true);
         } break;
         
         case Token_Open_Paren: {
@@ -681,7 +689,10 @@ parse_statement(Parser* parser) {
                                 result = parse_assign_statement(parser, type);
                             } else {
                                 Ast* ident = type->Named_Type;
-                                result = parse_expression(parser, true, 1, ident);
+                                
+                                result = push_ast_node(parser);
+                                result->type = Ast_Expr_Stmt;
+                                result->Expr_Stmt = parse_expression(parser, true, 1, ident);
                             }
                         } break;
                         
@@ -697,7 +708,9 @@ parse_statement(Parser* parser) {
     }
     
     if (!result) {
-        result = parse_expression(parser);
+        result = push_ast_node(parser);
+        result->type = Ast_Expr_Stmt;
+        result->Expr_Stmt = parse_expression(parser);
     }
     
     update_span(parser, result);

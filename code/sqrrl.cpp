@@ -55,7 +55,7 @@ compiler_main_entry(int argc, char* argv[]) {
         return 0;
     }
     
-#if 1
+#if 0
     // NOTE(Alexander): Print the AST
     for (int i = 0; i < map_count(ast_file.decls); i++) {
         Ast_Decl_Entry entry = ast_file.decls[i];
@@ -76,13 +76,9 @@ compiler_main_entry(int argc, char* argv[]) {
         }
     }
     
-    int arr[] = {0, 1, 2, 3, 4, 5};
-    
-    return arr[1 + 2];
-    
-    //int x = 10 + 10;
-    //return x > 10 ? 10 : x;
-    
-    //int x = 10 + 10;
-    //return x > 10 ? 10 : x + 30 > 10 ? 33 : 44;
+    int test = -10;
+    if (test) {
+        return 2;
+    }
+    return 0;
 }

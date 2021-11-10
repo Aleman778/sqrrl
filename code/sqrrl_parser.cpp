@@ -12,14 +12,14 @@ next_token_if_matched(Parser* parser, Token_Type expected, bool report_error) {
     }
 }
 
-Keyword
-parse_keyword(Parser* parser, bool report_error) {
+bool
+parse_keyword(Parser* parser, Keyword expected, bool report_error) {
     Token token = peek_token(parser);
     if (token.type == Token_Ident) {
         string_id id = vars_save_string(token.source);
-        if (id > keyword_first && id <= keyword_last) {
+        if (id == expected) {
             next_token(parser);
-            return (Keyword) id;
+            return true;
         }
     }
     
@@ -27,7 +27,7 @@ parse_keyword(Parser* parser, bool report_error) {
         parse_error(parser, token, string_format("expected keyword, found `%`", f_string(token.source)));
     }
     
-    return Kw_invalid;
+    return false;
 }
 
 Ast*
@@ -96,7 +96,7 @@ parse_escape_character(Parser* parser, char*& curr, char* end, bool byte) {
 
 internal Ast*
 parse_char(Parser* parser) {
-    assert(parser->token.kind == Token_Char);
+    assert(parser->current_token.type == Token_Char);
     
     string str = parser->current_token.source;
     char* curr = str;
@@ -127,7 +127,7 @@ parse_char(Parser* parser) {
 
 internal Ast*
 parse_string(Parser* parser) {
-    assert(parser->token.kind == Token_String);
+    assert(parser->current_token.type == Token_String);
     
     string str = parser->current_token.source;
     char* curr = str;
@@ -605,7 +605,9 @@ parse_statement(Parser* parser) {
                 result->If_Stmt.cond = parse_expression(parser);
                 next_token_if_matched(parser, Token_Close_Paren, opened_paren);
                 result->If_Stmt.then_block = parse_statement(parser);
-                result->If_Stmt.else_block = parse_statement(parser);
+                if (parse_keyword(parser, Kw_else, false)) {
+                    result->If_Stmt.else_block = parse_statement(parser);
+                }
             } break;
             
             case Kw_for: {
@@ -619,8 +621,10 @@ parse_statement(Parser* parser) {
                 bool opened_paren = next_token_if_matched(parser, Token_Open_Paren, false);
                 // TODO(alexander): should probably not be statement, move out variable decl
                 result->For_Stmt.init = parse_statement(parser);
+                next_token_if_matched(parser, Token_Semi);
                 result->For_Stmt.cond = parse_statement(parser);
-                result->For_Stmt.update = parse_statement(parser);
+                next_token_if_matched(parser, Token_Semi);
+                result->For_Stmt.update = parse_expression(parser);
                 next_token_if_matched(parser, Token_Close_Paren, opened_paren);
                 result->For_Stmt.block = parse_statement(parser);
             } break;
@@ -864,11 +868,23 @@ parse_compound(Parser* parser,
         curr->Compound.next = push_ast_node(parser);
         curr = curr->Compound.next;
         
+        // HACK(Alexander): to get avoid requiring separators for block statements
+        if (curr->Compound.node &&
+            (curr->Compound.node->type == Ast_Block_Stmt ||
+             curr->Compound.node->type == Ast_Decl_Stmt ||
+             curr->Compound.node->type == Ast_If_Stmt ||
+             curr->Compound.node->type == Ast_For_Stmt ||
+             curr->Compound.node->type == Ast_While_Stmt ||
+             curr->Compound.node->type == Ast_Loop_Stmt)) {
+            continue;
+        }
+        
         if (!next_token_if_matched(parser, separator, false)) {
             break;
         }
     }
     
+    // TODO(Alexander): change error message to complain about the separator rather than the end token
     next_token_if_matched(parser, end);
     return result;
 }

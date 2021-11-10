@@ -6,31 +6,44 @@
 #include <cstring>
 #include <cstdarg>
 
-// NOTE(alexander): rename static to better reflect its actual meaning
+// NOTE(Alexander): rename static to better reflect its actual meaning
 #define internal static
 #define global static
 #define local_persist static
 
-// NOTE(alexander): count the number of elements in a fixed size array
+// NOTE(Alexander): count the number of elements in a fixed size array
 #define fixed_array_count(array) (sizeof(array) / sizeof((array)[0]))
 
-// NOTE(alexander): specify file size macros
+// NOTE(Alexander): specify file size macros
 #define kilobytes(value) (1024LL * (value))
 #define megabytes(value) (1024LL * kilobytes(value))
 #define gigabytes(value) (1024LL * megabytes(value))
 #define terabytes(value) (1024LL * gigabytes(value))
 
-// NOTE(alexander): bit stuff
+// NOTE(Alexander): bit stuff
 #define bit(x) (1 << (x))
 #define is_bit_set(var, x) ((var) & (1 << (x)))
 #define is_bitflag_set(var, flag) ((var) & (flag))
 
-// NOTE(alexander): define assestion macro on debug mode
-#ifdef assert
-#undef assert
-#endif
+// NOTE(Alexander): define more convinient types
+typedef unsigned int uint;
+typedef int8_t       s8;
+typedef uint8_t      u8;
+typedef int16_t      s16;
+typedef uint16_t     u16;
+typedef int32_t      s32;
+typedef uint32_t     u32;
+typedef int64_t      s64;
+typedef uint64_t     u64;
+typedef uintptr_t    umm;
+typedef intptr_t     smm;
+typedef float        f32;
+typedef double       f64;
+typedef int32_t      b32;
+typedef char*        string;
+typedef const char*  cstring;
 
-
+// NOTE(Alexander): define type min and max values
 #undef INT_MIN
 #undef INT_MAX
 #undef UINT_MAX
@@ -57,47 +70,32 @@
 #define CHAR_MAX U8_MAX
 #define CHAR_MIN 0U
 
-
+// NOTE(Alexander): define assestion macro on debug mode
+#ifdef assert
+#undef assert
+#endif
 #if BUILD_DEBUG
 void
-__assert(cstr expression, cstr file, int line) {
-    // TODO(alexander): improve assertion printing.
+__assert(cstring expression, cstring file, int line) {
+    // TODO(Alexander): improve assertion printing.
     fprintf(stderr, "%s:%d: Assertion failed: %s\n", file, line, expression);
-    *(int *)0 = 0; // NOTE(alexander): purposefully trap the program
+    *(int *)0 = 0; // NOTE(Alexander): purposefully trap the program
 }
 #define assert(expression) (void)((expression) || (__assert(#expression, __FILE__, __LINE__), 0))
 #else
 #define assert(expression)
 #endif
 
-// TODO(alexander): special asserts
+// TODO(Alexander): special asserts
 #define assert_enum(T, v) assert((v) > 0 && (v) < T##_Count && "enum value out of range")
 #define assert_power_of_two(x) assert((((x) & ((x) - 1)) == 0) && "x is not power of two")
-
-// NOTE(alexander): define more convinient types
-typedef unsigned int uint;
-typedef int8_t       s8;
-typedef uint8_t      u8;
-typedef int16_t      s16;
-typedef uint16_t     u16;
-typedef int32_t      s32;
-typedef uint32_t     u32;
-typedef int64_t      s64;
-typedef uint64_t     u64;
-typedef uintptr_t    umm;
-typedef intptr_t     smm;
-typedef float        f32;
-typedef double       f64;
-typedef int32_t      b32;
-typedef char*        string;
-typedef const char*  cstring;
 
 inline u32
 cstring_count(cstring str) {
     return (u32) strlen(str);
 }
 
-// TODO(alexander): lazy!!!! don't use malloc for this, put in arena later...
+// TODO(Alexander): lazy!!!! don't use malloc for this, put in arena later...
 inline string
 string_alloc(u32 count) {
     char* result = (char*) malloc(count + 5) + 4;
@@ -121,9 +119,9 @@ string_lit(cstring str) {
 
 #define string_count(s) *((u32*) s - 1)
 
-// NOTE(alexander): improved string formatting and printf
+// NOTE(Alexander): improved string formatting and printf
 typedef int Format_Type;
-enum { // TODO(alexander): add more types
+enum { // TODO(Alexander): add more types
     FormatType_int,
     FormatType_uint,
     FormatType_smm,
@@ -132,7 +130,7 @@ enum { // TODO(alexander): add more types
     FormatType_cstring,
 };
 
-// TODO(alexander): add more types
+// TODO(Alexander): add more types
 #define f_int(x) FormatType_int, (int) (x)
 #define f_smm(x) FormatType_smm, (smm) (x)
 #define f_uint(x) FormatType_uint, (uint) (x)
@@ -143,8 +141,8 @@ enum { // TODO(alexander): add more types
 void pln(cstring format...);
 string string_format(cstring format...);
 
-// TODO(alexander): implement this later, we use stb_ds for now!
-// NOTE(alexander): dynamic arrays, usage:
+// TODO(Alexander): implement this later, we use stb_ds for now!
+// NOTE(Alexander): dynamic arrays, usage:
 //     i32* array = 0;
 //     arr_push(array, 5);
 
@@ -176,7 +174,7 @@ string string_format(cstring format...);
 
 //}
 
-// NOTE(alexander): change the naming convention of stb_ds
+// NOTE(Alexander): change the naming convention of stb_ds
 #define array_free(a) arrfree(a)
 #define array_push(a, x) arrput(a, x)
 #define array_pop(a) arrpop(a)
@@ -240,15 +238,15 @@ _binary_search(void* arr, void* val, smm count, smm size,
 
 #define binary_search(arr, val, compare) _binary_search(arr, &(val), array_count(arr), sizeof(arr), compare)
 
-// NOTE(alexander): hash map
+// NOTE(Alexander): hash map
 
-// NOTE(alexander): memory arena
+// NOTE(Alexander): memory arena
 #ifndef DEFAULT_ALIGNMENT
 #define DEFAULT_ALIGNMENT (2*alignof(smm))
 #endif
 #define ARENA_DEFAULT_BLOCK_SIZE kilobytes(10)
 
-// NOTE(alexander): align has to be a power of two.
+// NOTE(Alexander): align has to be a power of two.
 inline umm
 align_forward(umm address, umm align) {
     assert_power_of_two(align);
@@ -259,7 +257,7 @@ align_forward(umm address, umm align) {
     return address;
 }
 
-// NOTE(alexander): memory arena
+// NOTE(Alexander): memory arena
 struct Arena {
     u8* base;
     umm size;
@@ -303,14 +301,14 @@ arena_push_size(Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT, umm flags=0
         
         current = (umm) arena->base + arena->curr_used;
         offset = align_forward(current, align) - (umm) arena->base;
-        // TODO(alexander): we need to also store the previous memory block so we can eventually free it.
+        // TODO(Alexander): we need to also store the previous memory block so we can eventually free it.
     }
     
     void* result = arena->base + offset;
     arena->prev_used = arena->curr_used;
     arena->curr_used = offset + size;
     
-    // TODO(alexander): add memory clear to zero flag
+    // TODO(Alexander): add memory clear to zero flag
     
     return result;
 }

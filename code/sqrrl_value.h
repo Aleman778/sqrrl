@@ -5,7 +5,8 @@ UNOP(Negate,      "-") \
 UNOP(Not,         "!") \
 UNOP(Bitwise_Not, "~") \
 UNOP(Address_Of,  "&") \
-UNOP(Dereference, "*")
+UNOP(Dereference, "*") \
+UNOP(Count,       "")
 
 #define DEF_BINARY_OPS \
 BINOP(None,               "",   0,  Assoc_Left) \
@@ -37,7 +38,8 @@ BINOP(Bitwise_And_Assign, "&=", 1,  Assoc_Right) \
 BINOP(Bitwise_Or_Assign,  "|=", 1,  Assoc_Right) \
 BINOP(Bitwise_Xor_Assign, "^=", 1,  Assoc_Right) \
 BINOP(Shift_Left_Assign,  "<<", 1,  Assoc_Right) \
-BINOP(Shift_Right_Assign, ">>", 1,  Assoc_Right)
+BINOP(Shift_Right_Assign, ">>", 1,  Assoc_Right) \
+BINOP(Count,              "",   0,  Assoc_Left)
 
 enum Assoc {
     Assoc_Left,
@@ -175,6 +177,17 @@ is_ast_node(Value value) {
     return value.type == Value_ast_node;
 }
 
+inline bool
+value_to_bool(Value value) {
+    switch (value.type) {
+        case Value_boolean: return value.boolean;
+        case Value_unsigned_int: return value.unsigned_int != 0;
+        case Value_signed_int: return value.signed_int != 0;
+        case Value_pointer: return value.pointer != 0;
+        default: return false;
+    }
+}
+
 inline u64
 value_to_u64(Value value) {
     switch (value.type) {
@@ -298,63 +311,72 @@ value_integer_binary_operation(Value first, Value second, Binary_Op op) {
 }
 
 
-inline f64
+inline Value
 value_floating_binary_operation(Value first, Value second, Binary_Op op) {
+    Value result;
+    result.type = Value_floating;
+    
     switch (op) {
         case BinaryOp_Multiply: 
         case BinaryOp_Multiply_Assign: {
-            return first.floating * second.floating;
-        }
+            result.floating = first.floating * second.floating;
+        } break;
         
         case BinaryOp_Divide:
         case BinaryOp_Divide_Assign:{
-            return first.floating / second.floating;
-        }
+            result.floating = first.floating / second.floating;
+        } break;
         
         case BinaryOp_Add:
         case BinaryOp_Add_Assign:{
-            return first.floating + second.floating;
-        }
+            result.floating = first.floating + second.floating;
+        } break;
         
         case BinaryOp_Subtract:
         case BinaryOp_Subtract_Assign:{
-            return first.floating - second.floating;
-        }
+            result.floating = first.floating - second.floating;
+        } break;
         
         case BinaryOp_Less_Than: {
-            return first.floating < second.floating;
-        }
+            result.boolean = first.floating < second.floating;
+            result.type = Value_boolean;
+        } break;
         
         case BinaryOp_Less_Equals: {
-            return first.floating <= second.floating;
-        }
+            result.boolean = first.floating <= second.floating;
+            result.type = Value_boolean;
+        } break;
         
         case BinaryOp_Greater_Than: {
-            return first.floating > second.floating;
-        }
+            result.boolean = first.floating > second.floating;
+            result.type = Value_boolean;
+        } break;
         
         case BinaryOp_Greater_Equals: {
-            return first.floating >= second.floating;
-        }
+            result.boolean = first.floating >= second.floating;
+            result.type = Value_boolean;
+        } break;
         
         case BinaryOp_Equals: {
-            return first.floating == second.floating;
-        }
+            result.boolean = first.floating == second.floating;
+            result.type = Value_boolean;
+        } break;
         
         case BinaryOp_Not_Equals: {
-            return first.floating != second.floating;
-        }
+            result.boolean = first.floating != second.floating;
+            result.type = Value_boolean;
+        } break;
         
         case BinaryOp_Assign: {
-            return second.floating;
-        }
+            result.floating = second.floating;
+        } break;
         
         default: {
             assert(0 && "unimplemented");
         }
     }
     
-    return 0;
+    return result;
 }
 
 

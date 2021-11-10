@@ -25,9 +25,17 @@ main() {
     
     myvec = add(myvec, myvec);
     
-    myvec.x = 10.0;
+    //if (myvec.x > 10.0) {
+    //myvec.x = 10.0;
+    //}
     
-    return (int) (myvec.x + myvec.y + arr[4]);
+    //return (int) (myvec.x + myvec.y + arr[4]);
+    
+    int x = 0;
+    for (int i = 0; i < 43; i += 1) {
+        x += 2;
+    }
+    return x;
 }
 
 

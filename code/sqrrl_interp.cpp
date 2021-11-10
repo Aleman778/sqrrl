@@ -136,7 +136,7 @@ value.##V = *((T*) data); \
 
 Interp_Value 
 interp_expression(Interp* interp, Ast* ast) {
-    assert(is_ast_expr(ast) || ast.type == Ast_Value || ast.type == Ast_Ident);
+    assert(is_ast_expr(ast) || ast->type == Ast_Value || ast->type == Ast_Ident);
     
     Interp_Value result = create_interp_value(interp);
     
@@ -208,7 +208,7 @@ interp_expression(Interp* interp, Ast* ast) {
                     interp_error(interp, string_lit("type error: mismatched types"));
                 }
                 
-                first.floating = value_floating_binary_operation(first, second, ast->Binary_Expr.op);
+                first = value_floating_binary_operation(first, second, ast->Binary_Expr.op);
                 
                 result.value = first;
             } else if (is_integer(first) || is_integer(second)) {
@@ -268,11 +268,11 @@ interp_expression(Interp* interp, Ast* ast) {
         
         case Ast_Field_Expr: {
             Interp_Value var = interp_expression(interp, ast->Field_Expr.var);
-            assert(var.value.type == Value_struct);
+            assert(var.value.type == Value_ast_node);
             assert(var.type && var.type->kind == TypeKind_Struct);
             
             Type_Table* type_table = &var.type->Struct.fields;
-            assert(ast->Field_Expr.field == Ast_Ident);
+            assert(ast->Field_Expr.field && ast->Field_Expr.field->type == Ast_Ident);
             string_id ident = ast->Field_Expr.field->Ident;
             
             Type* field_type = map_get(type_table->ident_to_type, ident);
@@ -584,7 +584,7 @@ interp_statement(Interp* interp, Ast* ast) {
                             
                             // NOTE(Alexander): check that the actual type maches its definition
                             Type* def_type = map_get(type_table->ident_to_type, field_ident);
-                            assert(types_equals(field_expr.type, def_type) && "type mismatch");
+                            assert(type_equals(field_expr.type, def_type) && "type mismatch");
                             
                             map_put(field_values, field_ident, field_expr.value);
                         }
@@ -650,6 +650,16 @@ interp_statement(Interp* interp, Ast* ast) {
         } break;
         
         case Ast_If_Stmt: {
+            Interp_Value condition = interp_expression(interp, ast->If_Stmt.cond);
+            if (is_integer(condition.value)) {
+                if (value_to_bool(condition.value)) {
+                    result = interp_statement(interp, ast->If_Stmt.then_block);
+                } else {
+                    result = interp_statement(interp, ast->If_Stmt.else_block);
+                }
+            } else {
+                interp_error(interp, string_lit("type error: expected boolean condition"));
+            }
         } break;
         
         case Ast_For_Stmt: {
@@ -848,7 +858,7 @@ interp_ast_declarations(Interp* interp, Ast_Decl_Entry* decls) {
     
     for (int i = 0; i < map_count(decls); i++) {
         Ast_Decl_Entry decl = decls[i];
-        assert(decl.value->type == Ast_Type_Decl);
+        assert(decl.value->type == Ast_Decl);
         Ast* stmt = decl.value->Decl.stmt;
         
         Entity entity = {};
@@ -867,7 +877,7 @@ interp_ast_declarations(Interp* interp, Ast_Decl_Entry* decls) {
     // but for the time being we don't want to run any code before injecting the types.
     for (int i = 0; i < map_count(decls); i++) {
         Ast_Decl_Entry decl = decls[i];
-        assert(decl.value->type == Ast_Type_Decl);
+        assert(decl.value->type == Ast_Decl);
         Ast* stmt = decl.value->Decl.stmt;
         
         if (stmt->type != Ast_Decl_Stmt) {

@@ -32,8 +32,12 @@ main() {
     //return (int) (myvec.x + myvec.y + arr[4]);
     
     int x = 0;
-    for (int i = 0; i < 43; i += 1) {
+    for (;;x += 1) {
         x += 2;
+        
+        if (x >= 11) {
+            break;
+        }
     }
     return x;
 }

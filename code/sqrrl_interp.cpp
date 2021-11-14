@@ -136,7 +136,7 @@ value.##V = *((T*) data); \
 
 Interp_Value 
 interp_expression(Interp* interp, Ast* ast) {
-    assert(is_ast_expr(ast) || ast->type == Ast_Value || ast->type == Ast_Ident);
+    assert(is_ast_expr(ast) || ast->type == Ast_Value || ast->type == Ast_Ident || ast->type == Ast_None);
     
     Interp_Value result = create_interp_value(interp);
     
@@ -268,7 +268,7 @@ interp_expression(Interp* interp, Ast* ast) {
         
         case Ast_Field_Expr: {
             Interp_Value var = interp_expression(interp, ast->Field_Expr.var);
-            assert(var.value.type == Value_ast_node);
+            assert(var.value.type == Value_pointer);
             assert(var.type && var.type->kind == TypeKind_Struct);
             
             Type_Table* type_table = &var.type->Struct.fields;
@@ -278,6 +278,8 @@ interp_expression(Interp* interp, Ast* ast) {
             Type* field_type = map_get(type_table->ident_to_type, ident);
             
             if (field_type) {
+                assert(var.type->kind == TypeKind_Struct && "mismatched types");
+                
                 void* data = var.value.data;
                 smm offset = map_get(var.type->Struct.ident_to_offset, ident);
                 data = (u8*) data + offset;
@@ -503,7 +505,7 @@ interp_function_call(Interp* interp, string_id ident, Ast* args) {
 
 Interp_Value
 interp_statement(Interp* interp, Ast* ast) {
-    assert(is_ast_stmt(ast));
+    assert(is_ast_stmt(ast) || ast->type == Ast_None);
     
     Interp_Value result = {};
     
@@ -584,7 +586,11 @@ interp_statement(Interp* interp, Ast* ast) {
                             
                             // NOTE(Alexander): check that the actual type maches its definition
                             Type* def_type = map_get(type_table->ident_to_type, field_ident);
-                            assert(type_equals(field_expr.type, def_type) && "type mismatch");
+                            if (field_expr.type) {
+                                assert(type_equals(field_expr.type, def_type) && "type mismatch");
+                            } else {
+                                // TODO(Alexander): check that the value conforms to def_type
+                            }
                             
                             map_put(field_values, field_ident, field_expr.value);
                         }
@@ -663,6 +669,21 @@ interp_statement(Interp* interp, Ast* ast) {
         } break;
         
         case Ast_For_Stmt: {
+            interp_statement(interp, ast->For_Stmt.init);
+            Interp_Value condition = interp_statement(interp, ast->For_Stmt.cond);
+            while (condition.value.type == Value_void || (is_integer(condition.value) && value_to_bool(condition.value))) {
+                Interp_Value block = interp_statement(interp, ast->For_Stmt.block);
+                if (block.modifier == InterpValueMod_Return) {
+                    result = block;
+                    break;
+                } else if (block.modifier == InterpValueMod_Break) {
+                    break;
+                }
+                
+                interp_expression(interp, ast->For_Stmt.update);
+                condition = interp_statement(interp, ast->For_Stmt.cond);
+            }
+            
         } break;
         
         case Ast_While_Stmt: {
@@ -707,6 +728,9 @@ interp_formal_arguments(Interp* interp, Ast* arguments) {
     while (arguments && arguments->type == Ast_Compound) {
         Ast* argument = arguments->Compound.node;
         arguments = arguments->Compound.next;
+        if (argument->type == Ast_None) {
+            continue;
+        }
         assert(argument->type == Ast_Argument);
         
         

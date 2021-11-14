@@ -13,6 +13,7 @@ set compiler_flags=-WX -W4 -wd4201 -wd4100 -wd4189 -wd4505 -wd4127 %compiler_fla
 rem Common Linker Flags
 set linker_flags=-incremental:no -opt:ref -OUT:sqrrl.exe
 
+rem Call the correct configuration
 if ["%~1"]==["release"] (call :Release) else (call :Debug)
 
 goto :EOF
@@ -29,3 +30,4 @@ goto :EOF
 
 :Compile
     cl %compiler_flags% ../code/windows_sqrrl.cpp -link %linker_flags%
+    popd

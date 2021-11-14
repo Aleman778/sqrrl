@@ -63,9 +63,9 @@ bool next_token_if_matched(Parser* parser, Token_Type expected, bool report_erro
 bool parse_keyword(Parser* parser, Keyword keyword, bool report_error=true);
 
 Ast* parse_identifier(Parser* parser, bool report_error=true);
+Ast* parse_atom(Parser* parser, bool report_error=true);
 Ast* parse_expression(Parser* parser, bool report_error=true, u8 min_prec=1, Ast* atom_expr=0);
-Ast* parse_atom_expression(Parser* parser, bool report_error=true);
-Ast* parse_statement(Parser* parser);
+Ast* parse_statement(Parser* parser, bool report_error=true);
 Ast* parse_type(Parser* parser, bool report_error=true);
 
 Unary_Op parse_unary_op(Parser* parser);
@@ -77,6 +77,7 @@ Ast* parse_formal_enum_argument(Parser* parser);
 Ast* parse_formal_function_argument(Parser* parser);
 Ast* parse_actual_function_argument(Parser* parser);
 Ast* parse_actual_argument(Parser* parser);
+Ast* parse_actual_statement(Parser* parser);
 Ast* parse_compound(Parser* parser, 
                     Token_Type begin, Token_Type end, Token_Type separator,
                     Ast* (*element_parser)(Parser* parser));

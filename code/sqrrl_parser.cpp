@@ -571,12 +571,12 @@ parse_block_statement(Parser* parser, Token* token=0) {
     Ast* result = push_ast_node(parser, token);
     result->type = Ast_Block_Stmt;
     result->Block_Stmt.stmts = parse_compound(parser, Token_Open_Brace, Token_Close_Brace, Token_Semi,
-                                              &parse_statement);
+                                              &parse_actual_statement);
     return result;
 }
 
 Ast*
-parse_statement(Parser* parser) {
+parse_statement(Parser* parser, bool report_error) {
     Token token = peek_token(parser);
     Ast* result = 0;
     
@@ -607,6 +607,9 @@ parse_statement(Parser* parser) {
                 result->If_Stmt.then_block = parse_statement(parser);
                 if (parse_keyword(parser, Kw_else, false)) {
                     result->If_Stmt.else_block = parse_statement(parser);
+                } else {
+                    // TODO(Alexander): maybe reference a "null" pre allocated node instead?
+                    result->If_Stmt.else_block = push_ast_node(parser);
                 }
             } break;
             
@@ -620,11 +623,11 @@ parse_statement(Parser* parser) {
                 }
                 bool opened_paren = next_token_if_matched(parser, Token_Open_Paren, false);
                 // TODO(alexander): should probably not be statement, move out variable decl
-                result->For_Stmt.init = parse_statement(parser);
+                result->For_Stmt.init = parse_statement(parser, false);
                 next_token_if_matched(parser, Token_Semi);
-                result->For_Stmt.cond = parse_statement(parser);
+                result->For_Stmt.cond = parse_statement(parser, false);
                 next_token_if_matched(parser, Token_Semi);
-                result->For_Stmt.update = parse_expression(parser);
+                result->For_Stmt.update = parse_expression(parser, false);
                 next_token_if_matched(parser, Token_Close_Paren, opened_paren);
                 result->For_Stmt.block = parse_statement(parser);
             } break;
@@ -714,7 +717,7 @@ parse_statement(Parser* parser) {
     if (!result) {
         result = push_ast_node(parser);
         result->type = Ast_Expr_Stmt;
-        result->Expr_Stmt = parse_expression(parser);
+        result->Expr_Stmt = parse_expression(parser, report_error);
     }
     
     update_span(parser, result);
@@ -848,6 +851,11 @@ parse_actual_argument(Parser* parser) {
 }
 
 Ast*
+parse_actual_statement(Parser* parser) {
+    return parse_statement(parser);
+}
+
+Ast*
 parse_compound(Parser* parser, 
                Token_Type begin, Token_Type end, Token_Type separator,
                Ast* (*element_parser)(Parser* parser)) {
@@ -864,18 +872,18 @@ parse_compound(Parser* parser,
     Ast* curr = result;
     while (peek_token(parser).type != end) {
         curr->type = Ast_Compound;
-        curr->Compound.node = element_parser(parser);
+        Ast* node = element_parser(parser);
+        curr->Compound.node = node;
         curr->Compound.next = push_ast_node(parser);
         curr = curr->Compound.next;
         
         // HACK(Alexander): to get avoid requiring separators for block statements
-        if (curr->Compound.node &&
-            (curr->Compound.node->type == Ast_Block_Stmt ||
-             curr->Compound.node->type == Ast_Decl_Stmt ||
-             curr->Compound.node->type == Ast_If_Stmt ||
-             curr->Compound.node->type == Ast_For_Stmt ||
-             curr->Compound.node->type == Ast_While_Stmt ||
-             curr->Compound.node->type == Ast_Loop_Stmt)) {
+        if (node && (node->type == Ast_Block_Stmt ||
+                     node->type == Ast_Decl_Stmt ||
+                     node->type == Ast_If_Stmt ||
+                     node->type == Ast_For_Stmt ||
+                     node->type == Ast_While_Stmt ||
+                     node->type == Ast_Loop_Stmt)) {
             continue;
         }
         

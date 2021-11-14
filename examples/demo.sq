@@ -39,6 +39,11 @@ main() {
             break;
         }
     }
+    
+    while (x < 40) {
+        x += 1;
+    } 
+    
     return x;
 }
 

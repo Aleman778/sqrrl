@@ -20,7 +20,6 @@ VAR(include)  \
 VAR(in)       \
 VAR(inline)   \
 VAR(no_inline)\
-VAR(loop)     \
 VAR(local_persist) \
 VAR(return)   \
 VAR(static)   \

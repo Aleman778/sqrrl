@@ -646,13 +646,6 @@ parse_statement(Parser* parser, bool report_error) {
                 result->While_Stmt.block = parse_statement(parser);
             } break;
             
-            case Kw_loop: {
-                next_token(parser);
-                result = push_ast_node(parser, &token);
-                result->type = Ast_Loop_Stmt;
-                result->Loop_Stmt.label = parse_identifier(parser, false);
-            } break;
-            
             case Kw_return: {
                 next_token(parser);
                 result = push_ast_node(parser, &token);
@@ -882,8 +875,7 @@ parse_compound(Parser* parser,
                      node->type == Ast_Decl_Stmt ||
                      node->type == Ast_If_Stmt ||
                      node->type == Ast_For_Stmt ||
-                     node->type == Ast_While_Stmt ||
-                     node->type == Ast_Loop_Stmt)) {
+                     node->type == Ast_While_Stmt)) {
             continue;
         }
         

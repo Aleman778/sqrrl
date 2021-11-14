@@ -671,25 +671,51 @@ interp_statement(Interp* interp, Ast* ast) {
         case Ast_For_Stmt: {
             interp_statement(interp, ast->For_Stmt.init);
             Interp_Value condition = interp_statement(interp, ast->For_Stmt.cond);
-            while (condition.value.type == Value_void || (is_integer(condition.value) && value_to_bool(condition.value))) {
-                Interp_Value block = interp_statement(interp, ast->For_Stmt.block);
-                if (block.modifier == InterpValueMod_Return) {
-                    result = block;
-                    break;
-                } else if (block.modifier == InterpValueMod_Break) {
-                    break;
+            if (condition.value.type == Value_void || is_integer(condition.value)) {
+                // NOTE(Alexander): type check on condition
+                while (condition.value.type == Value_void || value_to_bool(condition.value)) {
+                    Interp_Value block = interp_statement(interp, ast->For_Stmt.block);
+                    if (block.modifier == InterpValueMod_Return) {
+                        result = block;
+                        break;
+                    } else if (block.modifier == InterpValueMod_Break) {
+                        break;
+                    }
+                    
+                    interp_expression(interp, ast->For_Stmt.update);
+                    condition = interp_statement(interp, ast->For_Stmt.cond);
+                    if (condition.value.type != Value_void && !is_integer(condition.value)) {
+                        interp_error(interp, string_lit("type error: expected boolean condition"));
+                        break;
+                    }
                 }
-                
-                interp_expression(interp, ast->For_Stmt.update);
-                condition = interp_statement(interp, ast->For_Stmt.cond);
+            } else {
+                interp_error(interp, string_lit("type error: expected boolean condition"));
             }
             
         } break;
         
         case Ast_While_Stmt: {
-        } break;
-        
-        case Ast_Loop_Stmt: {
+            Interp_Value condition = interp_expression(interp, ast->While_Stmt.cond);
+            if (is_integer(condition.value)) {
+                while (value_to_bool(condition.value)) {
+                    Interp_Value block = interp_statement(interp, ast->While_Stmt.block);
+                    if (block.modifier == InterpValueMod_Return) {
+                        result = block;
+                        break;
+                    } else if (block.modifier == InterpValueMod_Break) {
+                        break;
+                    }
+                    
+                    condition = interp_expression(interp, ast->While_Stmt.cond);
+                    if (!is_integer(condition.value)) {
+                        interp_error(interp, string_lit("type error: expected boolean condition"));
+                        break;
+                    }
+                }
+            } else {
+                interp_error(interp, string_lit("type error: expected boolean condition"));
+            }
         } break;
         
         case Ast_Return_Stmt: {

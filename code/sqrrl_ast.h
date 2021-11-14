@@ -102,10 +102,6 @@ Ast* label;                                     \
 Ast* cond;                                      \
 Ast* block;                                     \
 })                                              \
-AST(Loop_Stmt,         "loop", struct {         \
-Ast* label;                                     \
-Ast* block;                                     \
-})                                              \
 AST(Return_Stmt,       "return", struct {       \
 Ast* expr;                                      \
 })                                              \

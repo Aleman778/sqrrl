@@ -772,7 +772,24 @@ parse_formal_struct_or_union_argument(Parser* parser) {
     Ast* result = push_ast_node(parser);
     result->type = Ast_Argument;
     result->Argument.type = parse_type(parser);
-    result->Argument.ident = parse_identifier(parser);
+    result->Argument.ident = parse_identifier(parser, false);
+    
+    if (result->Argument.ident && 
+        next_token_if_matched(parser, Token_Comma, false)) {
+        
+        Ast* curr = push_ast_node(parser);
+        curr->type = Ast_Compound;
+        curr->Compound.node = result->Argument.ident;
+        result->Argument.ident = curr;
+        
+        do {
+            curr->type = Ast_Compound;
+            curr->Compound.node = parse_identifier(parser);
+            curr->Compound.next = push_ast_node(parser);
+            curr = curr->Compound.next;
+        } while (next_token_if_matched(parser, Token_Comma, false));
+    }
+    
     if (next_token_if_matched(parser, Token_Assign, false)) {
         result->Argument.assign = parse_expression(parser);
     } else {
@@ -920,7 +937,7 @@ parse_type(Parser* parser, bool report_error) {
             case Kw_struct: {
                 base = push_ast_node(parser);
                 base->type = Ast_Struct_Type;
-                base->Struct_Type.ident = parse_identifier(parser);
+                base->Struct_Type.ident = parse_identifier(parser, false);
                 base->Struct_Type.fields = parse_compound(parser,
                                                           Token_Open_Brace, Token_Close_Brace, Token_Semi,
                                                           &parse_formal_struct_or_union_argument);
@@ -929,7 +946,7 @@ parse_type(Parser* parser, bool report_error) {
             case Kw_union: {
                 base = push_ast_node(parser);
                 base->type = Ast_Union_Type;
-                base->Union_Type.ident = parse_identifier(parser);
+                base->Union_Type.ident = parse_identifier(parser, false);
                 base->Union_Type.fields = parse_compound(parser,
                                                          Token_Open_Brace, Token_Close_Brace, Token_Semi,
                                                          &parse_formal_struct_or_union_argument);
@@ -938,7 +955,7 @@ parse_type(Parser* parser, bool report_error) {
             case Kw_enum: { 
                 base = push_ast_node(parser);
                 base->type = Ast_Enum_Type;
-                base->Enum_Type.ident = parse_identifier(parser);
+                base->Enum_Type.ident = parse_identifier(parser, false);
                 if (next_token_if_matched(parser, Token_Assign, false)) {
                     base->Enum_Type.elem_type = parse_type(parser);
                 }

@@ -34,6 +34,7 @@ enum Type_Kind {
     TypeKind_Tuple,
     TypeKind_Struct,
     TypeKind_Union,
+    TypeKind_Enum,
     TypeKind_Function,
     TypeKind_Pointer,
     TypeKind_Unresolved
@@ -79,7 +80,7 @@ struct Type {
         
         struct {
             Type* type;
-            Value* values;
+            struct { string_id key; Value value; }* values;
         } Enum;
         
         struct {
@@ -97,10 +98,12 @@ struct Type {
 };
 
 global Type global_primitive_types[] = {
+#define S_signed true
+#define S_unsigned false
 #define VAL(signedness, val) create_##signedness##_int_value(val)
 #define PRIMITIVE(symbol, size, sign, max, min) { \
 TypeKind_Primitive, { \
-PrimitiveTypeKind_##symbol, size, false, VAL(sign, max), VAL(sign, min)  \
+PrimitiveTypeKind_##symbol, size, S_##sign, VAL(sign, max), VAL(sign, min)  \
 }, \
 size, size \
 },

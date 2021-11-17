@@ -9,6 +9,7 @@
 #include "sqrrl_parser.cpp"
 #include "sqrrl_interp.cpp"
 
+
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[]) {
     string filepath;
@@ -52,7 +53,7 @@ compiler_main_entry(int argc, char* argv[]) {
     
     if (ast_file.error_count > 0) {
         pln("\nErrors found during parsing, exiting...\n");
-        return 0;
+        return 1;
     }
     
 #if 0
@@ -76,9 +77,6 @@ compiler_main_entry(int argc, char* argv[]) {
         }
     }
     
-    int test = -10;
-    if (test) {
-        return 2;
-    }
+    
     return 0;
 }

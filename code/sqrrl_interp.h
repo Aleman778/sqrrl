@@ -82,6 +82,12 @@ inline bool
 interp_entity_is_assigned(Interp* interp, Entity* entity, string_id ident) {
     if (!entity->data || !entity->type) {
         if (entity->type) {
+            
+            // HACK(Alexander): maybe need to rethink what is legal to do here.
+            if (entity->type->kind == TypeKind_Enum) {
+                return true;
+            }
+            
             interp_error(interp, string_format("`%`: declared but not assigned", f_string(vars_load_string(ident))));
         } else {
             interp_error(interp, string_format("`%`: undeclared identifier ", f_string(vars_load_string(ident))));
@@ -107,8 +113,13 @@ interp_resolve_value(Interp* interp, string_id ident) {
     Interp_Value result = {};
     
     Entity entity = map_get(interp->symbol_table, ident);
+    if (!entity.data) {
+        result.type = entity.type;
+        return result;
+    }
+    
     if (interp_entity_is_assigned(interp, &entity, ident)) {
-        result =interp_resolve_value(interp, entity.type, entity.data);
+        result = interp_resolve_value(interp, entity.type, entity.data);
     }
     
     return result;
@@ -120,5 +131,7 @@ Interp_Value interp_statement(Interp* interp, Ast* ast);
 Interp_Value interp_block(Interp* interp, Ast* ast);
 
 Type* interp_type(Interp* interp, Ast* ast);
+
+void interp_declaration_statement(Interp* interp, Ast* ast);
 
 void interp_ast_declarations(Interp* interp, Ast_Decl_Entry* decls);

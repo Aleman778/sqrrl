@@ -1,56 +1,21 @@
 
-int[] arr = { 0, 10, 20, 30, 40, 50 };
-
-struct v2 {
-    f32 x;
-    f32 y;
+union v2 {
+    struct {
+        f32 x, y;
+    };
+    struct {
+        f32 u, v;
+    };
+    struct {
+        f32 width, height;
+    };
+    f32[2] data;
 }
 
-int 
-square(int num) {
-    return num * num;
-}
-
-v2
-add(v2 a, v2 b) {
-    v2 result;
-    result.x = a.x + b.x;
-    result.y = a.y + b.y;
-    return result;
-}
 
 int
 main() {
-    v2 myvec = v2 { x: 1.9, y: 11.5};
+    v2 v = v2 { x: 5, y: 10 };
     
-    myvec = add(myvec, myvec);
-    
-    //if (myvec.x > 10.0) {
-    //myvec.x = 10.0;
-    //}
-    
-    //return (int) (myvec.x + myvec.y + arr[4]);
-    
-    int x = 0;
-    for (;;x += 1) {
-        x += 2;
-        
-        if (x >= 11) {
-            break;
-        }
-    }
-    
-    while (x < 40) {
-        x += 1;
-    } 
-    
-    return x;
+    return (int) v.x;
 }
-
-
-
-
-
-
-
-

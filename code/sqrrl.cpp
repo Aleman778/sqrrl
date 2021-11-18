@@ -77,6 +77,5 @@ compiler_main_entry(int argc, char* argv[]) {
         }
     }
     
-    
-    return 0;
+    return fs.z;
 }

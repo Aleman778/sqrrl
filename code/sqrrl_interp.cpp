@@ -571,9 +571,16 @@ interp_statement(Interp* interp, Ast* ast) {
                     
                 } break;
                 
+                case TypeKind_Union:
                 case TypeKind_Struct: {
                     
-                    Type_Table* type_table = &type->Struct.fields;
+                    Type_Table* type_table;
+                    if (type->kind == TypeKind_Struct) {
+                        type_table = &type->Struct.fields;
+                    } else {
+                        type_table = &type->Union.fields;
+                    }
+                    
                     void* base_address = 0;
                     struct { string_id key; Value value; }* field_values = 0;
                     
@@ -626,10 +633,6 @@ interp_statement(Interp* interp, Ast* ast) {
                     entity.data = data;
                     entity.type = type;
                     map_put(interp->symbol_table, ident, entity);
-                } break;
-                
-                case TypeKind_Union: {
-                    
                 } break;
                 
                 default: {
@@ -773,26 +776,61 @@ interp_formal_arguments(Interp* interp, Ast* arguments) {
     compound_iterator(arguments, argument) {
         assert(argument->type == Ast_Argument);
         
-        
         if (!argument->Argument.type) {
             break;
         }
         
         Type* type = interp_type(interp, argument->Argument.type);
-        string_id ident = argument->Argument.ident->Ident;
         
-        // TODO(Alexander): NEED TO HANDLE THE TYPE TABLE HASH MAP MEMORY
-        map_put(result.ident_to_type, ident, type);
-        array_push(result.idents, ident);
-        result.count++;
+        if (type->kind == TypeKind_Struct) {
+            // NOTE(Alexander): anonymous type, pull out the identifiers from struct
+            if(type->Struct.ident->type == Ast_None && type->Struct.fields.count > 0) {
+                if (); // TODO(Alexander): should be reported in interp_type
+                map_iterator(type->Struct.fields.ident_to_type, other, i) {
+                    // TODO(Alexander): check collisions!! we don't want two vars with same identifier
+                    map_put(fields.ident_to_type, other.key, type);
+                    array_push(fields.idents, other.key);
+                    fields.count++;
+                }
+            } else {
+                
+            }
+        }
+        
+        // README TODO: HANDLE PULLING IN IDENTIFIERS FROM ANONYMOUS STRUCTS!
+        
+        if (argument->Argument.ident->type == Ast_Compound) {
+            compound_iterator(argument->Argument.ident, ast_ident) {
+                assert(ast_ident->type == Ast_Ident);
+                string_id ident = ast_ident->Ident;
+                
+                // TODO(Alexander): NEED TO HANDLE THE TYPE TABLE HASH MAP MEMORY
+                map_put(result.ident_to_type, ident, type);
+                array_push(result.idents, ident);
+                result.count++;
+            } 
+        } else if (argument->Argument.ident->type == Ast_Ident) {
+            assert(argument->Argument.ident->type == Ast_Ident);
+            string_id ident = argument->Argument.ident->Ident;
+            
+            // TODO(Alexander): NEED TO HANDLE THE TYPE TABLE HASH MAP MEMORY
+            map_put(result.ident_to_type, ident, type);
+            array_push(result.idents, ident);
+            result.count++;
+        } else {
+            assert(0 && "expected identifier"); // NOTE(Alexander): this is a parsing bug
+        }
     }
-    return result;
+}
+}
+return result;
 }
 
 #define map_iterator(map, it, it_index) \
-for (int it_index = 0, auto it = decls[0]; \
-it_index < map_count(decls); \
-it_index++, auto it = decls[it_index])
+int it_index = 0; \
+for (auto it = map[0]; \
+it_index < map_count(map); \
+it_index++, it = map[it_index])
 
 Type*
 interp_type(Interp* interp, Ast* ast) {
@@ -898,27 +936,22 @@ interp_type(Interp* interp, Ast* ast) {
             compound_iterator(ast->Union_Type.fields, field) {
                 assert(field->type == Ast_Argument);
                 
-                Type* type = parse_type(field->Argument.type);
+                Type* type = interp_type(interp, field->Argument.type);
+                // TODO(Alexander): handle case when ident is a compound, this can happen right check with msvc?
                 if (field->Argument.ident->type == Ast_None) {
-                    // NOTE(Alexander): annonymous type, pull out the identifiers from struct
-                    if(type->kind == TypeKind_Struct) {
-                        
-                        map_iterator(type->Struct.fields, other, i) {
-                            // TODO(Alexander): check collisions!! we don't want two vars with same identifier
-                            map_put(fields, other.key, other.value);
-                        }
-                    } else {
-                        interp_error(interp, string_lit("cannot declare union field without any name"));
-                    }
                     
+                } else if {
+                    string_id ident = field->Argument.ident->Ident;
+                    map_put(fields.ident_to_type, , type);
+                    array_push(fields.idents, other.key);
+                    fields.count++;
                 }
                 
             }
-            
         }
         
-        
-        //result->Union.fields = interp_formal_arguments(interp, ast->Union_Type.fields);
+        result->cached_size = (s32) size;
+        result->cached_align = (s32) align;
     } break;
     
     case Ast_Enum_Type: {

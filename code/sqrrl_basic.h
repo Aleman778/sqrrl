@@ -185,10 +185,37 @@ string string_format(cstring format...);
 #define array_count(a) arrlen(a)
 #define array_set_count(a, c) arrsetlen(a, c)
 
-#define map_count(m) hmlen(m)
+#define array_iterator(arr, it, it_index) \
+int it_index = 0; \
+for (auto it = arr[0]; \
+it_index < arr_count(arr); \
+it_index++, it = arr[it_index])
+
+// NOTE(Alexander): hash maps
+// Usage:
+// struct { int key, int value }* map = 0; // don't need to allocate memory
+// map_put(map, 10, 20);                   // will allocate memory here
+// int x = map_get(map, 10);               // x = 20
+// int count = map_count(map);             // count = 1
 #define map_put(m, k, v) hmput(m, k, v)
 #define map_get(m, k) hmget(m, k)
+#define map_count(m) hmlen(m)
 
+// NOTE(Alexander): hash map iterator
+// Usage: continuing from previous example...
+//
+// int result = 0;
+// map_iterator(map, it, it_index) {
+//     result += it;
+// }
+// pln("%d", f_int(result)); // 10
+#define map_iterator(map, it, it_index) \
+int it_index = 0; \
+for (auto it = map[0]; \
+it_index < map_count(map); \
+it_index++, it = map[it_index])
+
+// NOTE(Alexander): string hash maps
 #define string_map_count(m) shlen(m)
 #define string_map_put(m, k, v) shput(m, k, v)
 #define string_map_get(m, k) shget(m, k)

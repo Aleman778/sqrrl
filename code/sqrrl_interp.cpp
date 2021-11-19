@@ -762,13 +762,6 @@ interp_block(Interp* interp, Ast* ast) {
     return result;
 }
 
-
-#define compound_iterator(compound, it) \
-for (Ast* it = compound->Compound.node; \
-compound && compound->Compound.next->type == Ast_Compound; \
-compound = compound->Compound.next, it = compound->Compound.node)
-
-
 internal Type_Table
 interp_formal_arguments(Interp* interp, Ast* arguments) {
     Type_Table result = {};
@@ -780,57 +773,59 @@ interp_formal_arguments(Interp* interp, Ast* arguments) {
             break;
         }
         
-        Type* type = interp_type(interp, argument->Argument.type);
+        Ast* ast_type = argument->Argument.type;
+        Type* type = interp_type(interp, ast_type);
         
-        if (type->kind == TypeKind_Struct) {
-            // NOTE(Alexander): anonymous type, pull out the identifiers from struct
-            if(type->Struct.ident->type == Ast_None && type->Struct.fields.count > 0) {
-                if (); // TODO(Alexander): should be reported in interp_type
-                map_iterator(type->Struct.fields.ident_to_type, other, i) {
-                    // TODO(Alexander): check collisions!! we don't want two vars with same identifier
-                    map_put(fields.ident_to_type, other.key, type);
-                    array_push(fields.idents, other.key);
-                    fields.count++;
+        switch (argument->Argument.ident->type) {
+            case Ast_Compound: {
+                compound_iterator(argument->Argument.ident, ast_ident) {
+                    assert(ast_ident->type == Ast_Ident);
+                    string_id ident = ast_ident->Ident;
+                    
+                    // TODO(Alexander): NEED TO HANDLE THE TYPE TABLE HASH MAP MEMORY
+                    map_put(result.ident_to_type, ident, type);
+                    array_push(result.idents, ident);
+                    result.count++;
                 }
-            } else {
-                
-            }
-        }
-        
-        // README TODO: HANDLE PULLING IN IDENTIFIERS FROM ANONYMOUS STRUCTS!
-        
-        if (argument->Argument.ident->type == Ast_Compound) {
-            compound_iterator(argument->Argument.ident, ast_ident) {
-                assert(ast_ident->type == Ast_Ident);
-                string_id ident = ast_ident->Ident;
+            } break;
+            
+            case Ast_None: {
+                if (type->kind == TypeKind_Struct) {
+                    // NOTE(Alexander): anonymous type, pull out the identifiers from struct
+                    if(ast_type->Struct_Type.ident->type == Ast_None && type->Struct.fields.count > 0) {
+                        map_iterator(type->Struct.fields.ident_to_type, other, i) {
+                            // TODO(Alexander): check collisions!! we don't want two vars with same identifier
+                            map_put(result.ident_to_type, other.key, type);
+                            array_push(result.idents, other.key);
+                            result.count++;
+                        }
+                    } else {
+                        interp_error(interp, string_lit("structs cannot be declared inside a type"));
+                    }
+                } else if (type->kind == TypeKind_Union) {
+                    assert(0 && "unimplemented :(");
+                } else {
+                    interp_error(interp, string_lit("expected identifier or struct"));
+                }
+            } break;
+            
+            case Ast_Ident: {
+                assert(argument->Argument.ident->type == Ast_Ident);
+                string_id ident = argument->Argument.ident->Ident;
                 
                 // TODO(Alexander): NEED TO HANDLE THE TYPE TABLE HASH MAP MEMORY
                 map_put(result.ident_to_type, ident, type);
                 array_push(result.idents, ident);
                 result.count++;
-            } 
-        } else if (argument->Argument.ident->type == Ast_Ident) {
-            assert(argument->Argument.ident->type == Ast_Ident);
-            string_id ident = argument->Argument.ident->Ident;
+            }
             
-            // TODO(Alexander): NEED TO HANDLE THE TYPE TABLE HASH MAP MEMORY
-            map_put(result.ident_to_type, ident, type);
-            array_push(result.idents, ident);
-            result.count++;
-        } else {
-            assert(0 && "expected identifier"); // NOTE(Alexander): this is a parsing bug
+            default: {
+                assert(0 && "expected identifier"); // NOTE(Alexander): this is a parsing bug
+            }
         }
     }
+    return result;
 }
-}
-return result;
-}
-
-#define map_iterator(map, it, it_index) \
-int it_index = 0; \
-for (auto it = map[0]; \
-it_index < map_count(map); \
-it_index++, it = map[it_index])
 
 Type*
 interp_type(Interp* interp, Ast* ast) {
@@ -905,114 +900,121 @@ interp_type(Interp* interp, Ast* ast) {
             result->kind = TypeKind_Struct;
             result->Struct.fields = interp_formal_arguments(interp, ast->Struct_Type.fields);
             
-            umm size = 0;
-            umm align = 0;
-            Type_Table* fields = &result->Struct.fields;
-            for (int i = 0; i < fields->count; i++) {
-                string_id ident = fields->idents[i];
-                Type* type = map_get(fields->ident_to_type, ident);
-                assert(type);
-                assert(type->cached_size > 0 && "bad size");
-                assert(type->cached_align > 0 && "bad align");
-                if (type->cached_align > align) {
-                    align = type->cached_align;
+            {
+                // Calculate size offsets and struct size and align
+                smm size = 0;
+                smm align = 0;
+                Type_Table* fields = &result->Struct.fields;
+                
+                for (int i = 0; i < fields->count; i++) {
+                    string_id ident = fields->idents[i];
+                    Type* type = map_get(fields->ident_to_type, ident);
+                    assert(type);
+                    assert(type->cached_size > 0 && "bad size");
+                    assert(type->cached_align > 0 && "bad align");
+                    if (type->cached_align > align) {
+                        align = type->cached_align;
+                    }
+                    
+                    size = align_forward(size, type->cached_align);
+                    map_put(result->Struct.ident_to_offset, ident, size);
+                    size += type->cached_size;
                 }
                 
-                size = align_forward(size, type->cached_align);
-                map_put(result->Struct.ident_to_offset, ident, size);
-                size += type->cached_size;
+                result->cached_size = (s32) size;
+                result->cached_align = (s32) align;
             }
-            
-            result->cached_size = (s32) size;
-            result->cached_align = (s32) align;
         } break;
         
         case Ast_Union_Type: {
             result = arena_push_struct(&interp->stack, Type);
             result->kind = TypeKind_Union;
+            result->Union.fields = interp_formal_arguments(interp, ast->Union_Type.fields);
             
-            Type_Table fields = {};
             
-            compound_iterator(ast->Union_Type.fields, field) {
-                assert(field->type == Ast_Argument);
-                
-                Type* type = interp_type(interp, field->Argument.type);
-                // TODO(Alexander): handle case when ident is a compound, this can happen right check with msvc?
-                if (field->Argument.ident->type == Ast_None) {
+            {
+                // Calculate union size and align
+                smm size = 0;
+                smm align = 0;
+                Type_Table* fields = &result->Struct.fields;
+                for (int i = 0; i < fields->count; i++) {
+                    string_id ident = fields->idents[i];
+                    Type* type = map_get(fields->ident_to_type, ident);
+                    assert(type);
                     
-                } else if {
-                    string_id ident = field->Argument.ident->Ident;
-                    map_put(fields.ident_to_type, , type);
-                    array_push(fields.idents, other.key);
-                    fields.count++;
+                    if (type->cached_size > size) {
+                        size = result->cached_size;
+                    }
+                    
+                    if (type->cached_align > align) {
+                        align = result->cached_align;
+                    }
                 }
                 
+                result->cached_size = (s32) size;
+                result->cached_align = (s32) align;
             }
-        }
+        } break;
         
-        result->cached_size = (s32) size;
-        result->cached_align = (s32) align;
-    } break;
-    
-    case Ast_Enum_Type: {
-        result = arena_push_struct(&interp->stack, Type);
-        result->kind = TypeKind_Enum;
-        
-        Type* type;
-        if (ast->Enum_Type.elem_type && ast->Enum_Type.elem_type->type != Ast_None) {
-            type = interp_type(interp, ast->Enum_Type.elem_type);
-            assert(type->kind == TypeKind_Primitive && "enum can only use primitive types");
-        } else {
-            type = &global_primitive_types[PrimitiveTypeKind_s64];
-        }
-        
-        result->Enum.type = type;
-        
-        Value value;
-        if (type->Primitive.signedness) {
-            value.type = Value_signed_int;
-            value.signed_int = 0;
-        } else {
-            value.type = Value_unsigned_int;
-            value.unsigned_int = 0;
-        }
-        
-        Ast* arguments = ast->Enum_Type.fields;
-        while (arguments && arguments->type == Ast_Compound) {
-            Ast* argument = arguments->Compound.node;
-            arguments = arguments->Compound.next;
-            if (argument->type == Ast_None) {
-                continue;
+        case Ast_Enum_Type: {
+            result = arena_push_struct(&interp->stack, Type);
+            result->kind = TypeKind_Enum;
+            
+            Type* type;
+            if (ast->Enum_Type.elem_type && ast->Enum_Type.elem_type->type != Ast_None) {
+                type = interp_type(interp, ast->Enum_Type.elem_type);
+                assert(type->kind == TypeKind_Primitive && "enum can only use primitive types");
+            } else {
+                type = &global_primitive_types[PrimitiveTypeKind_s64];
             }
             
-            assert(!argument->Argument.type && "enums fields don't have different types");
+            result->Enum.type = type;
             
-            if (argument->Argument.assign && argument->Argument.assign->type != Ast_None) {
-                value = interp_expression(interp, argument->Argument.assign).value;
-                assert(is_integer(value) && "only support integer typed enums");
-                
-                if (type->Primitive.signedness) {
-                    value.type = Value_signed_int;
-                } else {
-                    value.type = Value_unsigned_int;
+            Value value;
+            if (type->Primitive.signedness) {
+                value.type = Value_signed_int;
+                value.signed_int = 0;
+            } else {
+                value.type = Value_unsigned_int;
+                value.unsigned_int = 0;
+            }
+            
+            Ast* arguments = ast->Enum_Type.fields;
+            while (arguments && arguments->type == Ast_Compound) {
+                Ast* argument = arguments->Compound.node;
+                arguments = arguments->Compound.next;
+                if (argument->type == Ast_None) {
+                    continue;
                 }
+                
+                assert(!argument->Argument.type && "enums fields don't have different types");
+                
+                if (argument->Argument.assign && argument->Argument.assign->type != Ast_None) {
+                    value = interp_expression(interp, argument->Argument.assign).value;
+                    assert(is_integer(value) && "only support integer typed enums");
+                    
+                    if (type->Primitive.signedness) {
+                        value.type = Value_signed_int;
+                    } else {
+                        value.type = Value_unsigned_int;
+                    }
+                }
+                
+                string_id ident = argument->Argument.ident->Ident;
+                
+                // TODO(Alexander): NEED TO HANDLE THE TYPE TABLE HASH MAP MEMORY
+                map_put(result->Enum.values, ident, value);
+                
+                value.signed_int++;
             }
-            
-            string_id ident = argument->Argument.ident->Ident;
-            
-            // TODO(Alexander): NEED TO HANDLE THE TYPE TABLE HASH MAP MEMORY
-            map_put(result->Enum.values, ident, value);
-            
-            value.signed_int++;
-        }
-    } break;
+        } break;
+        
+        case Ast_Typedef: {
+            result = interp_type(interp, ast->Typedef.type);
+        } break;
+    }
     
-    case Ast_Typedef: {
-        result = interp_type(interp, ast->Typedef.type);
-    } break;
-}
-
-return result;
+    return result;
 }
 
 void
@@ -1020,10 +1022,7 @@ interp_register_primitive_types(Interp* interp) {
     for (int i = 0; i < fixed_array_count(global_primitive_types); i++) {
         Type* type = &global_primitive_types[i];
         string_id ident = (string_id) (Kw_int + type->Primitive.kind);
-        Entity entity;
-        entity.data = 0;
-        entity.type = type;
-        map_put(interp->symbol_table, ident, entity);
+        interp_register_type(interp, ident, type);
     }
 }
 
@@ -1038,12 +1037,7 @@ interp_declaration_statement(Interp* interp, Ast* ast) {
     
     assert(ast->Decl_Stmt.ident->type == Ast_Ident);
     string_id ident = ast->Decl_Stmt.ident->Ident;
-    
-    Entity entity;
-    entity.data = 0;
-    entity.type = type;
-    map_put(interp->symbol_table, ident, entity);
-    
+    interp_register_type(interp, ident, type);
 }
 
 void
@@ -1070,12 +1064,9 @@ interp_ast_declarations(Interp* interp, Ast_Decl_Entry* decls) {
         if (stmt->type != Ast_Decl_Stmt) {
             Interp_Value interp_result = interp_statement(interp, stmt);
             if (!is_void(interp_result.value)) {
-                void* data= interp_push_value(interp, interp_result.type, interp_result.value);
+                void* data = interp_push_value(interp, interp_result.type, interp_result.value);
                 if (!data) {
-                    Entity entity;
-                    entity.data = data;
-                    entity.type = interp_result.type;
-                    map_put(interp->symbol_table, decl.key, entity);
+                    interp_register_type(interp, decl.key, interp_result.type, data);
                 }
             }
         }

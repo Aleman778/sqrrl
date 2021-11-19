@@ -60,6 +60,14 @@ interp_error(Interp* interp, string message) {
 }
 
 inline void
+interp_register_type(Interp* interp, string_id ident, Type* type, void* data=0) {
+    Entity entity;
+    entity.data = 0;
+    entity.type = type;
+    map_put(interp->symbol_table, ident, entity);
+}
+
+inline void
 interp_unresolved_identifier_error(Interp* interp, string_id ident) {
     interp_error(interp, string_format("unresolved identifier `%`", f_string(vars_load_string(ident))));
 }

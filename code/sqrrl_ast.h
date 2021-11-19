@@ -141,6 +141,16 @@ Ast* ident;                                     \
 })                                              \
 AST_GROUP(Type_End,    "type")
 
+// NOTE(Alexander): iterate through a compound ast node, usage:
+// Ast* compound = parse_compound(interp, ...)
+// compound_iterator(compound, it) {
+//     // `it` can be used as the ast node pointer
+// }
+#define compound_iterator(compound, it) \
+for (Ast* it = compound->Compound.node; \
+compound && compound->Compound.next->type == Ast_Compound; \
+compound = compound->Compound.next, it = compound->Compound.node)
+
 global cstring ast_strings[] = {
 #define AST(symbol, name, decl) name,
 #define AST_GROUP(symbol, name) name,

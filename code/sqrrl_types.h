@@ -42,6 +42,7 @@ enum Type_Kind {
 
 struct Type_Table {
     struct { string_id key; Type* value; }* ident_to_type;
+    struct { string_id key; smm value; }* ident_to_offset;
     string_id* idents;
     int count;
 };
@@ -69,10 +70,7 @@ struct Type {
             Type* types;
         } Tuple;
         
-        struct {
-            Type_Table fields;
-            struct { string_id key; smm value; }* ident_to_offset;
-        } Struct;
+        Type_Table Struct_Or_Union;
         
         struct {
             Type_Table fields;

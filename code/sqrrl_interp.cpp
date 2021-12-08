@@ -53,7 +53,8 @@ interp_save_value(Interp* interp, Type* type, void* storage, Value value) {
         } break;
         
         case TypeKind_Pointer:
-        case TypeKind_Struct: {
+        case TypeKind_Struct: 
+        case TypeKind_Union: {
             *((smm*) storage) = value.pointer;
         } break;
     }
@@ -121,7 +122,8 @@ value.##V = *((T*) data); \
         } break;
         
         case TypeKind_Pointer:
-        case TypeKind_Struct: {
+        case TypeKind_Struct:
+        case TypeKind_Union: {
             value.pointer = *((smm*) data);
             value.type = Value_pointer;
         } break;
@@ -274,14 +276,15 @@ interp_expression(Interp* interp, Ast* ast) {
             
             if (var.type) {
                 switch (var.type->kind) {
+                    case TypeKind_Union:
                     case TypeKind_Struct: {
                         assert(var.value.type == Value_pointer);
-                        Type_Table* type_table = &var.type->Struct.fields;
+                        Type_Table* type_table = &var.type->Struct_Or_Union;
                         
                         Type* field_type = map_get(type_table->ident_to_type, ident);
                         if (field_type) {
                             void* data = var.value.data;
-                            smm offset = map_get(var.type->Struct.ident_to_offset, ident);
+                            smm offset = map_get(var.type->Struct_Or_Union.ident_to_offset, ident);
                             data = (u8*) data + offset;
                             result = interp_resolve_value(interp, field_type, data);
                         }
@@ -574,12 +577,7 @@ interp_statement(Interp* interp, Ast* ast) {
                 case TypeKind_Union:
                 case TypeKind_Struct: {
                     
-                    Type_Table* type_table;
-                    if (type->kind == TypeKind_Struct) {
-                        type_table = &type->Struct.fields;
-                    } else {
-                        type_table = &type->Union.fields;
-                    }
+                    Type_Table* type_table = &type->Struct_Or_Union;
                     
                     void* base_address = 0;
                     struct { string_id key; Value value; }* field_values = 0;
@@ -762,9 +760,15 @@ interp_block(Interp* interp, Ast* ast) {
     return result;
 }
 
-internal Type_Table
-interp_formal_arguments(Interp* interp, Ast* arguments) {
-    Type_Table result = {};
+internal Type*
+interp_struct_or_union_type(Interp* interp, Ast* arguments, Type_Kind typekind) {
+    Type* result = arena_push_struct(&interp->stack, Type);
+    result->kind = typekind;
+    Type_Table* fields = &result->Struct_Or_Union;
+    
+    smm offset = 0;
+    smm size = 0;
+    smm align = 0;
     
     compound_iterator(arguments, argument) {
         assert(argument->type == Ast_Argument);
@@ -773,34 +777,59 @@ interp_formal_arguments(Interp* interp, Ast* arguments) {
             break;
         }
         
+        // NOTE(Alexander): for unions we reset the size and alignment for each entry
+        if (typekind == TypeKind_Union) {
+            size = 0;
+            align = 0;
+        }
+        
         Ast* ast_type = argument->Argument.type;
         Type* type = interp_type(interp, ast_type);
         
         switch (argument->Argument.ident->type) {
             case Ast_Compound: {
+                unimplemented;
                 compound_iterator(argument->Argument.ident, ast_ident) {
                     assert(ast_ident->type == Ast_Ident);
                     string_id ident = ast_ident->Ident;
                     
                     // TODO(Alexander): NEED TO HANDLE THE TYPE TABLE HASH MAP MEMORY
-                    map_put(result.ident_to_type, ident, type);
-                    array_push(result.idents, ident);
-                    result.count++;
+                    map_put(fields->ident_to_type, ident, type);
+                    map_put(fields->ident_to_offset, ident, offset);
+                    offset += type->cached_size;
+                    array_push(fields->idents, ident);
+                    fields->count++;
                 }
             } break;
             
             case Ast_None: {
                 if (type->kind == TypeKind_Struct) {
                     // NOTE(Alexander): anonymous type, pull out the identifiers from struct
-                    if(ast_type->Struct_Type.ident->type == Ast_None && type->Struct.fields.count > 0) {
-                        map_iterator(type->Struct.fields.ident_to_type, other, i) {
-                            // TODO(Alexander): check collisions!! we don't want two vars with same identifier
-                            map_put(result.ident_to_type, other.key, type);
-                            array_push(result.idents, other.key);
-                            result.count++;
+                    if(ast_type->Struct_Type.ident->type == Ast_None) {
+                        if (type->Struct_Or_Union.count > 0) {
+                            map_iterator(type->Struct_Or_Union.ident_to_type, other, i) {
+                                // TODO(Alexander): check collisions!! we don't want two vars with same identifier
+                                map_put(fields->ident_to_type, other.key, other.value);
+                                array_push(fields->idents, other.key);
+                                fields->count++;
+                            }
+                            
+                            map_iterator(type->Struct_Or_Union.ident_to_offset, other, j) {
+                                map_put(fields->ident_to_offset, other.key, other.value);
+                            }
+                        }
+                        
+                        if (type->cached_size > size) {
+                            size = type->cached_size;
+                            result->cached_size = (s32) size;
+                        }
+                        
+                        if (type->cached_align > align) {
+                            align = type->cached_align;
+                            result->cached_align = (s32) align;
                         }
                     } else {
-                        interp_error(interp, string_lit("structs cannot be declared inside a type"));
+                        interp_error(interp, string_lit("only anonymous structs can be declared inside a type"));
                     }
                 } else if (type->kind == TypeKind_Union) {
                     assert(0 && "unimplemented :(");
@@ -814,16 +843,31 @@ interp_formal_arguments(Interp* interp, Ast* arguments) {
                 string_id ident = argument->Argument.ident->Ident;
                 
                 // TODO(Alexander): NEED TO HANDLE THE TYPE TABLE HASH MAP MEMORY
-                map_put(result.ident_to_type, ident, type);
-                array_push(result.idents, ident);
-                result.count++;
-            }
+                map_put(fields->ident_to_type, ident, type);
+                map_put(fields->ident_to_offset, ident, offset);
+                
+                offset = align_forward(size, type->cached_align);
+                offset += type->cached_size;
+                array_push(fields->idents, ident);
+                fields->count++;
+                
+                if (type->cached_size > size) {
+                    size = type->cached_size;
+                    result->cached_size = (s32) size;
+                }
+                
+                if (type->cached_align > align) {
+                    align = type->cached_align;
+                    result->cached_align = (s32) align;
+                }
+            } break;
             
             default: {
-                assert(0 && "expected identifier"); // NOTE(Alexander): this is a parsing bug
+                assert(0 && "expected identifier, this is likely a parsing bug");
             }
         }
     }
+    
     return result;
 }
 
@@ -886,7 +930,27 @@ interp_type(Interp* interp, Ast* ast) {
             result->kind = TypeKind_Function;
             
             // NOTE(Alexander): Loads in the function arguments
-            result->Function.arguments = interp_formal_arguments(interp, ast->Function_Type.arg_types);
+            Ast* ast_arguments = ast->Function_Type.arg_types;
+            Type_Table* type_arguments = &result->Function.arguments;
+            smm offset = 0;
+            compound_iterator(ast_arguments, ast_argument) {
+                assert(ast_argument->type == Ast_Argument);
+                if (!ast_argument->Argument.type) {
+                    break;
+                }
+                
+                Type* type = interp_type(interp, ast_argument->Argument.type);
+                string_id ident = ast_argument->Argument.ident->Ident;
+                array_push(type_arguments->idents, ident);
+                map_put(type_arguments->ident_to_type, ident, type);
+                map_put(type_arguments->ident_to_offset, ident, offset);
+                type_arguments->count++;
+                
+                offset = align_forward(offset, type->cached_align);
+                offset += type->cached_size;
+                
+                map_put(type_arguments->ident_to_offset, ident, offset);
+            }
             
             result->Function.return_value = interp_type(interp, ast->Function_Type.return_type);
             assert(ast->Function_Type.ident && ast->Function_Type.ident->type == Ast_Ident);
@@ -896,64 +960,11 @@ interp_type(Interp* interp, Ast* ast) {
         } break;
         
         case Ast_Struct_Type: {
-            result = arena_push_struct(&interp->stack, Type);
-            result->kind = TypeKind_Struct;
-            result->Struct.fields = interp_formal_arguments(interp, ast->Struct_Type.fields);
-            
-            {
-                // Calculate size offsets and struct size and align
-                smm size = 0;
-                smm align = 0;
-                Type_Table* fields = &result->Struct.fields;
-                
-                for (int i = 0; i < fields->count; i++) {
-                    string_id ident = fields->idents[i];
-                    Type* type = map_get(fields->ident_to_type, ident);
-                    assert(type);
-                    assert(type->cached_size > 0 && "bad size");
-                    assert(type->cached_align > 0 && "bad align");
-                    if (type->cached_align > align) {
-                        align = type->cached_align;
-                    }
-                    
-                    size = align_forward(size, type->cached_align);
-                    map_put(result->Struct.ident_to_offset, ident, size);
-                    size += type->cached_size;
-                }
-                
-                result->cached_size = (s32) size;
-                result->cached_align = (s32) align;
-            }
+            result = interp_struct_or_union_type(interp, ast->Struct_Type.fields, TypeKind_Struct);
         } break;
         
         case Ast_Union_Type: {
-            result = arena_push_struct(&interp->stack, Type);
-            result->kind = TypeKind_Union;
-            result->Union.fields = interp_formal_arguments(interp, ast->Union_Type.fields);
-            
-            
-            {
-                // Calculate union size and align
-                smm size = 0;
-                smm align = 0;
-                Type_Table* fields = &result->Struct.fields;
-                for (int i = 0; i < fields->count; i++) {
-                    string_id ident = fields->idents[i];
-                    Type* type = map_get(fields->ident_to_type, ident);
-                    assert(type);
-                    
-                    if (type->cached_size > size) {
-                        size = result->cached_size;
-                    }
-                    
-                    if (type->cached_align > align) {
-                        align = result->cached_align;
-                    }
-                }
-                
-                result->cached_size = (s32) size;
-                result->cached_align = (s32) align;
-            }
+            result = interp_struct_or_union_type(interp, ast->Union_Type.fields, TypeKind_Union);
         } break;
         
         case Ast_Enum_Type: {

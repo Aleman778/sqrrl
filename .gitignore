@@ -4,3 +4,6 @@
 # Visual studio
 /.vs
 *.sln
+
+# TODO: docs are not ready yet
+/docs

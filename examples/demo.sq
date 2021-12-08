@@ -1,15 +1,18 @@
 
 union v2 {
     struct {
-        f32 x, y;
+        f32 x;
+        f32 y;
     };
     struct {
-        f32 u, v;
+        f32 u;
+        f32 v;
     };
     struct {
-        f32 width, height;
+        f32 width;
+        f32 height;
     };
-    f32[2] data;
+    //f32[2] data;
 }
 
 

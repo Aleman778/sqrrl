@@ -5,7 +5,11 @@ AST_GROUP(None,        "none")                  \
 AST(Abi,               "abi", string)           \
 AST(Value,             "value", Value)          \
 AST(Ident,             "identifier", string_id) \
-AST(Decl, "top level declaration", struct {  \
+AST(Ident_String,      "identifier", struct {   \
+string_id ident;                                \
+cstring contents;                               \
+})                                              \
+AST(Decl, "top level declaration", struct {     \
 Ast* ident;                                     \
 Ast* stmt;                                      \
 Ast_Decl_Modifier mods;                         \
@@ -146,9 +150,10 @@ AST_GROUP(Type_End,    "type")
 // compound_iterator(compound, it) {
 //     // `it` can be used as the ast node pointer
 // }
+// TODO(Alexander): this is really ugly and inefficient, try similar to C++ iterators.
 #define compound_iterator(compound, it) \
 for (Ast* it = compound->Compound.node; \
-compound && compound->Compound.next->type == Ast_Compound; \
+compound && compound->type == Ast_Compound && compound->Compound.node && compound->Compound.node->type != Ast_None; \
 compound = compound->Compound.next, it = compound->Compound.node)
 
 global cstring ast_strings[] = {

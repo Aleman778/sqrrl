@@ -86,6 +86,9 @@ __assert(cstring expression, cstring file, int line) {
 #define assert(expression)
 #endif
 
+#define unimplemented assert(0 && "this code is not implemented yet")
+#define invalid_code_path assert(0 && "invalid code path, this is likely a bug")
+
 // TODO(Alexander): special asserts
 #define assert_enum(T, v) assert((v) > 0 && (v) < T##_Count && "enum value out of range")
 #define assert_power_of_two(x) assert((((x) & ((x) - 1)) == 0) && "x is not power of two")

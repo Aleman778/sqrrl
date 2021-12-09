@@ -843,10 +843,8 @@ interp_struct_or_union_type(Interp* interp, Ast* arguments, Type_Kind typekind) 
                 array_push(fields->idents, ident);
                 fields->count++;
                 
-                if (type->cached_size > size) {
-                    size = type->cached_size;
-                    result->cached_size = (s32) size;
-                }
+                size = offset;
+                result->cached_size = (s32) size;
                 
                 if (type->cached_align > align) {
                     align = type->cached_align;

@@ -12,7 +12,7 @@ union v2 {
         f32 width;
         f32 height;
     };
-    //f32[2] data;
+    f32[2] data;
 }
 
 
@@ -20,5 +20,5 @@ int
 main() {
     v2 v = v2 { x: 5, y: 10 };
     
-    return (int) v.x;
+    return (int) (v.width + v.height);
 }

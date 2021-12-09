@@ -13,6 +13,7 @@ value_cast(Value value, Type* type) {
                 case PrimitiveTypeKind_s64:
                 case PrimitiveTypeKind_smm: {
                     value.signed_int = value_to_s64(value);
+                    value.type = Value_signed_int;
                 } break;
                 
                 case PrimitiveTypeKind_uint:
@@ -22,20 +23,24 @@ value_cast(Value value, Type* type) {
                 case PrimitiveTypeKind_u64:
                 case PrimitiveTypeKind_umm: {
                     value.unsigned_int = value_to_u64(value);
+                    value.type = Value_unsigned_int;
                 } break;
                 
                 case PrimitiveTypeKind_f32:
                 case PrimitiveTypeKind_f64: {
                     value.floating = value_to_f64(value);
+                    value.type = Value_floating;
                 } break;
                 
                 case PrimitiveTypeKind_bool: {
                     value.boolean = value_to_bool(value);
+                    value.type = Value_boolean;
                 } break;
                 
                 default: {
                     assert(0 && "invalid primitive type");
                 } break;
+                
             } break;
         }
         

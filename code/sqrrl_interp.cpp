@@ -3,12 +3,6 @@ void
 interp_save_value(Interp* interp, Type* type, void* storage, Value value) {
     // TODO(Alexander): handle type errors here
     switch (type->kind) {
-        case TypeKind_Void:
-        case TypeKind_Unresolved:
-        case TypeKind_Function: {
-            assert(0 && "not a value");
-        } break;
-        
         case TypeKind_Primitive: {
 #define PCASE(T, V) case PrimitiveTypeKind_##T: { \
 *((T*) storage) = (T) (V); \
@@ -57,20 +51,19 @@ interp_save_value(Interp* interp, Type* type, void* storage, Value value) {
         case TypeKind_Union: {
             *((smm*) storage) = value.pointer;
         } break;
+        
+        default: {
+            assert(0 && "not a value");
+        } break;
+        
     }
 }
 
 Interp_Value
-interp_resolve_value(Interp* interp, Type* type, void* data) {
+interp_load_value(Interp* interp, Type* type, void* data) {
     Value value = {};
     
     switch (type->kind) {
-        case TypeKind_Void:
-        case TypeKind_Unresolved:
-        case TypeKind_Function: {
-            assert(0 && "not a value");
-        } break;
-        
         case TypeKind_Primitive: {
             if (type->cached_size <= 0) {
                 assert(0 && "not a valid size");
@@ -127,6 +120,10 @@ value.##V = *((T*) data); \
             value.pointer = *((smm*) data);
             value.type = Value_pointer;
         } break;
+        
+        default: {
+            assert(0 && "not a value");
+        } break;
     }
     
     Interp_Value result = create_interp_value(interp);
@@ -150,7 +147,7 @@ interp_expression(Interp* interp, Ast* ast) {
         
         // TODO(alexander): do we want identifiers to be expressions?
         case Ast_Ident: {
-            result = interp_resolve_value(interp, ast->Ident);
+            result = interp_load_value(interp, ast->Ident);
         } break;
         
         case Ast_Unary_Expr: {
@@ -286,7 +283,7 @@ interp_expression(Interp* interp, Ast* ast) {
                             void* data = var.value.data;
                             smm offset = map_get(var.type->Struct_Or_Union.ident_to_offset, ident);
                             data = (u8*) data + offset;
-                            result = interp_resolve_value(interp, field_type, data);
+                            result = interp_load_value(interp, field_type, data);
                         }
                     } break;
                     
@@ -418,7 +415,7 @@ assert(0 && "invalid primitive type"); \
                         void* data = (void*) array_value.elements;
                         data = (u8*) data + array_index * elem_size;
                         
-                        result = interp_resolve_value(interp, elem_type, data);
+                        result = interp_load_value(interp, elem_type, data);
                     } else {
                         interp_error(interp, string_lit("array index out of bounds"));
                     }
@@ -579,7 +576,7 @@ interp_statement(Interp* interp, Ast* ast) {
                     
                     Type_Table* type_table = &type->Struct_Or_Union;
                     
-                    void* base_address = 0;
+                    void* base_address = arena_push_size(&interp->stack, (umm) type->cached_size, (umm) type->cached_align);
                     struct { string_id key; Value value; }* field_values = 0;
                     
                     if (is_ast_node(expr.value)) {
@@ -589,9 +586,7 @@ interp_statement(Interp* interp, Ast* ast) {
                         
                         // NOTE(Alexander): push elements onto the stack in the order defined by the type
                         // so first push the compound actual values into a auxillary hash map.
-                        while (fields && fields->type == Ast_Compound) {
-                            Ast* field = fields->Compound.node;
-                            fields = fields->Compound.next;
+                        compound_iterator(fields, field) {
                             assert(field->type == Ast_Argument);
                             
                             Interp_Value field_expr = interp_expression(interp, field->Argument.assign);
@@ -611,15 +606,13 @@ interp_statement(Interp* interp, Ast* ast) {
                         }
                     }
                     
-                    for (int i = 0; i < type_table->count; i++) {
-                        string_id field_ident = type_table->idents[i];
+                    map_iterator(field_values, field, i) {
+                        string_id field_ident = field.key;
                         Type* field_type = map_get(type_table->ident_to_type, field_ident);
-                        Value field_value = map_get(field_values, field_ident);
-                        
-                        void* data = interp_push_value(interp, field_type, field_value);
-                        if (!base_address) {
-                            base_address = data;
-                        }
+                        Value field_value = value_cast(field.value, field_type);
+                        smm offset = map_get(type_table->ident_to_offset, field_ident);
+                        void* storage = (u8*) base_address + offset;
+                        interp_save_value(interp, field_type, storage, field_value);
                     }
                     
                     Value value;
@@ -664,7 +657,6 @@ interp_statement(Interp* interp, Ast* ast) {
         } break;
         
         case Ast_Decl_Stmt: {
-            
             interp_declaration_statement(interp, ast);
         } break;
         

@@ -73,7 +73,7 @@ interp_unresolved_identifier_error(Interp* interp, string_id ident) {
 }
 
 void interp_save_value(Interp* interp, Type* type, void* storage, Value value);
-Interp_Value interp_resolve_value(Interp* interp, Type* type, void* data);
+Interp_Value interp_load_value(Interp* interp, Type* type, void* data);
 
 inline void*
 interp_push_value(Interp* interp, Type* type, Value value) {
@@ -117,7 +117,7 @@ interp_entity_is_declared(Interp* interp, Entity* entity, string_id ident) {
 }
 
 inline Interp_Value
-interp_resolve_value(Interp* interp, string_id ident) {
+interp_load_value(Interp* interp, string_id ident) {
     Interp_Value result = {};
     
     Entity entity = map_get(interp->symbol_table, ident);
@@ -127,7 +127,7 @@ interp_resolve_value(Interp* interp, string_id ident) {
     }
     
     if (interp_entity_is_assigned(interp, &entity, ident)) {
-        result = interp_resolve_value(interp, entity.type, entity.data);
+        result = interp_load_value(interp, entity.type, entity.data);
     }
     
     return result;

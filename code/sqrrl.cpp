@@ -5,6 +5,7 @@
 #include "sqrrl.h"
 
 #include "sqrrl_basic.cpp"
+#include "sqrrl_value.cpp"
 #include "sqrrl_tokenizer.cpp"
 #include "sqrrl_parser.cpp"
 #include "sqrrl_interp.cpp"

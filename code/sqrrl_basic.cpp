@@ -17,6 +17,10 @@ pln(const char* format...) {
             
             Format_Type type = (Format_Type) va_arg(args, int);
             switch (type) {
+                case FormatType_char: {
+                    printf("%c", va_arg(args, char));
+                } break;
+                
                 case FormatType_int: {
                     printf("%d", va_arg(args, int));
                 } break;
@@ -76,6 +80,10 @@ string_format(const char* format...) { // TODO(alexander): replace snprintf with
             int count;
             Format_Type type = va_arg(args, Format_Type);
             switch (type) {
+                case FormatType_char: {
+                    count = snprintf(buffer, size_remaining, "%c", va_arg(args, char));
+                } break;
+                
                 case FormatType_int: {
                     count = snprintf(buffer, size_remaining, "%d", va_arg(args, int));
                 } break;

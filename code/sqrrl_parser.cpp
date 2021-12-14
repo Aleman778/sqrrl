@@ -433,6 +433,62 @@ parse_atom(Parser* parser, bool report_error) {
         } break;
     }
     
+    // Some expressions are build by combining multiple atoms e.g. `atom1[atom2]`.
+    token = peek_token(parser);
+    Ast* atom_expr = result;
+    Ast* lhs_expr = atom_expr;
+    switch (token.type) {
+        case Token_Dot: {
+            next_token(parser);
+            lhs_expr = push_ast_node(parser);
+            lhs_expr->type = Ast_Field_Expr;
+            lhs_expr->Field_Expr.var = atom_expr;
+            Ast* field = parse_atom(parser, true);
+            if (field->type == Ast_Ident) {
+                lhs_expr->Field_Expr.field = field;
+            } else {
+                // NOTE(Alexander): we have to unwrap the expression so we first fetch the field identifier then perform the expression
+                // TODO(Alexander): this assumes that first node is identifier, otherwise we fail this is quite ugly
+                assert(field->children[0] && field->children[0]->type == Ast_Ident);
+                lhs_expr->Field_Expr.field = field->children[0];
+                field->children[0] = lhs_expr;
+                lhs_expr = field;
+            }
+            
+        } break;
+        
+        case Token_Open_Paren: {
+            lhs_expr = push_ast_node(parser);
+            lhs_expr->type = Ast_Call_Expr;
+            lhs_expr->Call_Expr.ident = atom_expr;
+            lhs_expr->Call_Expr.args = parse_compound(parser, 
+                                                      Token_Open_Paren, Token_Close_Paren, Token_Comma, 
+                                                      &parse_actual_argument);
+        } break;
+        
+        case Token_Open_Bracket: {
+            next_token(parser);
+            lhs_expr = push_ast_node(parser);
+            lhs_expr->type = Ast_Index_Expr;
+            lhs_expr->Index_Expr.array = atom_expr;
+            lhs_expr->Index_Expr.index = parse_atom(parser);
+            next_token_if_matched(parser, Token_Close_Bracket);
+        } break;
+        
+        case Token_Open_Brace: {
+            if (atom_expr->type == Ast_Ident) {
+                lhs_expr = push_ast_node(parser);
+                lhs_expr->type = Ast_Struct_Expr;
+                lhs_expr->Struct_Expr.ident = atom_expr;
+                lhs_expr->Struct_Expr.fields = parse_compound(parser,
+                                                              Token_Open_Brace, Token_Close_Brace, Token_Comma, 
+                                                              &parse_actual_struct_or_union_argument);
+            }
+        } break;
+    }
+    
+    result = lhs_expr;
+    
     if (!result) {
         if (report_error) {
             parse_error_unexpected_token(parser, token);
@@ -456,47 +512,9 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
         }
     }
     
-    // Some expressions are build by combining multiple atoms e.g. `atom1[atom2]`.
     Token token = peek_token(parser);
+    
     Ast* lhs_expr = atom_expr;
-    switch (token.type) {
-        case Token_Dot: {
-            next_token(parser);
-            lhs_expr = push_ast_node(parser);
-            lhs_expr->type = Ast_Field_Expr;
-            lhs_expr->Field_Expr.var = atom_expr;
-            lhs_expr->Field_Expr.field = parse_atom(parser, true);
-        } break;
-        
-        case Token_Open_Paren: {
-            lhs_expr = push_ast_node(parser);
-            lhs_expr->type = Ast_Call_Expr;
-            lhs_expr->Call_Expr.ident = atom_expr;
-            lhs_expr->Call_Expr.args = parse_compound(parser, 
-                                                      Token_Open_Paren, Token_Close_Paren, Token_Comma, 
-                                                      &parse_actual_argument);
-        } break;
-        
-        case Token_Open_Bracket: {
-            next_token(parser);
-            lhs_expr = push_ast_node(parser);
-            lhs_expr->type = Ast_Index_Expr;
-            lhs_expr->Index_Expr.array = atom_expr;
-            lhs_expr->Index_Expr.index = parse_expression(parser);
-            next_token_if_matched(parser, Token_Close_Bracket);
-        } break;
-        
-        case Token_Open_Brace: {
-            if (atom_expr->type == Ast_Ident) {
-                lhs_expr = push_ast_node(parser);
-                lhs_expr->type = Ast_Struct_Expr;
-                lhs_expr->Struct_Expr.ident = atom_expr;
-                lhs_expr->Struct_Expr.fields = parse_compound(parser,
-                                                              Token_Open_Brace, Token_Close_Brace, Token_Comma, 
-                                                              &parse_actual_struct_or_union_argument);
-            }
-        } break;
-    }
     update_span(parser, lhs_expr);
     
     // Parse binary expression using precedence climbing, is applicable

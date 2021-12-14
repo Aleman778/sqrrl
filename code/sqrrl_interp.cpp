@@ -103,10 +103,16 @@ value.##V = *((T*) data); \
         } break;
         
         case TypeKind_Array: {
-            smm* mdata = (smm*) data;
-            value.array.count = *mdata++;
-            value.array.elements = *((void**) mdata);
-            value.type = Value_array;
+            if (type->Array.capacity <= 0) {
+                smm* mdata = (smm*) data;
+                value.array.count = *mdata++;
+                value.array.elements = *((void**) mdata);
+                value.type = Value_array;
+            } else {
+                value.array.count = type->Array.capacity;
+                value.array.elements = data;
+                value.type = Value_array;
+            }
         } break;
         
         case TypeKind_String: {
@@ -268,7 +274,7 @@ interp_expression(Interp* interp, Ast* ast) {
         case Ast_Field_Expr: {
             Interp_Value var = interp_expression(interp, ast->Field_Expr.var);
             
-            assert(ast->Field_Expr.field && ast->Field_Expr.field->type == Ast_Ident);
+            assert(ast->Field_Expr.field->type == Ast_Ident); // TODO(Alexander): turn into an error, where?
             string_id ident = ast->Field_Expr.field->Ident;
             
             if (var.type) {

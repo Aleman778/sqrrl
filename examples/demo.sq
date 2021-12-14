@@ -20,5 +20,6 @@ int
 main() {
     v2 v = v2 { x: 5, y: 10 };
     
-    return (int) (v.width + v.height);
+    return (int) v.data[0] + v.data[1];
+    //return (int) v.width;
 }

@@ -25,13 +25,13 @@ Ast* next;                                      \
 })                                              \
 AST_GROUP(Expr_Begin,  "expression")            \
 AST(Unary_Expr,        "unary", struct {        \
-Unary_Op op;                                    \
 Ast* first;                                     \
+Unary_Op op;                                    \
 })                                              \
 AST(Binary_Expr,       "binary", struct {       \
-Binary_Op op;                                   \
 Ast* first;                                     \
 Ast* second;                                    \
+Binary_Op op;                                   \
 })                                              \
 AST(Ternary_Expr,      "ternary", struct {      \
 Ast* first;                                     \

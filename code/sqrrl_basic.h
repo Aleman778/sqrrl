@@ -125,6 +125,7 @@ string_lit(cstring str) {
 // NOTE(Alexander): improved string formatting and printf
 typedef int Format_Type;
 enum { // TODO(Alexander): add more types
+    FormatType_char,
     FormatType_int,
     FormatType_uint,
     FormatType_smm,
@@ -134,6 +135,7 @@ enum { // TODO(Alexander): add more types
 };
 
 // TODO(Alexander): add more types
+#define f_char(x) FormatType_char, (char) (x)
 #define f_int(x) FormatType_int, (int) (x)
 #define f_smm(x) FormatType_smm, (smm) (x)
 #define f_uint(x) FormatType_uint, (uint) (x)

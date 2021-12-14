@@ -131,8 +131,7 @@ scan_escape_character(Tokenizer* tokenizer, u8 quote) {
                 tokenization_error(tokenizer, "escape character out of range, expected [\\x00 - \\x7F]");
                 return;
             }
-            break;
-        }
+        } break;
         
         case 'u': { // unicode character
             utf8_advance_character(tokenizer);
@@ -155,22 +154,21 @@ scan_escape_character(Tokenizer* tokenizer, u8 quote) {
                 if (*tokenizer->next == '}') {
                     utf8_advance_character(tokenizer);
                 } else {
-                    tokenization_error(tokenizer, string_format("expected `}`, found `%c`", *tokenizer->next));
+                    tokenization_error(tokenizer, string_format("expected `}`, found `%`", f_char(*tokenizer->next)));
                 }
             } else {
-                tokenization_error(tokenizer, string_format("expected `{`, found `%c`", *tokenizer->next));
+                tokenization_error(tokenizer, string_format("expected `{`, found `%`", f_char(*tokenizer->next)));
             }
-            break;
-        }
+        } break;
         
-        case 'n': case 't': case '\\': case '0':
-        utf8_advance_character(tokenizer);
-        break;
+        case 'n': case 't': case '\\': case '0': {
+            utf8_advance_character(tokenizer);
+        } break;
         
-        default:
-        utf8_advance_character(tokenizer);
-        tokenization_error(tokenizer, string_format("expected escape character, found `%c`", *tokenizer->curr));
-        break;
+        default: {
+            utf8_advance_character(tokenizer);
+            tokenization_error(tokenizer, string_format("expected escape character, found `%`", f_char(*tokenizer->curr)));
+        } break;
     }
 }
 
@@ -188,14 +186,14 @@ scan_digits(Tokenizer* tokenizer, int base) {
             break;
         }
         
-        // NOTE(alexander): ignores parsing e or E, ambigious with float exponent
-        if (d == 14 && base < 14) {
+        // NOTE(alexander): ignores parsing e, E or f, ambigious with float exponent
+        if ((d == 14 && base < 14) || (d == 15 && base < 15)) {
             break;
         }
         
         utf8_advance_character(tokenizer);
         if (d >= base) {
-            tokenization_error(tokenizer, string_format("expected digit with base %d, found `%c`", base, *tokenizer->curr));
+            tokenization_error(tokenizer, string_format("expected digit with base %, found `%`", f_int(base), f_char(*tokenizer->curr)));
         }
         has_digits = true;
     }
@@ -254,7 +252,7 @@ scan_number(Tokenizer* tokenizer, Token& token) {
         token.type = Token_Float;
         utf8_advance_character(tokenizer);
         if (*tokenizer->curr != '+' && *tokenizer->curr != '-') {
-            tokenization_error(tokenizer, string_format("expected `+` or `-`, found `%c`", *tokenizer->curr));
+            tokenization_error(tokenizer, string_format("expected `+` or `-`, found `%`", f_char(*tokenizer->curr)));
             return;
         }
         
@@ -262,6 +260,11 @@ scan_number(Tokenizer* tokenizer, Token& token) {
         if (!scan_digits(tokenizer, 10)) {
             tokenization_error(tokenizer, "expected at least one digit in exponent");
         }
+    }
+    
+    if (*tokenizer->curr == 'f') {
+        token.type = Token_Float;
+        utf8_advance_character(tokenizer);
     }
     
     while (*tokenizer->curr == '_' && tokenizer->curr < tokenizer->end) utf8_advance_character(tokenizer);

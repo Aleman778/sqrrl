@@ -588,6 +588,7 @@ advance_token(Tokenizer* tokenizer) {
     }
     
     if (advance_utf32_at_end) utf8_advance_character(tokenizer);
+    // TODO(Alexander): garbage collection???
     token.source = string_lit((char*) base, (u32) (tokenizer->curr - base));
     return token;
 }

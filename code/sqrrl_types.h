@@ -1,4 +1,5 @@
 
+// NOTE(Alexander): this has to be synched with the keywords in sqrrl_vars.h
 #define DEF_PRIMITIVE_TYPES \
 PRIMITIVE(int, 4, signed, INT_MAX, INT_MIN) \
 PRIMITIVE(s8, 1, signed, S8_MAX, S8_MIN) \

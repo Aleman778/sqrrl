@@ -182,31 +182,27 @@ parse_int(Parser* parser) {
     
     if (token.suffix_start != string_count(token.source)) {
         assert(0 && "number suffixes are not supported yet!");
-#if 0
-        Type type = primitive_types[Primitive_integer];
-        string suffix = substring_nocopy(token.source, token.suffix_start, token.source.length);
-        Symbol sym = find_symbol(suffix);
-        switch (sym.index) {
-            case Kw_i8:    type = primitive_types[Primitive_i8];    break;
-            case Kw_i16:   type = primitive_types[Primitive_i16];   break;
-            case Kw_i32:   type = primitive_types[Primitive_i32];   break;
-            case Kw_i64:   type = primitive_types[Primitive_i64];   break;
-            case Kw_isize: type = primitive_types[Primitive_isize]; break;
-            case Kw_u8:    type = primitive_types[Primitive_u8];    break;
-            case Kw_u16:   type = primitive_types[Primitive_u16];   break;
-            case Kw_u32:   type = primitive_types[Primitive_u32];   break;
-            case Kw_u64:   type = primitive_types[Primitive_u64];   break;
-            case Kw_usize: type = primitive_types[Primitive_usize]; break;
+        
+        Type* type = &global_primitive_types[PrimitiveTypeKind_int];
+        cstring suffix = (cstring) (token.source + token.suffix_start);
+        
+        string_id sym = vars_save_string(suffix);
+        switch (sym) {
+#define PRIMITIVE(name, ...) \
+case Kw_##name: type = &global_primitive_types[PrimitiveTypeKind_##name]; break;
+            DEF_PRIMITIVE_TYPES
+#undef PRIMITIVE
             default:
-            if (string_equals(suffix, string_lit("u"))) {
+            if (*suffix == "u") {
                 type = primitive_types[Primitive_uint];
+            } else if (suffix == "f") {
+                
             }
             // TODO(alexander): improve this error, e.g. show what types are available?
             String name = copy_string(suffix, arena_allocator(parser->temp_arena));
             parse_error(parser, token, "invalid integer type `%s`", lit(name));
             break;
         }
-#endif
     }
     
     int base = 10;

@@ -43,9 +43,10 @@ VAR(umm)      \
 VAR(f32)      \
 VAR(f64)      \
 VAR(char)     \
-VAR(string)   \
 VAR(bool)     \
+VAR(b32)      \
 VAR(void)     \
+VAR(string)   \
 VAR(pointer)  \
 VAR(array)    \
 VAR(tuple)    \

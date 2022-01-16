@@ -246,7 +246,7 @@ void print_value(Value* val) {
         } break;
         
         case Value_string: {
-            printf("%s", val->str);
+            printf("%.*s", (int) val->str.count, val->str.data);
         } break;
     }
 }

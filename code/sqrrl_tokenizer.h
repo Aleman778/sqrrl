@@ -96,13 +96,13 @@ struct Token {
     string source;
     
     string file;
-    smm line;
-    smm column;
-    smm offset;
+    umm line;
+    umm column;
+    umm offset;
     
     Int_Base int_base;
-    smm suffix_start; // optional defined for literal type suffix e.g.  10i8
-    smm num_hashes; // optionally defined for raw string literals.
+    umm suffix_start; // optional defined for literal type suffix e.g.  10i8
+    umm num_hashes; // optionally defined for raw string literals.
 };
 
 #define f_token(x) FormatType_cstring, token_type_repr[x]
@@ -128,8 +128,8 @@ void utf8_advance_character(Tokenizer* tokenizer);
 
 inline void
 tokenizer_set_source(Tokenizer* tokenizer, string source, string file) {
-    tokenizer->start = (u8*) source;
-    tokenizer->end = tokenizer->start + string_count(source);
+    tokenizer->start = source.data;
+    tokenizer->end = tokenizer->start + source.count;
     tokenizer->next = tokenizer->start;
     tokenizer->source = source;
     tokenizer->curr = tokenizer->start;

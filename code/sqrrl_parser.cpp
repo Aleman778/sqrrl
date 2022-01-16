@@ -57,8 +57,8 @@ parse_identifier(Parser* parser, bool report_error) {
 }
 
 internal u32
-parse_escape_character(Parser* parser, char*& curr, char* end, bool byte) {
-    char c = *curr++;
+parse_escape_character(Parser* parser, u8*& curr, u8* end, bool byte) {
+    u8 c = *curr++;
     switch (c) {
         case 'x': {
             assert(curr + 2 < end && "string out of bounds");
@@ -70,7 +70,7 @@ parse_escape_character(Parser* parser, char*& curr, char* end, bool byte) {
         case 'u': {
             if (byte) {
                 parse_error(parser, parser->current_token, 
-                            "unicode escape characters cannot be used as bytes or in byte string");
+                            string_lit("unicode escape characters cannot be used as bytes or in byte string"));
             }
             u32 value = 0;
             assert(*curr++ == '{');
@@ -78,7 +78,7 @@ parse_escape_character(Parser* parser, char*& curr, char* end, bool byte) {
                 value = value * 16 + hex_digit_to_s32(c);
                 if (value > 0x10FFFF) {
                     parse_error(parser, parser->current_token, 
-                                "invalid unicode escape character, expected at most 10FFFF");
+                                string_lit("invalid unicode escape character, expected at most 10FFFF"));
                     return 0;
                 }
             }
@@ -101,8 +101,8 @@ parse_char(Parser* parser) {
     assert(parser->current_token.type == Token_Char);
     
     string str = parser->current_token.source;
-    char* curr = str;
-    char* end = str + string_count(str);
+    u8* curr = str.data;
+    u8* end = str.data + str.count;
     assert(*curr++ == '\'');
     
     u32 character = 0;
@@ -120,7 +120,7 @@ parse_char(Parser* parser) {
     }
     
     if (*curr++ != '\'' && curr < end) {
-        parse_error(parser, parser->current_token, "character literal may only contain one codepoint");
+        parse_error(parser, parser->current_token, string_lit("character literal may only contain one codepoint"));
     }
     
     // TODO(alexander): should we create a char value type?
@@ -132,28 +132,31 @@ parse_string(Parser* parser) {
     assert(parser->current_token.type == Token_String);
     
     string str = parser->current_token.source;
-    char* curr = str;
-    char* end = str + string_count(str);
+    u8* curr = str.data;
+    u8* end = str.data + str.count;
     
     // TODO(alexander): create str builder
-    string sb = string_alloc(1000);
-    char* sb_curr = (char*) sb;
-    u32 sb_count = 0;
+    String_Builder sb;
+    string_builder_alloc(&sb, str.count + 10);
     
+    u8* last_push = curr;
     assert(*curr++ == '"');
     while (curr < end) {
         char c = *curr++;
         if (c == '\\') {
+            if (last_push != curr) {
+                string_builder_push(&sb, string_view(last_push, curr));
+                last_push = curr;
+            }
+            
             u32 value = parse_escape_character(parser, curr, end, false);
             if (value > 0x7F) {
                 // TODO(alexander): create string builder!
-                //ensure_capacity(&sb, 4);
-                u8 count = utf32_convert_to_utf8(value, (u8*) sb_curr);
-                sb_curr += count;
-                sb_count += count;
+                string_builder_ensure_capacity(&sb, 4);
+                sb.curr_used += utf32_convert_to_utf8(value, sb.data + sb.curr_used);
             } else {
-                *sb_curr++ = (char) value;
-                sb_count++;
+                string_builder_ensure_capacity(&sb, 1);
+                sb.data[sb.curr_used++] = (char) value;
             }
             continue;
         } else if (c == '"') {
@@ -161,16 +164,16 @@ parse_string(Parser* parser) {
         }
         
         u8 n = utf8_calculate_num_bytes((u8) c);
-        assert(n > 0);
-        *sb_curr++ = c;
-        sb_count++;
-        for (; n > 1; n--) *sb_curr++ = *curr++;
+        curr += n;
     }
-    *sb_curr++ = 0;
     
-    string result = string_alloc(sb_count);
-    memcpy(result, sb, sb_count);
+    if (last_push != curr) {
+        string_builder_push(&sb, string_view(last_push, curr));
+        last_push = curr;
+    }
     
+    string result = string_builder_to_string(&sb);
+    string_builder_free(&sb);
     return push_ast_value(parser, create_string_value(result));
 }
 
@@ -180,11 +183,12 @@ parse_int(Parser* parser) {
     assert(token.type == Token_Int);
     
     
-    if (token.suffix_start != string_count(token.source)) {
+    if (token.suffix_start != token.source.count) {
         assert(0 && "number suffixes are not supported yet!");
         
         Type* type = &global_primitive_types[PrimitiveTypeKind_int];
-        cstring suffix = (cstring) (token.source + token.suffix_start);
+        string suffix = string_view(token.source.data + token.suffix_start, 
+                                    token.source.data + token.source.count);
         
         string_id sym = vars_save_string(suffix);
         switch (sym) {
@@ -193,14 +197,18 @@ case Kw_##name: type = &global_primitive_types[PrimitiveTypeKind_##name]; break;
             DEF_PRIMITIVE_TYPES
 #undef PRIMITIVE
             default:
-            if (*suffix == "u") {
-                type = primitive_types[Primitive_uint];
-            } else if (suffix == "f") {
-                
+            if (suffix.count == 1) {
+                if (*suffix.data == 'u') {
+                    type = &global_primitive_types[PrimitiveTypeKind_uint];
+                } else if (*suffix.data == 'f') {
+                    type = &global_primitive_types[PrimitiveTypeKind_f32];
+                }
             }
             // TODO(alexander): improve this error, e.g. show what types are available?
-            String name = copy_string(suffix, arena_allocator(parser->temp_arena));
-            parse_error(parser, token, "invalid integer type `%s`", lit(name));
+            //string name = copy_string(suffix, arena_allocator(parser->temp_arena));
+            //parse_error(parser, token, "invalid integer type `%s`", lit(name));
+            
+            assert(0 && "TODO: add error message");
             break;
         }
     }
@@ -226,20 +234,20 @@ case Kw_##name: type = &global_primitive_types[PrimitiveTypeKind_##name]; break;
     
     u64 value = 0;
     while (curr_index < token.suffix_start) {
-        u8 c = token.source[curr_index++];
+        u8 c = token.source.data[curr_index++];
         if (c == '_') continue;
         
         s32 d = hex_digit_to_s32(c);
         assert(d != -1 && "tokenization error");
         u64 x = value * base;
         if (value != 0 && x / base != value) {
-            parse_error(parser, token, "integer literal is too large");
+            parse_error(parser, token, string_lit("integer literal is too large"));
             break;
         }
         
         u64 y = x + d;
         if (y < x) { // NOTE(alexander): this should work since d is small compared to x
-            parse_error(parser, token, "integer literal is too large");
+            parse_error(parser, token, string_lit("integer literal is too large"));
             break;
         }
         
@@ -255,12 +263,12 @@ parse_float(Parser* parser) {
     assert(token.type == Token_Float);
     
     if (token.int_base != IntBase_Decimal) {
-        parse_error(parser, token, "float literals does not support int bases");
+        parse_error(parser, token, string_lit("float literals does not support int bases"));
         return 0;
     }
     
     
-    if (token.suffix_start != string_count(token.source)) {
+    if (token.suffix_start != token.source.count) {
         assert(0 && "number suffixes are not supported yet!");
 #if 0
         Type type = primitive_types[Primitive_float];
@@ -280,7 +288,7 @@ parse_float(Parser* parser) {
     f64 value = 0.0;
     u8 c = 0;
     while (curr_index < token.suffix_start) {
-        c = token.source[curr_index++];
+        c = token.source.data[curr_index++];
         if (c == '_') continue;
         if (c == 'e' || c == 'E' || c == '.') break;
         f64 d = (f64) hex_digit_to_s32(c);
@@ -290,8 +298,8 @@ parse_float(Parser* parser) {
     if (c == '.') {
         f64 numerator = 0.0;
         f64 denominator = 1.0;
-        while (curr_index < string_count(token.source)) {
-            c = token.source[curr_index++];
+        while (curr_index < token.source.count) {
+            c = token.source.data[curr_index++];
             if (c == '_') continue;
             if (c == 'e' || c == 'E') break;
             numerator = numerator * 10.0 + (f64) (c - '0');
@@ -302,13 +310,13 @@ parse_float(Parser* parser) {
     
     if (c == 'e' || c == 'E') {
         pln("token.source = %\n", f_string(token.source));
-        c = token.source[curr_index++];
+        c = token.source.data[curr_index++];
         f64 exponent = 0.0;
         f64 sign = 1.0;
         if (c == '-') sign = -1.0;
         
-        while (curr_index < string_count(token.source)) {
-            c = token.source[curr_index++];
+        while (curr_index < token.source.count) {
+            c = token.source.data[curr_index++];
             if (c == '_') continue;
             exponent = exponent * 10.0 + (f64) (c - '0');
         }
@@ -1135,7 +1143,7 @@ parse_top_level_declaration(Parser* parser) {
                     }
                 }
                 
-                parse_error(parser, token, "cannot declare top level declaration without identifier");
+                parse_error(parser, token, string_lit("cannot declare top level declaration without identifier"));
                 return result;
             } break;
         }
@@ -1188,7 +1196,7 @@ next_token(Parser* parser) {
     
     if (parser->current_token.type == Token_EOF) {
         // TODO(alexander): add help to remove e.g. mismatched brace.
-        parse_error(parser, parser->current_token, "reached end of file while parsing");
+        parse_error(parser, parser->current_token, string_lit("reached end of file while parsing"));
     }
     
     return parser->current_token;

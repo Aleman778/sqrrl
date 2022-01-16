@@ -20,6 +20,10 @@
 #define gigabytes(value) (1024LL * megabytes(value))
 #define terabytes(value) (1024LL * gigabytes(value))
 
+// NOTE(Alexander): minimum and maximum value
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#define max(a, b) ((a) > (b) ? (a) : (b))
+
 // NOTE(Alexander): bit stuff
 #define bit(x) (1 << (x))
 #define is_bit_set(var, x) ((var) & (1 << (x)))
@@ -40,7 +44,6 @@ typedef intptr_t     smm;
 typedef float        f32;
 typedef double       f64;
 typedef int32_t      b32;
-typedef char*        string;
 typedef const char*  cstring;
 
 // NOTE(Alexander): define type min and max values
@@ -93,39 +96,141 @@ __assert(cstring expression, cstring file, int line) {
 #define assert_enum(T, v) assert((v) > 0 && (v) < T##_Count && "enum value out of range")
 #define assert_power_of_two(x) assert((((x) & ((x) - 1)) == 0) && "x is not power of two")
 
-inline u32
+inline umm
 cstring_count(cstring str) {
-    return (u32) strlen(str);
+    return (umm) strlen(str);
 }
+
+// NOTE(Alexander): strings
+struct string {
+    umm count;
+    u8* data;
+};
+
+inline string
+create_string(umm count, u8* data) {
+    string result;
+    result.count = count;
+    result.data = data;
+    return result;
+};
 
 // TODO(Alexander): lazy!!!! don't use malloc for this, put in arena later...
 inline string
-string_alloc(u32 count) {
-    char* result = (char*) malloc(count + 5) + 4;
-    result[count] = '\0';
-    *((u32*) result - 1) = count;
+string_alloc(umm count) {
+    string result;
+    result.count = count;
+    result.data = (u8*) malloc(count);
     return (string) result;
 }
 
 inline string
-string_lit(string str, u32 count) {
-    string result = string_alloc(count);
-    memcpy(result, str, count);
+string_lit(cstring str) {
+    string result;
+    result.data = (u8*) str;
+    result.count = cstring_count(str);
+    return result;
+}
+
+// NOTE(Alexander): allocates a new cstring that is null terminated
+inline cstring
+string_to_cstring(string str) {
+    char* result = (char*) malloc(str.count + 1);
+    memcpy(result, str.data, str.count);
+    result[str.count] = 0;
+    return (cstring) result;
+}
+
+inline string
+string_copy(string str) {
+    string result = string_alloc(str.count);
+    memcpy(result.data, str.data, str.count);
     return result;
 }
 
 inline string
-string_lit(cstring str) {
-    u32 count = (u32) cstring_count(str);
-    return string_lit((string) str, count);
+string_view(u8* begin, u8* end) {
+    assert(begin < end);
+    
+    string result;
+    result.count = (umm) (end - begin);
+    result.data = begin;
+    return result;
 }
 
-#define string_count(s) *((u32*) s - 1)
+struct String_Builder {
+    u8* data;
+    umm size;
+    umm curr_used;
+};
+
+inline void
+string_builder_free(String_Builder* sb) {
+    free(sb->data);
+    sb->data = 0;
+    sb->curr_used = 0;
+    sb->size = 0;
+}
+
+inline void
+string_builder_alloc(String_Builder* sb, umm new_size) {
+    void* new_data = realloc(sb->data, new_size);
+    if (!new_data) {
+        free(sb->data);
+        sb->data = (u8*) malloc(new_size);
+    }
+    sb->data = (u8*) new_data;
+    sb->size = new_size;
+}
+
+inline void
+string_builder_ensure_capacity(String_Builder* sb, umm capacity) {
+    umm min_size = sb->curr_used + capacity;
+    if (min_size > sb->size) {
+        umm new_size = max(sb->size * 2, min_size);
+        string_builder_alloc(sb, new_size);
+    }
+}
+
+void
+string_builder_push(String_Builder* sb, string str) {
+    string_builder_ensure_capacity(sb, str.count);
+    
+    memcpy(sb->data + sb->curr_used, str.data, str.count);
+    sb->curr_used += str.count;
+}
+
+
+void
+string_builder_push(String_Builder* sb, cstring str) {
+    string_builder_push(sb, string_lit(str));
+}
+
+void string_builder_push_format(String_Builder* sb, cstring format...);
+
+string
+string_builder_to_string(String_Builder* sb) {
+    string result;
+    result.data = (u8*) malloc(sb->curr_used + 1);
+    result.count = sb->curr_used;
+    memcpy(result.data, sb->data, sb->curr_used);
+    result.data[result.count] = 0;
+    return result;
+}
+
+string
+string_builder_to_string_nocopy(String_Builder* sb) {
+    string result;
+    result.data = sb->data;
+    result.count = sb->curr_used;
+    return result;
+}
 
 // NOTE(Alexander): improved string formatting and printf
 typedef int Format_Type;
 enum { // TODO(Alexander): add more types
     FormatType_char,
+    FormatType_u8,
     FormatType_int,
     FormatType_uint,
     FormatType_smm,
@@ -140,8 +245,8 @@ enum { // TODO(Alexander): add more types
 #define f_smm(x) FormatType_smm, (smm) (x)
 #define f_uint(x) FormatType_uint, (uint) (x)
 #define f_umm(x) FormatType_umm, (umm) (x)
-#define f_string(x) FormatType_string, (int) string_count(x), x
-#define f_cstring(x) FormatType_cstring, (cstr) (x)
+#define f_string(x) FormatType_string, (int) (x).count, (char*) (x).data
+#define f_cstring(x) FormatType_cstring, (cstring) (x)
 
 void pln(cstring format...);
 string string_format(cstring format...);

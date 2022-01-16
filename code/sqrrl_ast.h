@@ -7,7 +7,7 @@ AST(Value,             "value", Value)          \
 AST(Ident,             "identifier", string_id) \
 AST(Ident_String,      "identifier", struct {   \
 string_id ident;                                \
-cstring contents;                               \
+string contents;                                \
 })                                              \
 AST(Decl, "top level declaration", struct {     \
 Ast* ident;                                     \
@@ -223,7 +223,7 @@ global const Span empty_span = { 0 };
 
 inline Span 
 token_to_span(Token token) {
-    return { (u32) token.offset, (u16) string_count(token.source), 0 }; // TODO(alexander): what should index be?
+    return { (u32) token.offset, (u16) token.source.count, 0 }; // TODO(alexander): what should index be?
 }
 
 inline Span
@@ -286,58 +286,58 @@ is_ast_type(Ast* ast) {
 }
 
 void
-print_ast(Ast* node, Tokenizer* tokenizer, u32 spacing=0) {
+string_builder_push_ast(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spacing=0) {
     if (!node) {
         return;
     }
     
-    printf("\n");
-    for (u32 s = 0; s < spacing; s++) printf(" ");
-    printf("(%s", ast_struct_strings[node->type]);
+    string_builder_push(sb, "\n");
+    for (u32 s = 0; s < spacing; s++) string_builder_push(sb, " ");
+    string_builder_push_format(sb, "(%", f_cstring(ast_struct_strings[node->type]));
     
     spacing += 2;
     
     // some special cases
     if (node->type == Ast_Abi) {
-        printf(" \"%s\")", node->Abi);
+        string_builder_push_format(sb, " \"%\")", f_string(node->Abi));
     } else if (node->type == Ast_Value) {
-        printf(" ");
+        string_builder_push(sb, " ");
         print_value(&node->Value);
     } else if (node->type == Ast_Ident) {
-        printf(" `%s`", vars_load_string(node->Ident));
+        string_builder_push_format(sb, " `%`", f_string(vars_load_string(node->Ident)));
     } else if (node->type == Ast_Unary_Expr) {
         assert_enum(UnaryOp, node->Unary_Expr.op);
-        printf("(%s)", unary_op_strings[node->Binary_Expr.op]);
-        print_ast(node->Unary_Expr.first, tokenizer, spacing);
+        string_builder_push_format(sb, "(%)", f_cstring(unary_op_strings[node->Binary_Expr.op]));
+        string_builder_push_ast(sb, node->Unary_Expr.first, tokenizer, spacing);
     } else if (node->type == Ast_Binary_Expr) {
         assert_enum(BinaryOp, node->Binary_Expr.op);
-        printf("(%s)", binary_op_strings[node->Binary_Expr.op]);
-        print_ast(node->Binary_Expr.first, tokenizer, spacing);
-        print_ast(node->Binary_Expr.second, tokenizer, spacing);
+        string_builder_push_format(sb, "(%)", f_cstring(binary_op_strings[node->Binary_Expr.op]));
+        string_builder_push_ast(sb, node->Binary_Expr.first, tokenizer, spacing);
+        string_builder_push_ast(sb, node->Binary_Expr.second, tokenizer, spacing);
     } else if (node->type == Ast_Decl) {
         if (node->Decl.mods > 0) {
-            printf("( ");
+            string_builder_push(sb, "( ");
             if (is_bitflag_set(node->Decl.mods, AstDeclModifier_Inline)) {
-                printf("inline ");
+                string_builder_push(sb, "inline ");
             }
             if (is_bitflag_set(node->Decl.mods, AstDeclModifier_No_Inline)) {
-                printf("no_inline ");
+                string_builder_push(sb, "no_inline ");
             }
             if (is_bitflag_set(node->Decl.mods, AstDeclModifier_Internal)) {
-                printf("internal ");
+                string_builder_push(sb, "internal ");
             }
             if (is_bitflag_set(node->Decl.mods, AstDeclModifier_Global)) {
-                printf("global ");
+                string_builder_push(sb, "global ");
             }
-            printf(")");
+            string_builder_push(sb, ")");
         }
-        print_ast(node->Decl.stmt, tokenizer, spacing);
+        string_builder_push_ast(sb, node->Decl.stmt, tokenizer, spacing);
     } else {
         // otherwise parse all possible children
-        print_ast(node->children[0], tokenizer, spacing);
-        print_ast(node->children[1], tokenizer, spacing);
-        print_ast(node->children[2], tokenizer, spacing);
-        print_ast(node->children[3], tokenizer, spacing);
+        string_builder_push_ast(sb, node->children[0], tokenizer, spacing);
+        string_builder_push_ast(sb, node->children[1], tokenizer, spacing);
+        string_builder_push_ast(sb, node->children[2], tokenizer, spacing);
+        string_builder_push_ast(sb, node->children[3], tokenizer, spacing);
     }
     
 #if 0
@@ -347,8 +347,18 @@ print_ast(Ast* node, Tokenizer* tokenizer, u32 spacing=0) {
 #endif
     
     spacing -= 2;
-    printf(")");
+    string_builder_push(sb, ")");
     if (spacing == 0) {
-        printf("\n");
+        string_builder_push(sb, "\n");
     }
+}
+
+void
+print_ast(Ast* node, Tokenizer* t) {
+    String_Builder sb = {};
+    string_builder_alloc(&sb, 1000);
+    string_builder_push_ast(&sb, node, t);
+    string result = string_builder_to_string_nocopy(&sb);
+    pln("%", f_string(result));
+    string_builder_free(&sb);
 }

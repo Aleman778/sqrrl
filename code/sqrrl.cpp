@@ -25,7 +25,7 @@ compiler_main_entry(int argc, char* argv[]) {
     
     // Read entire source file
     FILE* file;
-    fopen_s(&file, filepath, "rb");
+    fopen_s(&file, (char*) filepath.data, "rb");
     if (!file) {
         pln("File `%` was not found!", f_string(filepath));
         return -1;
@@ -35,9 +35,8 @@ compiler_main_entry(int argc, char* argv[]) {
     umm file_size = ftell(file);
     fseek(file, 0, SEEK_SET);
     
-    string source = (string) malloc(file_size + 5) + 4;
-    *((u32*) source - 1) = (u32) file_size;
-    fread(source, string_count(source), 1, file);
+    string source = string_alloc(file_size);
+    fread(source.data, source.count, 1, file);
     fclose(file);
     
     // TODO(alexander): temp printing source
@@ -69,7 +68,7 @@ compiler_main_entry(int argc, char* argv[]) {
     Interp interp = {};
     interp_register_primitive_types(&interp);
     interp_ast_declarations(&interp, ast_file.decls);
-    Interp_Value result = interp_function_call(&interp, vars_save_string("main"), 0);
+    Interp_Value result = interp_function_call(&interp, vars_save_cstring("main"), 0);
     if (result.modifier == InterpValueMod_Return) {
         if (is_integer(result.value)) {
             pln("Interpreter exited with code %", f_int((int) result.value.signed_int));

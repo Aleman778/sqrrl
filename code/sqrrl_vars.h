@@ -56,32 +56,39 @@ VAR(infer)
 // NOTE(alexander): interning strings into ids
 typedef u32 string_id;
 global struct { cstring key; string_id value; }* vars_str_to_id = 0; // stb_ds hashmap maps strings to ids
-global cstring* vars_id_to_str = 0; // stb_ds array of strings where the index is the string id
+global string* vars_id_to_str = 0; // stb_ds array of strings where the index is the string id
 global u32 vars_id_counter = 0;
 
 string_id
-vars_save_string(cstring s) {
+vars_save_cstring(cstring s) {
     string_id id = string_map_get(vars_str_to_id, s);
     if (!id) {
         id = vars_id_counter++;
         string_map_put(vars_str_to_id, s, id);
-        array_push(vars_id_to_str, s);
+        array_push(vars_id_to_str, string_lit(s));
     }
     return id;
 }
 
-cstring
+inline string_id
+vars_save_string(string s) {
+    cstring cs = string_to_cstring(s);
+    return vars_save_cstring(cs);
+}
+
+string
 vars_load_string(string_id id) {
-    if (id < arrlen(vars_id_to_str)) {
-        return vars_id_to_str[id];
+    string result = {};
+    if (id < array_count(vars_id_to_str)) {
+        result = vars_id_to_str[id];
     }
-    return 0;
+    return result;
 }
 
 void
 vars_initialize() {
     string_map_new_arena(vars_str_to_id);
-#define VAR(symbol) vars_save_string(#symbol);
+#define VAR(symbol) vars_save_cstring(#symbol);
     DEF_VARS
 #undef VAR
 }

@@ -293,7 +293,7 @@ string_builder_push_ast(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32
     
     string_builder_push(sb, "\n");
     for (u32 s = 0; s < spacing; s++) string_builder_push(sb, " ");
-    string_builder_push_format(sb, "(%", f_cstring(ast_struct_strings[node->type]));
+    string_builder_push_format(sb, "(% %", f_cstring(ast_struct_strings[node->type]), f_cstring("hello"));
     
     spacing += 2;
     

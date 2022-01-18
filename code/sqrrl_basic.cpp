@@ -65,65 +65,83 @@ pln(const char* format...) {
     }
 }
 
-internal void
-string_builder_push_data_format(String_Builder* sb, Format_Type type, va_list args) {
-    int count = -1;
+struct Format_Sprintf_Result {
+    int count;
+    va_list next_args;
+};
+
+inline internal Format_Sprintf_Result
+format_sprintf(char* dst, umm dst_size, Format_Type type, va_list args) {
+    Format_Sprintf_Result result;
     
+    switch (type) {
+        case FormatType_char: {
+            if (dst_size >= 1) {
+                char value = va_arg(args, char);
+                *dst = (u8) value;
+                result.count = 1;
+            }
+        } break;
+        
+        case FormatType_int: {
+            int value = va_arg(args, int);
+            result.count = snprintf(dst, dst_size, "%d", value);
+        } break;
+        
+        case FormatType_uint: {
+            uint value = va_arg(args, uint);
+            result.count= snprintf(dst, dst_size, "%u", value);
+        } break;
+        
+        case FormatType_smm: {
+            smm value = va_arg(args, smm);
+            result.count = snprintf(dst, dst_size, "%zd", value);
+        } break;
+        
+        case FormatType_umm: {
+            umm value = va_arg(args, umm);
+            result.count = snprintf(dst, dst_size, "%zu", value);
+        } break;
+        
+        case FormatType_string: {
+            int str_count = va_arg(args, int);
+            char* str = va_arg(args, char*);
+            result.count = snprintf(dst, dst_size, "%.*s", str_count, str);
+        } break;
+        
+        case FormatType_cstring: {
+            char* cstr = va_arg(args, char*);
+            result.count = snprintf(dst, dst_size, "%s", cstr);
+        } break;
+        
+        default: {
+            assert(0 && "Incorrect formatting option");
+        } break;
+    }
+    
+    result.next_args = args;
+    return result;
+}
+
+internal va_list
+string_builder_push_data_format(String_Builder* sb, Format_Type type, va_list args) {
+    va_list result = args;
+    
+    int count = -1;
     while (count < 0) {
         umm size_remaining = sb->size - sb->curr_used;
+        Format_Sprintf_Result fmt = format_sprintf((char*) sb->data + sb->curr_used, size_remaining, type, args);
+        count = fmt.count;
         
-        switch (type) {
-            case FormatType_char: {
-                if (sb->curr_used < sb->size) {
-                    char value = va_arg(args, char);
-                    sb->data[sb->curr_used++] = (u8) value;
-                    count = 1;
-                }
-            } break;
-            
-            case FormatType_int: {
-                int value = va_arg(args, int);
-                count = snprintf((char*) sb->data + sb->curr_used, size_remaining, "%d", value);
-            } break;
-            
-            case FormatType_uint: {
-                uint value = va_arg(args, uint);
-                count= snprintf((char*) sb->data + sb->curr_used, size_remaining, "%u", value);
-            } break;
-            
-            case FormatType_smm: {
-                smm value = va_arg(args, smm);
-                count = snprintf((char*) sb->data + sb->curr_used, size_remaining, "%zd", value);
-            } break;
-            
-            case FormatType_umm: {
-                umm value = va_arg(args, umm);
-                count = snprintf((char*) sb->data + sb->curr_used, size_remaining, "%zu", value);
-            } break;
-            
-            case FormatType_string: {
-                int str_count = va_arg(args, int);
-                char* str = va_arg(args, char*);
-                count = snprintf((char*) sb->data + sb->curr_used, size_remaining, "%.*s", str_count, str);
-            } break;
-            
-            case FormatType_cstring: {
-                char* cstr = va_arg(args, char*);
-                count = snprintf((char*) sb->data + sb->curr_used, size_remaining, "%s", cstr);
-            } break;
-            
-            default: {
-                assert(0 && "Incorrect formatting option");
-            } break;
-        }
-        
-        if (count >= 0) {
+        if (fmt.count >= 0) {
             sb->curr_used += count;
+            result = fmt.next_args;
         } else {
-            assert(0 && "buffer overflow");
-            //string_builder_ensure_capacity(sb, 1);
+            string_builder_ensure_capacity(sb, 1);
         }
     }
+    
+    return result;
 }
 
 void
@@ -146,7 +164,7 @@ string_builder_push_format(String_Builder* sb, cstring format...) {
             }
             Format_Type format_type = va_arg(args, Format_Type);
             
-            string_builder_push_data_format(sb, format_type, args);
+            args = string_builder_push_data_format(sb, format_type, args);
         }
         
         scan++;

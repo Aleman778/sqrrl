@@ -437,9 +437,31 @@ parse_atom(Parser* parser, bool report_error) {
         } break;
     }
     
+    if (!result) {
+        if (report_error) {
+            parse_error_unexpected_token(parser, token);
+        }
+        return result;
+    }
+    
+    update_span(parser, result);
+    
+    return result;
+}
+
+Ast*
+parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr) {
+    if (!atom_expr) {
+        atom_expr = parse_atom(parser, report_error);
+        
+        if (!atom_expr) {
+            atom_expr = push_ast_node(parser);
+            return atom_expr;
+        }
+    }
+    
     // Some expressions are build by combining multiple atoms e.g. `atom1[atom2]`.
-    token = peek_token(parser);
-    Ast* atom_expr = result;
+    Token token = peek_token(parser);
     Ast* lhs_expr = atom_expr;
     switch (token.type) {
         case Token_Dot: {
@@ -490,35 +512,6 @@ parse_atom(Parser* parser, bool report_error) {
             }
         } break;
     }
-    
-    result = lhs_expr;
-    
-    if (!result) {
-        if (report_error) {
-            parse_error_unexpected_token(parser, token);
-        }
-        return result;
-    }
-    
-    update_span(parser, result);
-    
-    return result;
-}
-
-Ast*
-parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr) {
-    if (!atom_expr) {
-        atom_expr = parse_atom(parser, report_error);
-        
-        if (!atom_expr) {
-            atom_expr = push_ast_node(parser);
-            return atom_expr;
-        }
-    }
-    
-    Token token = peek_token(parser);
-    
-    Ast* lhs_expr = atom_expr;
     update_span(parser, lhs_expr);
     
     // Parse binary expression using precedence climbing, is applicable

@@ -290,6 +290,9 @@ interp_expression(Interp* interp, Ast* ast) {
                             smm offset = map_get(var.type->Struct_Or_Union.ident_to_offset, ident);
                             data = (u8*) data + offset;
                             result = interp_load_value(interp, field_type, data);
+                        } else {
+                            interp_error(interp, string_format("`%` is not a field of type `%`",
+                                                               f_string(vars_load_string(ident)), f_string(var.type->name)));
                         }
                     } break;
                     
@@ -533,6 +536,8 @@ interp_statement(Interp* interp, Ast* ast) {
             Type* type = interp_type(interp, ast->Assign_Stmt.type);
             string_id ident = ast->Assign_Stmt.ident->Ident;
             
+            print_ast(ast, 0);
+            
             
             switch (type->kind) {
                 case TypeKind_Array: {
@@ -581,14 +586,21 @@ interp_statement(Interp* interp, Ast* ast) {
                 case TypeKind_Struct: {
                     
                     Type_Table* type_table = &type->Struct_Or_Union;
+                    assert(type_table->count != 0 && "empty type");
+                    assert(type_table->ident_to_type && "empty ident -> type");
+                    assert(type_table->ident_to_offset && "empty ident -> offset");
+                    assert(type_table->idents && "empty idents");
                     
                     void* base_address = arena_push_size(&interp->stack, (umm) type->cached_size, (umm) type->cached_align);
-                    struct { string_id key; Value value; }* field_values = 0;
+                    
                     
                     if (is_ast_node(expr.value)) {
                         assert(expr.value.type == Value_ast_node &&
                                expr.value.ast->type == Ast_Struct_Expr);
+                        
+                        // Struct initialization
                         Ast* fields = expr.value.ast->Struct_Expr.fields;
+                        struct { string_id key; Value value; }* field_values = 0;
                         
                         // NOTE(Alexander): push elements onto the stack in the order defined by the type
                         // so first push the compound actual values into a auxillary hash map.
@@ -600,7 +612,7 @@ interp_statement(Interp* interp, Ast* ast) {
                             assert(field->Argument.ident);
                             string_id field_ident = field->Argument.ident->Ident;
                             
-                            // NOTE(Alexander): check that the actual type maches its definition
+                            // NOTE(Alexander): check that the actual type matches its definition
                             Type* def_type = map_get(type_table->ident_to_type, field_ident);
                             if (field_expr.type) {
                                 assert(type_equals(field_expr.type, def_type) && "type mismatch");
@@ -610,15 +622,28 @@ interp_statement(Interp* interp, Ast* ast) {
                             
                             map_put(field_values, field_ident, field_expr.value);
                         }
-                    }
-                    
-                    map_iterator(field_values, field, i) {
-                        string_id field_ident = field.key;
-                        Type* field_type = map_get(type_table->ident_to_type, field_ident);
-                        Value field_value = value_cast(field.value, field_type);
-                        smm offset = map_get(type_table->ident_to_offset, field_ident);
-                        void* storage = (u8*) base_address + offset;
-                        interp_save_value(interp, field_type, storage, field_value);
+                        
+                        // Store the result
+                        if (field_values) {
+                            map_iterator(field_values, field, i) {
+                                string_id field_ident = field.key;
+                                Type* field_type = map_get(type_table->ident_to_type, field_ident);
+                                Value field_value = value_cast(field.value, field_type);
+                                smm offset = map_get(type_table->ident_to_offset, field_ident);
+                                void* storage = (u8*) base_address + offset;
+                                interp_save_value(interp, field_type, storage, field_value);
+                            }
+                        } else {
+                            // TODO(Alexander): no fields specified, should we clear the memory maybe?
+                            memset((u8*) base_address, 0, (umm) type->cached_size);
+                        }
+                        
+                    } else if (expr.value.type == Value_pointer) {
+                        memcpy(base_address, expr.value.data, (umm) type->cached_size);
+                    } else {
+                        // TODO(Alexander): for now we will clear entire struct/union memory
+                        // we will want the user to be able to disable this behaviour
+                        memset((u8*) base_address, 0, (umm) type->cached_size);
                     }
                     
                     Value value;

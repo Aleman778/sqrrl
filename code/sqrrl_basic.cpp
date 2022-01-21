@@ -190,13 +190,10 @@ string_builder_push_cformat(String_Builder* sb, cstring format...) {
     va_end(args);
 }
 
-void
-string_builder_push_format(String_Builder* sb, cstring format...) {
+internal void
+_string_builder_push_format(String_Builder* sb, cstring format, va_list args) {
     u8* scan = (u8*) format;
     u8* last_push = scan;
-    
-    va_list args;
-    va_start(args, format);
     
     while (*scan) {
         if (*scan == '%') {
@@ -220,17 +217,24 @@ string_builder_push_format(String_Builder* sb, cstring format...) {
     if (last_push != scan) {
         string_builder_push(sb, string_view(last_push, scan));
     }
-    
+}
+
+void
+string_builder_push_format(String_Builder* sb, cstring format...) {
+    va_list args;
+    va_start(args, format);
+    _string_builder_push_format(sb, format, args);
     va_end(args);
 }
 
 string // NOTE(alexander): this string has to be manually freed at the moment!!!
-string_format(const char* format...) { // TODO(alexander): replace snprintf with custom implementation later...
+string_format(cstring format...) { // TODO(alexander): replace snprintf with custom implementation later...
     va_list args;
     va_start(args, format);
     
     String_Builder sb = {};
     string_builder_alloc(&sb, 1000);
+    _string_builder_push_format(&sb, format, args);
     
     return string_builder_to_string_nocopy(&sb);
 }

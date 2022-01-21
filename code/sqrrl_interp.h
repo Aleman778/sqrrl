@@ -64,6 +64,7 @@ interp_register_type(Interp* interp, string_id ident, Type* type, void* data=0) 
     Entity entity;
     entity.data = 0;
     entity.type = type;
+    type->name = vars_load_string(ident);
     map_put(interp->symbol_table, ident, entity);
 }
 

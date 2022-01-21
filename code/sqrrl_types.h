@@ -92,6 +92,7 @@ struct Type {
         Type* Pointer;
     };
     
+    string name;
     s32 cached_size;
     s32 cached_align;
 };
@@ -104,6 +105,7 @@ global Type global_primitive_types[] = {
 TypeKind_Primitive, { \
 PrimitiveTypeKind_##symbol, size, S_##sign, VAL(sign, max), VAL(sign, min)  \
 }, \
+string_lit(#symbol), \
 size, size \
 },
     DEF_PRIMITIVE_TYPES

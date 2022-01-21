@@ -285,4 +285,5 @@ Value value_cast(Value value, Type* type);
 inline s64 value_integer_binary_operation(Value first, Value second, Binary_Op op);
 inline Value value_floating_binary_operation(Value first, Value second, Binary_Op op);
 
-void print_value(Value* val);
+void string_builder_push_value(String_Builder* sb, Value* value);
+void print_value(Value* value);

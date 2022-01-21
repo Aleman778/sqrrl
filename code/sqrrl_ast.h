@@ -293,7 +293,7 @@ string_builder_push_ast(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32
     
     string_builder_push(sb, "\n");
     for (u32 s = 0; s < spacing; s++) string_builder_push(sb, " ");
-    string_builder_push_format(sb, "(% %", f_cstring(ast_struct_strings[node->type]), f_cstring("hello"));
+    string_builder_push_format(sb, "(%", f_cstring(ast_struct_strings[node->type]));
     
     spacing += 2;
     
@@ -302,7 +302,7 @@ string_builder_push_ast(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32
         string_builder_push_format(sb, " \"%\")", f_string(node->Abi));
     } else if (node->type == Ast_Value) {
         string_builder_push(sb, " ");
-        print_value(&node->Value);
+        string_builder_push_value(sb, &node->Value);
     } else if (node->type == Ast_Ident) {
         string_builder_push_format(sb, " `%`", f_string(vars_load_string(node->Ident)));
     } else if (node->type == Ast_Unary_Expr) {

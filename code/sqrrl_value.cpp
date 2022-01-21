@@ -211,30 +211,30 @@ value_floating_binary_operation(Value first, Value second, Binary_Op op) {
 }
 
 // TODO(Alexander): print actual types from memory by specifiying the type as well
-void print_value(Value* val) {
-    switch (val->type) {
+void string_builder_push_value(String_Builder* sb, Value* value) {
+    switch (value->type) {
         case Value_boolean: {
-            printf(val->boolean ? "true" : "false");
+            string_builder_push(sb, value->boolean ? "true" : "false");
         } break;
         
         case Value_signed_int: {
-            printf("%lld", val->signed_int);
+            string_builder_push_format(sb, "%", f_s64(value->signed_int));
         } break;
         
         case Value_unsigned_int: {
-            printf("%llu", val->signed_int);
+            string_builder_push_format(sb, "%", f_u64(value->unsigned_int));
         } break;
         
         case Value_floating: {
-            printf("%f", val->floating);
+            string_builder_push_format(sb, "%", f_float(value->floating));
         } break;
         
         case Value_pointer: {
-            printf("0x%I64X", val->pointer);
+            string_builder_push_cformat(sb, "0x%I64X", value->pointer);
         } break;
         
         case Value_array: {
-            printf("0x%I64X", (smm) val->array.elements);
+            string_builder_push_cformat(sb, "0x%I64X", (smm) value->array.elements);
             // TODO(Alexander): can't know what elements there are without the type!
             //printf("[");
             //Array_Value* arr = &val->array;
@@ -246,7 +246,17 @@ void print_value(Value* val) {
         } break;
         
         case Value_string: {
-            printf("%.*s", (int) val->str.count, val->str.data);
+            string_builder_push_format(sb, "%", f_string(value->str));
         } break;
     }
+}
+
+
+void print_value(Value* value) {
+    String_Builder sb = {};
+    string_builder_alloc(&sb, 20);
+    string_builder_push_value(&sb, value);
+    string result = string_builder_to_string_nocopy(&sb);
+    pln("%", f_string(result));
+    string_builder_free(&sb);
 }

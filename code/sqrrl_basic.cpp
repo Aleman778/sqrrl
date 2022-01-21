@@ -29,12 +29,24 @@ pln(const char* format...) {
                     printf("%u", va_arg(args, uint));
                 } break;
                 
+                case FormatType_s64: {
+                    printf("%lld", va_arg(args, s64));
+                } break;
+                
+                case FormatType_u64: {
+                    printf("%llu", va_arg(args, u64));
+                } break;
+                
                 case FormatType_smm: {
                     printf("%zd", va_arg(args, smm));
                 } break;
                 
                 case FormatType_umm: {
                     printf("%zu", va_arg(args, umm));
+                } break;
+                
+                case FormatType_float: {
+                    printf("%f", va_arg(args, double));
                 } break;
                 
                 case FormatType_string: {
@@ -93,6 +105,16 @@ format_sprintf(char* dst, umm dst_size, Format_Type type, va_list args) {
             result.count= snprintf(dst, dst_size, "%u", value);
         } break;
         
+        case FormatType_s64: {
+            s64 value = va_arg(args, s64);
+            result.count = snprintf(dst, dst_size, "%lld", value);
+        } break;
+        
+        case FormatType_u64: {
+            u64 value = va_arg(args, u64);
+            result.count= snprintf(dst, dst_size, "%llu", value);
+        } break;
+        
         case FormatType_smm: {
             smm value = va_arg(args, smm);
             result.count = snprintf(dst, dst_size, "%zd", value);
@@ -101,6 +123,11 @@ format_sprintf(char* dst, umm dst_size, Format_Type type, va_list args) {
         case FormatType_umm: {
             umm value = va_arg(args, umm);
             result.count = snprintf(dst, dst_size, "%zu", value);
+        } break;
+        
+        case FormatType_float: {
+            double value = va_arg(args, double);
+            result.count = snprintf(dst, dst_size, "%f", value);
         } break;
         
         case FormatType_string: {
@@ -127,21 +154,40 @@ internal va_list
 string_builder_push_data_format(String_Builder* sb, Format_Type type, va_list args) {
     va_list result = args;
     
-    int count = -1;
-    while (count < 0) {
+    for (;;) {
         umm size_remaining = sb->size - sb->curr_used;
         Format_Sprintf_Result fmt = format_sprintf((char*) sb->data + sb->curr_used, size_remaining, type, args);
-        count = fmt.count;
         
-        if (fmt.count >= 0) {
-            sb->curr_used += count;
-            result = fmt.next_args;
+        if (fmt.count >= size_remaining) {
+            string_builder_ensure_capacity(sb, fmt.count + 1);
         } else {
-            string_builder_ensure_capacity(sb, 1);
+            sb->curr_used += fmt.count;
+            result = fmt.next_args;
+            break;
         }
     }
     
     return result;
+}
+
+void
+string_builder_push_cformat(String_Builder* sb, cstring format...) {
+    va_list args;
+    va_start(args, format);
+    
+    for (;;) {
+        umm size_remaining = sb->size - sb->curr_used;
+        int count = vsnprintf((char*) sb->data, size_remaining, format, args);
+        
+        if (count >= size_remaining) {
+            string_builder_ensure_capacity(sb, count + 1);
+        } else {
+            sb->curr_used += count;
+            break;
+        }
+    }
+    
+    va_end(args);
 }
 
 void
@@ -160,8 +206,9 @@ string_builder_push_format(String_Builder* sb, cstring format...) {
             
             if (last_push != scan) {
                 string_builder_push(sb, string_view(last_push, scan));
-                last_push = scan + 1;
             }
+            last_push = scan + 1;
+            
             Format_Type format_type = va_arg(args, Format_Type);
             
             args = string_builder_push_data_format(sb, format_type, args);

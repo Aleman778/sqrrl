@@ -290,7 +290,7 @@ parse_float(Parser* parser) {
     while (curr_index < token.suffix_start) {
         c = token.source.data[curr_index++];
         if (c == '_') continue;
-        if (c == 'e' || c == 'E' || c == '.') break;
+        if (c == 'f' || c == 'e' || c == 'E' || c == '.') break;
         f64 d = (f64) hex_digit_to_s32(c);
         value = value * 10.0 + d;
     }
@@ -301,15 +301,14 @@ parse_float(Parser* parser) {
         while (curr_index < token.source.count) {
             c = token.source.data[curr_index++];
             if (c == '_') continue;
-            if (c == 'e' || c == 'E') break;
-            numerator = numerator * 10.0 + (f64) (c - '0');
+            if (c == 'f' || c == 'e' || c == 'E') break;
+            numerator = numerator * 10.0 + (f64) hex_digit_to_s32(c);
             denominator = denominator * 10.0;
         }
         value += numerator/denominator;
     }
     
     if (c == 'e' || c == 'E') {
-        pln("token.source = %\n", f_string(token.source));
         c = token.source.data[curr_index++];
         f64 exponent = 0.0;
         f64 sign = 1.0;
@@ -318,7 +317,8 @@ parse_float(Parser* parser) {
         while (curr_index < token.source.count) {
             c = token.source.data[curr_index++];
             if (c == '_') continue;
-            exponent = exponent * 10.0 + (f64) (c - '0');
+            if (c == 'f') break;
+            exponent = exponent * 10.0 + (f64) hex_digit_to_s32(c);
         }
         value = value*pow(10.0, sign*exponent);
     }

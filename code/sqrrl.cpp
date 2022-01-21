@@ -11,27 +11,8 @@
 #include "sqrrl_interp.cpp"
 
 
-
-int args(int format...) {
-    va_list args;
-    va_start(args, format);
-    
-    int x = va_arg(args, int);
-    int y = va_arg(args, int);
-    
-    va_end(args);
-    
-    return x + y;
-}
-// Type your code here, or load an example.
-int square() {
-    return args(10, 10, 20);
-}
-
-
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[]) {
-    printf("%d\n", square());
     string filepath;
     if (argc > 1) {
         filepath = string_lit(argv[1]);

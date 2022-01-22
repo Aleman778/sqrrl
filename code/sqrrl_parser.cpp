@@ -905,7 +905,13 @@ parse_compound(Parser* parser,
     }
     
     Ast* curr = result;
-    while (peek_token(parser).type != end) {
+    for (;;) {
+        Token token = peek_token(parser);
+        if (token.type == end) {
+            next_token(parser);
+            break;
+        }
+        
         curr->type = Ast_Compound;
         Ast* node = element_parser(parser);
         curr->Compound.node = node;
@@ -920,14 +926,29 @@ parse_compound(Parser* parser,
                      node->type == Ast_While_Stmt)) {
             continue;
         }
-        
         if (!next_token_if_matched(parser, separator, false)) {
-            break;
+            if (next_token_if_matched(parser, end, false)) {
+                break;
+            } else {
+                token = peek_token(parser);
+                parse_error_unexpected_token(parser, separator, token);
+                
+                for (;;) {
+                    token = next_token(parser);
+                    if (token.type == Token_EOF ||
+                        token.type == end) {
+                        return result;
+                    }
+                    
+                    if (token.type == separator) { 
+                        break;
+                    }
+                }
+            }
         }
+        
     }
     
-    // TODO(Alexander): change error message to complain about the separator rather than the end token
-    next_token_if_matched(parser, end);
     return result;
 }
 
@@ -1026,10 +1047,11 @@ parse_type(Parser* parser, bool report_error) {
             } break;
             
             case Token_Open_Paren: {
-                next_token(parser);
-                
-                // TODO(alexander): check what the base type is, e.g. cannnot be struct type as return type
-                if (next_token_if_matched(parser, Token_Mul)) {
+                if (peek_second_token(parser).type == Token_Mul) {
+                    next_token(parser);
+                    next_token(parser);
+                    
+                    // TODO(alexander): check what the base type is, e.g. cannnot be struct type as return type
                     // TODO(alexander): maybe should be it's own ast node
                     Ast* function = push_ast_node(parser);
                     function->type = Ast_Function_Type;

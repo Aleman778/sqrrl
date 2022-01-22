@@ -47,11 +47,12 @@ VAR(bool)     \
 VAR(b32)      \
 VAR(void)     \
 VAR(string)   \
-VAR(pointer)  \
-VAR(array)    \
-VAR(tuple)    \
-VAR(function) \
 VAR(infer)
+//VAR(pointer)  \
+//VAR(array)    \
+//VAR(tuple)    \
+//VAR(function) \
+//VAR(infer)
 
 // NOTE(alexander): interning strings into ids
 typedef u32 string_id;

@@ -55,7 +55,6 @@ interp_save_value(Interp* interp, Type* type, void* storage, Value value) {
         default: {
             assert(0 && "not a value");
         } break;
-        
     }
 }
 
@@ -273,6 +272,7 @@ interp_expression(Interp* interp, Ast* ast) {
         case Ast_Call_Expr: {
             string_id ident = ast->Call_Expr.ident->Ident;
             result = interp_function_call(interp, ident, ast->Call_Expr.args);
+            result.modifier = InterpValueMod_None; // NOTE(Alexander): avoids returing multiple times
         } break;
         
         case Ast_Field_Expr: {
@@ -390,10 +390,13 @@ assert(0 && "invalid primitive type"); \
                 } break;
                 
                 case TypeKind_Pointer: {
-                    if (value.type != Value_pointer) {
+                    
+                    if (value.type == Value_array) {
+                        result.value.type = Value_pointer;
+                        result.value.data = value.array.elements;
+                    } else if (value.type != Value_pointer) {
                         interp_error(interp, string_lit("cannot type cast non-pointer value to pointer"));
                     }
-                    
                 } break;
                 
                 default: {
@@ -583,6 +586,9 @@ interp_statement(Interp* interp, Ast* ast) {
                         }
                     } else {
                         // TODO(Alexander): pre allocate array, MUST have a capacity
+                        
+                        
+                        
                         assert(0 && "unimplemented :(");
                     }
                     

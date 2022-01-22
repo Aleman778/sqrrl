@@ -224,10 +224,10 @@ is_ident_start(u32 c) {
 
 inline bool
 is_ident_continue(u32 c) {
-    return (('a' <= c && c <= 'z')
-            ||  ('A' <= c && c <= 'Z')
-            ||  ('0' <= c && c <= '9')
-            ||   '_' == c);
+    return (('a' <= c && c <= 'z') ||
+            ('A' <= c && c <= 'Z') ||
+            ('0' <= c && c <= '9') ||
+            '_' == c);
 }
 
 inline s32

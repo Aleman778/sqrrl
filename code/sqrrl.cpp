@@ -51,11 +51,6 @@ compiler_main_entry(int argc, char* argv[]) {
     parser.tokenizer = &tokenizer;
     Ast_File ast_file = parse_file(&parser);
     
-    if (ast_file.error_count > 0) {
-        pln("\nErrors found during parsing, exiting...\n");
-        return 1;
-    }
-    
 #if 1
     // NOTE(Alexander): Print the AST
     for (int i = 0; i < map_count(ast_file.decls); i++) {
@@ -63,6 +58,11 @@ compiler_main_entry(int argc, char* argv[]) {
         print_ast(entry.value, &tokenizer);
     }
 #endif
+    
+    if (ast_file.error_count > 0) {
+        pln("\nErrors found during parsing, exiting...\n");
+        return 1;
+    }
     
     // NOTE(Alexander): Interpreter pass
     Interp interp = {};

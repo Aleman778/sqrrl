@@ -332,6 +332,10 @@ string_builder_push_ast(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32
             string_builder_push(sb, ")");
         }
         string_builder_push_ast(sb, node->Decl.stmt, tokenizer, spacing);
+    } else if (node->type == Ast_Compound) {
+        compound_iterator(node, child_node) {
+            string_builder_push_ast(sb, child_node, tokenizer, spacing);
+        }
     } else {
         // otherwise parse all possible children
         string_builder_push_ast(sb, node->children[0], tokenizer, spacing);

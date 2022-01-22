@@ -1,4 +1,6 @@
 
+
+
 union v2 {
     struct {
         f32 x;
@@ -14,6 +16,12 @@ union v2 {
     };
     f32[2] data;
 }
+
+// NOTE(Alexander): TBD: templates like C++
+//struct map(K, V) {
+//    array(V) values;
+//    array(K) keys
+//}
 
 enum Base {
     bin = 2,
@@ -36,14 +44,47 @@ main() {
     v2 a = v2 { x: 5.0f, y: 10.0f };
     v2 b = v2 { x: 10.0f, y: 20.0f };
     
+    // NOTE(Alexander): TBD: this is how you would construct a templated struct
+    //map(int, string_id) something;
+    
     {
         v2 c;
         c.x = a.x - b.x;
         c.y = a.y - b.y;
     }
     
-    f32 c = sub(a, b).y;
-    return (int) c + Base.hex;
+    sub(a, b);
+    
+    // NOTE(Alexander): TBD how are strings going to work, are they castable?
+    //v2[..] array; // growable
+    v2[2] array; // allocate like 2 of them on the stack
+    array_push(arr, a);
+    array_push(array, b);
+    //array_push(vectors, a); // fail no more space in vectors
+    
+    //v2[..] growable_array = (v2[..]) array; // we could disallow this cast
+    //array_push(growable_array, a); // now this would copy array onto the heap
+    
+    // v2[..] is just a struct containing the data pointer, count and capacity.
+    // v2[2] could also include this info, but we only need the data pointer.
+    
+    //array_push(vectors, a); // NOTE: this would still fail
+    
+    //v2* p = &a;
+    
+    //f32 c = sub(a, b).y;
+    //return (int) c + Base.hex + array[1].x;
+    //return (int) a.x;
+    
+    
+    int x = 0;
+    for (int i = 0; i < 10; i += 1) {
+        for (int j = 0; j < 10; j += 1) {
+            x += 1;
+        }
+    }
+    
+    return x;
 }
 
 

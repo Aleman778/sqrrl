@@ -231,7 +231,7 @@ interp_expression(Interp* interp, Ast* ast) {
                 
                 if (ast->Binary_Expr.first->type == Ast_Ident) {
                     string_id ident = ast->Binary_Expr.first->Ident;
-                    Entity entity = map_get(interp->symbol_table, ident);
+                    Interp_Entity entity = interp_load_entity_from_current_scope(interp, ident);
                     if (interp_entity_is_declared(interp, &entity, ident)) {
                         if (entity.data) {
                             interp_save_value(interp, entity.type, entity.data, result.value);
@@ -302,7 +302,8 @@ interp_expression(Interp* interp, Ast* ast) {
                     } break;
                     
                     default: {
-                        interp_error(interp, string_format("not valid variable to access field from"));
+                        interp_error(interp, string_format("left of `.%` must be a struct, union or enum",
+                                                           f_string(vars_load_string(ident))));
                     } break;
                 }
             } else {
@@ -451,7 +452,7 @@ Interp_Value
 interp_function_call(Interp* interp, string_id ident, Ast* args) {
     Interp_Value result = create_interp_value(interp);
     
-    Entity decl = map_get(interp->symbol_table, ident);
+    Interp_Entity decl = interp_load_entity_from_current_scope(interp, ident);
     if (decl.type) {
         
         if (decl.type->kind == TypeKind_Function) {
@@ -459,36 +460,34 @@ interp_function_call(Interp* interp, string_id ident, Ast* args) {
             Type_Table* formal_arguments = &decl.type->Function.arguments;
             
             if (block) {
+                // First evaluate and push the arguments on the new scope
+                // NOTE: arguments are pushed on the callers stack space
                 
-                // Push a new context by updating the base pointer
-                smm new_base = interp->stack.curr_used;
-                smm* old_base = (smm*) arena_push_size(&interp->stack, sizeof(smm));
-                *old_base = interp->base_pointer;
-                interp->base_pointer = new_base;
-                
-                // NOTE(Alexander): push arguments on stack
-                if (args) {
-                    int arg_index = 0;
-                    while (args && args->type == Ast_Compound) {
-                        Ast* expr = args->Compound.node;
-                        args = args->Compound.next;
-                        
-                        // NOTE(Alexander): only interpret as many args as formally declared
+                Interp_Scope new_scope = {};
+                int arg_index = 0;
+                if (args) { 
+                    compound_iterator(args, expr) {
+                        // Only interpret as many args as formally declared
                         if (arg_index < formal_arguments->count) {
                             // TODO(Alexander): assign binary expressions needs to be handled here
                             Interp_Value arg = interp_expression(interp, expr);
                             string_id arg_ident = formal_arguments->idents[arg_index];
-                            
-                            void* data = interp_push_value(interp, arg.type, arg.value);
-                            Entity entity;
-                            entity.data = data;
-                            entity.type = arg.type;
-                            map_put(interp->symbol_table, arg_ident, entity);
+                            interp_push_entity_to_scope(&new_scope, arg_ident, arg.data, arg.type);
                         }
-                        
                         arg_index++;
                     }
-                    
+                }
+                
+                // Store the old base pointer on the stack and set the base pointer
+                // to point at the top of the stack, then push the new scope
+                smm new_base = interp->stack.curr_used;
+                smm* old_base = (smm*) arena_push_size(&interp->stack, sizeof(smm));
+                *old_base = interp->base_pointer;
+                interp->base_pointer = new_base;
+                array_push(interp->scopes, new_scope);
+                
+                // NOTE(Alexander): secondly push the evaluated arguments on stack
+                if (args) {
                     if (arg_index > formal_arguments->count) {
                         interp_error(interp, string_format("function `%` did not take % arguments, expected % arguments", 
                                                            f_string(vars_load_string(ident)), 
@@ -505,11 +504,17 @@ interp_function_call(Interp* interp, string_id ident, Ast* args) {
                 result = interp_statement(interp, block);
                 // TODO(alexander): only write to result if it is an actual return value!
                 
-                // Pop the context by fetching the old base pointer and updating the stack
+                // Pop the scope and free the data stored in the scope
+                Interp_Scope old_scope = array_pop(interp->scopes);
+                map_free(old_scope.locals);
+                array_free(old_scope.local_stack);
+                
+                // Pop the stack by restoring the old base pointer
                 interp->stack.curr_used = interp->base_pointer;
                 interp->base_pointer = *(smm*) ((u8*) interp->stack.base + interp->base_pointer);
             } else {
                 // TODO(Alexander): this is not supposed to ever be the case, maybe assert instead!
+                // NOTE(Alexander): what about FFI?
                 interp_error(interp, string_format("`%` function has no definition", f_string(vars_load_string(ident))));
             }
         } else {
@@ -536,8 +541,15 @@ interp_statement(Interp* interp, Ast* ast) {
             Type* type = interp_type(interp, ast->Assign_Stmt.type);
             string_id ident = ast->Assign_Stmt.ident->Ident;
             
-            print_ast(ast, 0);
-            
+            {
+                // NOTE(Alexander): check that ident isn't already occupied
+                Interp_Scope* scope = interp_get_current_scope(interp);
+                if (scope && map_get(scope->locals, ident).is_valid) {
+                    interp_error(interp, string_format("cannot redeclare previous local variable `%`",
+                                                       f_string(vars_load_string(ident))));
+                    break;
+                }
+            }
             
             switch (type->kind) {
                 case TypeKind_Array: {
@@ -574,12 +586,7 @@ interp_statement(Interp* interp, Ast* ast) {
                     value.type = Value_array;
                     value.array = array;
                     void* data = interp_push_value(interp, type, value);
-                    
-                    Entity entity;
-                    entity.data = data;
-                    entity.type = type;
-                    map_put(interp->symbol_table, ident, entity);
-                    
+                    interp_push_entity_to_current_scope(interp, ident, data, type);
                 } break;
                 
                 case TypeKind_Union:
@@ -650,20 +657,12 @@ interp_statement(Interp* interp, Ast* ast) {
                     value.type = Value_pointer;
                     value.data = base_address;
                     void* data = interp_push_value(interp, type, value);
-                    
-                    Entity entity;
-                    entity.data = data;
-                    entity.type = type;
-                    map_put(interp->symbol_table, ident, entity);
+                    interp_push_entity_to_current_scope(interp, ident, data, type);
                 } break;
                 
                 default: {
                     void* data = interp_push_value(interp, type, expr.value);
-                    
-                    Entity entity;
-                    entity.data = data;
-                    entity.type = type;
-                    map_put(interp->symbol_table, ident, entity);
+                    interp_push_entity_to_current_scope(interp, ident, data, type);
                 } break;
             }
             
@@ -767,15 +766,34 @@ Interp_Value
 interp_block(Interp* interp, Ast* ast) {
     interp->block_depth++;
     
+    smm local_base_pointer = 0;
+    Interp_Scope* current_scope = interp_get_current_scope(interp);
+    if (current_scope) {
+        local_base_pointer = (smm) array_count(current_scope->local_stack);
+    }
+    
     Interp_Value result = {};
     while (ast->type == Ast_Compound) {
         result = interp_statement(interp, ast->Compound.node);
-        ast = ast->Compound.next;
+        if (interp->error_count) {
+            break;
+        }
         
         if (result.modifier == InterpValueMod_Return ||
             result.modifier == InterpValueMod_Continue ||
             result.modifier == InterpValueMod_Break) {
             break;
+        }
+        
+        ast = ast->Compound.next;
+    }
+    
+    if (current_scope) {
+        // Remove locals declared inside the block scope
+        smm take = (smm) array_count(current_scope->local_stack) - local_base_pointer;
+        while (take-- > 0) {
+            string_id ident = array_pop(current_scope->local_stack);
+            map_remove(current_scope->locals, ident);
         }
     }
     
@@ -902,9 +920,9 @@ interp_type(Interp* interp, Ast* ast) {
     switch (ast->type) {
         case Ast_Named_Type: {
             string_id ident = ast->Named_Type->Ident;
-            Type* type = map_get(interp->symbol_table, ident).type;
-            if (type) {
-                result = type;
+            Interp_Entity entity = interp_load_entity_from_current_scope(interp, ident);
+            if (entity.is_valid && entity.type) {
+                result = entity.type;
             } else {
                 interp_unresolved_identifier_error(interp, ident);
             }
@@ -1054,7 +1072,7 @@ interp_register_primitive_types(Interp* interp) {
     for (int i = 0; i < fixed_array_count(global_primitive_types); i++) {
         Type* type = &global_primitive_types[i];
         string_id ident = (string_id) (Kw_int + type->Primitive.kind);
-        interp_register_type(interp, ident, type);
+        interp_push_entity_to_current_scope(interp, ident, 0, type);
     }
 }
 
@@ -1069,7 +1087,7 @@ interp_declaration_statement(Interp* interp, Ast* ast) {
     
     assert(ast->Decl_Stmt.ident->type == Ast_Ident);
     string_id ident = ast->Decl_Stmt.ident->Ident;
-    interp_register_type(interp, ident, type);
+    interp_push_entity_to_current_scope(interp, ident, 0, type);
 }
 
 void
@@ -1098,7 +1116,7 @@ interp_ast_declarations(Interp* interp, Ast_Decl_Entry* decls) {
             if (!is_void(interp_result.value)) {
                 void* data = interp_push_value(interp, interp_result.type, interp_result.value);
                 if (!data) {
-                    interp_register_type(interp, decl.key, interp_result.type, data);
+                    interp_push_entity_to_current_scope(interp, decl.key, data, interp_result.type);
                 }
             }
         }

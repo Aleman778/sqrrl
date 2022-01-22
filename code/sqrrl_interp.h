@@ -1,21 +1,32 @@
 
-struct Entity {
+// TODO(Alexander): entity is a confusing name, can be data or declaration.
+struct Interp_Entity {
     void* data;
     Type* type;
+    b32 is_valid;
 };
 
 struct Symbol_Table {
     string_id key; 
-    Entity value;
+    Interp_Entity value;
+};
+
+struct Interp_Scope {
+    map(string_id, Interp_Entity)* locals;
+    array(string_id)* local_stack;
+    string_id name;
+    Span span;
 };
 
 struct Interp {
-    Symbol_Table* symbol_table;
-    
-    s32 block_depth;
+    array(Interp_Scope)* scopes;
+    map(string_id, Interp_Entity)* globals;
     
     Arena stack;
     smm base_pointer;
+    
+    s32 block_depth;
+    s32 error_count;
 };
 
 enum Interp_Value_Mod {
@@ -34,6 +45,18 @@ struct Interp_Value {
     string_id label;
 };
 
+// TODO(alexander): better diagnostic, this will do for now!
+inline void
+interp_error(Interp* interp, string message) {
+    // TODO: need the line numbers to calculate this!
+    // Span_Data span = calculate_span_data(tokenizer->lines, node->span);
+    Span_Data span = {};
+    string filename = string_lit("examples/demo.sq"); // TODO: store names of source files somewhere!
+    pln("%:%:%: error: %\n", f_string(filename), f_smm(span.begin_line), f_smm(span.begin_col), f_string(message));
+    DEBUG_log_backtrace();
+    interp->error_count++;
+}
+
 inline Interp_Value
 create_interp_value(Interp* interp) {
     Interp_Value result = {};
@@ -48,25 +71,55 @@ value_to_interp_value(Interp* interp, Value value) {
     return result;
 }
 
-// TODO(alexander): better diagnostic, this will do for now!
-inline void
-interp_error(Interp* interp, string message) {
-    // TODO: need the line numbers to calculate this!
-    // Span_Data span = calculate_span_data(tokenizer->lines, node->span);
-    Span_Data span = {};
-    string filename = string_lit("examples/demo.sq"); // TODO: store names of source files somewhere!
-    pln("%:%:%: error: %\n", f_string(filename), f_smm(span.begin_line), f_smm(span.begin_col), f_string(message));
-    DEBUG_log_backtrace();
+inline Interp_Entity
+interp_load_entity_from_current_scope(Interp* interp, string_id ident) {
+    Interp_Entity result = {};
+    
+    if (array_count(interp->scopes) > 0) {
+        Interp_Scope* current_scope = interp->scopes + (array_count(interp->scopes) - 1);
+        result = map_get(current_scope->locals, ident);
+    }
+    
+    if (result.is_valid) {
+        return result;
+    }
+    
+    result = map_get(interp->globals, ident);
+    return result;
 }
 
 inline void
-interp_register_type(Interp* interp, string_id ident, Type* type, void* data=0) {
-    Entity entity;
-    entity.data = 0;
+interp_push_entity_to_scope(Interp_Scope* scope, string_id ident, void* data, Type* type) {
+    Interp_Entity entity;
+    entity.data = data;
     entity.type = type;
-    type->name = vars_load_string(ident);
-    map_put(interp->symbol_table, ident, entity);
+    entity.is_valid = true;
+    map_put(scope->locals, ident, entity);
+    array_push(scope->local_stack, ident);
 }
+
+inline Interp_Scope*
+interp_get_current_scope(Interp* interp) {
+    if (array_count(interp->scopes) == 0) {
+        return 0;
+    }
+    return interp->scopes + (array_count(interp->scopes) - 1);
+}
+
+inline void
+interp_push_entity_to_current_scope(Interp* interp, string_id ident, void* data, Type* type) {
+    Interp_Scope* current_scope = interp_get_current_scope(interp);
+    if (current_scope) {
+        interp_push_entity_to_scope(current_scope, ident, data, type);
+    } else {
+        Interp_Entity entity;
+        entity.data = data;
+        entity.type = type;
+        entity.is_valid = true;
+        map_put(interp->globals, ident, entity);
+    }
+}
+
 
 inline void
 interp_unresolved_identifier_error(Interp* interp, string_id ident) {
@@ -88,7 +141,7 @@ interp_push_value(Interp* interp, Type* type, Value value) {
 }
 
 inline bool
-interp_entity_is_assigned(Interp* interp, Entity* entity, string_id ident) {
+interp_entity_is_assigned(Interp* interp, Interp_Entity* entity, string_id ident) {
     if (!entity->data || !entity->type) {
         if (entity->type) {
             
@@ -108,7 +161,7 @@ interp_entity_is_assigned(Interp* interp, Entity* entity, string_id ident) {
 }
 
 inline bool
-interp_entity_is_declared(Interp* interp, Entity* entity, string_id ident) {
+interp_entity_is_declared(Interp* interp, Interp_Entity* entity, string_id ident) {
     if (!entity->type) {
         interp_error(interp, string_format("`%`: undeclared identifier ", f_string(vars_load_string(ident))));
         // TODO(Alexander): what about int maybe primitives and types should get its own symbol table?
@@ -121,8 +174,12 @@ inline Interp_Value
 interp_load_value(Interp* interp, string_id ident) {
     Interp_Value result = {};
     
-    Entity entity = map_get(interp->symbol_table, ident);
-    if (!entity.data) {
+    Interp_Entity entity = interp_load_entity_from_current_scope(interp, ident);
+    if (!entity.is_valid) {
+        return result;
+    }
+    
+    if (entity.data == 0) {
         result.type = entity.type;
         return result;
     }

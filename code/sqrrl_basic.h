@@ -291,6 +291,12 @@ string string_format(cstring format...);
 //}
 
 // NOTE(Alexander): change the naming convention of stb_ds
+// Usage:
+// array(int)* values = 0;           // Don't need to allocate memory, then don't forget to set it to null (0)
+// array_push(values, 10);           // Will allocate memory here
+// int count = array_count(values);  // count = 1
+// int x = array_pop(values);        // x = 10
+#define array(V) V
 #define array_free(a) arrfree(a)
 #define array_push(a, x) arrput(a, x)
 #define array_pop(a) arrpop(a)
@@ -309,12 +315,15 @@ it_index++, it = arr[it_index])
 
 // NOTE(Alexander): hash maps
 // Usage:
-// struct { int key, int value }* map = 0; // don't need to allocate memory
-// map_put(map, 10, 20);                   // will allocate memory here
+// map(int, int)* map = 0;                 // Don't need to allocate memory, then don't forget to set it to null (0)
+// map_put(map, 10, 20);                   // Will allocate memory here
 // int x = map_get(map, 10);               // x = 20
 // int count = map_count(map);             // count = 1
+#define map(K, V) struct { K key; V value; }
+#define map_free(m) hmfree(m)
 #define map_put(m, k, v) hmput(m, k, v)
 #define map_get(m, k) hmget(m, k)
+#define map_remove(m, k) hmdel(m, k)
 #define map_count(m) hmlen(m)
 
 // NOTE(Alexander): hash map iterator
@@ -332,9 +341,12 @@ it_index < map_count(map); \
 it_index++, it = map[it_index])
 
 // NOTE(Alexander): string hash maps
+#define string_map(V) struct { cstring key, V value }
+#define string_map_free(m) smfree(m)
 #define string_map_count(m) shlen(m)
 #define string_map_put(m, k, v) shput(m, k, v)
 #define string_map_get(m, k) shget(m, k)
+#define string_map_remove(m, k) shdel(m, k)
 #define string_map_new_arena(m) sh_new_arena(m)
 
 int 

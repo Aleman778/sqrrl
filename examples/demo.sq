@@ -15,6 +15,12 @@ union v2 {
     f32[2] data;
 }
 
+enum Base {
+    bin = 2,
+    oct = 8,
+    dec = 10,
+    hex = 16,
+}
 
 v2
 sub(v2 a, v2 b) {
@@ -35,6 +41,9 @@ main() {
         c.x = a.x - b.x;
         c.y = a.y - b.y;
     }
-    f32 c = sub(b, a).y;
-    return (int) c;
+    
+    f32 c = sub(a, b).y;
+    return (int) c + Base.hex;
 }
+
+

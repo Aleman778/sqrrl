@@ -154,6 +154,10 @@ interp_expression(Interp* interp, Ast* ast) {
         // TODO(alexander): do we want identifiers to be expressions?
         case Ast_Ident: {
             result = interp_load_value(interp, ast->Ident);
+            if (!result.data && !result.type) {
+                interp_error(interp, string_format("`%` is an undeclared identifier", 
+                                                   f_string(vars_load_string(ast->Ident))));
+            }
         } break;
         
         case Ast_Unary_Expr: {
@@ -375,7 +379,7 @@ assert(0 && "invalid primitive type"); \
                         } break;
                         
                         default: {
-                            assert(0 && "invalid type conversion");
+                            interp_error(interp, string_lit("cannot type cast void type"));
                         } break;
                     }
                     
@@ -387,7 +391,7 @@ assert(0 && "invalid primitive type"); \
                 
                 case TypeKind_Pointer: {
                     if (value.type != Value_pointer) {
-                        assert(0 && "error cannot convert value to pointer");
+                        interp_error(interp, string_lit("cannot type cast non-pointer value to pointer"));
                     }
                     
                 } break;
@@ -593,10 +597,7 @@ interp_statement(Interp* interp, Ast* ast) {
                 case TypeKind_Struct: {
                     
                     Type_Table* type_table = &type->Struct_Or_Union;
-                    assert(type_table->count != 0 && "empty type");
-                    assert(type_table->ident_to_type && "empty ident -> type");
-                    assert(type_table->ident_to_offset && "empty ident -> offset");
-                    assert(type_table->idents && "empty idents");
+                    assert(type_table->count && "empty struct shouln't be possible");
                     
                     void* base_address = arena_push_size(&interp->stack, (umm) type->cached_size, (umm) type->cached_align);
                     
@@ -621,8 +622,8 @@ interp_statement(Interp* interp, Ast* ast) {
                             
                             // NOTE(Alexander): check that the actual type matches its definition
                             Type* def_type = map_get(type_table->ident_to_type, field_ident);
-                            if (field_expr.type) {
-                                assert(type_equals(field_expr.type, def_type) && "type mismatch");
+                            if (field_expr.type && type_equals(field_expr.type, def_type)) {
+                                interp_mismatched_types(interp, def_type, field_expr.type);
                             } else {
                                 // TODO(Alexander): check that the value conforms to def_type
                             }
@@ -1013,7 +1014,10 @@ interp_type(Interp* interp, Ast* ast) {
             Type* type;
             if (ast->Enum_Type.elem_type && ast->Enum_Type.elem_type->type != Ast_None) {
                 type = interp_type(interp, ast->Enum_Type.elem_type);
-                assert(type->kind == TypeKind_Primitive && "enum can only use primitive types");
+                if (type->kind != TypeKind_Primitive) {
+                    interp_error(interp, string_lit("enums can only be defined as primitive types"));
+                    break;
+                }
             } else {
                 type = &global_primitive_types[PrimitiveTypeKind_s64];
             }
@@ -1037,11 +1041,15 @@ interp_type(Interp* interp, Ast* ast) {
                     continue;
                 }
                 
-                assert(!argument->Argument.type && "enums fields don't have different types");
+                assert(!argument->Argument.type && "enums fields don't have different types, parsing bug");
                 
                 if (argument->Argument.assign && argument->Argument.assign->type != Ast_None) {
                     value = interp_expression(interp, argument->Argument.assign).value;
-                    assert(is_integer(value) && "only support integer typed enums");
+                    if (!is_integer(value)) {
+                        // TODO(Alexander): show the value in the message
+                        interp_error(interp, string_lit("enums only support integer values"));
+                        break;
+                    }
                     
                     if (type->Primitive.signedness) {
                         value.type = Value_signed_int;

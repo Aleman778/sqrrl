@@ -40,21 +40,35 @@ struct Interp_Value {
     Value value;
     Type* type;
     void* data;
-    s32 block_depth;
     Interp_Value_Mod modifier;
     string_id label;
+    s32 block_depth;
+    b32 is_error;
 };
 
 // TODO(alexander): better diagnostic, this will do for now!
 inline void
 interp_error(Interp* interp, string message) {
-    // TODO: need the line numbers to calculate this!
-    // Span_Data span = calculate_span_data(tokenizer->lines, node->span);
-    Span_Data span = {};
-    string filename = string_lit("examples/demo.sq"); // TODO: store names of source files somewhere!
-    pln("%:%:%: error: %\n", f_string(filename), f_smm(span.begin_line), f_smm(span.begin_col), f_string(message));
-    DEBUG_log_backtrace();
-    interp->error_count++;
+    if (interp->error_count == 0) {
+        // TODO: need the line numbers to calculate this!
+        // Span_Data span = calculate_span_data(tokenizer->lines, node->span);
+        Span_Data span = {};
+        string filename = string_lit("examples/demo.sq"); // TODO: store names of source files somewhere!
+        pln("%:%:%: error: %\n", f_string(filename), f_smm(span.begin_line), f_smm(span.begin_col), f_string(message));
+        DEBUG_log_backtrace();
+        interp->error_count++;
+    }
+}
+
+inline void
+interp_unresolved_identifier_error(Interp* interp, string_id ident) {
+    interp_error(interp, string_format("unresolved identifier `%`", f_string(vars_load_string(ident))));
+}
+
+inline void
+interp_mismatched_types(Interp* interp, Type* expected, Type* found) {
+    interp_error(interp, string_format("mismatched types, expected % %", 
+                                       f_string(expected->name), f_string(found->name)));
 }
 
 inline Interp_Value
@@ -118,12 +132,6 @@ interp_push_entity_to_current_scope(Interp* interp, string_id ident, void* data,
         entity.is_valid = true;
         map_put(interp->globals, ident, entity);
     }
-}
-
-
-inline void
-interp_unresolved_identifier_error(Interp* interp, string_id ident) {
-    interp_error(interp, string_format("unresolved identifier `%`", f_string(vars_load_string(ident))));
 }
 
 void interp_save_value(Interp* interp, Type* type, void* storage, Value value);

@@ -211,7 +211,7 @@ value_floating_binary_operation(Value first, Value second, Binary_Op op) {
 }
 
 // TODO(Alexander): print actual types from memory by specifiying the type as well
-void string_builder_push_value(String_Builder* sb, Value* value) {
+void string_builder_push(String_Builder* sb, Value* value) {
     switch (value->type) {
         case Value_boolean: {
             string_builder_push(sb, value->boolean ? "true" : "false");
@@ -255,7 +255,7 @@ void string_builder_push_value(String_Builder* sb, Value* value) {
 void print_value(Value* value) {
     String_Builder sb = {};
     string_builder_alloc(&sb, 20);
-    string_builder_push_value(&sb, value);
+    string_builder_push(&sb, value);
     string result = string_builder_to_string_nocopy(&sb);
     pln("%", f_string(result));
     string_builder_free(&sb);

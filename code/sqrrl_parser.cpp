@@ -435,6 +435,18 @@ parse_atom(Parser* parser, bool report_error) {
                                                          Token_Comma, 
                                                          &parse_actual_argument);
         } break;
+        
+        default: {
+            Unary_Op unop = parse_unary_op(parser);
+            if (unop != UnaryOp_None) {
+                next_token(parser);
+                result = push_ast_node(parser, &token);
+                result->type = Ast_Unary_Expr;
+                result->Unary_Expr.op = unop;
+                result->Unary_Expr.first = parse_atom(parser);
+            }
+            
+        } break;
     }
     
     if (!result) {
@@ -749,8 +761,8 @@ parse_unary_op(Parser* parser) {
         case Token_Sub:         return UnaryOp_Negate;
         case Token_Logical_Not: return UnaryOp_Not;
         case Token_Bit_Not:     return UnaryOp_Bitwise_Not;
-        case Token_Mul:         return UnaryOp_Address_Of;
-        case Token_Shl:         return UnaryOp_Dereference;
+        case Token_Bit_And:     return UnaryOp_Address_Of;
+        case Token_Mul:         return UnaryOp_Dereference;
         default:                return UnaryOp_None;
     }
 }

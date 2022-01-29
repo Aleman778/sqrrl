@@ -44,6 +44,9 @@ main() {
     v2 a = v2 { x: 5.0f, y: 10.0f };
     v2 b = v2 { x: 10.0f, y: 20.0f };
     
+    //sub(a, v2 { x: 1.0f });
+    //sub(a, v2(1.0f, 0.0f));
+    
     // NOTE(Alexander): TBD: this is how you would construct a templated struct
     //map(int, string_id) something;
     
@@ -53,13 +56,13 @@ main() {
         c.y = a.y - b.y;
     }
     
-    sub(a, b);
+    //sub(a, b);
     
     // NOTE(Alexander): TBD how are strings going to work, are they castable?
     //v2[..] array; // growable
-    v2[2] array; // allocate like 2 of them on the stack
-    array_push(arr, a);
-    array_push(array, b);
+    //v2[2] array; // allocate like 2 of them on the stack
+    //array_push(arr, a);
+    //array_push(array, b);
     //array_push(vectors, a); // fail no more space in vectors
     
     //v2[..] growable_array = (v2[..]) array; // we could disallow this cast
@@ -76,15 +79,16 @@ main() {
     //return (int) c + Base.hex + array[1].x;
     //return (int) a.x;
     
+    int x = 10;
+    int* p = &x;
     
-    int x = 0;
-    for (int i = 0; i < 10; i += 1) {
-        for (int j = 0; j < 10; j += 1) {
-            x += 1;
-        }
-    }
+    v2* pa = &a;
     
-    return x;
+    pa.x = 15.0f;
+    
+    *p = 60;
+    
+    return (int) a.x;
 }
 
 

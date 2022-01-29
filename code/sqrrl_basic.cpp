@@ -154,17 +154,32 @@ internal va_list
 string_builder_push_data_format(String_Builder* sb, Format_Type type, va_list args) {
     va_list result = args;
     
-    for (;;) {
-        umm size_remaining = sb->size - sb->curr_used;
-        Format_Sprintf_Result fmt = format_sprintf((char*) sb->data + sb->curr_used, size_remaining, type, args);
+    switch (type) {
+        case FormatType_ast: {
+            string_builder_push(sb, va_arg(result, Ast*), 0);
+        } break;
         
-        if (fmt.count >= size_remaining) {
-            string_builder_ensure_capacity(sb, fmt.count + 1);
-        } else {
-            sb->curr_used += fmt.count;
-            result = fmt.next_args;
-            break;
-        }
+        case FormatType_value: {
+            string_builder_push(sb, va_arg(result, Value*));
+        } break;
+        
+        case FormatType_type: {
+            string_builder_push(sb, va_arg(result, Type*));
+        } break;
+        
+        default: {
+            for (;;) {
+                umm size_remaining = sb->size - sb->curr_used;
+                Format_Sprintf_Result fmt = format_sprintf((char*) sb->data + sb->curr_used, size_remaining, type, args);
+                if (fmt.count >= 0 && fmt.count < size_remaining) {
+                    result = fmt.next_args;
+                    sb->curr_used += fmt.count;
+                    break;
+                }
+                
+                string_builder_ensure_capacity(sb, fmt.count + 1);
+            }
+        } break;
     }
     
     return result;

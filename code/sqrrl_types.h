@@ -42,8 +42,8 @@ enum Type_Kind {
 };
 
 struct Type_Table {
-    struct { string_id key; Type* value; }* ident_to_type;
-    struct { string_id key; smm value; }* ident_to_offset;
+    map(string_id, Type*)* ident_to_type;
+    map(string_id, smm)* ident_to_offset;
     string_id* idents;
     int count;
 };
@@ -68,7 +68,7 @@ struct Type {
         } Array;
         
         struct {
-            Type* types;
+            array(Type)* types;
         } Tuple;
         
         Type_Table Struct_Or_Union;
@@ -79,7 +79,7 @@ struct Type {
         
         struct {
             Type* type;
-            struct { string_id key; Value value; }* values;
+            map(string_id, Value)* values;
         } Enum;
         
         struct {
@@ -141,4 +141,53 @@ type_equals(Type* a, Type* b) {
     }
     
     return true;
+}
+
+void
+string_builder_push(String_Builder* sb, Type* type) {
+    switch (type->kind) {
+        case TypeKind_Void: {
+            string_builder_push(sb, "void");
+        } break;
+        
+        case TypeKind_Primitive: {
+            string_builder_push(sb, type->name); 
+        } break;
+        
+        case TypeKind_Array: {
+            string_builder_push(sb, type->Array.type);
+            if (type->Array.capacity == 0) {
+                string_builder_push_format(sb, "[%]", f_smm(type->Array.capacity));
+            } else {
+                string_builder_push(sb, "[..]");
+            }
+        } break;
+        
+        case TypeKind_Pointer: {
+            string_builder_push(sb, type->Pointer);
+            string_builder_push(sb, "*");
+        } break;
+        
+        case TypeKind_String: {
+            string_builder_push(sb, "string");
+        } break;
+        
+        case TypeKind_Tuple: {
+            string_builder_push(sb, "(");
+            for_array(type->Tuple.types, it, _) {
+                string_builder_push(sb, it);
+            }
+            
+            string_builder_push(sb, ")");
+        } break;
+        
+        case TypeKind_Struct: break;
+        case TypeKind_Union: break;
+        case TypeKind_Enum: break;
+        case TypeKind_Function: break;
+        
+        case TypeKind_Unresolved: break;
+        
+    }
+    
 }

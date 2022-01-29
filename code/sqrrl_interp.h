@@ -38,7 +38,7 @@ enum Interp_Value_Mod {
 
 struct Interp_Value {
     Value value;
-    Type* type;
+    Type type;
     void* data;
     Interp_Value_Mod modifier;
     string_id label;
@@ -67,8 +67,8 @@ interp_unresolved_identifier_error(Interp* interp, string_id ident) {
 
 inline void
 interp_mismatched_types(Interp* interp, Type* expected, Type* found) {
-    interp_error(interp, string_format("mismatched types, expected % %", 
-                                       f_string(expected->name), f_string(found->name)));
+    interp_error(interp, string_format("mismatched types, expected `%` found `%`", 
+                                       f_type(expected), f_type(found)));
 }
 
 inline Interp_Value
@@ -188,7 +188,7 @@ interp_load_value(Interp* interp, string_id ident) {
     }
     
     if (entity.data == 0) {
-        result.type = entity.type;
+        result.type = *entity.type;
         return result;
     }
     
@@ -200,6 +200,7 @@ interp_load_value(Interp* interp, string_id ident) {
 }
 
 Interp_Value interp_expression(Interp* interp, Ast* ast);
+Interp_Value interp_field_expr(Interp* interp, Interp_Value var, string_id ident);
 Interp_Value interp_function_call(Interp* interp, string_id ident, Ast* args);
 Interp_Value interp_statement(Interp* interp, Ast* ast);
 Interp_Value interp_block(Interp* interp, Ast* ast);

@@ -151,7 +151,7 @@ AST_GROUP(Type_End,    "type")
 //     // `it` can be used as the ast node pointer
 // }
 // TODO(Alexander): this is really ugly and inefficient, try similar to C++ iterators.
-#define compound_iterator(compound, it) \
+#define for_compound(compound, it) \
 for (Ast* it = compound->Compound.node; \
 compound && compound->type == Ast_Compound && compound->Compound.node && compound->Compound.node->type != Ast_None; \
 compound = compound->Compound.next, it = compound->Compound.node)
@@ -286,7 +286,7 @@ is_ast_type(Ast* ast) {
 }
 
 void
-string_builder_push_ast(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spacing=0) {
+string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spacing=0) {
     if (!node) {
         return;
     }
@@ -302,18 +302,18 @@ string_builder_push_ast(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32
         string_builder_push_format(sb, " \"%\")", f_string(node->Abi));
     } else if (node->type == Ast_Value) {
         string_builder_push(sb, " ");
-        string_builder_push_value(sb, &node->Value);
+        string_builder_push(sb, &node->Value);
     } else if (node->type == Ast_Ident) {
         string_builder_push_format(sb, " `%`", f_string(vars_load_string(node->Ident)));
     } else if (node->type == Ast_Unary_Expr) {
         assert_enum(UnaryOp, node->Unary_Expr.op);
         string_builder_push_format(sb, "(%)", f_cstring(unary_op_strings[node->Binary_Expr.op]));
-        string_builder_push_ast(sb, node->Unary_Expr.first, tokenizer, spacing);
+        string_builder_push(sb, node->Unary_Expr.first, tokenizer, spacing);
     } else if (node->type == Ast_Binary_Expr) {
         assert_enum(BinaryOp, node->Binary_Expr.op);
         string_builder_push_format(sb, "(%)", f_cstring(binary_op_strings[node->Binary_Expr.op]));
-        string_builder_push_ast(sb, node->Binary_Expr.first, tokenizer, spacing);
-        string_builder_push_ast(sb, node->Binary_Expr.second, tokenizer, spacing);
+        string_builder_push(sb, node->Binary_Expr.first, tokenizer, spacing);
+        string_builder_push(sb, node->Binary_Expr.second, tokenizer, spacing);
     } else if (node->type == Ast_Decl) {
         if (node->Decl.mods > 0) {
             string_builder_push(sb, "( ");
@@ -331,17 +331,17 @@ string_builder_push_ast(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32
             }
             string_builder_push(sb, ")");
         }
-        string_builder_push_ast(sb, node->Decl.stmt, tokenizer, spacing);
+        string_builder_push(sb, node->Decl.stmt, tokenizer, spacing);
     } else if (node->type == Ast_Compound) {
-        compound_iterator(node, child_node) {
-            string_builder_push_ast(sb, child_node, tokenizer, spacing);
+        for_compound(node, child_node) {
+            string_builder_push(sb, child_node, tokenizer, spacing);
         }
     } else {
         // otherwise parse all possible children
-        string_builder_push_ast(sb, node->children[0], tokenizer, spacing);
-        string_builder_push_ast(sb, node->children[1], tokenizer, spacing);
-        string_builder_push_ast(sb, node->children[2], tokenizer, spacing);
-        string_builder_push_ast(sb, node->children[3], tokenizer, spacing);
+        string_builder_push(sb, node->children[0], tokenizer, spacing);
+        string_builder_push(sb, node->children[1], tokenizer, spacing);
+        string_builder_push(sb, node->children[2], tokenizer, spacing);
+        string_builder_push(sb, node->children[3], tokenizer, spacing);
     }
     
 #if 0
@@ -361,7 +361,7 @@ void
 print_ast(Ast* node, Tokenizer* t) {
     String_Builder sb = {};
     string_builder_alloc(&sb, 1000);
-    string_builder_push_ast(&sb, node, t);
+    string_builder_push(&sb, node, t);
     string result = string_builder_to_string_nocopy(&sb);
     pln("%", f_string(result));
     string_builder_free(&sb);

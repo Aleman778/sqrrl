@@ -240,6 +240,10 @@ enum { // TODO(Alexander): add more types
     FormatType_float,
     FormatType_string,
     FormatType_cstring,
+    
+    FormatType_ast,
+    FormatType_value,
+    FormatType_type,
 };
 
 // TODO(Alexander): add more types
@@ -253,6 +257,9 @@ enum { // TODO(Alexander): add more types
 #define f_float(x) FormatType_float, (double) (x)
 #define f_string(x) FormatType_string, (int) (x).count, (char*) (x).data
 #define f_cstring(x) FormatType_cstring, (cstring) (x)
+#define f_ast(x) FormatType_ast, (Ast*) (x)
+#define f_value(x) FormatType_value, (Value*) (x)
+#define f_type(x) FormatType_type, (Type*) (x)
 
 void pln(cstring format...);
 string string_format(cstring format...);
@@ -307,11 +314,11 @@ string string_format(cstring format...);
 #define array_count(a) arrlen(a)
 #define array_set_count(a, c) arrsetlen(a, c)
 
-#define array_iterator(arr, it, it_index) \
+#define for_array(arr, it, it_index) \
 int it_index = 0; \
-for (auto it = arr[0]; \
-it_index < arr_count(arr); \
-it_index++, it = arr[it_index])
+for (auto it = arr; \
+it_index < array_count(arr); \
+it_index++, it = arr + it_index)
 
 // NOTE(Alexander): hash maps
 // Usage:
@@ -330,11 +337,11 @@ it_index++, it = arr[it_index])
 // Usage: continuing from previous example...
 //
 // int result = 0;
-// map_iterator(map, it, it_index) {
+// for_map(map, it, it_index) {
 //     result += it;
 // }
 // pln("%d", f_int(result)); // 10
-#define map_iterator(map, it, it_index) \
+#define for_map(map, it, it_index) \
 int it_index = 0; \
 for (auto it = map[0]; \
 it_index < map_count(map); \

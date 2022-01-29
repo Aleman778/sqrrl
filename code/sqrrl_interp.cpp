@@ -133,7 +133,7 @@ value.##V = *((T*) data); \
     
     Interp_Value result = create_interp_value(interp);
     result.value = value;
-    result.type = type;
+    result.type = *type;
     result.data = data;
     return result;
 }
@@ -153,7 +153,7 @@ interp_expression(Interp* interp, Ast* ast) {
         // TODO(alexander): do we want identifiers to be expressions?
         case Ast_Ident: {
             result = interp_load_value(interp, ast->Ident);
-            if (!result.data && !result.type) {
+            if (!result.data) {
                 interp_error(interp, string_format("`%` is an undeclared identifier", 
                                                    f_string(vars_load_string(ast->Ident))));
             }
@@ -168,7 +168,7 @@ interp_expression(Interp* interp, Ast* ast) {
                     } else if(is_floating(first_op.value)) {
                         result.value.floating = -first_op.value.floating;
                     } else {
-                        interp_error(interp, string_lit("expected numeric type"));
+                        interp_error(interp, string_lit("unary negate expects numeric type"));
                     }
                 } break;
                 
@@ -176,12 +176,47 @@ interp_expression(Interp* interp, Ast* ast) {
                     if (is_integer(first_op.value)) {
                         result.value.boolean = !value_to_u64(first_op.value);
                     } else {
-                        interp_error(interp, string_lit("expected integer type"));
+                        interp_error(interp, string_lit("unary not expects integer type"));
+                    }
+                } break;
+                
+                case UnaryOp_Address_Of: {
+                    Ast* expr = ast->Unary_Expr.first;
+                    
+                    if (expr->type == Ast_Ident) {
+                        Interp_Entity entity = interp_load_entity_from_current_scope(interp, expr->Ident);
+                        if (entity.is_valid) {
+                            
+                            if (entity.data && entity.type) {
+                                result.value.type = Value_pointer;
+                                result.value.data = entity.data;
+                                
+                                Type type = {};
+                                type.kind = TypeKind_Pointer;
+                                type.Pointer = entity.type;
+                                result.type = type;
+                            } else {
+                                interp_error(interp, string_format("cannot take address of uninitialized variable `%`",
+                                                                   f_string(vars_load_string(expr->Ident))));
+                            }
+                        } else {
+                            interp_error(interp, string_format("`%` is an undeclared identifier", 
+                                                               f_string(vars_load_string(expr->Ident))));
+                        }
+                    } else {
+                        interp_error(interp, string_lit("address of operator expects an identifier"));
                     }
                 } break;
                 
                 case UnaryOp_Dereference: {
-                    assert(0 && "unimplemented :(");
+                    Interp_Value op = interp_expression(interp, ast->Unary_Expr.first);
+                    
+                    if (op.value.type == Value_pointer && op.type.kind == TypeKind_Pointer) {
+                        Type* deref_type = op.type.Pointer;
+                        result = interp_load_value(interp, deref_type, op.value.data);
+                    } else {
+                        interp_error(interp, string_lit("dereference operator expects identifier"));
+                    }
                 } break;
             }
         } break;
@@ -226,7 +261,7 @@ interp_expression(Interp* interp, Ast* ast) {
                 result.value = first;
                 result.type = first_op.type;
             } else {
-                interp_error(interp, string_lit("type error: mismatched types"));
+                interp_mismatched_types(interp, &first_op.type, &second_op.type);
             }
             
             // NOTE(Alexander): handle assign binary expression
@@ -242,8 +277,8 @@ interp_expression(Interp* interp, Ast* ast) {
                             entity.data = interp_push_value(interp, entity.type, result.value);
                         }
                     }
-                } else if (first_op.data && first_op.type) {
-                    interp_save_value(interp, first_op.type, first_op.data, first);
+                } else if (first_op.data && first_op.type.kind) {
+                    interp_save_value(interp, &first_op.type, first_op.data, first);
                     
                 } else {
                     interp_error(interp, string_lit("unexpected assignment"));
@@ -281,38 +316,7 @@ interp_expression(Interp* interp, Ast* ast) {
             assert(ast->Field_Expr.field->type == Ast_Ident); // TODO(Alexander): turn into an error, where?
             string_id ident = ast->Field_Expr.field->Ident;
             
-            if (var.type) {
-                switch (var.type->kind) {
-                    case TypeKind_Union:
-                    case TypeKind_Struct: {
-                        assert(var.value.type == Value_pointer);
-                        Type_Table* type_table = &var.type->Struct_Or_Union;
-                        
-                        Type* field_type = map_get(type_table->ident_to_type, ident);
-                        if (field_type) {
-                            void* data = var.value.data;
-                            smm offset = map_get(var.type->Struct_Or_Union.ident_to_offset, ident);
-                            data = (u8*) data + offset;
-                            result = interp_load_value(interp, field_type, data);
-                        } else {
-                            interp_error(interp, string_format("`%` is not a field of type `%`",
-                                                               f_string(vars_load_string(ident)), f_string(var.type->name)));
-                        }
-                    } break;
-                    
-                    case TypeKind_Enum: {
-                        result.value = map_get(var.type->Enum.values, ident);
-                        result.type = var.type->Enum.type;
-                    } break;
-                    
-                    default: {
-                        interp_error(interp, string_format("left of `.%` must be a struct, union or enum",
-                                                           f_string(vars_load_string(ident))));
-                    } break;
-                }
-            } else {
-                interp_unresolved_identifier_error(interp, ident);
-            }
+            result = interp_field_expr(interp, var, ident);
         } break;
         
         case Ast_Cast_Expr: {
@@ -378,6 +382,12 @@ assert(0 && "invalid primitive type"); \
 #undef PVALUE
                         } break;
                         
+                        case Value_pointer: {
+#define PVALUE pointer
+                            PTYPECONV
+#undef PVALUE
+                        } break;
+                        
                         default: {
                             interp_error(interp, string_lit("cannot type cast void type"));
                         } break;
@@ -405,7 +415,7 @@ assert(0 && "invalid primitive type"); \
                 
             }
             
-            result.type = type;
+            result.type = *type;
         } break;
         
         case Ast_Paren_Expr: {
@@ -425,7 +435,7 @@ assert(0 && "invalid primitive type"); \
                     smm array_index = value_to_smm(index.value);
                     if (array_index < array_value.count) {
                         // TODO(Alexander): do we need null checking here?
-                        Type* elem_type = array.type->Array.type;
+                        Type* elem_type = array.type.Array.type;
                         smm elem_size = elem_type->cached_size;
                         assert(elem_size > 0 && "not valid array element size");
                         
@@ -473,13 +483,13 @@ interp_function_call(Interp* interp, string_id ident, Ast* args) {
                 Interp_Scope new_scope = {};
                 int arg_index = 0;
                 if (args) { 
-                    compound_iterator(args, expr) {
+                    for_compound(args, expr) {
                         // Only interpret as many args as formally declared
                         if (arg_index < formal_arguments->count) {
                             // TODO(Alexander): assign binary expressions needs to be handled here
                             Interp_Value arg = interp_expression(interp, expr);
                             string_id arg_ident = formal_arguments->idents[arg_index];
-                            interp_push_entity_to_scope(&new_scope, arg_ident, arg.data, arg.type);
+                            interp_push_entity_to_scope(&new_scope, arg_ident, arg.data, &arg.type);
                         }
                         arg_index++;
                     }
@@ -526,6 +536,58 @@ interp_function_call(Interp* interp, string_id ident, Ast* args) {
             }
         } else {
             interp_error(interp, string_format("`%` is not a function", f_string(vars_load_string(ident))));
+        }
+    } else {
+        interp_unresolved_identifier_error(interp, ident);
+    }
+    
+    return result;
+}
+
+Interp_Value
+interp_field_expr(Interp* interp, Interp_Value var, string_id ident) {
+    Interp_Value result = {};
+    
+    if (var.data) {
+        switch (var.type.kind) {
+            case TypeKind_Union:
+            case TypeKind_Struct: {
+                assert(var.value.type == Value_pointer);
+                Type_Table* type_table = &var.type.Struct_Or_Union;
+                
+                Type* field_type = map_get(type_table->ident_to_type, ident);
+                if (field_type) {
+                    void* data = var.value.data;
+                    smm offset = map_get(var.type.Struct_Or_Union.ident_to_offset, ident);
+                    data = (u8*) data + offset;
+                    result = interp_load_value(interp, field_type, data);
+                } else {
+                    interp_error(interp, string_format("`%` is not a field of type `%`",
+                                                       f_string(vars_load_string(ident)), f_string(var.type.name)));
+                }
+            } break;
+            
+            case TypeKind_Enum: {
+                result.value = map_get(var.type.Enum.values, ident);
+                result.type = *var.type.Enum.type;
+            } break;
+            
+            case TypeKind_Pointer: {
+                if (var.value.type == Value_pointer && var.type.kind == TypeKind_Pointer) {
+                    Type* deref_type = var.type.Pointer;
+                    var = interp_load_value(interp, deref_type, var.value.data);
+                    result = interp_field_expr(interp, var, ident);
+                    
+                } else {
+                    interp_error(interp, string_lit("dereference operator expects identifier"));
+                }
+            } break;
+            
+            
+            default: {
+                interp_error(interp, string_format("left of `.%` must be a pointer, struct, union or enum",
+                                                   f_string(vars_load_string(ident))));
+            } break;
         }
     } else {
         interp_unresolved_identifier_error(interp, ident);
@@ -618,7 +680,7 @@ interp_statement(Interp* interp, Ast* ast) {
                         
                         // NOTE(Alexander): push elements onto the stack in the order defined by the type
                         // so first push the compound actual values into a auxillary hash map.
-                        compound_iterator(fields, field) {
+                        for_compound(fields, field) {
                             assert(field->type == Ast_Argument);
                             
                             Interp_Value field_expr = interp_expression(interp, field->Argument.assign);
@@ -628,8 +690,8 @@ interp_statement(Interp* interp, Ast* ast) {
                             
                             // NOTE(Alexander): check that the actual type matches its definition
                             Type* def_type = map_get(type_table->ident_to_type, field_ident);
-                            if (field_expr.type && type_equals(field_expr.type, def_type)) {
-                                interp_mismatched_types(interp, def_type, field_expr.type);
+                            if (type_equals(&field_expr.type, def_type)) {
+                                interp_mismatched_types(interp, def_type, &field_expr.type);
                             } else {
                                 // TODO(Alexander): check that the value conforms to def_type
                             }
@@ -639,7 +701,7 @@ interp_statement(Interp* interp, Ast* ast) {
                         
                         // Store the result
                         if (field_values) {
-                            map_iterator(field_values, field, i) {
+                            for_map(field_values, field, i) {
                                 string_id field_ident = field.key;
                                 Type* field_type = map_get(type_table->ident_to_type, field_ident);
                                 Value field_value = value_cast(field.value, field_type);
@@ -818,7 +880,7 @@ interp_struct_or_union_type(Interp* interp, Ast* arguments, Type_Kind typekind) 
     smm size = 0;
     smm align = 0;
     
-    compound_iterator(arguments, argument) {
+    for_compound(arguments, argument) {
         assert(argument->type == Ast_Argument);
         
         if (!argument->Argument.type) {
@@ -837,7 +899,7 @@ interp_struct_or_union_type(Interp* interp, Ast* arguments, Type_Kind typekind) 
         switch (argument->Argument.ident->type) {
             case Ast_Compound: {
                 unimplemented;
-                compound_iterator(argument->Argument.ident, ast_ident) {
+                for_compound(argument->Argument.ident, ast_ident) {
                     assert(ast_ident->type == Ast_Ident);
                     string_id ident = ast_ident->Ident;
                     
@@ -855,14 +917,14 @@ interp_struct_or_union_type(Interp* interp, Ast* arguments, Type_Kind typekind) 
                     // NOTE(Alexander): anonymous type, pull out the identifiers from struct
                     if(ast_type->Struct_Type.ident->type == Ast_None) {
                         if (type->Struct_Or_Union.count > 0) {
-                            map_iterator(type->Struct_Or_Union.ident_to_type, other, i) {
+                            for_map(type->Struct_Or_Union.ident_to_type, other, i) {
                                 // TODO(Alexander): check collisions!! we don't want two vars with same identifier
                                 map_put(fields->ident_to_type, other.key, other.value);
                                 array_push(fields->idents, other.key);
                                 fields->count++;
                             }
                             
-                            map_iterator(type->Struct_Or_Union.ident_to_offset, other, j) {
+                            for_map(type->Struct_Or_Union.ident_to_offset, other, j) {
                                 map_put(fields->ident_to_offset, other.key, other.value);
                             }
                         }
@@ -979,7 +1041,7 @@ interp_type(Interp* interp, Ast* ast) {
             Ast* ast_arguments = ast->Function_Type.arg_types;
             Type_Table* type_arguments = &result->Function.arguments;
             smm offset = 0;
-            compound_iterator(ast_arguments, ast_argument) {
+            for_compound(ast_arguments, ast_argument) {
                 assert(ast_argument->type == Ast_Argument);
                 if (!ast_argument->Argument.type) {
                     break;
@@ -1128,9 +1190,9 @@ interp_ast_declarations(Interp* interp, Ast_Decl_Entry* decls) {
         if (stmt->type != Ast_Decl_Stmt) {
             Interp_Value interp_result = interp_statement(interp, stmt);
             if (!is_void(interp_result.value)) {
-                void* data = interp_push_value(interp, interp_result.type, interp_result.value);
+                void* data = interp_push_value(interp, &interp_result.type, interp_result.value);
                 if (!data) {
-                    interp_push_entity_to_current_scope(interp, decl.key, data, interp_result.type);
+                    interp_push_entity_to_current_scope(interp, decl.key, data, &interp_result.type);
                 }
             }
         }

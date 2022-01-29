@@ -136,11 +136,11 @@ parse_string(Parser* parser) {
     u8* end = str.data + str.count;
     
     // TODO(alexander): create str builder
-    String_Builder sb;
+    String_Builder sb = {};
     string_builder_alloc(&sb, str.count + 10);
     
-    u8* last_push = curr;
     assert(*curr++ == '"');
+    u8* last_push = curr;
     while (curr < end) {
         char c = *curr++;
         if (c == '\\') {
@@ -167,9 +167,8 @@ parse_string(Parser* parser) {
         curr += n;
     }
     
-    if (last_push != curr) {
-        string_builder_push(&sb, string_view(last_push, curr));
-        last_push = curr;
+    if (last_push != curr - 1) {
+        string_builder_push(&sb, string_view(last_push, curr - 1));
     }
     
     string result = string_builder_to_string(&sb);

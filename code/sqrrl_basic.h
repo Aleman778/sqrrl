@@ -61,12 +61,15 @@ typedef const char*  cstring;
 #define S32_MAX 2147483647
 #define S64_MAX 9223372036854775807ll
 #define S64_MIN (-9223372036854775807ll - 1)
+#define SMM_MIN S64_MIN // TODO(Alexander): we need to detect and set this correctly later
+#define SMM_MAX S64_MAX // TODO(Alexander): we need to detect and set this correctly later
 #define INT_MIN S32_MIN
 #define INT_MAX S32_MAX
 #define U8_MAX 0xffU
 #define U16_MAX 0xffffU
 #define U32_MAX 0xffffffffU
 #define U64_MAX 0xffffffffffffffffull
+#define UMM_MAX U64_MAX // TODO(Alexander): we need to detect and set this correctly later
 #define UINT_MAX U32_MAX
 #define BOOL_MAX S8_MAX
 #define BOOL_MIN S8_MIN
@@ -91,6 +94,7 @@ __assert(cstring expression, cstring file, int line) {
 
 #define unimplemented assert(0 && "this code is not implemented yet")
 #define invalid_code_path assert(0 && "invalid code path, this is likely a bug")
+#define compiler_bug(m) assert(0 && "Compiler Bug!"#m)
 
 // TODO(Alexander): special asserts
 #define assert_enum(T, v) assert((v) > 0 && (v) < T##_Count && "enum value out of range")

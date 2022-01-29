@@ -67,6 +67,7 @@ compiler_main_entry(int argc, char* argv[]) {
     // NOTE(Alexander): Interpreter pass
     Interp interp = {};
     interp_register_primitive_types(&interp);
+    DEBUG_interp_register_intrinsics(&interp);
     interp_ast_declarations(&interp, ast_file.decls);
     Interp_Value result = interp_function_call(&interp, vars_save_cstring("main"), 0);
     if (result.modifier == InterpValueMod_Return) {

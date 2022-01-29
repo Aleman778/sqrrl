@@ -473,67 +473,86 @@ interp_function_call(Interp* interp, string_id ident, Ast* args) {
     if (decl.type) {
         
         if (decl.type->kind == TypeKind_Function) {
-            Ast* block = decl.type->Function.block;
             Type_Table* formal_arguments = &decl.type->Function.arguments;
             
-            if (block) {
-                // First evaluate and push the arguments on the new scope
-                // NOTE: arguments are pushed on the callers stack space
-                
-                Interp_Scope new_scope = {};
-                int arg_index = 0;
-                if (args) { 
-                    for_compound(args, expr) {
-                        // Only interpret as many args as formally declared
-                        if (arg_index < formal_arguments->count) {
-                            // TODO(Alexander): assign binary expressions needs to be handled here
-                            Interp_Value arg = interp_expression(interp, expr);
-                            string_id arg_ident = formal_arguments->idents[arg_index];
-                            interp_push_entity_to_scope(&new_scope, arg_ident, arg.data, &arg.type);
+            // First evaluate and push the arguments on the new scope
+            // NOTE: arguments are pushed on the callers stack space
+            
+            Interp_Scope new_scope = {};
+            int arg_index = 0;
+            if (args) { 
+                for_compound(args, expr) {
+                    // Only interpret as many args as formally declared
+                    if (arg_index < formal_arguments->count) {
+                        // TODO(Alexander): assign binary expressions needs to be handled here
+                        Interp_Value arg = interp_expression(interp, expr);
+                        string_id arg_ident = formal_arguments->idents[arg_index];
+                        Type* formal_type = map_get(decl.type->Function.arguments.ident_to_type, arg_ident);
+                        
+                        // NOTE(Alexander): Check that the type provided as argument matches the formal
+                        // type from the function declaration
+                        if (!interp_check_type_match_of_value(interp, formal_type, arg)) {
+                            return result;
                         }
-                        arg_index++;
+                        
+                        // NOTE(Alexander): we need to allocate it in order to pass it to the function
+                        // Currently we only pass variables to functions through references
+                        arg.data = interp_push_value(interp, formal_type, arg.value);
+                        interp_push_entity_to_scope(&new_scope, arg_ident, arg.data, formal_type);
                     }
+                    arg_index++;
                 }
-                
-                // Store the old base pointer on the stack and set the base pointer
-                // to point at the top of the stack, then push the new scope
-                smm new_base = interp->stack.curr_used;
-                smm* old_base = (smm*) arena_push_size(&interp->stack, sizeof(smm));
-                *old_base = interp->base_pointer;
-                interp->base_pointer = new_base;
-                array_push(interp->scopes, new_scope);
-                
-                // NOTE(Alexander): secondly push the evaluated arguments on stack
-                if (args) {
-                    if (arg_index > formal_arguments->count) {
-                        interp_error(interp, string_format("function `%` did not take % arguments, expected % arguments", 
-                                                           f_string(vars_load_string(ident)), 
-                                                           f_int(arg_index), 
-                                                           f_int(formal_arguments->count)));
-                        return result;
-                    }
-                } else if (formal_arguments->count != 0) {
-                    interp_error(interp, string_format("function `%` expected % arguments",
-                                                       f_string(vars_load_string(ident)),
+            }
+            
+            // Store the old base pointer on the stack and set the base pointer
+            // to point at the top of the stack, then push the new scope
+            smm new_base = interp->stack.curr_used;
+            smm* old_base = (smm*) arena_push_size(&interp->stack, sizeof(smm));
+            *old_base = interp->base_pointer;
+            interp->base_pointer = new_base;
+            array_push(interp->scopes, new_scope);
+            
+            // NOTE(Alexander): secondly push the evaluated arguments on stack
+            if (args) {
+                if (arg_index > formal_arguments->count) {
+                    interp_error(interp, string_format("function `%` did not take % arguments, expected % arguments", 
+                                                       f_string(vars_load_string(ident)), 
+                                                       f_int(arg_index), 
                                                        f_int(formal_arguments->count)));
+                    return result;
                 }
-                
+            } else if (formal_arguments->count != 0) {
+                interp_error(interp, string_format("function `%` expected % arguments",
+                                                   f_string(vars_load_string(ident)),
+                                                   f_int(formal_arguments->count)));
+            }
+            
+            Ast* block = decl.type->Function.block;
+            if (block) {
                 result = interp_statement(interp, block);
                 // TODO(alexander): only write to result if it is an actual return value!
                 
-                // Pop the scope and free the data stored in the scope
-                Interp_Scope old_scope = array_pop(interp->scopes);
-                map_free(old_scope.locals);
-                array_free(old_scope.local_stack);
-                
-                // Pop the stack by restoring the old base pointer
-                interp->stack.curr_used = interp->base_pointer;
-                interp->base_pointer = *(smm*) ((u8*) interp->stack.base + interp->base_pointer);
             } else {
                 // TODO(Alexander): this is not supposed to ever be the case, maybe assert instead!
                 // NOTE(Alexander): what about FFI?
-                interp_error(interp, string_format("`%` function has no definition", f_string(vars_load_string(ident))));
+                
+                if (decl.type->Function.intrinsic) {
+                    result.value = decl.type->Function.intrinsic(interp);
+                    
+                } else {
+                    interp_error(interp, string_format("`%` function has no definition and is no intrinsic", f_string(vars_load_string(ident))));
+                }
             }
+            
+            // Pop the scope and free the data stored in the scope
+            Interp_Scope old_scope = array_pop(interp->scopes);
+            map_free(old_scope.locals);
+            array_free(old_scope.local_stack);
+            
+            // Pop the stack by restoring the old base pointer
+            interp->stack.curr_used = interp->base_pointer;
+            interp->base_pointer = *(smm*) ((u8*) interp->stack.base + interp->base_pointer);
+            
         } else {
             interp_error(interp, string_format("`%` is not a function", f_string(vars_load_string(ident))));
         }
@@ -999,6 +1018,7 @@ interp_type(Interp* interp, Ast* ast) {
         
         case Ast_Array_Type: {
             Type* elem_type = interp_type(interp, ast->Array_Type.elem_type);
+            // TODO(Alexander): do we wan't to store types on stack?
             result = arena_push_struct(&interp->stack, Type);
             result->kind = TypeKind_Array;
             result->Array.type = elem_type;
@@ -1152,6 +1172,54 @@ interp_register_primitive_types(Interp* interp) {
     }
 }
 
+Value
+interp_intrinsic_pln(Interp* interp) {
+    
+    Interp_Value format = interp_load_value(interp, vars_save_cstring("format"));
+    
+    if (format.value.type == Value_string) {
+        pln("%", f_string(format.value.str));
+    } else {
+        interp_error(interp, string_format("expected `string` as first argument, found `%`", 
+                                           f_type(&format.type)));
+    }
+    
+    return {};
+}
+
+internal inline void
+type_table_push_type(Type_Table* table, string_id ident, Type* type, smm offset) {
+    map_put(table->ident_to_type, ident, type);
+    map_put(table->ident_to_offset, ident, 0);
+    array_push(table->idents, ident);
+    table->count++;
+}
+
+
+void
+DEBUG_interp_register_intrinsics(Interp* interp) {
+    // TODO(Alexander): these are kind of temporary, since we don't really have
+    // the ability to create these functions yet, need FFI!
+    // We will still have intrinsics but these intrinsics are just for debugging
+    
+    {
+        // pln(string format...)
+        // TODO(Alexander): do we wan't to store types on stack?
+        Type* type = arena_push_struct(&interp->stack, Type);
+        type->kind = TypeKind_Function;
+        
+        type->Function.arguments = {};
+        string_id arg0_ident = vars_save_cstring("format");
+        type_table_push_type(&type->Function.arguments, arg0_ident, &global_string_type, 0);
+        
+        string_id ident = vars_save_cstring("pln");
+        type->Function.block = 0;
+        type->Function.intrinsic = &interp_intrinsic_pln;
+        type->Function.ident = ident;
+        interp_push_entity_to_current_scope(interp, ident, 0, type);
+    }
+}
+
 void
 interp_declaration_statement(Interp* interp, Ast* ast) {
     assert(ast->type == Ast_Decl_Stmt);
@@ -1197,4 +1265,126 @@ interp_ast_declarations(Interp* interp, Ast_Decl_Entry* decls) {
             }
         }
     }
+}
+
+bool
+interp_check_type_match_of_value(Interp* interp, Type* type, Interp_Value interp_value) {
+    Value value = interp_value.value;
+    
+    bool result = true;
+    
+    switch (value.type) {
+        case Value_void: {
+            result = type->kind == TypeKind_Void;
+        } break;
+        
+        case Value_boolean: {
+            result = (type->kind == TypeKind_Primitive &&
+                      (type->Primitive.kind == PrimitiveTypeKind_bool || 
+                       type->Primitive.kind == PrimitiveTypeKind_b32));
+        } break;
+        
+        case Value_signed_int: {
+            result = type->kind == TypeKind_Primitive;
+            if (!result) break;
+            
+            switch (type->Primitive.kind) {
+                case PrimitiveTypeKind_int:
+                case PrimitiveTypeKind_s8:
+                case PrimitiveTypeKind_s16:
+                case PrimitiveTypeKind_s32:
+                case PrimitiveTypeKind_s64:
+                case PrimitiveTypeKind_smm:
+                case PrimitiveTypeKind_b32: {
+                    if (type->Primitive.min_value.signed_int < value.signed_int && 
+                        type->Primitive.max_value.signed_int > value.signed_int) {
+                        // TODO(Alexander): this is technically a warning!
+                        interp_error(interp, string_format("expected type `%` cannot fit in value `%`", 
+                                                           f_type(type), f_value(&value)));
+                        
+                        result = false;
+                    }
+                    
+                } break;
+                
+                
+                case PrimitiveTypeKind_uint:
+                case PrimitiveTypeKind_u8:
+                case PrimitiveTypeKind_u16:
+                case PrimitiveTypeKind_u32:
+                case PrimitiveTypeKind_u64:
+                case PrimitiveTypeKind_umm: {
+                    // TODO(Alexander): this is technically a warning!
+                    interp_error(interp, string_format("expected type `%` signed/ unsigned mismatch with `%`", 
+                                                       f_type(type), f_value(&value)));
+                } break;
+            }
+            
+        } break;
+        
+        case Value_unsigned_int: {
+            result = type->kind == TypeKind_Primitive;
+            if (!result) break;
+            
+            switch (type->Primitive.kind) {
+                case PrimitiveTypeKind_uint:
+                case PrimitiveTypeKind_u8:
+                case PrimitiveTypeKind_u16:
+                case PrimitiveTypeKind_u32:
+                case PrimitiveTypeKind_u64:
+                case PrimitiveTypeKind_umm: {
+                    if (type->Primitive.min_value.unsigned_int < value.unsigned_int && 
+                        type->Primitive.max_value.unsigned_int > value.unsigned_int) {
+                        // TODO(Alexander): this is technically a warning!
+                        interp_error(interp, string_format("expected type `%` cannot fit in value `%`", 
+                                                           f_type(type), f_value(&value)));
+                        
+                        result = false;
+                    }
+                    
+                } break;
+                
+                case PrimitiveTypeKind_int:
+                case PrimitiveTypeKind_s8:
+                case PrimitiveTypeKind_s16:
+                case PrimitiveTypeKind_s32:
+                case PrimitiveTypeKind_s64:
+                case PrimitiveTypeKind_smm:
+                case PrimitiveTypeKind_b32: {
+                    // TODO(Alexander): this is technically a warning!
+                    interp_error(interp, string_format("expected type `%` signed/ unsigned mismatch with `%`", 
+                                                       f_type(type), f_value(&value)));
+                } break;
+            }
+            
+        } break;
+        
+        case Value_floating: {
+            // TODO(Alexander): can we also track the precision and report error on mismatch?
+            result = (type->kind == TypeKind_Primitive &&
+                      (type->Primitive.kind == PrimitiveTypeKind_f32 || 
+                       type->Primitive.kind == PrimitiveTypeKind_f64));
+        } break;
+        
+        case Value_pointer:
+        case Value_array: {
+            // NOTE(Alexander): pointer and array values always assumes that it provides a valid type
+            result = type_equals(type, &interp_value.type);
+        } break;
+        
+        case Value_string: {
+            result = type->kind == TypeKind_String;
+        } break;
+        
+        case Value_ast_node: {
+            compiler_bug("It shouldn't be possible to use ast node as a type");
+        }
+    }
+    
+    if (!result) {
+        interp_error(interp, string_format("expected type `%` is not compatible with `%`", 
+                                           f_type(type), f_value(&value)));
+    }
+    
+    return result;
 }

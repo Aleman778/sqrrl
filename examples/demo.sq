@@ -39,7 +39,7 @@ sub(v2 a, v2 b) {
 }
 
 
-int
+void
 main() {
     v2 a = v2 { x: 5.0f, y: 10.0f };
     v2 b = v2 { x: 10.0f, y: 20.0f };
@@ -88,7 +88,7 @@ main() {
     
     *p = 60;
     
-    return (int) a.x;
+    pln("Hello world!");
 }
 
 

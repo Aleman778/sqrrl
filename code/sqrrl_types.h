@@ -6,13 +6,13 @@ PRIMITIVE(s8, 1, signed, S8_MAX, S8_MIN) \
 PRIMITIVE(s16, 2, signed, S16_MAX, S16_MIN) \
 PRIMITIVE(s32, 4, signed, S32_MAX, S32_MIN) \
 PRIMITIVE(s64, 8, signed, S64_MAX, S64_MIN) \
-PRIMITIVE(smm, 0, signed, 0, 0) \
+PRIMITIVE(smm, 8, signed, SMM_MAX, SMM_MIN) \
 PRIMITIVE(uint, 4, unsigned, UINT_MAX, 0) \
 PRIMITIVE(u8, 1, unsigned, U8_MAX, 0) \
 PRIMITIVE(u16, 2, unsigned, U16_MAX, 0) \
 PRIMITIVE(u32, 4, unsigned, U32_MAX, 0) \
 PRIMITIVE(u64, 8, unsigned, U64_MAX, 0) \
-PRIMITIVE(umm, 0, unsigned, 0, 0) \
+PRIMITIVE(umm, 8, unsigned, SMM_MAX, 0) \
 PRIMITIVE(f32, 4, signed, 0, 0) \
 PRIMITIVE(f64, 8, signed, 0, 0) \
 PRIMITIVE(char, 1, unsigned, CHAR_MAX, CHAR_MIN) \
@@ -44,12 +44,14 @@ enum Type_Kind {
 struct Type_Table {
     map(string_id, Type*)* ident_to_type;
     map(string_id, smm)* ident_to_offset;
-    string_id* idents;
+    array(string_id)* idents;
     int count;
 };
 
 // NOTE(Alexander): forward declare
 struct Ast;
+
+struct Interp;
 
 struct Type {
     Type_Kind kind;
@@ -86,6 +88,7 @@ struct Type {
             Type_Table arguments;
             Type* return_value;
             Ast* block;
+            Value (*intrinsic)(Interp*); // TODO(Alexander): temporary intrinsic definition
             string_id ident;
         } Function;
         
@@ -95,6 +98,7 @@ struct Type {
     string name;
     s32 cached_size;
     s32 cached_align;
+    b32 is_variadic;
 };
 
 global Type global_primitive_types[] = {
@@ -112,6 +116,10 @@ size, size \
 #undef PRIMITIVE
 #undef VAL
 };
+
+// TODO(Alexander): the sizeof/ alignof is only useful info for specific build of compiler
+// need to update these for other build targets
+global Type global_string_type = { TypeKind_String, {}, {}, sizeof(string), alignof(string) };
 
 bool
 type_equals(Type* a, Type* b) {

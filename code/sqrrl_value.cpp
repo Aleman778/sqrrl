@@ -246,7 +246,7 @@ void string_builder_push(String_Builder* sb, Value* value) {
         } break;
         
         case Value_string: {
-            string_builder_push_format(sb, "%", f_string(value->str));
+            string_builder_push_format(sb, "\"%\"", f_string(value->str));
         } break;
     }
 }

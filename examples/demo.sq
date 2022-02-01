@@ -88,7 +88,10 @@ main() {
     
     *p = 60;
     
-    pln("Hello world!");
+    
+    string test = "Awesome language!";
+    int val = 20;
+    pln("Hello world! % %", test, val + 20);
 }
 
 

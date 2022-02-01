@@ -478,14 +478,18 @@ interp_function_call(Interp* interp, string_id ident, Ast* args) {
             // First evaluate and push the arguments on the new scope
             // NOTE: arguments are pushed on the callers stack space
             
+            // TODO(Alexander): this is temporary since we don't have variadic argument support yet.
+            array(Interp_Value)* variadic_arguments = 0;
+            
             Interp_Scope new_scope = {};
             int arg_index = 0;
             if (args) { 
                 for_compound(args, expr) {
+                    Interp_Value arg = interp_expression(interp, expr);
+                    
                     // Only interpret as many args as formally declared
                     if (arg_index < formal_arguments->count) {
                         // TODO(Alexander): assign binary expressions needs to be handled here
-                        Interp_Value arg = interp_expression(interp, expr);
                         string_id arg_ident = formal_arguments->idents[arg_index];
                         Type* formal_type = map_get(decl.type->Function.arguments.ident_to_type, arg_ident);
                         
@@ -499,7 +503,11 @@ interp_function_call(Interp* interp, string_id ident, Ast* args) {
                         // Currently we only pass variables to functions through references
                         arg.data = interp_push_value(interp, formal_type, arg.value);
                         interp_push_entity_to_scope(&new_scope, arg_ident, arg.data, formal_type);
+                        
+                    } else if (decl.type->Function.is_variadic) {
+                        array_push(variadic_arguments, arg);
                     }
+                    
                     arg_index++;
                 }
             }
@@ -514,7 +522,9 @@ interp_function_call(Interp* interp, string_id ident, Ast* args) {
             
             // NOTE(Alexander): secondly push the evaluated arguments on stack
             if (args) {
-                if (arg_index > formal_arguments->count) {
+                if (arg_index != formal_arguments->count && !decl.type->Function.is_variadic) {
+                    
+                    // NOTE(Alexander): it is allowed to have more arguments only if the function is variadic
                     interp_error(interp, string_format("function `%` did not take % arguments, expected % arguments", 
                                                        f_string(vars_load_string(ident)), 
                                                        f_int(arg_index), 
@@ -537,7 +547,7 @@ interp_function_call(Interp* interp, string_id ident, Ast* args) {
                 // NOTE(Alexander): what about FFI?
                 
                 if (decl.type->Function.intrinsic) {
-                    result.value = decl.type->Function.intrinsic(interp);
+                    result.value = decl.type->Function.intrinsic(interp, variadic_arguments);
                     
                 } else {
                     interp_error(interp, string_format("`%` function has no definition and is no intrinsic", f_string(vars_load_string(ident))));
@@ -1008,11 +1018,15 @@ interp_type(Interp* interp, Ast* ast) {
     switch (ast->type) {
         case Ast_Named_Type: {
             string_id ident = ast->Named_Type->Ident;
-            Interp_Entity entity = interp_load_entity_from_current_scope(interp, ident);
-            if (entity.is_valid && entity.type) {
-                result = entity.type;
+            if (ident == Kw_string) {
+                return &global_string_type;
             } else {
-                interp_unresolved_identifier_error(interp, ident);
+                Interp_Entity entity = interp_load_entity_from_current_scope(interp, ident);
+                if (entity.is_valid && entity.type) {
+                    result = entity.type;
+                } else {
+                    interp_unresolved_identifier_error(interp, ident);
+                }
             }
         } break;
         
@@ -1056,6 +1070,7 @@ interp_type(Interp* interp, Ast* ast) {
         case Ast_Function_Type: {
             result = arena_push_struct(&interp->stack, Type);
             result->kind = TypeKind_Function;
+            result->Function.is_variadic = false;
             
             // NOTE(Alexander): Loads in the function arguments
             Ast* ast_arguments = ast->Function_Type.arg_types;
@@ -1172,13 +1187,105 @@ interp_register_primitive_types(Interp* interp) {
     }
 }
 
-Value
-interp_intrinsic_pln(Interp* interp) {
+internal Format_Type
+convert_type_to_format_type(Type* type) {
+    switch (type->kind) {
+        case TypeKind_Primitive: {
+            switch (type->Primitive.kind) {
+#define PRIMITIVE(symbol, ...) case PrimitiveTypeKind_##symbol: return FormatType_##symbol; 
+                DEF_PRIMITIVE_TYPES
+#undef PRIMITIVE
+            }
+        } break;
+        
+        case TypeKind_String: return FormatType_string;
+    }
     
+    return FormatType_None;
+}
+
+
+internal Format_Type 
+convert_value_type_to_format_type(Value_Type type) {
+    switch (type) {
+        case Value_boolean: return FormatType_bool;
+        case Value_signed_int: return FormatType_s64;
+        case Value_unsigned_int: return FormatType_u64;
+        case Value_floating: return FormatType_f64;
+        case Value_pointer: return FormatType_smm;
+        //Value_array,
+        case Value_string: return FormatType_string;
+    }
+    
+    return FormatType_None;
+}
+
+Value
+interp_intrinsic_pln(Interp* interp, array(Interp_Value)* var_args) {
     Interp_Value format = interp_load_value(interp, vars_save_cstring("format"));
     
     if (format.value.type == Value_string) {
-        pln("%", f_string(format.value.str));
+        
+        if (var_args) {
+            String_Builder sb = {};
+            
+            string format_string = format.value.str;
+            int format_count = (int) format_string.count;
+            u8* scan = (u8*) format_string.data;
+            u8* scan_at_prev_percent = scan;
+            
+            smm index = 0;
+            int var_arg_index = 0;
+            int count_until_percent = 0;
+            while (index < format_count) {
+                
+                if (*scan == '%') {
+                    if (count_until_percent > 0) {
+                        string substring = create_string(count_until_percent, scan_at_prev_percent);
+                        string_builder_push(&sb, substring);
+                        count_until_percent = 0;
+                    }
+                    scan_at_prev_percent = scan + 1;
+                    
+                    if (index + 1 < format_count && *(scan + 1) == '%') {
+                        string_builder_push(&sb, "%");
+                        index += 2;
+                        scan += 2;
+                        continue;
+                    }
+                    
+                    if (var_arg_index >= array_count(var_args)) {
+                        interp_error(interp, string_format(""));
+                        string_builder_free(&sb);
+                        return {};
+                    }
+                    
+                    Interp_Value* var_arg = var_args + var_arg_index++;
+                    Format_Type format_type = convert_type_to_format_type(&var_arg->type);
+                    if (format_type == FormatType_None) {
+                        // NOTE(Alexander): if type didn't help then we guess based on value
+                        format_type = convert_value_type_to_format_type(var_arg->value.type);
+                    }
+                    
+                    void* value_data;
+                    if (var_arg->value.type == Value_string) {
+                        value_data = &var_arg->value.data;
+                    } else {
+                        value_data = var_arg->value.data;
+                    }
+                    string_builder_push_format(&sb, "%", format_type, value_data);
+                } else {
+                    count_until_percent++;
+                }
+                
+                scan++;
+                index++;
+            }
+            printf("%.*s\n", (int) sb.curr_used, (char*) sb.data);
+            string_builder_free(&sb);
+        } else {
+            pln("%", f_string(format.value.str));
+        }
     } else {
         interp_error(interp, string_format("expected `string` as first argument, found `%`", 
                                            f_type(&format.type)));
@@ -1207,8 +1314,9 @@ DEBUG_interp_register_intrinsics(Interp* interp) {
         // TODO(Alexander): do we wan't to store types on stack?
         Type* type = arena_push_struct(&interp->stack, Type);
         type->kind = TypeKind_Function;
-        
+        type->Function.is_variadic = true;
         type->Function.arguments = {};
+        
         string_id arg0_ident = vars_save_cstring("format");
         type_table_push_type(&type->Function.arguments, arg0_ident, &global_string_type, 0);
         
@@ -1378,7 +1486,7 @@ interp_check_type_match_of_value(Interp* interp, Type* type, Interp_Value interp
         
         case Value_ast_node: {
             compiler_bug("It shouldn't be possible to use ast node as a type");
-        }
+        } break;
     }
     
     if (!result) {

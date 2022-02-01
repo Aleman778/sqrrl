@@ -233,15 +233,25 @@ string_builder_to_string_nocopy(String_Builder* sb) {
 // NOTE(Alexander): improved string formatting and printf
 typedef int Format_Type;
 enum { // TODO(Alexander): add more types
+    FormatType_None,
+    FormatType_void,
     FormatType_char,
-    FormatType_u8,
     FormatType_int,
-    FormatType_uint,
+    FormatType_s8,
+    FormatType_s16,
+    FormatType_s32,
     FormatType_s64,
-    FormatType_u64,
     FormatType_smm,
+    FormatType_uint,
+    FormatType_u8,
+    FormatType_u16,
+    FormatType_u32,
+    FormatType_u64,
     FormatType_umm,
-    FormatType_float,
+    FormatType_bool,
+    FormatType_b32,
+    FormatType_f32,
+    FormatType_f64,
     FormatType_string,
     FormatType_cstring,
     
@@ -258,15 +268,19 @@ enum { // TODO(Alexander): add more types
 #define f_u64(x) FormatType_u64, (u64) (x)
 #define f_smm(x) FormatType_smm, (smm) (x)
 #define f_umm(x) FormatType_umm, (umm) (x)
-#define f_float(x) FormatType_float, (double) (x)
-#define f_string(x) FormatType_string, (int) (x).count, (char*) (x).data
+#define f_float(x) FormatType_f64, (double) (x)
+#define f_string(x) FormatType_string, (string) (x)
 #define f_cstring(x) FormatType_cstring, (cstring) (x)
 #define f_ast(x) FormatType_ast, (Ast*) (x)
 #define f_value(x) FormatType_value, (Value*) (x)
 #define f_type(x) FormatType_type, (Type*) (x)
 
-void pln(cstring format...);
+void print_format(cstring format...);
 string string_format(cstring format...);
+
+// NOTE(Alexander): print formatted string with new line
+#define pln(format, ...) print_format(format##"\n", __VA_ARGS__)
+
 
 // TODO(Alexander): implement this later, we use stb_ds for now!
 // NOTE(Alexander): dynamic arrays, usage:

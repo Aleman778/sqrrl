@@ -50,8 +50,8 @@ struct Type_Table {
 
 // NOTE(Alexander): forward declare
 struct Ast;
-
 struct Interp;
+struct Interp_Value;
 
 struct Type {
     Type_Kind kind;
@@ -76,10 +76,6 @@ struct Type {
         Type_Table Struct_Or_Union;
         
         struct {
-            Type_Table fields;
-        } Union;
-        
-        struct {
             Type* type;
             map(string_id, Value)* values;
         } Enum;
@@ -88,8 +84,9 @@ struct Type {
             Type_Table arguments;
             Type* return_value;
             Ast* block;
-            Value (*intrinsic)(Interp*); // TODO(Alexander): temporary intrinsic definition
+            Value (*intrinsic)(Interp*, array(Interp_Value)*); // TODO(Alexander): temporary intrinsic definition
             string_id ident;
+            b32 is_variadic;
         } Function;
         
         Type* Pointer;
@@ -98,7 +95,6 @@ struct Type {
     string name;
     s32 cached_size;
     s32 cached_align;
-    b32 is_variadic;
 };
 
 global Type global_primitive_types[] = {

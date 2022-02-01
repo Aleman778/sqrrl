@@ -983,7 +983,8 @@ parse_type(Parser* parser, bool report_error) {
     Ast* base = 0;
     string_id ident = vars_save_string(token.source);
     
-    if (ident >= builtin_types_begin && ident <= builtin_types_end || ident > keyword_last) {
+    if (ident >= builtin_types_begin && ident <= builtin_types_end || ident > keyword_last ||
+        ident == Kw_string) {
         base = push_ast_node(parser);
         base->type = Ast_Named_Type;
         base->Named_Type = push_ast_node(parser);

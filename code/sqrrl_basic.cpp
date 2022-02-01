@@ -1,6 +1,6 @@
 
 void
-pln(const char* format...) {
+print_format(const char* format...) {
     va_list args;
     va_start(args, format);
     
@@ -45,14 +45,14 @@ pln(const char* format...) {
                     printf("%zu", va_arg(args, umm));
                 } break;
                 
-                case FormatType_float: {
+                case FormatType_f32:
+                case FormatType_f64: {
                     printf("%f", va_arg(args, double));
                 } break;
                 
                 case FormatType_string: {
-                    int count = va_arg(args, int);
-                    char* str = va_arg(args, char*);
-                    printf("%.*s", count, str);
+                    string str = va_arg(args, string);
+                    printf("%.*s", (int) str.count, (char*) str.data);
                 } break;
                 
                 case FormatType_cstring: {
@@ -72,8 +72,6 @@ pln(const char* format...) {
     
     if (count_until_percent > 0) {
         printf("%.*s\n", count_until_percent, format_at_prev_percent);
-    } else {
-        printf("\n");
     }
 }
 
@@ -125,15 +123,15 @@ format_sprintf(char* dst, umm dst_size, Format_Type type, va_list args) {
             result.count = snprintf(dst, dst_size, "%zu", value);
         } break;
         
-        case FormatType_float: {
+        case FormatType_f32:
+        case FormatType_f64: {
             double value = va_arg(args, double);
             result.count = snprintf(dst, dst_size, "%f", value);
         } break;
         
         case FormatType_string: {
-            int str_count = va_arg(args, int);
-            char* str = va_arg(args, char*);
-            result.count = snprintf(dst, dst_size, "%.*s", str_count, str);
+            string str = va_arg(args, string);
+            result.count = snprintf(dst, dst_size, "%.*s", (int) str.count, (char*) str.data);
         } break;
         
         case FormatType_cstring: {

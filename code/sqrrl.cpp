@@ -17,7 +17,7 @@ compiler_main_entry(int argc, char* argv[]) {
     if (argc > 1) {
         filepath = string_lit(argv[1]);
     } else {
-        filepath = string_lit("C:/Dev/sqrrl/examples/demo.sq");
+        filepath = string_lit("C:/Dev/sqrrl/examples/c_header.h");
     }
     
     // Setup string interning of variables
@@ -39,9 +39,12 @@ compiler_main_entry(int argc, char* argv[]) {
     fread(source.data, source.count, 1, file);
     fclose(file);
     
-    // TODO(alexander): temp printing source
-    pln("%", f_string(source));
+    string preprocessed_source = preprocess_file(source, filepath);
     
+    // TODO(alexander): temp printing source
+    pln("%", f_string(preprocessed_source));
+    
+#if 0
     // Lexer
     Tokenizer tokenizer = {};
     tokenizer_set_source(&tokenizer, source, filepath);
@@ -77,6 +80,6 @@ compiler_main_entry(int argc, char* argv[]) {
             pln("Interpreter exited with code 0");
         }
     }
-    
+#endif
     return 0;
 }

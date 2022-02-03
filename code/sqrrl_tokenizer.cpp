@@ -364,7 +364,8 @@ advance_token(Tokenizer* tokenizer) {
         utf8_advance_character(tokenizer);
         
         if (*tokenizer->curr == '/') {
-            do utf8_advance_character(tokenizer); while (*tokenizer->curr != '\n');
+            do utf8_advance_character(tokenizer);
+            while (tokenizer->curr < tokenizer->end && *tokenizer->curr != '\n');
             token.type = Token_Line_Comment;
             
         } else if (*tokenizer->curr == '*') {

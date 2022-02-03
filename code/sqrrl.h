@@ -12,6 +12,7 @@
 #include "sqrrl_types.h"
 #include "sqrrl_ast.h"
 #include "sqrrl_parser.h"
+#include "sqrrl_preprocessor.h"
 #include "sqrrl_interp.h"
 
 extern "C" int compiler_main_entry(int argc, char* argv[]);

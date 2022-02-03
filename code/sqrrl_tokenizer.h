@@ -239,3 +239,5 @@ scan_while(Tokenizer* tokenizer, bool predicate(u32)) {
     }
     return num_scanned;
 }
+
+Token advance_token(Tokenizer* tokenizer);

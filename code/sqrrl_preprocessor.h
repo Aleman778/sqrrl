@@ -6,6 +6,7 @@ struct Preprocessor_Macro {
     b32 is_integral;
     b32 is_functional;
     b32 is_variadic;
+    b32 is_valid;
 };
 
 struct Preprocessor {
@@ -100,8 +101,6 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                 
                 // This is where the token source will start
                 umm curr_line = token.line;
-                String_Builder sb = {};
-                string_builder_push(&sb, token.source);
                 
                 // Parse integral
                 token = advance_token(t);
@@ -115,6 +114,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                 }
                 
                 // Parse source
+                String_Builder sb = {};
                 while (is_valid_token(token.type) && token.line <= curr_line) {
                     if (token.type == Token_Backslash) {
                         curr_line++;
@@ -142,6 +142,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                             }
                             
                             string view = create_string((umm) char_index, token.source.data);
+                            break;
                         } else {
                             string_builder_push(&sb, token.source);
                         }
@@ -153,6 +154,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                 string_builder_free(&sb);
                 
                 // Store the macro
+                macro.is_valid = true;
                 map_put(preprocessor->macros, ident, macro);
                 
 #if BUILD_DEBUG
@@ -219,6 +221,19 @@ preprocess_file(string source, string filepath) {
         
         if (token.type == Token_Directive) {
             preprocess_directive(&preprocessor, &tokenizer);
+        } else if (token.type == Token_Ident) {
+            string_id ident = vars_save_string(token.source);
+            
+            Preprocessor_Macro macro = map_get(preprocessor.macros, ident);
+            
+            if (macro.is_valid) {
+                // TODO(Alexander): add functional support
+                string_builder_push(&sb, macro.source);
+            } else {
+                string_builder_push(&sb, token.source);
+            }
+        } else {
+            string_builder_push(&sb, token.source);
         }
     }
     

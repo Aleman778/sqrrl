@@ -28,6 +28,7 @@ TOKEN(Bit_And,                 "&")                 \
 TOKEN(Bit_Or,                  "|")                 \
 TOKEN(Bit_Xor,                 "^")                 \
 TOKEN(Mod,                     "%")                 \
+TOKEN(Backslash,               "\\")                \
 TOKEN(Line_Comment,            "line comment")      \
 TOKEN(Block_Comment,           "block comment")     \
 TOKEN(Whitespace,              "whitespace")        \

@@ -348,6 +348,7 @@ it_index++, it = arr + it_index)
 #define map_free(m) hmfree(m)
 #define map_put(m, k, v) hmput(m, k, v)
 #define map_get(m, k) hmget(m, k)
+#define map_key_exists(m, k) ((hmgeti(m, k)) != -1)
 #define map_remove(m, k) hmdel(m, k)
 #define map_count(m) hmlen(m)
 

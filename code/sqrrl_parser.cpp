@@ -176,6 +176,62 @@ parse_string(Parser* parser) {
     return push_ast_value(parser, create_string_value(result));
 }
 
+
+struct Int_Value_Result {
+    u64 value;
+    b32 is_too_large;
+};
+
+Parse_U64_Value_Result
+parse_u64_value(Token token) {
+    Parse_U64_Value_Result result = {};
+    
+    int base = 10;
+    int curr_index = 0;
+    switch (token.int_base) {
+        case IntBase_Binary: {
+            base = 2;
+            curr_index += 2;
+        } break;
+        
+        case IntBase_Octal: {
+            base = 8;
+            curr_index += 2;
+        } break;
+        
+        case IntBase_Hexadecimal: {
+            base = 16;
+            curr_index += 2;
+        } break;
+    }
+    
+    u64 value = 0;
+    while (curr_index < token.suffix_start) {
+        u8 c = token.source.data[curr_index++];
+        if (c == '_') continue;
+        
+        s32 d = hex_digit_to_s32(c);
+        assert(d != -1 && "tokenization bug");
+        u64 x = value * base;
+        if (value != 0 && x / base != value) {
+            result.is_too_large = true;
+            
+            break;
+        }
+        
+        u64 y = x + d;
+        if (y < x) { // NOTE(alexander): this should work since d is small compared to x
+            result.is_too_large = true;
+            break;
+        }
+        
+        value = y;
+    }
+    
+    result.value = value;
+    return result;
+}
+
 internal Ast*
 parse_int(Parser* parser) {
     Token token = parser->current_token;
@@ -212,46 +268,11 @@ case Kw_##name: type = &global_primitive_types[PrimitiveTypeKind_##name]; break;
         }
     }
     
-    int base = 10;
-    int curr_index = 0;
-    switch (token.int_base) {
-        case IntBase_Binary: {
-            base = 2;
-            curr_index += 2;
-        } break;
-        
-        case IntBase_Octal: {
-            base = 8;
-            curr_index += 2;
-        } break;
-        
-        case IntBase_Hexadecimal: {
-            base = 16;
-            curr_index += 2;
-        } break;
+    Parse_U64_Value_Result parsed_result = parse_u64_value(token);
+    if (parsed_result.is_too_large) {
+        parse_error(parser, token, string_lit("integer literal is too large"));
     }
-    
-    u64 value = 0;
-    while (curr_index < token.suffix_start) {
-        u8 c = token.source.data[curr_index++];
-        if (c == '_') continue;
-        
-        s32 d = hex_digit_to_s32(c);
-        assert(d != -1 && "tokenization error");
-        u64 x = value * base;
-        if (value != 0 && x / base != value) {
-            parse_error(parser, token, string_lit("integer literal is too large"));
-            break;
-        }
-        
-        u64 y = x + d;
-        if (y < x) { // NOTE(alexander): this should work since d is small compared to x
-            parse_error(parser, token, string_lit("integer literal is too large"));
-            break;
-        }
-        
-        value = y;
-    }
+    u64 value = parsed_result.value;
     
     return push_ast_value(parser, create_signed_int_value(value));
 }

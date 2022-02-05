@@ -59,6 +59,12 @@ parse_error_unexpected_token(Parser* parser, Token found) {
     parse_error(parser, found, string_format("unexpected token `%`", f_token(found.type)));
 }
 
+struct Parse_U64_Value_Result {
+    u64 value;
+    b32 is_too_large;
+};
+Parse_U64_Value_Result parse_u64_value(Token token);
+
 bool next_token_if_matched(Parser* parser, Token_Type expected, bool report_error=true);
 bool parse_keyword(Parser* parser, Keyword keyword, bool report_error=true);
 

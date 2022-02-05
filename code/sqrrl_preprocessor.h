@@ -1,23 +1,30 @@
 
 struct Preprocessor_Macro {
-    union {
-        u64 value;
-        string source;
-    };
+    u64 integral;
+    string source;
     array(string_id)* args;
     b32 is_integral;
+    b32 is_functional;
     b32 is_variadic;
 };
-typedef map(string_id, Preprocessor_Macro) Macro_Table;
 
-
-//internal Token
-//Token token = advance_token(t);
-
-//}
+struct Preprocessor {
+    map(string_id, Preprocessor_Macro)* macros;
+};
+//#define Macro_Table map(string_id, Preprocessor_Macro)
 
 internal void
-preprocess_directive(Tokenizer* t, Macro_Table* macros, smm curr_line_number = 0) {
+preprocessor_error(string message) {
+    pln("error: %", f_string(message));
+}
+
+internal inline bool
+is_valid_token(Token_Type type) {
+    return type != Token_EOF && type != Token_Error;
+}
+
+internal void
+preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
     Token token = advance_token(t);
     
     if (token.type == Token_Ident) {
@@ -25,10 +32,140 @@ preprocess_directive(Tokenizer* t, Macro_Table* macros, smm curr_line_number = 0
         
         switch (keyword) {
             case Kw_define: {
-                int count = 0;
-                u8* scan = t->curr_line;
-                while (*scan++ != '\n') count++;
-                printf("%.*s\n", count, t->curr_line);
+                token = advance_token(t);
+                if (token.type != Token_Whitespace) {
+                    return;
+                }
+                
+                token = advance_token(t);
+                if (token.type != Token_Ident) {
+                    preprocessor_error(string_format("expected `identifier`, found `%`", f_token(token.type)));
+                    return;
+                }
+                
+                string_id ident = vars_save_string(token.source);
+                
+                // Make sure we don't already have a macro with the same name
+                if (map_key_exists(preprocessor->macros, ident)) {
+                    preprocessor_error(string_format("cannot redeclare macro with same identifier `%`", 
+                                                     f_string(vars_load_string(ident))));
+                    return;
+                }
+                
+                Preprocessor_Macro macro = {};
+                
+                token = advance_token(t);
+                if (token.type == Token_Open_Paren) {
+                    // Function macro
+                    macro.is_functional = true;
+                    
+                    // Parse formal arguments
+                    token = advance_token(t);
+                    while (is_valid_token(token.type) && token.type != Token_Close_Paren) {
+                        if (token.type == Token_Ident) {
+                            string_id arg_ident = vars_save_string(token.source);
+                            array_push(macro.args, arg_ident);
+                        } else if (token.type == Token_Ellipsis) {
+                            macro.is_variadic = true;
+                            
+                            token = advance_token(t);
+                            if (token.type == Token_Close_Paren) {
+                                break;
+                            } else if (token.type == Token_Comma) {
+                                preprocessor_error(string_lit("expects variadic argument to always be the last argument"));
+                                return;
+                            } else  {
+                                preprocessor_error(string_format("expected `)`, found `%`", f_token(token.type)));
+                                return;
+                            }
+                        } else {
+                            preprocessor_error(string_format("expected `identifier` or `...`, found `%`", f_token(token.type)));
+                            return;
+                        }
+                        token = advance_token(t);
+                        if (token.type == Token_Comma || token.type == Token_Close_Paren) {
+                            preprocessor_error(string_format("expected `,` or `)`, found `%`", f_token(token.type)));
+                            return;
+                        }
+                        token = advance_token(t);
+                    }
+                    
+                    token = advance_token(t);
+                }
+                
+                if (token.type != Token_Whitespace) {
+                    preprocessor_error(string_format("expected `whitespace`, found `%`", f_token(token.type)));
+                    return;
+                }
+                
+                // This is where the token source will start
+                umm curr_line = token.line;
+                String_Builder sb = {};
+                string_builder_push(&sb, token.source);
+                
+                // Parse integral
+                token = advance_token(t);
+                if (token.type == Token_Int) {
+                    Parse_U64_Value_Result parsed_result = parse_u64_value(token);
+                    if (parsed_result.is_too_large) {
+                        preprocessor_error(string_format("integer `%` literal is too large", f_string(token.source)));
+                    }
+                    macro.integral = parsed_result.value;
+                    macro.is_integral = true;
+                }
+                
+                // Parse source
+                while (is_valid_token(token.type) && token.line <= curr_line) {
+                    if (token.type == Token_Backslash) {
+                        curr_line++;
+                        string_builder_push(&sb, "\n");
+                    }
+                    
+                    if (token.type == Token_Line_Comment || 
+                        token.type == Token_Block_Comment) {
+                        break;
+                    }
+                    
+                    if (token.line == curr_line) {
+                        if (token.type == Token_Whitespace) {
+                            // Remove everything after newline if detected
+                            int char_index;
+                            for (char_index = 0; 
+                                 char_index < token.source.count;
+                                 char_index++) {
+                                
+                                // TODO(Alexander): not perfect since utf8 chars can
+                                // mess up the ASCII bytes, this is however unlikely
+                                if (token.source.data[char_index] == '\n') {
+                                    break;
+                                }
+                            }
+                            
+                            string view = create_string((umm) char_index, token.source.data);
+                        } else {
+                            string_builder_push(&sb, token.source);
+                        }
+                    }
+                    
+                    token = advance_token(t);
+                }
+                macro.source = string_builder_to_string(&sb);
+                string_builder_free(&sb);
+                
+                // Store the macro
+                map_put(preprocessor->macros, ident, macro);
+                
+#if BUILD_DEBUG
+                // Debugging code
+                string ident_string = vars_load_string(ident);
+                if (macro.is_integral) {
+                    pln("#define % % (%)", f_string(ident_string), f_string(macro.source),
+                        f_u64(macro.integral));
+                } else {
+                    pln("#define % %", f_string(ident_string), f_string(macro.source));
+                }
+#endif
+                
             } break;
             
             case Kw_if: {
@@ -52,7 +189,7 @@ preprocess_directive(Tokenizer* t, Macro_Table* macros, smm curr_line_number = 0
 }
 
 string
-preprocess_file(string source, string filepath, Macro_Table* macros = 0) {
+preprocess_file(string source, string filepath) {
     Tokenizer tokenizer = {};
     tokenizer_set_source(&tokenizer, source, filepath);
     
@@ -64,14 +201,15 @@ preprocess_file(string source, string filepath, Macro_Table* macros = 0) {
     // Windows API macros (for debugging)
     Preprocessor_Macro UNICODE = {};
     Preprocessor_Macro WINVER = {};
-    WINVER.value = 0x0400;
+    WINVER.integral = 0x0400;
     WINVER.is_integral = true;
     
     string_id UNICODE_ident = vars_save_cstring("UNICODE");
     string_id WINVER_ident = vars_save_cstring("WINVER");
     
-    map_put(macros, UNICODE_ident, UNICODE);
-    map_put(macros, WINVER_ident, WINVER);
+    Preprocessor preprocessor = {};
+    map_put(preprocessor.macros, UNICODE_ident, UNICODE);
+    map_put(preprocessor.macros, WINVER_ident, WINVER);
     
     for (;;) {
         Token token = advance_token(&tokenizer);
@@ -80,7 +218,7 @@ preprocess_file(string source, string filepath, Macro_Table* macros = 0) {
         }
         
         if (token.type == Token_Directive) {
-            preprocess_directive(&tokenizer, macros, token.line);
+            preprocess_directive(&preprocessor, &tokenizer);
         }
     }
     

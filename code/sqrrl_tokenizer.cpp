@@ -264,11 +264,39 @@ scan_number(Tokenizer* tokenizer, Token& token) {
     
     if (*tokenizer->curr == 'f') {
         token.type = Token_Float;
+        token.suffix_start = (smm) (tokenizer->curr - tokenizer->start) - token.offset;
         utf8_advance_character(tokenizer);
     }
     
+    // Type annotations separated by one ore more underline e.g. 10_u64
     while (*tokenizer->curr == '_' && tokenizer->curr < tokenizer->end) utf8_advance_character(tokenizer);
-    token.suffix_start = (smm) (tokenizer->curr - tokenizer->start) - token.offset;
+    token.suffix_start = (smm) (tokenizer->curr - (tokenizer->start + token.offset));
+    
+    // NOTE(Alexander): this wasn't really needed unless we want to store
+    // this information to help the parser.
+    // C type annotations
+#if 0
+    if (token.type == Token_Int) {
+        if ((*tokenizer->curr == 'u' || *tokenizer->curr == 'U') &&
+            tokenizer->curr < tokenizer->end) {
+            // unsigned
+            utf8_advance_character(tokenizer);
+        }
+        
+        if ((*tokenizer->curr == 'l' || *tokenizer->curr == 'L') &&
+            tokenizer->curr < tokenizer->end) {
+            
+            // long
+            utf8_advance_character(tokenizer);
+            if ((*tokenizer->curr == 'l' || *tokenizer->curr == 'L') &&
+                tokenizer->curr < tokenizer->end) {
+                // long long
+                utf8_advance_character(tokenizer);
+            }
+        }
+    }
+#endif
+    
     if (is_ident_start(*tokenizer->curr)) {
         scan_while(tokenizer, &is_ident_continue);
     }
@@ -336,8 +364,7 @@ advance_token(Tokenizer* tokenizer) {
     
     u8* base = tokenizer->curr;
     bool advance_utf32_at_end = true;
-    Token token;
-    token.type = Token_Invalid;
+    Token token = {};
     token.file = tokenizer->file;
     token.line = tokenizer->line_number;
     token.column = tokenizer->column_number;
@@ -575,6 +602,7 @@ advance_token(Tokenizer* tokenizer) {
             case ']':  token.type = Token_Close_Bracket; break;
             case '{':  token.type = Token_Open_Brace; break;
             case '}':  token.type = Token_Close_Brace; break;
+            case '\\': token.type = Token_Backslash; break;
             case '\0': token.type = Token_EOF; break;
             
             default: {

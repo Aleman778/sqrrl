@@ -11,8 +11,10 @@ void DEBUG_log_backtrace();
 #define PATH_MAX 200 // TODO(alexander): this shouldn't be used, just for debug code!!!
 #endif
 
+#if BUILD_DEBUG
 // NOTE(alexander): THIS IS ONLY FOR DEBUGGING
-void DEBUG_log_backtrace() {
+void 
+DEBUG_log_backtrace() {
     DWORD machine = IMAGE_FILE_MACHINE_AMD64;
     HANDLE process = GetCurrentProcess();
     HANDLE thread = GetCurrentThread();
@@ -90,7 +92,12 @@ void DEBUG_log_backtrace() {
     
     SymCleanup(process);
 }
-
+#else
+void 
+DEBUG_log_backtrace() {
+    
+}
+#endif
 
 int main(int argc, char* argv[]) {
     // NOTE(alexander): here goes any platform specific initialization

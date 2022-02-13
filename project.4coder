@@ -31,6 +31,10 @@ commands = {
     .win   = "build_msvc.bat",
     .linux = "./build_gcc.sh",
     .mac   = "./build_gcc.sh", },
+  .build_release = { .out = "*compilation*", .footer_panel = true, .save_dirty_files = true,
+    .win   = "build_msvc.bat release",
+    .linux = "./build_gcc.sh release",
+    .mac   = "./build_gcc.sh release", },
   .run = { .out = "*run*", .footer_panel = false, .save_dirty_files = false,
     .win = "build\\sqrrl.exe",
     .linux = "build/sqrrl",
@@ -40,4 +44,5 @@ commands = {
 fkey_command = {
   .F1 = "build",
   .F2 = "run",
+  .F3 = "build_release",
 };

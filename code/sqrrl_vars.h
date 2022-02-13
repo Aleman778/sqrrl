@@ -32,6 +32,7 @@ VAR(struct)   \
 VAR(true)     \
 VAR(typedef)  \
 VAR(union)    \
+VAR(undef)    \
 VAR(while)    \
 VAR(int)      \
 VAR(s8)       \

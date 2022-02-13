@@ -58,7 +58,7 @@ compiler_main_entry(int argc, char* argv[]) {
 #if 0
     // Lexer
     Tokenizer tokenizer = {};
-    tokenizer_set_source(&tokenizer, source, filepath);
+    tokenizer_set_source(&tokenizer, preprocessed_source, filepath);
     // TODO(alexander): calculate line number!
     
     Parser parser = {};

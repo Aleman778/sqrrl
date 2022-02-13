@@ -32,15 +32,6 @@ preprocess_error(string message) {
     DEBUG_log_backtrace();
 }
 
-internal Token
-next_semantical_token(Tokenizer* t) {
-    Token token = advance_token(t);
-    while (!is_semantical_token(token)) {
-        token = advance_token(t);
-    }
-    return token;
-}
-
 internal Replacement_List
 preprocess_parse_actual_arguments(Tokenizer* t) {
     Replacement_List result = {};
@@ -51,13 +42,19 @@ preprocess_parse_actual_arguments(Tokenizer* t) {
     while (is_token_valid(token) && token.type != Token_Close_Paren) {
         u8* begin = token.source.data;
         
-        while (is_token_valid(token) && token.type != Token_Comma || token.type != Token_Close_Paren) {
+        while (is_token_valid(token) && token.type != Token_Comma && token.type != Token_Close_Paren) {
             token = advance_token(t);
         }
         
         u8* end = token.source.data;
         string replacement = string_view(begin, end);
         array_push(result.list, replacement);
+        
+        
+        if (!is_token_valid(token) || token.type == Token_Close_Paren) {
+            break;
+        }
+        token = advance_token(t);
     }
     
     if (token.type != Token_Close_Paren) {
@@ -220,7 +217,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
     }
 }
 
-Preprocessor_Line
+internal Preprocessor_Line
 preprocess_splice_line(u8* curr, u32 curr_line_number, u8* end) {
     Preprocessor_Line result = {};
     result.curr_line_number = curr_line_number;
@@ -251,6 +248,129 @@ preprocess_splice_line(u8* curr, u32 curr_line_number, u8* end) {
     return result;
 }
 
+internal void
+preprocess_line(Preprocessor* preprocessor, String_Builder* sb, Tokenizer* t) {
+    Token prev_token = {};
+    Token token = advance_token(t);
+    
+    if (token.type == Token_Directive) {
+        preprocess_directive(preprocessor, t);
+    } else {
+        if (token.type == Token_Concatenator) {
+            preprocess_error(string_lit("cannot concatenate at the beginning of a line"));
+        }
+    }
+    
+    array(Tokenizer_State)* tokenizer_states = 0;
+    array(Preprocessor_Macro)* macros = 0;
+    array(Replacement_List)* replacement_lists = 0;
+    
+    bool stringize_token = false;
+    bool concatenate_token = false;
+    
+    while (is_token_valid(token)) {
+        switch (token.type) {
+            case Token_Ident: {
+                assert(token.type == Token_Ident && "expects token to be an identifier");
+                
+                string_id ident = vars_save_string(token.source);
+                
+                bool expanded = false;
+                
+                // First try to replace with macro argument, if we are inside a macro
+                if (macros && array_count(macros) > 0) {
+                    Preprocessor_Macro* macro = &macros[array_count(macros) - 1];
+                    
+                    if (map_key_exists(macro->arg_mapper, ident)) {
+                        int arg_index = map_get(macro->arg_mapper, ident);
+                        Replacement_List args = replacement_lists[array_count(replacement_lists) - 1];
+                        if (args.success) {
+                            
+                            string source = args.list[arg_index];
+                            
+                            // TODO(Alexander): record line/ col of this
+                            Tokenizer_State state = save_tokenizer(t);
+                            array_push(tokenizer_states, state);
+                            tokenizer_set_substring(t, source, 0, 0);
+                            expanded = true;
+                        }
+                    }
+                }
+                
+                if (!expanded) {
+                    Preprocessor_Macro macro = map_get(preprocessor->macros, ident);
+                    if (macro.is_valid) {
+                        Replacement_List args = preprocess_parse_actual_arguments(t);
+                        array_push(replacement_lists, args);
+                        
+                        // TODO(Alexander): record line/ col of this
+                        Tokenizer_State state = save_tokenizer(t);
+                        array_push(tokenizer_states, state);
+                        array_push(macros, macro);
+                        tokenizer_set_substring(t, macro.source, 0, 0);
+                    } else {
+                        string_builder_push(sb, token.source);
+                    }
+                }
+                
+            } break;
+            
+            case Token_Directive: {
+                stringize_token = true;
+                token = advance_token(t);
+                prev_token = token;
+                
+                // NOTE(Alexander): copypasta from bottom of func
+                if (!is_token_valid(token) && tokenizer_states) {
+                    // Try to restore previous state
+                    Tokenizer_State state = array_pop(tokenizer_states);
+                    if (state.tokenizer) {
+                        restore_tokenizer(&state);
+                        token = advance_token(t);
+                    }
+                }
+                continue;
+            } break;
+            
+            case Token_Concatenator: {
+                concatenate_token = true;
+                token = advance_token(t);
+                
+                // NOTE(Alexander): copypasta from bottom of func
+                if (!is_token_valid(token) && tokenizer_states) {
+                    // Try to restore previous state
+                    Tokenizer_State state = array_pop(tokenizer_states);
+                    if (state.tokenizer) {
+                        restore_tokenizer(&state);
+                        token = advance_token(t);
+                    }
+                }
+                continue;
+            } break;
+            
+            case Token_Backslash: break;
+            
+            default: {
+                string_builder_push(sb, token.source);
+            } break;
+        }
+        
+        stringize_token = false;
+        concatenate_token = false;
+        prev_token = token;
+        token = advance_token(t);
+        
+        if (!is_token_valid(token) && tokenizer_states) {
+            // Try to restore previous state
+            Tokenizer_State state = array_pop(tokenizer_states);
+            if (state.tokenizer) {
+                restore_tokenizer(&state);
+                token = advance_token(t);
+            }
+        }
+    }
+}
+
 string
 preprocess_file(string source, string filepath) {
     Tokenizer tokenizer = {};
@@ -270,17 +390,8 @@ preprocess_file(string source, string filepath) {
         curr_line_number = line.next_line_number;
         
         tokenizer_set_substring(&tokenizer, line.substring, line.curr_line_number, 0);
-        Token token = advance_token(&tokenizer);
         
-        if (token.type == Token_Directive) {
-            preprocess_directive(&preprocessor, &tokenizer);
-        } else {
-            
-        }
-        
-        
-        
-        //pln("Line: %\nFirst Token: %\nSource:\n%", f_uint(line.curr_line_number + 1), f_token(token.type), f_string(line.substring));
+        preprocess_line(&preprocessor, &sb, &tokenizer);
     }
     
     return string_builder_to_string_nocopy(&sb);

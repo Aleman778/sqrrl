@@ -318,3 +318,13 @@ is_semantical_token(Token token) {
 }
 
 Token advance_token(Tokenizer* tokenizer);
+
+inline Token
+next_semantical_token(Tokenizer* t) {
+    Token token = advance_token(t);
+    while (!is_semantical_token(token)) {
+        token = advance_token(t);
+    }
+    return token;
+}
+

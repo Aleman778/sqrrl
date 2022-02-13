@@ -19,7 +19,7 @@ compiler_main_entry(int argc, char* argv[]) {
     if (argc > 1) {
         filepath = string_lit(argv[1]);
     } else {
-        filepath = string_lit("examples/demo.sq");
+        filepath = string_lit("examples/demo_macros.sq");
     }
 #else
     if (argc <= 1) {

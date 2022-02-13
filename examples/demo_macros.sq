@@ -1,0 +1,18 @@
+
+#define TEST 10
+
+#define PI 3.14159265359
+
+#define warn_message "warning: "
+#define log_warn(fmt, ...) pln(warn_message##fmt, __VA_ARGS__)
+
+void
+main() {
+    
+    pln("test is %, pi is %", TEST, PI);
+    log_warn("test is %, pi is %", TEST, PI);
+    
+    log_warn("something is likely going wrong");
+}
+
+

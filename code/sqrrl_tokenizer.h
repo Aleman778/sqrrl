@@ -147,6 +147,18 @@ tokenizer_set_source(Tokenizer* tokenizer, string source, string file) {
     array_push(tokenizer->lines, 0);
 }
 
+inline void 
+tokenizer_seek_pos(Tokenizer* tokenizer, u8* pos, smm line_number, smm column_number) {
+    assert(pos >= tokenizer->start && pos <= tokenizer->end && "pos is out of range");
+    
+    tokenizer->curr = pos;
+    tokenizer->next = pos;
+    tokenizer->curr_line = pos; // TODO: this may not always work
+    tokenizer->line_number = line_number;
+    tokenizer->line_number = column_number;
+    
+}
+
 struct Tokenizer_State {
     Tokenizer* tokenizer;
     u8* next;

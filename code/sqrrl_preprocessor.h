@@ -9,8 +9,16 @@ struct Preprocessor_Macro {
     b32 is_valid;
 };
 
+struct Preprocessor_Line {
+    string substring;
+    u32 curr_line_number;
+    u32 next_line_number;
+};
+
 struct Preprocessor {
+    Tokenizer* t;
     map(string_id, Preprocessor_Macro)* macros;
+    smm curr_line_number;
 };
 //#define Macro_Table map(string_id, Preprocessor_Macro)
 
@@ -18,64 +26,6 @@ internal void
 preprocessor_error(string message) {
     pln("error: %", f_string(message));
 }
-
-
-#if 0
-internal string
-slice_first_line(Tokenizer* t) {
-    u32 curr_line = 0;
-    u32 num_merged_lines = curr_line + 1;
-    
-    while (curr_line < num_lines) {
-        Utf32_Character utf32 = utf8_advance_character(t);
-        if (utf32.count == 0) break;
-        if (utf32.count == 1) continue;
-        char* c = utf32.bytes[0];
-        
-        
-        if (c == '\\') {
-            
-        } else if (c == '\n') {
-            
-        }
-        
-        if (token.type == Token_Backslash) {
-            curr_line++;
-            string_builder_push(&sb, "\n");
-        }
-        
-        if (token.type == Token_Line_Comment || 
-            token.type == Token_Block_Comment) {
-            break;
-        }
-        
-        if (token.line == curr_line) {
-            if (token.type == Token_Whitespace) {
-                // Remove everything after newline if detected
-                int char_index;
-                for (char_index = 0; 
-                     char_index < token.source.count;
-                     char_index++) {
-                    
-                    // TODO(Alexander): not perfect since utf8 chars can
-                    // mess up the ASCII bytes, this is however unlikely
-                    if (token.source.data[char_index] == '\n') {
-                        break;
-                    }
-                }
-                
-                string view = create_string((umm) char_index, token.source.data);
-                break;
-            } else {
-                string_builder_push(&sb, token.source);
-            }
-        }
-        
-        token = advance_token(t);
-    }
-}
-#endif
-
 
 internal void
 preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
@@ -206,6 +156,37 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
     }
 }
 
+Preprocessor_Line
+preprocess_splice_line(u8* curr, u32 curr_line_number, u8* end) {
+    Preprocessor_Line result = {};
+    result.curr_line_number = curr_line_number;
+    
+    u32 next_line_number = curr_line_number + 1;
+    u8* begin = curr;
+    while (curr < end && curr_line_number < next_line_number) {
+        Utf8_To_Utf32_Result character = utf8_convert_to_utf32(curr, end);
+        if (character.num_bytes == 0) {
+            preprocessor_error(string_lit("invalid utf-8 formatting detected"));
+            break;
+        }
+        
+        u8 c = *curr;
+        if (c == '\\') {
+            next_line_number++;
+        } else if (c == '\n') {
+            curr_line_number++;
+        }
+        
+        curr += character.num_bytes;
+    }
+    
+    end = curr;
+    result.substring = string_view(begin, end);
+    result.next_line_number = next_line_number;
+    
+    return result;
+}
+
 string
 preprocess_file(string source, string filepath) {
     Tokenizer tokenizer = {};
@@ -216,45 +197,20 @@ preprocess_file(string source, string filepath) {
     
     String_Builder sb = {};
     
-    // Windows API macros (for debugging)
-    Preprocessor_Macro UNICODE = {};
-    Preprocessor_Macro WINVER = {};
-    WINVER.integral = 0x0400;
-    WINVER.is_integral = true;
-    
-    string_id UNICODE_ident = vars_save_cstring("UNICODE");
-    string_id WINVER_ident = vars_save_cstring("WINVER");
-    
     Preprocessor preprocessor = {};
-    map_put(preprocessor.macros, UNICODE_ident, UNICODE);
-    map_put(preprocessor.macros, WINVER_ident, WINVER);
     
-    for (;;) {
-        Token token = advance_token(&tokenizer);
-        if (is_token_valid(token)) {
-            break;
-        }
+    u32 curr_line_number = 0;
+    u8* curr = source.data;
+    u8* end = source.data + source.count;
+    
+    while (curr < end) {
+        Preprocessor_Line line = preprocess_splice_line(curr, curr_line_number, end);
+        curr += line.substring.count;
+        curr_line_number = line.next_line_number;
         
-        if (token.type == Token_Directive) {
-            preprocess_directive(&preprocessor, &tokenizer);
-        } else if (token.type == Token_Ident) {
-            string_id ident = vars_save_string(token.source);
-            
-            Preprocessor_Macro macro = map_get(preprocessor.macros, ident);
-            
-            if (macro.is_valid) {
-                // TODO(Alexander): add functional support
-                string_builder_push(&sb, macro.source);
-            } else {
-                string_builder_push(&sb, token.source);
-            }
-        } else {
-            string_builder_push(&sb, token.source);
-        }
+        pln("Line: %\n%\n", f_uint(line.curr_line_number + 1), f_string(line.substring));
+        
     }
     
     return string_builder_to_string_nocopy(&sb);
 }
-
-
-

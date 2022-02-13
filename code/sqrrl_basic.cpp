@@ -71,7 +71,7 @@ print_format(const char* format...) {
     }
     
     if (count_until_percent > 0) {
-        printf("%.*s\n", count_until_percent, format_at_prev_percent);
+        printf("%.*s", count_until_percent, format_at_prev_percent);
     }
 }
 

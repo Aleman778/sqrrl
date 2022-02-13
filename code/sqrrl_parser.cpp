@@ -999,10 +999,10 @@ parse_type(Parser* parser, bool report_error) {
         return 0;
     }
     
-    next_token(parser);
-    
     Ast* base = 0;
     string_id ident = vars_save_string(token.source);
+    
+    next_token(parser);
     
     if (ident >= builtin_types_begin && ident <= builtin_types_end || ident > keyword_last ||
         ident == Kw_string) {
@@ -1215,7 +1215,7 @@ parse_file(Parser* parser) {
     
     while (true) {
         Token token = peek_token(parser);
-        if (token.type == Token_EOF || token.type == Token_Error) {
+        if (!is_token_valid(token)) {
             break;
         }
         

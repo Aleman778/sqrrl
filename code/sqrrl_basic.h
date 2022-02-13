@@ -154,7 +154,7 @@ string_copy(string str) {
 
 inline string
 string_view(u8* begin, u8* end) {
-    assert(begin < end);
+    assert(begin <= end);
     
     string result;
     result.count = (umm) (end - begin);

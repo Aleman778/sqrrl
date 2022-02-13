@@ -17,7 +17,7 @@ compiler_main_entry(int argc, char* argv[]) {
     if (argc > 1) {
         filepath = string_lit(argv[1]);
     } else {
-        filepath = string_lit("C:/Dev/sqrrl/examples/c_header.h");
+        filepath = string_lit("examples/demo.sq");
     }
     
     // Setup string interning of variables
@@ -39,12 +39,14 @@ compiler_main_entry(int argc, char* argv[]) {
     fread(source.data, source.count, 1, file);
     fclose(file);
     
+#if 0
     string preprocessed_source = preprocess_file(source, filepath);
     
     // TODO(alexander): temp printing source
     pln("%", f_string(preprocessed_source));
+#endif
     
-#if 0
+#if 1
     // Lexer
     Tokenizer tokenizer = {};
     tokenizer_set_source(&tokenizer, source, filepath);

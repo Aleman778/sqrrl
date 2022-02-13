@@ -19,10 +19,63 @@ preprocessor_error(string message) {
     pln("error: %", f_string(message));
 }
 
-internal inline bool
-is_valid_token(Token_Type type) {
-    return type != Token_EOF && type != Token_Error;
+
+#if 0
+internal string
+slice_first_line(Tokenizer* t) {
+    u32 curr_line = 0;
+    u32 num_merged_lines = curr_line + 1;
+    
+    while (curr_line < num_lines) {
+        Utf32_Character utf32 = utf8_advance_character(t);
+        if (utf32.count == 0) break;
+        if (utf32.count == 1) continue;
+        char* c = utf32.bytes[0];
+        
+        
+        if (c == '\\') {
+            
+        } else if (c == '\n') {
+            
+        }
+        
+        if (token.type == Token_Backslash) {
+            curr_line++;
+            string_builder_push(&sb, "\n");
+        }
+        
+        if (token.type == Token_Line_Comment || 
+            token.type == Token_Block_Comment) {
+            break;
+        }
+        
+        if (token.line == curr_line) {
+            if (token.type == Token_Whitespace) {
+                // Remove everything after newline if detected
+                int char_index;
+                for (char_index = 0; 
+                     char_index < token.source.count;
+                     char_index++) {
+                    
+                    // TODO(Alexander): not perfect since utf8 chars can
+                    // mess up the ASCII bytes, this is however unlikely
+                    if (token.source.data[char_index] == '\n') {
+                        break;
+                    }
+                }
+                
+                string view = create_string((umm) char_index, token.source.data);
+                break;
+            } else {
+                string_builder_push(&sb, token.source);
+            }
+        }
+        
+        token = advance_token(t);
+    }
 }
+#endif
+
 
 internal void
 preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
@@ -62,7 +115,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                     
                     // Parse formal arguments
                     token = advance_token(t);
-                    while (is_valid_token(token.type) && token.type != Token_Close_Paren) {
+                    while (is_token_valid(token) && token.type != Token_Close_Paren) {
                         if (token.type == Token_Ident) {
                             string_id arg_ident = vars_save_string(token.source);
                             array_push(macro.args, arg_ident);
@@ -113,45 +166,8 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                     macro.is_integral = true;
                 }
                 
-                // Parse source
-                String_Builder sb = {};
-                while (is_valid_token(token.type) && token.line <= curr_line) {
-                    if (token.type == Token_Backslash) {
-                        curr_line++;
-                        string_builder_push(&sb, "\n");
-                    }
-                    
-                    if (token.type == Token_Line_Comment || 
-                        token.type == Token_Block_Comment) {
-                        break;
-                    }
-                    
-                    if (token.line == curr_line) {
-                        if (token.type == Token_Whitespace) {
-                            // Remove everything after newline if detected
-                            int char_index;
-                            for (char_index = 0; 
-                                 char_index < token.source.count;
-                                 char_index++) {
-                                
-                                // TODO(Alexander): not perfect since utf8 chars can
-                                // mess up the ASCII bytes, this is however unlikely
-                                if (token.source.data[char_index] == '\n') {
-                                    break;
-                                }
-                            }
-                            
-                            string view = create_string((umm) char_index, token.source.data);
-                            break;
-                        } else {
-                            string_builder_push(&sb, token.source);
-                        }
-                    }
-                    
-                    token = advance_token(t);
-                }
-                macro.source = string_builder_to_string(&sb);
-                string_builder_free(&sb);
+                //macro.source = string_builder_to_string(&sb);
+                //string_builder_free(&sb);
                 
                 // Store the macro
                 macro.is_valid = true;
@@ -215,7 +231,7 @@ preprocess_file(string source, string filepath) {
     
     for (;;) {
         Token token = advance_token(&tokenizer);
-        if (token.type == Token_EOF || token.type == Token_Error) {
+        if (is_token_valid(token)) {
             break;
         }
         

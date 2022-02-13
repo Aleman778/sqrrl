@@ -241,4 +241,27 @@ scan_while(Tokenizer* tokenizer, bool predicate(u32)) {
     return num_scanned;
 }
 
+inline bool
+is_token_valid(Token token) {
+    return token.type != Token_Invalid && token.type != Token_EOF;
+}
+
+inline bool
+is_semantical_token(Token token) {
+    // NOTE(alexander): sementical tokens are tokens that are relevant to the actual parser.
+    switch (token.type) {
+        case Token_Line_Comment:
+        case Token_Block_Comment:
+        case Token_Whitespace:
+        case Token_Invalid:
+        case Token_Error: {
+            return false;
+        }; break;
+        
+        default: {
+            return true;
+        }; break;
+    }
+}
+
 Token advance_token(Tokenizer* tokenizer);

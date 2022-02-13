@@ -185,6 +185,39 @@ restore_tokenizer(Tokenizer_State* state) {
     }
 }
 
+inline u8
+utf8_calculate_num_bytes(u8 first_byte) {
+    if (first_byte & 0x80) {
+        u8 mask = 0xC0;
+        u8 num_bytes;
+        for (num_bytes = 1; ((u8) (first_byte & mask) != (u8) (mask << 1)); num_bytes++) {
+            if (num_bytes > 4) {
+                return 0;
+            }
+            mask = (mask >> 1) | 0x80;
+        }
+        
+        if (num_bytes == 1) {
+            return 0;
+        }
+        
+        return num_bytes;
+    } else {
+        return 1;
+    }
+}
+
+struct Utf8_To_Utf32_Result {
+    u32 value;
+    u32 num_bytes; // number of bytes converted, if 0 then it failed
+};
+
+// NOTE(alexander): this is used to detect utf8 characters
+global const u8 utf8_first_byte_mark[4] = { 0x00, 0xC0, 0xE0, 0xF0 };
+global const u8 utf8_first_byte_mask[4] = { 0x7F, 0x1F, 0x0F, 0x07 };
+
+Utf8_To_Utf32_Result utf8_convert_to_utf32(u8* curr, u8* end);
+
 inline bool
 is_hex_digit(u8 c) {
     return ('0' <= c && c <= '9')

@@ -10,30 +10,34 @@ tokenization_error(Tokenizer* t, cstring message) {
     tokenization_error(t, string_lit(message));
 }
 
-// NOTE(alexander): this is used to detect utf8 characters
-global const u8 utf8_first_byte_mark[4] = { 0x00, 0xC0, 0xE0, 0xF0 };
-global const u8 utf8_first_byte_mask[4] = { 0x7F, 0x1F, 0x0F, 0x07 };
-
-internal inline u8
-utf8_calculate_num_bytes(u8 next) {
-    if (next & 0x80) {
-        u8 mask = 0xC0;
-        u8 num_bytes;
-        for (num_bytes = 1; ((u8) (next & mask) != (u8) (mask << 1)); num_bytes++) {
-            if (num_bytes > 4) {
-                return 0;
-            }
-            mask = (mask >> 1) | 0x80;
-        }
-        
-        if (num_bytes == 1) {
-            return 0;
-        }
-        
-        return num_bytes;
-    } else {
-        return 1;
+Utf8_To_Utf32_Result
+utf8_convert_to_utf32(u8* curr, u8* end) {
+    Utf8_To_Utf32_Result result = {};
+    
+    u8 c = *curr++;
+    result.num_bytes = utf8_calculate_num_bytes(c);
+    if (result.num_bytes == 0) {
+        return result;
     }
+    
+    result.value = c & utf8_first_byte_mask[result.num_bytes - 1];
+    for (u32 i = 1; i < result.num_bytes; i++) {
+        if (curr >= end) {
+            result.num_bytes = 0;
+            break;
+        }
+        
+        c = *curr++;
+        if ((u8) (c & 0xC0) == (u8) 0x80) {
+            result.num_bytes = 0;
+            break;
+        }
+        
+        result.value <<= 6;
+        result.value |= c & 0x3F;
+    }
+    
+    return result;
 }
 
 void
@@ -60,25 +64,14 @@ utf8_advance_character(Tokenizer* tokenizer) {
         return;
     }
     
-    u8 next = *tokenizer->next++;
-    tokenizer->curr_utf32_character = next & utf8_first_byte_mask[num_bytes - 1];
-    for (int i = 1; i < num_bytes; i++) {
-        if (tokenizer->curr >= tokenizer->end) {
-            //tokenization_error(t, "invalid utf-8 character");
-            tokenizer->curr_utf32_character = 0;
-            return;
-        }
-        
-        if ((u8) (next & 0xC0) == (u8) 0x80) {
-            //tokenization_error(t, "invalid utf-8 character");
-            tokenizer->curr_utf32_character = 0;
-            return;
-        }
-        
-        tokenizer->curr_utf32_character <<= 6;
-        tokenizer->curr_utf32_character |= *tokenizer->next++ & 0x3F;
+    Utf8_To_Utf32_Result character = utf8_convert_to_utf32(tokenizer->curr, tokenizer->end);
+    if (character.num_bytes == 0) {
+        tokenization_error(tokenizer, string_lit("invalid utf-8 formatting detected"));
+        return;
     }
-    return;
+    
+    tokenizer->curr_utf32_character = character.value;
+    tokenizer->next += character.num_bytes;
 }
 
 u8 //NOTE(alexander): utf8_string needs atleast 4 slots available, returns number of slots actually used.

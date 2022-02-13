@@ -14,6 +14,7 @@ TOKEN(Open_Bracket,            "[")                 \
 TOKEN(Close_Bracket,           "]")                 \
 TOKEN(Annotation,              "@")                 \
 TOKEN(Directive,               "#")                 \
+TOKEN(Concatenator,            "##")                \
 TOKEN(Question,                "?")                 \
 TOKEN(Dollar,                  "$")                 \
 TOKEN(Assign,                  "=")                 \
@@ -115,6 +116,7 @@ struct Tokenizer {
     u8* next; // points to the beginning of the next character (peeked)
     u8* curr; // the current character
     u8* curr_line; // points to the first character of a new line.
+    u8* end_of_file; // actual end of the file, end can be end of substring into this source file
     
     string source;
     string file;
@@ -131,6 +133,7 @@ inline void
 tokenizer_set_source(Tokenizer* tokenizer, string source, string file) {
     tokenizer->start = source.data;
     tokenizer->end = tokenizer->start + source.count;
+    tokenizer->end_of_file = tokenizer->end;
     tokenizer->next = tokenizer->start;
     tokenizer->source = source;
     tokenizer->curr = tokenizer->start;
@@ -148,15 +151,20 @@ tokenizer_set_source(Tokenizer* tokenizer, string source, string file) {
 }
 
 inline void 
-tokenizer_seek_pos(Tokenizer* tokenizer, u8* pos, smm line_number, smm column_number) {
-    assert(pos >= tokenizer->start && pos <= tokenizer->end && "pos is out of range");
+tokenizer_set_substring(Tokenizer* tokenizer, string substring, 
+                        smm first_line_number, smm first_column_number) {
+    u8* begin = substring.data;
+    u8* end = begin + substring.count;
     
-    tokenizer->curr = pos;
-    tokenizer->next = pos;
-    tokenizer->curr_line = pos; // TODO: this may not always work
-    tokenizer->line_number = line_number;
-    tokenizer->line_number = column_number;
+    assert(begin >= tokenizer->start && end <= tokenizer->end_of_file && "substring is outside the source");
     
+    tokenizer->curr = begin;
+    tokenizer->next = begin;
+    tokenizer->curr_line = begin; // TODO: only true if first_column_number = 0 
+    tokenizer->end = end;
+    tokenizer->line_number = first_line_number;
+    tokenizer->column_number = first_column_number;
+    utf8_advance_character(tokenizer);
 }
 
 struct Tokenizer_State {

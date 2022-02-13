@@ -583,10 +583,18 @@ advance_token(Tokenizer* tokenizer) {
                 }
             } break;
             
+            case '#': {
+                if (*tokenizer->next == '#') {
+                    utf8_advance_character(tokenizer);
+                    token.type = Token_Concatenator;
+                } else {
+                    token.type = Token_Directive; 
+                }
+            } break;
+            
             case ',':  token.type = Token_Comma; break;
             case ';':  token.type = Token_Semi; break;
             case '@':  token.type = Token_Annotation; break;
-            case '#':  token.type = Token_Directive; break;
             case '?':  token.type = Token_Question; break;
             case '$':  token.type = Token_Dollar; break;
             case '(':  token.type = Token_Open_Paren; break;

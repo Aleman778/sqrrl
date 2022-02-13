@@ -192,9 +192,6 @@ preprocess_file(string source, string filepath) {
     Tokenizer tokenizer = {};
     tokenizer_set_source(&tokenizer, source, filepath);
     
-    Parser parser = {};
-    parser.tokenizer = &tokenizer;
-    
     String_Builder sb = {};
     
     Preprocessor preprocessor = {};
@@ -208,8 +205,9 @@ preprocess_file(string source, string filepath) {
         curr += line.substring.count;
         curr_line_number = line.next_line_number;
         
-        pln("Line: %\n%\n", f_uint(line.curr_line_number + 1), f_string(line.substring));
-        
+        tokenizer_set_substring(&tokenizer, line.substring, line.curr_line_number, 0);
+        Token token = advance_token(&tokenizer);
+        pln("Line: %\nFirst Token: %\nSource:\n%", f_uint(line.curr_line_number + 1), f_token(token.type), f_string(line.substring));
     }
     
     return string_builder_to_string_nocopy(&sb);

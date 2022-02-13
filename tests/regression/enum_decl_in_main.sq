@@ -1,0 +1,16 @@
+
+
+int
+main() {
+    
+    enum Flag {
+        first,
+        second,
+        third,
+        forth,
+    }
+    
+    int x = Flag.first;
+    
+    return x;
+}

@@ -153,7 +153,7 @@ interp_expression(Interp* interp, Ast* ast) {
         // TODO(alexander): do we want identifiers to be expressions?
         case Ast_Ident: {
             result = interp_load_value(interp, ast->Ident);
-            if (!result.data) {
+            if (!result.data && result.type.kind == TypeKind_None) {
                 interp_error(interp, string_format("`%` is an undeclared identifier", 
                                                    f_string(vars_load_string(ast->Ident))));
             }
@@ -577,49 +577,45 @@ Interp_Value
 interp_field_expr(Interp* interp, Interp_Value var, string_id ident) {
     Interp_Value result = {};
     
-    if (var.data) {
-        switch (var.type.kind) {
-            case TypeKind_Union:
-            case TypeKind_Struct: {
-                assert(var.value.type == Value_pointer);
-                Type_Table* type_table = &var.type.Struct_Or_Union;
+    switch (var.type.kind) {
+        case TypeKind_Union:
+        case TypeKind_Struct: {
+            assert(var.value.type == Value_pointer);
+            Type_Table* type_table = &var.type.Struct_Or_Union;
+            
+            Type* field_type = map_get(type_table->ident_to_type, ident);
+            if (field_type) {
+                void* data = var.value.data;
+                smm offset = map_get(var.type.Struct_Or_Union.ident_to_offset, ident);
+                data = (u8*) data + offset;
+                result = interp_load_value(interp, field_type, data);
+            } else {
+                interp_error(interp, string_format("`%` is not a field of type `%`",
+                                                   f_string(vars_load_string(ident)), f_string(var.type.name)));
+            }
+        } break;
+        
+        case TypeKind_Enum: {
+            result.value = map_get(var.type.Enum.values, ident);
+            result.type = *var.type.Enum.type;
+        } break;
+        
+        case TypeKind_Pointer: {
+            if (var.value.type == Value_pointer && var.type.kind == TypeKind_Pointer) {
+                Type* deref_type = var.type.Pointer;
+                var = interp_load_value(interp, deref_type, var.value.data);
+                result = interp_field_expr(interp, var, ident);
                 
-                Type* field_type = map_get(type_table->ident_to_type, ident);
-                if (field_type) {
-                    void* data = var.value.data;
-                    smm offset = map_get(var.type.Struct_Or_Union.ident_to_offset, ident);
-                    data = (u8*) data + offset;
-                    result = interp_load_value(interp, field_type, data);
-                } else {
-                    interp_error(interp, string_format("`%` is not a field of type `%`",
-                                                       f_string(vars_load_string(ident)), f_string(var.type.name)));
-                }
-            } break;
-            
-            case TypeKind_Enum: {
-                result.value = map_get(var.type.Enum.values, ident);
-                result.type = *var.type.Enum.type;
-            } break;
-            
-            case TypeKind_Pointer: {
-                if (var.value.type == Value_pointer && var.type.kind == TypeKind_Pointer) {
-                    Type* deref_type = var.type.Pointer;
-                    var = interp_load_value(interp, deref_type, var.value.data);
-                    result = interp_field_expr(interp, var, ident);
-                    
-                } else {
-                    interp_error(interp, string_lit("dereference operator expects identifier"));
-                }
-            } break;
-            
-            
-            default: {
-                interp_error(interp, string_format("left of `.%` must be a pointer, struct, union or enum",
-                                                   f_string(vars_load_string(ident))));
-            } break;
-        }
-    } else {
-        interp_unresolved_identifier_error(interp, ident);
+            } else {
+                interp_error(interp, string_lit("dereference operator expects identifier"));
+            }
+        } break;
+        
+        
+        default: {
+            interp_error(interp, string_format("left of `.%` must be a pointer, struct, union or enum",
+                                               f_string(vars_load_string(ident))));
+        } break;
     }
     
     return result;

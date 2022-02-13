@@ -28,6 +28,7 @@ enum Primitive_Type_Kind {
 };
 
 enum Type_Kind {
+    TypeKind_None,
     TypeKind_Void,
     TypeKind_Primitive,
     TypeKind_Array,

@@ -254,8 +254,54 @@ preprocess_splice_line(u8* curr, u32 curr_line_number, u8* end) {
     return result;
 }
 
+internal void preprocess_expand_macro(Preprocessor* preprocessor, 
+                                      String_Builder* sb, 
+                                      Tokenizer* t, 
+                                      Preprocessor_Macro macro, 
+                                      Replacement_List args);
+
+internal inline bool
+perprocess_try_expand_ident(Preprocessor* preprocessor, 
+                            String_Builder* sb, 
+                            Tokenizer* t, 
+                            Replacement_List args, 
+                            string_id ident) {
+    
+    Preprocessor_Macro macro = map_get(preprocessor->macros, ident);
+    if (macro.is_valid) {
+        Replacement_List macro_args = {};
+        if (macro.is_functional) {
+            macro_args = preprocess_parse_actual_arguments(t);
+        }
+        
+        umm actual_arg_count = array_count(macro_args.list);
+        umm formal_arg_count = map_count(macro.arg_mapper);
+        if (actual_arg_count > formal_arg_count && !macro.is_variadic) {
+            preprocess_error(string_format("too many arguments to expand function-like macro `%`",
+                                           f_string(vars_load_string(ident))));
+            return false;
+        } else if (actual_arg_count < formal_arg_count) {
+            preprocess_error(string_format("too few arguments to expand function-like macro `%`",
+                                           f_string(vars_load_string(ident))));
+            return false;
+        }
+        
+        // TODO(Alexander): record line/ col of this
+        Tokenizer_State state = save_tokenizer(t);
+        tokenizer_set_substring(t, macro.source, 0, 0);
+        preprocess_expand_macro(preprocessor, sb, t, macro, macro_args);
+        restore_tokenizer(&state);
+        return true;
+    }
+    return false;
+}
+
 internal void
-preprocess_expand_macro(Preprocessor* preprocessor, String_Builder* sb, Tokenizer* t, Preprocessor_Macro macro, Replacement_List args) {
+preprocess_expand_macro(Preprocessor* preprocessor, 
+                        String_Builder* sb, 
+                        Tokenizer* t, 
+                        Preprocessor_Macro macro, 
+                        Replacement_List args) {
     
     Token token = advance_token(t);
     while (is_token_valid(token)) {
@@ -267,7 +313,7 @@ preprocess_expand_macro(Preprocessor* preprocessor, String_Builder* sb, Tokenize
                     // Expand argument
                     int arg_index = map_get(macro.arg_mapper, ident);
                     if (array_count(args.list) < arg_index) {
-                        preprocess_error(string_format("functional macro expected % arguments, found % arguments", 
+                        preprocess_error(string_format("functional macro expected % arguments, found % arguments",
                                                        f_int(map_count(macro.arg_mapper)),
                                                        f_int(array_count(args.list))));
                         return;
@@ -275,20 +321,8 @@ preprocess_expand_macro(Preprocessor* preprocessor, String_Builder* sb, Tokenize
                     string arg_source = args.list[arg_index];
                     string_builder_push(sb, arg_source);
                 } else {
-                    // Expand macro inside this macro
-                    Preprocessor_Macro inner_macro = map_get(preprocessor->macros, ident);
-                    if (inner_macro.is_valid) {
-                        Replacement_List inner_macro_args = {};
-                        if (inner_macro.is_functional) {
-                            inner_macro_args = preprocess_parse_actual_arguments(t);
-                        }
-                        
-                        // TODO(Alexander): record line/ col of this
-                        Tokenizer_State state = save_tokenizer(t);
-                        tokenizer_set_substring(t, macro.source, 0, 0);
-                        preprocess_expand_macro(preprocessor, sb, t, inner_macro, inner_macro_args);
-                        restore_tokenizer(&state);
-                    } else {
+                    
+                    if (!perprocess_try_expand_ident(preprocessor, sb, t, args, ident)) {
                         string_builder_push(sb, token.source);
                     }
                 }
@@ -319,20 +353,7 @@ preprocess_line(Preprocessor* preprocessor, String_Builder* sb, Tokenizer* t) {
             case Token_Ident: {
                 string_id ident = vars_save_string(token.source);
                 
-                // NOTE(Alexander): copypasta from above function
-                Preprocessor_Macro macro = map_get(preprocessor->macros, ident);
-                if (macro.is_valid) {
-                    Replacement_List macro_args = {};
-                    if (macro.is_functional) {
-                        macro_args = preprocess_parse_actual_arguments(t);
-                    }
-                    
-                    // TODO(Alexander): record line/ col of this
-                    Tokenizer_State state = save_tokenizer(t);
-                    tokenizer_set_substring(t, macro.source, 0, 0);
-                    preprocess_expand_macro(preprocessor, sb, t, macro, macro_args);
-                    restore_tokenizer(&state);
-                } else {
+                if (!perprocess_try_expand_ident(preprocessor, sb, t, {}, ident)) {
                     string_builder_push(sb, token.source);
                 }
             } break;

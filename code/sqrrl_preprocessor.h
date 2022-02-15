@@ -162,7 +162,7 @@ preprocess_parse_define(Preprocessor* preprocessor, Tokenizer* t) {
     }
     
     // Extract the source code for the macro
-    macro.source = string_view(macro_begin, t->end);
+    macro.source = string_view(macro_begin, t->end - 1);
     
     // Store the macro
     macro.is_valid = true;
@@ -272,17 +272,18 @@ perprocess_try_expand_ident(Preprocessor* preprocessor,
         Replacement_List macro_args = {};
         if (macro.is_functional) {
             macro_args = preprocess_parse_actual_arguments(t);
+            if (!macro_args.success) {
+                return false;
+            }
         }
         
         umm actual_arg_count = array_count(macro_args.list);
         umm formal_arg_count = map_count(macro.arg_mapper);
-        if (actual_arg_count > formal_arg_count && !macro.is_variadic) {
-            preprocess_error(string_format("too many arguments to expand function-like macro `%`",
-                                           f_string(vars_load_string(ident))));
-            return false;
-        } else if (actual_arg_count < formal_arg_count) {
-            preprocess_error(string_format("too few arguments to expand function-like macro `%`",
-                                           f_string(vars_load_string(ident))));
+        if ((actual_arg_count < formal_arg_count) ||
+            (actual_arg_count > formal_arg_count && !macro.is_variadic)) {
+            
+            preprocess_error(string_format("function-like macro expected % arguments, found % arguments",
+                                           f_int(formal_arg_count), f_int(actual_arg_count)));
             return false;
         }
         
@@ -310,10 +311,9 @@ preprocess_expand_macro(Preprocessor* preprocessor,
                 string_id ident = vars_save_string(token.source);
                 
                 if (macro.arg_mapper && map_key_exists(macro.arg_mapper, ident)) {
-                    // Expand argument
                     int arg_index = map_get(macro.arg_mapper, ident);
                     if (array_count(args.list) < arg_index) {
-                        preprocess_error(string_format("functional macro expected % arguments, found % arguments",
+                        preprocess_error(string_format("function-like macro expected % arguments, found % arguments",
                                                        f_int(map_count(macro.arg_mapper)),
                                                        f_int(array_count(args.list))));
                         return;

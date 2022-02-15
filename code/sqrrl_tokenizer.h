@@ -171,6 +171,7 @@ struct Tokenizer_State {
     Tokenizer* tokenizer;
     u8* next;
     u8* curr;
+    u8* end;
     u8* curr_line;
     smm line_number;
     smm column_number;
@@ -183,6 +184,7 @@ save_tokenizer(Tokenizer* t) {
     result.tokenizer = t;
     result.next = t->next;
     result.curr = t->curr;
+    result.end = t->end;
     result.curr_line = t->curr_line;
     result.line_number = t->line_number;
     result.column_number = t->column_number;
@@ -196,6 +198,7 @@ restore_tokenizer(Tokenizer_State* state) {
     smm delta_lines =  state->line_number - t->line_number;
     t->next = state->next;
     t->curr = state->curr;
+    t->end = state->end;
     t->curr_line = state->curr_line;
     t->line_number = state->line_number;
     t->column_number = state->column_number;

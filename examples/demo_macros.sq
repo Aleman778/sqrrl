@@ -4,11 +4,10 @@
 #define PI 3.14159265359
 
 #define warn_message "warning: "
-#define log_warn(str) pln(str)
+#define log_warn(str,...) pln(str##__VA_ARGS__)
 
 void
 main() {
-    
     pln("test is %, pi is %", TEST, PI);
     log_warn("test is %, pi is %", TEST, PI);
     

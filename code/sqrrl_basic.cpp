@@ -211,6 +211,9 @@ _string_builder_push_format(String_Builder* sb, cstring format, va_list args) {
     while (*scan) {
         if (*scan == '%') {
             if (*(scan + 1) == '%') {
+                scan += 2;
+                *(sb->data + sb->curr_used) = '%';
+                sb->curr_used++;
                 continue;
             }
             

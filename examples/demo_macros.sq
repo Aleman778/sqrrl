@@ -1,10 +1,10 @@
 
-#define TEST 10
-
 #define PI 3.14159265359
 
 #define warn_message "warning: "
 #define log_warn(fmt,...) pln(warn_message##fmt,__VA_ARGS__)
+
+#define make_string(x) # x
 
 void
 main() {
@@ -12,6 +12,10 @@ main() {
     log_warn("test is %, pi is %", TEST, PI);
     
     log_warn("something is likely going wrong");
+    
+    pln("strings are " "automatically concatenated");
+    
+    pln(make_string(hello_world));
 }
 
 

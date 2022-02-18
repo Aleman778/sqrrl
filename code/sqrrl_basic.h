@@ -194,6 +194,7 @@ string_builder_ensure_capacity(String_Builder* sb, umm capacity) {
         umm new_size = max(sb->size * 2, min_size);
         string_builder_alloc(sb, new_size);
     }
+    
 }
 
 void
@@ -204,13 +205,13 @@ string_builder_push(String_Builder* sb, string str) {
     sb->curr_used += str.count;
 }
 
-
 void
 string_builder_push(String_Builder* sb, cstring str) {
     string_builder_push(sb, string_lit(str));
 }
 
 void string_builder_push_format(String_Builder* sb, cstring format...);
+void string_builder_push_cformat(String_Builder* sb, cstring format...);
 
 string
 string_builder_to_string(String_Builder* sb) {

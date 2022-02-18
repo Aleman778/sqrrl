@@ -56,7 +56,6 @@ preprocess_parse_actual_arguments(Tokenizer* t) {
         string replacement = string_view(begin, end);
         array_push(result.list, replacement);
         
-        
         if (!is_token_valid(token) || token.type == Token_Close_Paren) {
             break;
         }
@@ -264,8 +263,31 @@ internal inline bool
 perprocess_try_expand_ident(Preprocessor* preprocessor, 
                             String_Builder* sb, 
                             Tokenizer* t, 
+                            Preprocessor_Macro parent_macro,
                             Replacement_List args, 
                             string_id ident) {
+    
+    if (ident == Kw___VA_ARGS__) {
+        umm formal_arg_count = map_count(parent_macro.arg_mapper);
+        umm actual_arg_count = array_count(args.list);
+        
+        for (umm arg_index = formal_arg_count; 
+             arg_index < actual_arg_count; 
+             arg_index++) {
+            
+            string source = args.list[arg_index];
+            Tokenizer_State state = save_tokenizer(t);
+            tokenizer_set_substring(t, source, 0, 0);
+            preprocess_expand_macro(preprocessor, sb, t, parent_macro, {});
+            restore_tokenizer(&state);
+            
+            if (arg_index + 1 < actual_arg_count) {
+                string_builder_push(sb, ",");
+            }
+        }
+        
+        return true;
+    }
     
     Preprocessor_Macro macro = map_get(preprocessor->macros, ident);
     if (macro.is_valid) {
@@ -322,7 +344,7 @@ preprocess_expand_macro(Preprocessor* preprocessor,
                     string_builder_push(sb, arg_source);
                 } else {
                     
-                    if (!perprocess_try_expand_ident(preprocessor, sb, t, args, ident)) {
+                    if (!perprocess_try_expand_ident(preprocessor, sb, t, macro, args, ident)) {
                         string_builder_push(sb, token.source);
                     }
                 }
@@ -353,7 +375,7 @@ preprocess_line(Preprocessor* preprocessor, String_Builder* sb, Tokenizer* t) {
             case Token_Ident: {
                 string_id ident = vars_save_string(token.source);
                 
-                if (!perprocess_try_expand_ident(preprocessor, sb, t, {}, ident)) {
+                if (!perprocess_try_expand_ident(preprocessor, sb, t, {}, {}, ident)) {
                     string_builder_push(sb, token.source);
                 }
             } break;

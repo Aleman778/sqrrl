@@ -290,7 +290,7 @@ is_ident_continue(u32 c) {
 inline s32
 scan_while(Tokenizer* tokenizer, bool predicate(u32)) {
     int num_scanned = 0;
-    while (predicate(tokenizer->curr_utf32_character) && tokenizer->next < tokenizer->end) {
+    while (predicate(tokenizer->curr_utf32_character) && tokenizer->next <= tokenizer->end) {
         utf8_advance_character(tokenizer);
         num_scanned++;
     }

@@ -55,7 +55,7 @@ compiler_main_entry(int argc, char* argv[]) {
     pln("%", f_string(preprocessed_source));
 #endif
     
-#if 0
+#if 1
     // Lexer
     Tokenizer tokenizer = {};
     tokenizer_set_source(&tokenizer, preprocessed_source, filepath);

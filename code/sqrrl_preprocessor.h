@@ -172,7 +172,7 @@ preprocess_parse_define(Preprocessor* preprocessor, Tokenizer* t) {
     macro.is_valid = true;
     map_put(preprocessor->macros, ident, macro);
     
-#if BUILD_DEBUG
+#if BUILD_DEBUG && 1
     // Debugging code
     string ident_string = vars_load_string(ident);
     if (macro.is_integral) {

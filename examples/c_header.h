@@ -100,12 +100,3 @@ MessageBoxW(_In_opt_ HWND hWnd,
 #else
 #define MessageBox  MessageBoxA
 #endif // !UNICODE
-
-
-
-int main() {
-    
-    MesageBox(MB_OKCANCEL | MB_SYSTEMMODAL);
-    
-}
-

@@ -162,6 +162,22 @@ string_view(u8* begin, u8* end) {
     return result;
 }
 
+string
+string_unquote_nocopy(string s) {
+    string result = s;
+    
+    if (s.data[0] == '"') {
+        result.data++;
+        result.count--;
+    }
+    
+    if (s.data[s.count - 1] == '"') {
+        result.count--;
+    }
+    
+    return result;
+}
+
 struct String_Builder {
     u8* data;
     umm size;

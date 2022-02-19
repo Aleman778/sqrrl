@@ -16,6 +16,20 @@
 #include "sqrrl_preprocessor.h"
 #include "sqrrl_interp.h"
 
+struct Loaded_Source_File {
+    string filename;
+    string source;
+    u32 index;
+    b32 is_valid;
+};
+
+global array(Loaded_Source_File)* loaded_source_files = 0;
+
+Loaded_Source_File read_entire_file(string filename);
+
+void free_file_memory(int index);
+
+
 extern "C" int compiler_main_entry(int argc, char* argv[]);
 
 #endif

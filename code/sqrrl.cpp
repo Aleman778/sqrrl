@@ -7,17 +7,9 @@
 #include "sqrrl_basic.cpp"
 #include "sqrrl_value.cpp"
 #include "sqrrl_tokenizer.cpp"
+#include "sqrrl_preprocessor.cpp"
 #include "sqrrl_parser.cpp"
 #include "sqrrl_interp.cpp"
-
-
-struct Loaded_Source_File {
-    string filename;
-    string source;
-    u32 index;
-};
-
-global array(Loaded_Source_File)* loaded_source_files = 0;
 
 Loaded_Source_File
 read_entire_file(string filename) {
@@ -27,6 +19,7 @@ read_entire_file(string filename) {
     result.filename = filename;
     result.source = create_string(file.contents_size, (u8*) file.contents);
     result.index = (u32) array_count(loaded_source_files);
+    result.is_valid = file.contents != 0;
     
     array_push(loaded_source_files, result);
     return result;
@@ -52,7 +45,7 @@ compiler_main_entry(int argc, char* argv[]) {
     }
 #else
     if (argc <= 1) {
-        pln("Usage: sqrrl <file.sq>");
+        pln("Usage: sqrrl file.sq");
         return 0;
     }
     filepath = string_lit(argv[1]);
@@ -64,7 +57,14 @@ compiler_main_entry(int argc, char* argv[]) {
     // Read entire source file
     Loaded_Source_File file = read_entire_file(filepath);
     
-    string preprocessed_source = preprocess_file(file.source, filepath);
+    Preprocessor preprocessor = {};
+    string preprocessed_source = preprocess_file(&preprocessor, file.source, filepath);
+    
+    if (preprocessor.error_count > 0) {
+        pln("\nErrors found during preprocessing, exiting...\n");
+        return 1;
+    }
+    
     
     // TODO(alexander): temp printing source
     pln("%", f_string(preprocessed_source));

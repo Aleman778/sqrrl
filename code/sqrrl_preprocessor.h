@@ -500,6 +500,10 @@ preprocess_finalize_code(string source) {
                     
                     token = advance_token(t);
                     prev_token = {};
+                } else {
+                    if (token.type != Token_Concatenator) {
+                        string_builder_push(&sb, prev_token.source);
+                    }
                 }
             } break;
             

@@ -22,7 +22,6 @@ struct Replacement_List {
 
 struct Preprocessor {
     map(string_id, Preprocessor_Macro)* macros;
-    smm curr_line_number;
     String_Builder output;
     s32 error_count;
 };

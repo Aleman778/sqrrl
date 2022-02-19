@@ -15,8 +15,11 @@ Loaded_Source_File
 read_entire_file(string filename) {
     Loaded_Source_File result = {};
     
-    Read_File_Result file = DEBUG_read_entire_file(string_to_cstring(filename));
-    result.filename = filename;
+    // TODO(Alexander): hackish way to join two paths!!! Use OS service for this later.
+    string filepath = string_concat(working_directory, filename);
+    
+    Read_File_Result file = DEBUG_read_entire_file(string_to_cstring(filepath));
+    result.filepath = filepath;
     result.source = create_string(file.contents_size, (u8*) file.contents);
     result.index = (u32) array_count(loaded_source_files);
     result.is_valid = file.contents != 0;
@@ -26,9 +29,9 @@ read_entire_file(string filename) {
 }
 
 void
-free_file_memory(int index) {
-    if (index < array_count(loaded_source_files)) {
-        Loaded_Source_File* file = loaded_source_files + index;
+free_file_memory(u32 index) {
+    Loaded_Source_File* file = get_source_by_index(index);
+    if (file) {
         DEBUG_free_file_memory(file);
     }
 }
@@ -51,11 +54,26 @@ compiler_main_entry(int argc, char* argv[]) {
     filepath = string_lit(argv[1]);
 #endif
     
+    // Extract the directory from the filepath and use as working directory
+    // TODO(Alexander): this is hackish solution, we should rely on OS service to do this
+    working_directory = filepath;
+    working_directory.count = 0;
+    for (int index = 0; index < filepath.count; index++) {
+        if (filepath.data[index] == '\\' || filepath.data[index] == '/') {
+            working_directory.count = index + 1;
+        }
+    }
+    string filename = filepath;
+    filename.data += working_directory.count;
+    filename.count -= working_directory.count;
+    
+    pln("working directory: %", f_string(working_directory));
+    
     // Setup string interning of variables
     vars_initialize();
     
     // Read entire source file
-    Loaded_Source_File file = read_entire_file(filepath);
+    Loaded_Source_File file = read_entire_file(filename);
     
     Preprocessor preprocessor = {};
     string preprocessed_source = preprocess_file(&preprocessor, file.source, filepath);
@@ -69,6 +87,7 @@ compiler_main_entry(int argc, char* argv[]) {
     // TODO(alexander): temp printing source
     pln("%", f_string(preprocessed_source));
     
+#if 0
     // Lexer
     Tokenizer tokenizer = {};
     tokenizer_set_source(&tokenizer, preprocessed_source, filepath);
@@ -105,5 +124,6 @@ compiler_main_entry(int argc, char* argv[]) {
         }
     }
     
+#endif
     return 0;
 }

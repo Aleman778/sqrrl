@@ -76,6 +76,10 @@ typedef const char*  cstring;
 #define CHAR_MAX U8_MAX
 #define CHAR_MIN 0U
 
+// NOTE(Alexander): memory operations
+// TODO(Alexander): implement memcpy ourselves
+#define copy_memory memcpy
+
 // NOTE(Alexander): define assestion macro on debug mode
 #ifdef assert
 #undef assert
@@ -140,7 +144,7 @@ string_lit(cstring str) {
 inline cstring
 string_to_cstring(string str) {
     char* result = (char*) malloc(str.count + 1);
-    memcpy(result, str.data, str.count);
+    copy_memory(result, str.data, str.count);
     result[str.count] = 0;
     return (cstring) result;
 }
@@ -148,8 +152,16 @@ string_to_cstring(string str) {
 inline string
 string_copy(string str) {
     string result = string_alloc(str.count);
-    memcpy(result.data, str.data, str.count);
+    copy_memory(result.data, str.data, str.count);
     return result;
+}
+
+inline string
+string_concat(string a, string b) {
+    string concat = string_alloc(a.count + b.count);
+    copy_memory(concat.data, a.data, a.count);
+    copy_memory(concat.data + a.count, b.data, b.count);
+    return concat;
 }
 
 inline string
@@ -217,7 +229,7 @@ void
 string_builder_push(String_Builder* sb, string str) {
     string_builder_ensure_capacity(sb, str.count);
     
-    memcpy(sb->data + sb->curr_used, str.data, str.count);
+    copy_memory(sb->data + sb->curr_used, str.data, str.count);
     sb->curr_used += str.count;
 }
 
@@ -234,7 +246,7 @@ string_builder_to_string(String_Builder* sb) {
     string result;
     result.data = (u8*) malloc(sb->curr_used + 1);
     result.count = sb->curr_used;
-    memcpy(result.data, sb->data, sb->curr_used);
+    copy_memory(result.data, sb->data, sb->curr_used);
     result.data[result.count] = 0;
     return result;
 }
@@ -272,6 +284,8 @@ enum { // TODO(Alexander): add more types
     FormatType_string,
     FormatType_cstring,
     
+    FormatType_u64_HEX,
+    
     FormatType_ast,
     FormatType_value,
     FormatType_type,
@@ -283,6 +297,7 @@ enum { // TODO(Alexander): add more types
 #define f_uint(x) FormatType_uint, (uint) (x)
 #define f_s64(x) FormatType_s64, (s64) (x)
 #define f_u64(x) FormatType_u64, (u64) (x)
+#define f_u64_HEX(x) FormatType_u64_HEX, (u64) (x)
 #define f_smm(x) FormatType_smm, (smm) (x)
 #define f_umm(x) FormatType_umm, (umm) (x)
 #define f_float(x) FormatType_f64, (double) (x)

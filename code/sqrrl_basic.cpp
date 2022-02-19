@@ -37,6 +37,10 @@ print_format(const char* format...) {
                     printf("%llu", va_arg(args, u64));
                 } break;
                 
+                case FormatType_u64_HEX: {
+                    printf("%llX", va_arg(args, u64));
+                } break;
+                
                 case FormatType_smm: {
                     printf("%zd", va_arg(args, smm));
                 } break;
@@ -111,6 +115,12 @@ format_sprintf(char* dst, umm dst_size, Format_Type type, va_list args) {
         case FormatType_u64: {
             u64 value = va_arg(args, u64);
             result.count= snprintf(dst, dst_size, "%llu", value);
+        } break;
+        
+        
+        case FormatType_u64_HEX: {
+            u64 value = va_arg(args, u64);
+            result.count= snprintf(dst, dst_size, "%llX", value);
         } break;
         
         case FormatType_smm: {

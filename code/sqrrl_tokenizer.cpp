@@ -67,6 +67,7 @@ utf8_advance_character(Tokenizer* tokenizer) {
     Utf8_To_Utf32_Result character = utf8_convert_to_utf32(tokenizer->curr, tokenizer->end);
     if (character.num_bytes == 0) {
         tokenization_error(tokenizer, string_lit("invalid utf-8 formatting detected"));
+        assert(0);
         return;
     }
     
@@ -610,9 +611,8 @@ advance_token(Tokenizer* tokenizer) {
                 u8 buffer[4];
                 umm count = (umm) utf32_convert_to_utf8(tokenizer->curr_utf32_character, buffer);
                 string character = create_string(count, buffer);
-                tokenization_error(tokenizer, string_format("invalid character `%`", f_string(character)));
+                tokenization_error(tokenizer, string_format("invalid unicode character `%` (U+%)", f_string(character), f_u64(tokenizer->curr_utf32_character)));
                 token.type = Token_Error;
-                
             } break;
         }
     }

@@ -179,10 +179,10 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                 if (token.type == Token_Lt) {
                     preprocess_error(preprocessor, string_lit("system header files include directives `#include <file>` are not supported"));
                 } else if (token.type == Token_String) {
-                    string filepath = string_unquote_nocopy(token.source);
-                    Loaded_Source_File included_file = read_entire_file(filepath);
+                    string filename = string_unquote_nocopy(token.source);
+                    Loaded_Source_File included_file = read_entire_file(filename);
                     if (included_file.is_valid) {
-                        preprocess_file(preprocessor, included_file.source, filepath);
+                        preprocess_file(preprocessor, included_file.source, included_file.filepath);
                     } else {
                         preprocessor->error_count++;
                     }
@@ -349,12 +349,12 @@ preprocess_expand_macro(Preprocessor* preprocessor,
     }
 }
 
-internal void
+internal bool
 preprocess_line(Preprocessor* preprocessor, String_Builder* sb, Tokenizer* t) {
     Token token = advance_token(t);
     if (token.type == Token_Directive) {
         preprocess_directive(preprocessor, t);
-        return;
+        return false;
     }
     
     
@@ -385,6 +385,8 @@ preprocess_line(Preprocessor* preprocessor, String_Builder* sb, Tokenizer* t) {
         
         token = advance_token(t);
     }
+    
+    return true;
 }
 
 internal Token
@@ -510,14 +512,16 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath) {
         
         umm line_curr_used = sb->curr_used;
         u8* line_begin = sb->data + sb->curr_used;
-        preprocess_line(preprocessor, sb, &tokenizer);
+        bool run_finalize = preprocess_line(preprocessor, sb, &tokenizer);
         u8* line_end = sb->data + sb->curr_used;
         
         sb->curr_used = line_curr_used;
         
-        string finalized_string = preprocess_finalize_code(string_view(line_begin, line_end));
-        string_builder_push(sb, finalized_string);
-        free(finalized_string.data);
+        if (run_finalize) {
+            string finalized_string = preprocess_finalize_code(string_view(line_begin, line_end));
+            string_builder_push(sb, finalized_string);
+            free(finalized_string.data);
+        }
     }
     
     return string_builder_to_string_nocopy(sb);

@@ -740,7 +740,7 @@ interp_statement(Interp* interp, Ast* ast) {
                         }
                         
                     } else if (expr.value.type == Value_pointer) {
-                        memcpy(base_address, expr.value.data, (umm) type->cached_size);
+                        copy_memory(base_address, expr.value.data, (umm) type->cached_size);
                     } else {
                         // TODO(Alexander): for now we will clear entire struct/union memory
                         // we will want the user to be able to disable this behaviour

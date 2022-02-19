@@ -11,6 +11,35 @@
 #include "sqrrl_interp.cpp"
 
 
+struct Loaded_Source_File {
+    string filename;
+    string source;
+    u32 index;
+};
+
+global array(Loaded_Source_File)* loaded_source_files = 0;
+
+Loaded_Source_File
+read_entire_file(string filename) {
+    Loaded_Source_File result = {};
+    
+    Read_File_Result file = DEBUG_read_entire_file(string_to_cstring(filename));
+    result.filename = filename;
+    result.source = create_string(file.contents_size, (u8*) file.contents);
+    result.index = (u32) array_count(loaded_source_files);
+    
+    array_push(loaded_source_files, result);
+    return result;
+}
+
+void
+free_file_memory(int index) {
+    if (index < array_count(loaded_source_files)) {
+        Loaded_Source_File* file = loaded_source_files + index;
+        DEBUG_free_file_memory(file);
+    }
+}
+
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[]) {
     string filepath;
@@ -33,10 +62,9 @@ compiler_main_entry(int argc, char* argv[]) {
     vars_initialize();
     
     // Read entire source file
-    Read_File_Result file = DEBUG_read_entire_file(string_to_cstring(filepath));
-    string source = create_string(file.contents_size, (u8*) file.contents);
+    Loaded_Source_File file = read_entire_file(filepath);
     
-    string preprocessed_source = preprocess_file(source, filepath);
+    string preprocessed_source = preprocess_file(file.source, filepath);
     
     // TODO(alexander): temp printing source
     pln("%", f_string(preprocessed_source));

@@ -33,29 +33,14 @@ compiler_main_entry(int argc, char* argv[]) {
     vars_initialize();
     
     // Read entire source file
-    FILE* file;
-    fopen_s(&file, (char*) filepath.data, "rb");
-    if (!file) {
-        pln("File `%` was not found!", f_string(filepath));
-        return -1;
-    }
+    Read_File_Result file = DEBUG_read_entire_file(string_to_cstring(filepath));
+    string source = create_string(file.contents_size, (u8*) file.contents);
     
-    fseek(file, 0, SEEK_END);
-    umm file_size = ftell(file);
-    fseek(file, 0, SEEK_SET);
-    
-    string source = string_alloc(file_size);
-    fread(source.data, source.count, 1, file);
-    fclose(file);
-    
-#if 1
     string preprocessed_source = preprocess_file(source, filepath);
     
     // TODO(alexander): temp printing source
     pln("%", f_string(preprocessed_source));
-#endif
     
-#if 1
     // Lexer
     Tokenizer tokenizer = {};
     tokenizer_set_source(&tokenizer, preprocessed_source, filepath);
@@ -65,7 +50,7 @@ compiler_main_entry(int argc, char* argv[]) {
     parser.tokenizer = &tokenizer;
     Ast_File ast_file = parse_file(&parser);
     
-#if 1
+#if BUILD_MAX_DEBUG
     // NOTE(Alexander): Print the AST
     for (int i = 0; i < map_count(ast_file.decls); i++) {
         Ast_Decl_Entry entry = ast_file.decls[i];
@@ -91,6 +76,6 @@ compiler_main_entry(int argc, char* argv[]) {
             pln("Interpreter exited with code 0");
         }
     }
-#endif
+    
     return 0;
 }

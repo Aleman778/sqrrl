@@ -165,8 +165,10 @@ interp_expression(Interp* interp, Ast* ast) {
                 case UnaryOp_Negate: {
                     if (is_integer(first_op.value)) {
                         result.value.signed_int = -first_op.value.signed_int;
+                        result.value.type = Value_signed_int;
                     } else if(is_floating(first_op.value)) {
                         result.value.floating = -first_op.value.floating;
+                        result.value.type = Value_floating;
                     } else {
                         interp_error(interp, string_lit("unary negate expects numeric type"));
                     }
@@ -174,7 +176,8 @@ interp_expression(Interp* interp, Ast* ast) {
                 
                 case UnaryOp_Not: {
                     if (is_integer(first_op.value)) {
-                        result.value.boolean = !value_to_u64(first_op.value);
+                        result.value.boolean = !value_to_bool(first_op.value);
+                        result.value.type = Value_boolean;
                     } else {
                         interp_error(interp, string_lit("unary not expects integer type"));
                     }

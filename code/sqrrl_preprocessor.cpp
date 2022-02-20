@@ -329,7 +329,39 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
                             Replacement_List args, 
                             string_id ident) {
     
-    if (ident == Kw___VA_ARGS__) {
+    if (ident == Kw_defined) {
+        
+        string_id macro_ident = Kw_invalid;
+        
+        // Parse macro identifier e.g. defined(MACRO) or defined MACRO
+        Token token = advance_semantical_token(t);
+        if (token.type == Token_Open_Paren) {
+            token = advance_semantical_token(t);
+            
+            if (token.type == Token_Ident) {
+                macro_ident = vars_save_string(token.source);
+                
+                token = advance_semantical_token(t);
+                if (token.type != Token_Close_Paren) {
+                    preprocess_error(preprocessor, string_format("expected `)`, found `%`", f_token(token.type)));
+                    return false;
+                }
+            }
+        } else if (token.type == Token_Ident) {
+            macro_ident = vars_save_string(token.source);
+        }
+        
+        if (macro_ident != Kw_invalid) {
+            Preprocessor_Macro macro = map_get(preprocessor->macros, macro_ident);
+            string_builder_push(sb, macro.is_valid ? "1" : "0");
+            return true;
+        } else {
+            preprocess_error(preprocessor, string_lit("built in function-like macro `defined` expects an identifier as argument"));
+            return false;
+        }
+        
+    } else if (ident == Kw___VA_ARGS__) {
+        
         umm formal_arg_count = map_count(parent_macro.arg_mapper);
         umm actual_arg_count = array_count(args.list);
         

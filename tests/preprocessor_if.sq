@@ -1,53 +1,85 @@
 
+int 
+main() {
     // ifdef
 #define DEBUG
 #ifdef DEBUG
-pln("1. OK!");
+    pln("1. OK!");
 #else
-pln("1. fail");
+    pln("1. fail");
 #endif
-
-// ifndef
+#undef DEBUG
+    
+    // ifndef
 #ifndef NDEBUG
-pln("2. OK!");
+    pln("2. OK!");
 #else
-pln("2. fail");
+    pln("2. fail");
 #endif
-
-// if true
+    
+    // if true
 #if 1
-pln("3. OK!");
+    pln("3. OK!");
 #else
-pln("3. fail");
+    pln("3. fail");
 #endif
-
-// if false
+    
+    // if false
 #if 0
-pln("4. fail");
+    pln("4. fail");
 #else
-pln("4. OK!");
+    pln("4. OK!");
 #endif
-
-// if identifier
+    
+    // if identifier
 #define BUILD_DEBUG 1
 #if BUILD_DEBUG
-pln("5. OK!");
+    pln("5. OK!");
 #else
-pln("5. fail");
+    pln("5. fail");
 #endif
-
-// if condition
+#undef BUILD_DEBUG
+    
+    // if condition
 #define WINVER 0x0500
 #if(WINVER >= 0x0400)
-pln("6. OK!");
+    pln("6. OK!");
 #else
-pln("6. fail");
+    pln("6. fail");
 #endif
-
-// if equation
+#undef WINVER
+    
+    // if equation
 #define EQUATION (320 + 43)
 #if (EQUATION > 330)
-pln("7. OK!");
+    pln("7. OK!");
 #else
-pln("7. fail");
+    pln("7. fail");
 #endif
+#undef EQATIOn
+    
+    // if defined
+#define TEST
+#if defined TEST
+    pln("8. OK!");
+#else
+    pln("8. fail");
+#endif
+#undef TEST
+    
+#if !defined(TEST)
+    pln("9. OK!");
+#else
+    pln("9. fail");
+#endif
+    
+    // if elif endif
+#define LEVEL 3
+#if LEVEL > 5
+    pln("10. fail");
+#elif LEVEL > 2
+    pln("10. OK!");
+#else
+    pln("10. fail");
+#endif
+}

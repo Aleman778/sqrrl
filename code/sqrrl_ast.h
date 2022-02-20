@@ -307,7 +307,7 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
         string_builder_push_format(sb, " `%`", f_string(vars_load_string(node->Ident)));
     } else if (node->type == Ast_Unary_Expr) {
         assert_enum(UnaryOp, node->Unary_Expr.op);
-        string_builder_push_format(sb, "(%)", f_cstring(unary_op_strings[node->Binary_Expr.op]));
+        string_builder_push_format(sb, "(%)", f_cstring(unary_op_strings[node->Unary_Expr.op]));
         string_builder_push(sb, node->Unary_Expr.first, tokenizer, spacing);
     } else if (node->type == Ast_Binary_Expr) {
         assert_enum(BinaryOp, node->Binary_Expr.op);

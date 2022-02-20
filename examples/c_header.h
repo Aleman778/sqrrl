@@ -1,6 +1,9 @@
 // Taken from WinUser.h, I don't own this code!
 // This is a simple test to see if we can parse C headers for FFI.
 
+#define WINAPI_FAMILY_PARTITION(...) 1
+#define WINVER 0x0A00
+#define _WIN32_WINNT 0x0A00
 
 /*
  * MessageBox() Flags
@@ -75,6 +78,7 @@
 
 #define _In_opt_
 #define _In_
+#define WINAPI
 #define WINUSERAPI
 #define HWND void*
 #define LPCSTR char* // NOTE: we don't have support for const yet, should be `const char*`

@@ -1,3 +1,4 @@
+
 bool
 next_token_if_matched(Parser* parser, Token_Type expected, bool report_error) {
     Token token = peek_token(parser);
@@ -1211,7 +1212,6 @@ parse_top_level_declaration(Parser* parser) {
 Ast_File
 parse_file(Parser* parser) {
     Ast_File result = {};
-    
     
     while (true) {
         Token token = peek_token(parser);

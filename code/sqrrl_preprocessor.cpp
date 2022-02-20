@@ -37,6 +37,47 @@ preprocess_parse_actual_arguments(Preprocessor* preprocessor, Tokenizer* t) {
     return result;
 }
 
+internal bool
+preprocess_parse_and_eval_constant_expression(Preprocessor* preprocessor, Tokenizer* t) {
+    
+    String_Builder sb = {};
+    string_builder_alloc(&sb, t->end - t->curr + 64);
+    // TODO(Alexander): could really use some scratch memory to allocate the expanded string
+    
+    
+    preprocess_expand_macro(preprocessor, &sb, t, {}, {});
+    
+    Tokenizer tokenizer = {};
+    tokenizer_set_source(&tokenizer, string_builder_to_string_nocopy(&sb), string_lit("if"));
+    
+    Parser parser = {};
+    parser.tokenizer = &tokenizer;
+    
+    // TODO(Alexander): could really use some scratch memory to allocate the nodes
+    Ast* expr = parse_expression(&parser);
+    
+    
+    // TODO(Alexander): interpreter needs to be able to access macro definitions
+    Interp interp = {};
+    Interp_Value result = interp_expression(&interp, expr);
+    
+#if BUILD_MAX_DEBUG
+    pln("#if");
+    print_ast(expr, t);
+    print_format("= ");
+    print_value(&result.value);
+#endif
+    
+    // TODO(Alexander): clear memory
+    if (!is_integer(result.value) && parser.error_count == 0 && interp.error_count == 0) {
+        preprocess_error(preprocessor, string_lit("constant expression doesn't evaluate to integer value"));
+    }
+    
+    string_builder_free(&sb);
+    
+    return value_to_bool(result.value);
+}
+
 internal void
 preprocess_parse_define(Preprocessor* preprocessor, Tokenizer* t) {
     Token token = advance_token(t);
@@ -153,58 +194,97 @@ preprocess_parse_define(Preprocessor* preprocessor, Tokenizer* t) {
 
 internal void
 preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
-    Token token = advance_token(t);
+    Token token = advance_semantical_token(t);
     
     if (token.type == Token_Ident) {
         string_id keyword = vars_save_string(token.source);
         
         switch (keyword) {
             case Kw_define: {
-                preprocess_parse_define(preprocessor, t);
+                if (preprocessor->curr_branch_taken) {
+                    preprocess_parse_define(preprocessor, t);
+                }
             } break;
             
             case Kw_undef: {
-                token = advance_semantical_token(t);
-                if (token.type == Token_Ident) {
-                    string_id ident = vars_save_string(token.source);
-                    map_remove(preprocessor->macros, ident);
-                } else {
-                    preprocess_error(preprocessor, string_format("expected `identifier`, found `%`", f_token(token.type)));
+                if (preprocessor->curr_branch_taken) {
+                    token = advance_semantical_token(t);
+                    if (token.type == Token_Ident) {
+                        string_id ident = vars_save_string(token.source);
+                        map_remove(preprocessor->macros, ident);
+                    } else {
+                        preprocess_error(preprocessor, string_format("expected `identifier`, found `%`", f_token(token.type)));
+                    }
                 }
-                
             } break;
             
             case Kw_include: {
-                token = advance_semantical_token(t);
-                if (token.type == Token_Lt) {
-                    preprocess_error(preprocessor, string_lit("system header files include directives `#include <file>` are not supported"));
-                } else if (token.type == Token_String) {
-                    string filename = string_unquote_nocopy(token.source);
-                    Loaded_Source_File included_file = read_entire_file(filename);
-                    if (included_file.is_valid) {
-                        preprocess_file(preprocessor, included_file.source, included_file.filepath);
-                    } else {
-                        preprocessor->error_count++;
+                if (preprocessor->curr_branch_taken) {
+                    token = advance_semantical_token(t);
+                    if (token.type == Token_Lt) {
+                        preprocess_error(preprocessor, string_lit("system header files include directives `#include <file>` are not supported"));
+                    } else if (token.type == Token_String) {
+                        string filename = string_unquote_nocopy(token.source);
+                        Loaded_Source_File included_file = read_entire_file(filename);
+                        if (included_file.is_valid) {
+                            preprocess_file(preprocessor, included_file.source, included_file.filepath);
+                        } else {
+                            preprocessor->error_count++;
+                        }
                     }
                 }
                 
             } break;
             
             case Kw_if: {
-                
+                bool value = preprocess_parse_and_eval_constant_expression(preprocessor, t);
+                array_push(preprocessor->conditionals, preprocessor->curr_branch_taken);
+                preprocessor->curr_branch_taken = value;
             } break;
             
-            case Kw_ifdef: {
-                
+            case Kw_elif: {
+                bool value = preprocess_parse_and_eval_constant_expression(preprocessor, t);
+                preprocessor->curr_branch_taken = value;
             } break;
             
+            case Kw_else: {
+                preprocessor->curr_branch_taken = !preprocessor->curr_branch_taken;
+                // TODO(Alexander): detect two else in row
+            } break;
             
+            case Kw_endif: {
+                if (array_count(preprocessor->conditionals) > 0) {
+                    preprocessor->curr_branch_taken = array_pop(preprocessor->conditionals);
+                } else {
+                    preprocess_error(preprocessor, string_lit("trying to end if directive outside scope"));
+                }
+            } break;
+            
+            case Kw_ifdef:
             case Kw_ifndef: {
-                
+                token = advance_semantical_token(t);
+                if (token.type == Token_Ident) {
+                    string_id ident = vars_save_string(token.source);
+                    Preprocessor_Macro macro = map_get(preprocessor->macros, ident);
+                    
+                    bool value = macro.is_valid;
+                    if (keyword == Kw_ifndef) {
+                        value = !value;
+                    }
+                    array_push(preprocessor->conditionals, preprocessor->curr_branch_taken);
+                    preprocessor->curr_branch_taken = value;
+                    
+                } else {
+                    preprocess_error(preprocessor, string_format("expected `identifier`, found `%`", 
+                                                                 f_token(token.type)));
+                    
+                }
             } break;
             
             case Kw_error: {
-                
+                if (preprocessor->curr_branch_taken) {
+                    preprocess_error(preprocessor, string_view(t->curr, t->end));
+                }
             } break;
         }
     }
@@ -241,14 +321,8 @@ preprocess_splice_line(Preprocessor* preprocessor, u8* curr, u32 curr_line_numbe
     return result;
 }
 
-internal void preprocess_expand_macro(Preprocessor* preprocessor, 
-                                      String_Builder* sb, 
-                                      Tokenizer* t, 
-                                      Preprocessor_Macro macro, 
-                                      Replacement_List args);
-
 internal inline bool
-perprocess_try_expand_ident(Preprocessor* preprocessor, 
+preprocess_try_expand_ident(Preprocessor* preprocessor, 
                             String_Builder* sb, 
                             Tokenizer* t, 
                             Preprocessor_Macro parent_macro,
@@ -264,10 +338,10 @@ perprocess_try_expand_ident(Preprocessor* preprocessor,
              arg_index++) {
             
             string source = args.list[arg_index];
-            Tokenizer_State state = save_tokenizer(t);
-            tokenizer_set_substring(t, source, 0, 0);
-            preprocess_expand_macro(preprocessor, sb, t, parent_macro, {});
-            restore_tokenizer(&state);
+            
+            Tokenizer tokenizer = {};
+            tokenizer_set_source(&tokenizer, source, string_lit("args"));
+            preprocess_expand_macro(preprocessor, sb, &tokenizer, parent_macro, {});
             
             if (arg_index + 1 < actual_arg_count) {
                 string_builder_push(sb, ",");
@@ -298,16 +372,18 @@ perprocess_try_expand_ident(Preprocessor* preprocessor,
         }
         
         // TODO(Alexander): record line/ col of this
-        Tokenizer_State state = save_tokenizer(t);
-        tokenizer_set_substring(t, macro.source, 0, 0);
-        preprocess_expand_macro(preprocessor, sb, t, macro, macro_args);
-        restore_tokenizer(&state);
+        Tokenizer tokenizer = {};
+        tokenizer_set_source(&tokenizer, macro.source, string_lit("macro"));
+        //Tokenizer_State state = save_tokenizer(t);
+        //tokenizer_set_substring(t, macro.source, 0, 0);
+        preprocess_expand_macro(preprocessor, sb, &tokenizer, macro, macro_args);
+        //restore_tokenizer(&state);
         return true;
     }
     return false;
 }
 
-internal void
+void
 preprocess_expand_macro(Preprocessor* preprocessor, 
                         String_Builder* sb, 
                         Tokenizer* t, 
@@ -332,7 +408,7 @@ preprocess_expand_macro(Preprocessor* preprocessor,
                     string_builder_push(sb, arg_source);
                 } else {
                     
-                    if (!perprocess_try_expand_ident(preprocessor, sb, t, macro, args, ident)) {
+                    if (!preprocess_try_expand_ident(preprocessor, sb, t, macro, args, ident)) {
                         string_builder_push(sb, token.source);
                     }
                 }
@@ -357,33 +433,37 @@ preprocess_line(Preprocessor* preprocessor, String_Builder* sb, Tokenizer* t) {
         return false;
     }
     
-    
-    while (is_token_valid(token)) {
-        switch (token.type) {
-            case Token_Ident: {
-                string_id ident = vars_save_string(token.source);
-                
-                if (!perprocess_try_expand_ident(preprocessor, sb, t, {}, {}, ident)) {
-                    string_builder_push(sb, token.source);
-                }
-            } break;
-            
-            case Token_Directive: {
-                preprocess_error(preprocessor, string_lit("preprocessor directive (#) must start at the beginning of a line"));
-            } break;
-            
-            case Token_Concatenator: {
-                preprocess_error(preprocessor, string_lit("preprocessor concatenator (##) can only be used inside macro"));
-            } break;
-            
-            case Token_Backslash: break;
-            
-            default: {
-                string_builder_push(sb, token.source);
-            } break;
-        }
+    if (preprocessor->curr_branch_taken) {
         
-        token = advance_token(t);
+        while (is_token_valid(token)) {
+            switch (token.type) {
+                case Token_Ident: {
+                    string_id ident = vars_save_string(token.source);
+                    
+                    if (!preprocess_try_expand_ident(preprocessor, sb, t, {}, {}, ident)) {
+                        string_builder_push(sb, token.source);
+                    }
+                } break;
+                
+                case Token_Directive: {
+                    preprocess_error(preprocessor, string_lit("preprocessor directive (#) must start at the beginning of a line"));
+                } break;
+                
+                case Token_Concatenator: {
+                    preprocess_error(preprocessor, string_lit("preprocessor concatenator (##) can only be used inside macro"));
+                } break;
+                
+                case Token_Backslash: break;
+                
+                default: {
+                    string_builder_push(sb, token.source);
+                } break;
+            }
+            
+            token = advance_token(t);
+        }
+    } else {
+        return false;
     }
     
     return true;
@@ -503,6 +583,10 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath) {
     String_Builder* sb = &preprocessor->output;
     string_builder_alloc(sb, source.count);
     
+    
+    array_push(preprocessor->conditionals, preprocessor->curr_branch_taken);
+    preprocessor->curr_branch_taken = true;
+    
     while (curr < end) {
         Preprocessor_Line line = preprocess_splice_line(preprocessor, curr, curr_line_number, end);
         curr += line.substring.count;
@@ -515,14 +599,15 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath) {
         bool run_finalize = preprocess_line(preprocessor, sb, &tokenizer);
         u8* line_end = sb->data + sb->curr_used;
         
-        sb->curr_used = line_curr_used;
-        
         if (run_finalize) {
+            sb->curr_used = line_curr_used;
             string finalized_string = preprocess_finalize_code(string_view(line_begin, line_end));
             string_builder_push(sb, finalized_string);
             free(finalized_string.data);
         }
     }
+    
+    preprocessor->curr_branch_taken = array_pop(preprocessor->conditionals);
     
     return string_builder_to_string_nocopy(sb);
 }

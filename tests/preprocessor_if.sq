@@ -1,0 +1,53 @@
+
+    // ifdef
+#define DEBUG
+#ifdef DEBUG
+pln("1. OK!");
+#else
+pln("1. fail");
+#endif
+
+// ifndef
+#ifndef NDEBUG
+pln("2. OK!");
+#else
+pln("2. fail");
+#endif
+
+// if true
+#if 1
+pln("3. OK!");
+#else
+pln("3. fail");
+#endif
+
+// if false
+#if 0
+pln("4. fail");
+#else
+pln("4. OK!");
+#endif
+
+// if identifier
+#define BUILD_DEBUG 1
+#if BUILD_DEBUG
+pln("5. OK!");
+#else
+pln("5. fail");
+#endif
+
+// if condition
+#define WINVER 0x0500
+#if(WINVER >= 0x0400)
+pln("6. OK!");
+#else
+pln("6. fail");
+#endif
+
+// if equation
+#define EQUATION (320 + 43)
+#if (EQUATION > 330)
+pln("7. OK!");
+#else
+pln("7. fail");
+#endif

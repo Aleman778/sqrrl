@@ -80,6 +80,8 @@ typedef const char*  cstring;
 // TODO(Alexander): implement memcpy ourselves
 #define copy_memory memcpy
 
+void DEBUG_log_backtrace();
+
 // NOTE(Alexander): define assestion macro on debug mode
 #ifdef assert
 #undef assert
@@ -89,6 +91,7 @@ void
 __assert(cstring expression, cstring file, int line) {
     // TODO(Alexander): improve assertion printing.
     fprintf(stderr, "%s:%d: Assertion failed: %s\n", file, line, expression);
+    DEBUG_log_backtrace();
     *(int *)0 = 0; // NOTE(Alexander): purposefully trap the program
 }
 #define assert(expression) (void)((expression) || (__assert(#expression, __FILE__, __LINE__), 0))

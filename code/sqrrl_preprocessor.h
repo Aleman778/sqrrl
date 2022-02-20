@@ -23,6 +23,8 @@ struct Replacement_List {
 struct Preprocessor {
     map(string_id, Preprocessor_Macro)* macros;
     String_Builder output;
+    array(bool)* conditionals;
+    b32 curr_branch_taken;
     s32 error_count;
 };
 
@@ -32,5 +34,13 @@ preprocess_error(Preprocessor* preprocessor, string message) {
     pln("preprocess error: %", f_string(message));
     DEBUG_log_backtrace();
 }
+
+
+void preprocess_expand_macro(Preprocessor* preprocessor, 
+                             String_Builder* sb, 
+                             Tokenizer* t, 
+                             Preprocessor_Macro macro, 
+                             Replacement_List args);
+
 
 string preprocess_file(Preprocessor* preprocecssor, string source, string filename);

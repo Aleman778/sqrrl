@@ -8,8 +8,10 @@ VAR(cast)     \
 VAR(continue) \
 VAR(defer)    \
 VAR(define)   \
+VAR(defined)  \
 VAR(do)       \
 VAR(else)     \
+VAR(elif)     \
 VAR(enum)     \
 VAR(extern)   \
 VAR(endif)    \

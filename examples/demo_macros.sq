@@ -1,6 +1,5 @@
 #include "c_header.h"
 
-
 #define TEST 10
 
 #define PI 3.14159265359
@@ -20,6 +19,9 @@ main() {
     pln("strings are " "automatically concatenated");
     
     pln(make_string(hello_world));
+    
+    
+    MessageBox(0, "Hello world from Sqrrl!", "Description", 0);
 }
 
 

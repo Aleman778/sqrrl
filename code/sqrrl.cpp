@@ -11,6 +11,7 @@
 #include "sqrrl_parser.cpp"
 #include "sqrrl_interp.cpp"
 
+
 Loaded_Source_File
 read_entire_file(string filename) {
     Loaded_Source_File result = {};
@@ -87,7 +88,6 @@ compiler_main_entry(int argc, char* argv[]) {
     // TODO(alexander): temp printing source
     pln("%", f_string(preprocessed_source));
     
-#if 0
     // Lexer
     Tokenizer tokenizer = {};
     tokenizer_set_source(&tokenizer, preprocessed_source, filepath);
@@ -124,6 +124,5 @@ compiler_main_entry(int argc, char* argv[]) {
         }
     }
     
-#endif
     return 0;
 }

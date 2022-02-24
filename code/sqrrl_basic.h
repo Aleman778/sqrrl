@@ -360,6 +360,7 @@ string string_format(cstring format...);
 #define array_free(a) arrfree(a)
 #define array_push(a, x) arrput(a, x)
 #define array_pop(a) arrpop(a)
+#define array_last(a) arrlast(a)
 #define array_insert(a, x, p) arrins(a, p, x)
 #define array_remove(a, p) arrdel(a, p)
 #define array_set_capacity(a, c) arrsetcap(a, c)

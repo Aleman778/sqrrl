@@ -227,7 +227,8 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                         string filename = string_unquote_nocopy(token.source);
                         Loaded_Source_File included_file = read_entire_file(filename);
                         if (included_file.is_valid) {
-                            preprocess_file(preprocessor, included_file.source, included_file.filepath);
+                            preprocess_file(preprocessor, included_file.source, 
+                                            included_file.filepath, included_file.index);
                         } else {
                             preprocessor->error_count++;
                         }
@@ -238,7 +239,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
             
             case Kw_if: {
                 bool value = preprocess_parse_and_eval_constant_expression(preprocessor, t);
-                array_push(preprocessor->conditionals, preprocessor->curr_branch_taken);
+                array_push(preprocessor->if_result_stack, preprocessor->curr_branch_taken);
                 preprocessor->curr_branch_taken = value;
             } break;
             
@@ -253,8 +254,8 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
             } break;
             
             case Kw_endif: {
-                if (array_count(preprocessor->conditionals) > 0) {
-                    preprocessor->curr_branch_taken = array_pop(preprocessor->conditionals);
+                if (array_count(preprocessor->if_result_stack) > 0) {
+                    preprocessor->curr_branch_taken = array_pop(preprocessor->if_result_stack);
                 } else {
                     preprocess_error(preprocessor, string_lit("trying to end if directive outside scope"));
                 }
@@ -271,7 +272,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                     if (keyword == Kw_ifndef) {
                         value = !value;
                     }
-                    array_push(preprocessor->conditionals, preprocessor->curr_branch_taken);
+                    array_push(preprocessor->if_result_stack, preprocessor->curr_branch_taken);
                     preprocessor->curr_branch_taken = value;
                     
                 } else {
@@ -604,7 +605,7 @@ preprocess_finalize_code(string source) {
 }
 
 string
-preprocess_file(Preprocessor* preprocessor, string source, string filepath) {
+preprocess_file(Preprocessor* preprocessor, string source, string filepath, int file_index) {
     Tokenizer tokenizer = {};
     tokenizer_set_source(&tokenizer, source, filepath);
     
@@ -616,10 +617,15 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath) {
     string_builder_alloc(sb, source.count);
     
     
-    array_push(preprocessor->conditionals, preprocessor->curr_branch_taken);
+    array_push(preprocessor->if_result_stack, preprocessor->curr_branch_taken);
     preprocessor->curr_branch_taken = true;
     
+    Source_Group current_group = {};
+    current_group.file_index = file_index;
+    
     while (curr < end) {
+        u8* curr_line = curr;
+        
         Preprocessor_Line line = preprocess_splice_line(preprocessor, curr, curr_line_number, end);
         curr += line.substring.count;
         curr_line_number = line.next_line_number;
@@ -636,10 +642,28 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath) {
             string finalized_string = preprocess_finalize_code(string_view(line_begin, line_end));
             string_builder_push(sb, finalized_string);
             free(finalized_string.data);
+            
+            current_group.count += (umm) (curr - curr_line);
+        } else {
+            // If we skip a line we will start a new source group
+            if (current_group.count > 0) {
+                // NOTE(Alexander): count > 0 as we don't want to 
+                array_push(preprocessor->source_groups, current_group);
+                
+                current_group = {};
+                current_group.offset = (umm) (curr_line - source.data);
+                current_group.file_index = file_index;
+            }
+            
+            current_group.line = line.next_line_number;
         }
     }
     
-    preprocessor->curr_branch_taken = array_pop(preprocessor->conditionals);
+    if (current_group.count > 0) {
+        array_push(preprocessor->source_groups, current_group);
+    }
+    
+    preprocessor->curr_branch_taken = array_pop(preprocessor->if_result_stack);
     
     return string_builder_to_string_nocopy(sb);
 }

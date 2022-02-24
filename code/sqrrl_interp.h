@@ -51,10 +51,10 @@ inline void
 interp_error(Interp* interp, string message) {
     if (interp->error_count == 0) {
         // TODO: need the line numbers to calculate this!
-        // Span_Data span = calculate_span_data(tokenizer->lines, node->span);
+        //Span_Data span = calculate_span_data(tokenizer->lines, node->span);
         Span_Data span = {};
         string filename = string_lit("examples/demo.sq"); // TODO: store names of source files somewhere!
-        pln("%:%:%: error: %\n", f_string(filename), f_smm(span.begin_line), f_smm(span.begin_col), f_string(message));
+        pln("%:%:%: error: %\n", f_string(filename), f_smm(span.begin_line), f_smm(span.begin_column), f_string(message));
         DEBUG_log_backtrace();
         interp->error_count++;
     }

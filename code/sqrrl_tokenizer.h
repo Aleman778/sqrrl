@@ -98,6 +98,7 @@ struct Token {
     string source;
     
     string file;
+    umm file_index;
     umm line;
     umm column;
     umm offset;
@@ -120,10 +121,10 @@ struct Tokenizer {
     
     string source;
     string file;
-    smm line_number; // starts at zero
-    smm column_number; // starts at zero
+    umm line_number; // starts at zero
+    umm column_number; // starts at zero
     u32 curr_utf32_character; // the current character as unicode codepoint
-    smm* lines;
+    umm* lines; // array of byte offsets for each line
 };
 
 // NOTE(alexander): forward declare function
@@ -173,8 +174,8 @@ struct Tokenizer_State {
     u8* curr;
     u8* end;
     u8* curr_line;
-    smm line_number;
-    smm column_number;
+    umm line_number;
+    umm column_number;
     u32 curr_utf32_character;
 };
 

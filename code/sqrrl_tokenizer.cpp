@@ -67,7 +67,6 @@ utf8_advance_character(Tokenizer* tokenizer) {
     Utf8_To_Utf32_Result character = utf8_convert_to_utf32(tokenizer->curr, tokenizer->end);
     if (character.num_bytes == 0) {
         tokenization_error(tokenizer, string_lit("invalid utf-8 formatting detected"));
-        assert(0);
         return;
     }
     

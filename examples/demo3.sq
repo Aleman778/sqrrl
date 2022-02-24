@@ -1,0 +1,11 @@
+#include "demo2.sq"
+
+int
+main() {
+    
+    int x = 0;
+    
+    y = 10
+        
+        return x;
+}

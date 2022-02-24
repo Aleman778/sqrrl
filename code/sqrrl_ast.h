@@ -191,31 +191,44 @@ enum {
 
 union Span {
     struct {
-        u32 base;
+        u32 offset;
         u16 count;
-        u16 index;
+        u16 file_index;
     };
     u64 packed;
 };
 
+inline Span
+create_span(u32 offset, u16 count, u16 file_index) {
+    Span span;
+    span.offset = offset;
+    span.count = count;
+    span.file_index = file_index;
+    return span;
+}
+
 struct Span_Data {
     u32 begin_line;
-    u32 begin_col;
+    u32 begin_column;
     u32 end_line;
-    u32 end_col;
+    u32 end_column;
+    u32 offset;
+    u32 count;
+    u32 file_index;
 };
 
 Span_Data
 calculate_span_data(smm* lines, Span span) {
-    Binary_Search_Result begin = binary_search(lines, (smm) span.base, compare_smm);
-    smm span_end = (smm) span.base + (smm) span.count;
+    Binary_Search_Result begin = binary_search(lines, (smm) span.offset, compare_smm);
+    smm span_end = (smm) span.offset + (smm) span.count;
     Binary_Search_Result end = binary_search(lines, end, compare_smm);
     
     Span_Data result;
-    result.begin_line = (u32) begin.index + 1;
-    result.begin_col = (u32) ((smm) span.base - *(smm*) begin.value) + 1;
-    result.end_line = (u32) end.index + 1;
-    result.end_col = (u32) ((smm) span.base + (smm) span.count - *(smm*) end.value) + 1;
+    result.begin_line = (u32) begin.index;
+    result.begin_column = (u32) ((smm) span.offset - *(smm*) begin.value);
+    result.end_line = (u32) end.index;
+    result.end_column = (u32) ((smm) span.offset + (smm) span.count - *(smm*) end.value);
+    result.file_index = span.file_index;
     return result;
 }
 
@@ -223,21 +236,22 @@ global const Span empty_span = { 0 };
 
 inline Span 
 token_to_span(Token token) {
-    return { (u32) token.offset, (u16) token.source.count, 0 }; // TODO(alexander): what should index be?
+    // TODO(Alexander): make sure that numbers fit in their size
+    return { (u32) token.offset, (u16) token.source.count, (u16) token.file_index };
 }
 
 inline Span
 span_combine(Span span1, Span span2) {
-    assert(span1.index == span2.index);
+    assert(span1.file_index == span2.file_index);
     
     Span span;
-    span.index = span1.index;
-    if (span1.base < span2.base) {
-        span.base = span1.base;
-        span.count = (u16) (span2.base - span1.base + (u32) span2.count);
+    span.file_index = span1.file_index;
+    if (span1.offset < span2.offset) {
+        span.offset = span1.offset;
+        span.count = (u16) (span2.offset - span1.offset + (u32) span2.count);
     } else {
-        span.base = span2.base;
-        span.count = (u16) (span1.base - span2.base + (u32) span1.count);
+        span.offset = span2.offset;
+        span.count = (u16) (span1.offset - span2.offset + (u32) span1.count);
     }
     return span;
 }

@@ -31,7 +31,7 @@ read_entire_file(string filename) {
 
 void
 free_file_memory(u32 index) {
-    Loaded_Source_File* file = get_source_by_index(index);
+    Loaded_Source_File* file = get_source_file_by_index(index);
     if (file) {
         DEBUG_free_file_memory(file);
     }
@@ -39,13 +39,25 @@ free_file_memory(u32 index) {
 
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[]) {
+    
+    {
+        // Put dummy file as index 0
+        Loaded_Source_File file = {};
+        file.filepath = string_lit("invalid");
+        file.source = string_lit("");
+        array_push(loaded_source_files, file);
+        
+        string_id ident = Kw_invalid;
+        map_put(file_index_table, ident, 0);
+    }
+    
     string filepath;
     
 #if BUILD_DEBUG
     if (argc > 1) {
         filepath = string_lit(argv[1]);
     } else {
-        filepath = string_lit("examples/demo_macros.sq");
+        filepath = string_lit("examples/demo3.sq");
     }
 #else
     if (argc <= 1) {
@@ -54,6 +66,7 @@ compiler_main_entry(int argc, char* argv[]) {
     }
     filepath = string_lit(argv[1]);
 #endif
+    
     
     // Extract the directory from the filepath and use as working directory
     // TODO(Alexander): this is hackish solution, we should rely on OS service to do this
@@ -77,7 +90,12 @@ compiler_main_entry(int argc, char* argv[]) {
     Loaded_Source_File file = read_entire_file(filename);
     
     Preprocessor preprocessor = {};
-    string preprocessed_source = preprocess_file(&preprocessor, file.source, filepath);
+    string preprocessed_source = preprocess_file(&preprocessor, file.source, file.filepath, file.index);
+    
+    
+    for_array(preprocessor.source_groups, group, index) {
+        pln("group(%): file_index: %, line: %, offset: %, count: %", f_int(index), f_uint(group->file_index), f_uint(group->line), f_umm(group->offset), f_umm(group->count));
+    }
     
     if (preprocessor.error_count > 0) {
         pln("\nErrors found during preprocessing, exiting...\n");

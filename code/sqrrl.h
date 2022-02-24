@@ -25,19 +25,30 @@ struct Loaded_Source_File {
 
 global string working_directory = {};
 global array(Loaded_Source_File)* loaded_source_files = 0;
+global map(string_id, u32)* file_index_table = 0;
 
 Loaded_Source_File read_entire_file(string filename);
 void free_file_memory(u32 index);
 
 inline Loaded_Source_File*
-get_source_by_index(u32 index) {
+get_source_file_by_index(u32 index) {
     if (index >= array_count(loaded_source_files)) {
         return 0;
     }
     
-    return loaded_source_files + index;;
+    return loaded_source_files + index;
 }
 
+inline int 
+get_source_file_index_by_ident(string_id ident) {
+    return map_get(file_index_table, ident);
+}
+
+inline Loaded_Source_File*
+get_source_file_by_ident(string_id ident) {
+    u32 index = get_source_file_index_by_ident(ident);
+    return get_source_file_by_index(index);
+}
 
 extern "C" int compiler_main_entry(int argc, char* argv[]);
 

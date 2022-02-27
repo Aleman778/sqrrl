@@ -1,5 +1,8 @@
 
 struct Parser {
+    array(Source_Group)* source_groups;
+    s32 curr_source_group_index;
+    
     Tokenizer* tokenizer;
     Token current_token;
     Token peeked_tokens[2];

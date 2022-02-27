@@ -42,7 +42,7 @@ utf8_convert_to_utf32(u8* curr, u8* end) {
 
 void
 utf8_advance_character(Tokenizer* tokenizer) {
-    if (tokenizer->curr) {
+    if (tokenizer->curr && tokenizer->curr != tokenizer->next) {
         tokenizer->column_number++;
         if (*tokenizer->curr == '\n') {
             array_push(tokenizer->lines, (smm) (tokenizer->next - tokenizer->start));
@@ -610,7 +610,7 @@ advance_token(Tokenizer* tokenizer) {
                 u8 buffer[4];
                 umm count = (umm) utf32_convert_to_utf8(tokenizer->curr_utf32_character, buffer);
                 string character = create_string(count, buffer);
-                tokenization_error(tokenizer, string_format("invalid unicode character `%` (U+%)", f_string(character), f_u64(tokenizer->curr_utf32_character)));
+                tokenization_error(tokenizer, string_format("invalid unicode character `%` (U+%)", f_string(character), f_u64_HEX(tokenizer->curr_utf32_character)));
                 token.type = Token_Error;
             } break;
         }

@@ -140,7 +140,27 @@ type_equals(Type* a, Type* b) {
             }
         } break;
         
+        case TypeKind_Union:
+        case TypeKind_Struct: {
+            if (a->kind != b->kind) {
+                return false;
+            }
+            
+            Type_Table* table_a = &a->Struct_Or_Union;
+            Type_Table* table_b = &a->Struct_Or_Union;
+            
+            if (table_a->count != table_b->count) {
+                return false;
+            }
+            
+            // TODO(Alexander): check that entries in the struct/unions match
+            //for_array(table_a->) {
+            //}
+            
+        } break;
+        
         default: {
+            pln("%", f_string(string_format("%", f_type(a))));
             assert(0 && "not implemented");
         } break;
     }
@@ -186,13 +206,23 @@ string_builder_push(String_Builder* sb, Type* type) {
             string_builder_push(sb, ")");
         } break;
         
-        case TypeKind_Struct: break;
-        case TypeKind_Union: break;
-        case TypeKind_Enum: break;
-        case TypeKind_Function: break;
+        case TypeKind_Struct: {
+            string_builder_push(sb, "struct");
+        } break;
         
-        case TypeKind_Unresolved: break;
+        case TypeKind_Union: {
+            string_builder_push(sb, "union");
+        } break;
         
+        case TypeKind_Enum: {
+            string_builder_push(sb, "enum");
+        } break;
+        case TypeKind_Function: {
+            string_builder_push(sb, "function");
+        } break;
+        
+        default: {
+            string_builder_push(sb, "invalid");
+        }break;
     }
-    
 }

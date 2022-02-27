@@ -11,32 +11,6 @@
 #include "sqrrl_parser.cpp"
 #include "sqrrl_interp.cpp"
 
-
-Loaded_Source_File
-read_entire_file(string filename) {
-    Loaded_Source_File result = {};
-    
-    // TODO(Alexander): hackish way to join two paths!!! Use OS service for this later.
-    string filepath = string_concat(working_directory, filename);
-    
-    Read_File_Result file = DEBUG_read_entire_file(string_to_cstring(filepath));
-    result.filepath = filepath;
-    result.source = create_string(file.contents_size, (u8*) file.contents);
-    result.index = (u32) array_count(loaded_source_files);
-    result.is_valid = file.contents != 0;
-    
-    array_push(loaded_source_files, result);
-    return result;
-}
-
-void
-free_file_memory(u32 index) {
-    Loaded_Source_File* file = get_source_file_by_index(index);
-    if (file) {
-        DEBUG_free_file_memory(file);
-    }
-}
-
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[]) {
     
@@ -92,9 +66,11 @@ compiler_main_entry(int argc, char* argv[]) {
     Preprocessor preprocessor = {};
     string preprocessed_source = preprocess_file(&preprocessor, file.source, file.filepath, file.index);
     
-    
     for_array(preprocessor.source_groups, group, index) {
-        pln("group(%): file_index: %, line: %, offset: %, count: %", f_int(index), f_uint(group->file_index), f_uint(group->line), f_umm(group->offset), f_umm(group->count));
+        pln("group(%): file_index: %, line: %, offset: %, count: %\nSource:", f_int(index), f_uint(group->file_index), f_uint(group->line), f_umm(group->offset), f_umm(group->count));
+        
+        string group_source = create_string(group->count, preprocessed_source.data + group->offset);
+        pln("%\n\n", f_string(group_source));
     }
     
     if (preprocessor.error_count > 0) {
@@ -104,7 +80,7 @@ compiler_main_entry(int argc, char* argv[]) {
     
     
     // TODO(alexander): temp printing source
-    pln("%", f_string(preprocessed_source));
+    //pln("%", f_string(preprocessed_source));
     
     // Lexer
     Tokenizer tokenizer = {};
@@ -112,6 +88,7 @@ compiler_main_entry(int argc, char* argv[]) {
     // TODO(alexander): calculate line number!
     
     Parser parser = {};
+    parser.source_groups = preprocessor.source_groups;
     parser.tokenizer = &tokenizer;
     Ast_File ast_file = parse_file(&parser);
     

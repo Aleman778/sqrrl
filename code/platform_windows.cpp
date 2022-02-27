@@ -122,13 +122,11 @@ DEBUG_read_entire_file(cstring filename) {
             
         } else {
             platform_error(string_format("failed to read file `%`", f_cstring(filename)));
-            // TODO(alexander): logging, failed to get file size
         }
         
         CloseHandle(file_handle);
     } else {
         platform_error(string_format("file `%` was not found", f_cstring(filename)));
-        // TODO(alexander): logging, file not found
     }
     
     return result;

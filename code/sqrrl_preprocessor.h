@@ -21,16 +21,6 @@ struct Replacement_List {
     b32 success;
 };
 
-struct Source_Group {
-    umm offset;
-    umm count;
-    
-    u32 line;
-    // TODO(Alexander): we need to record expanded macro spans here, column will just be 0 always
-    u32 column;
-    u32 file_index;
-};
-
 struct Preprocessor {
     Tokenizer* tokenizer;
     

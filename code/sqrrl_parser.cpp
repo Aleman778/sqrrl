@@ -1213,6 +1213,12 @@ Ast_File
 parse_file(Parser* parser) {
     Ast_File result = {};
     
+    // If source_groups are used start by tokenizing the first
+    if (parser->source_groups && array_count(parser->source_groups) > 0) {
+        Source_Group* group = parser->source_groups + parser->curr_source_group_index;
+        tokenizer_set_source_group(parser->tokenizer, group);
+    }
+    
     while (true) {
         Token token = peek_token(parser);
         if (!is_token_valid(token)) {
@@ -1237,6 +1243,20 @@ next_semantical_token(Parser* parser) {
     while (!is_semantical_token(token)) {
         token = advance_token(parser->tokenizer);
     }
+    
+    if (token.type == Token_EOF) {
+        // Try to load the next source group, if used
+        if (parser->source_groups) {
+            parser->curr_source_group_index++;
+            if (array_count(parser->source_groups) > parser->curr_source_group_index) {
+                Source_Group* group = parser->source_groups + parser->curr_source_group_index;
+                tokenizer_set_source_group(parser->tokenizer, group);
+                
+                token = next_semantical_token(parser);
+            }
+        }
+    }
+    
     return token;
 }
 

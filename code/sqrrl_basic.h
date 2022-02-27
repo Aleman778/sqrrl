@@ -322,7 +322,7 @@ string string_format(cstring format...);
 //     i32* array = 0;
 //     arr_push(array, 5);
 
-//struct Array_Header {
+//struct Array_,Header {
 //smm count;
 //smm capacity;
 //};

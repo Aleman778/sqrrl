@@ -168,6 +168,27 @@ tokenizer_set_substring(Tokenizer* tokenizer, string substring,
     utf8_advance_character(tokenizer);
 }
 
+struct Source_Group {
+    umm offset;
+    umm count;
+    
+    u32 line;
+    // TODO(Alexander): we need to record expanded macro spans here, column will just be 0 always
+    u32 column;
+    u32 file_index;
+};
+
+inline void
+tokenizer_set_source_group(Tokenizer* tokenizer, Source_Group* group) {
+    u8* data = tokenizer->source.data + group->offset;
+    string source_substring = create_string(group->count, data);
+    tokenizer_set_substring(tokenizer, source_substring, group->line, group->column);
+    
+    // TODO(Alexander): maybe cache file_index?
+    Loaded_Source_File* file = get_source_file_by_index(group->file_index);
+    tokenizer->file = file->filepath;
+}
+
 struct Tokenizer_State {
     Tokenizer* tokenizer;
     u8* next;

@@ -632,26 +632,28 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath, int 
         
         tokenizer_set_substring(&tokenizer, line.substring, line.curr_line_number, 0);
         
-        umm line_curr_used = sb->curr_used;
-        u8* line_begin = sb->data + sb->curr_used;
+        umm begin_used = sb->curr_used;
         bool run_finalize = preprocess_line(preprocessor, sb, &tokenizer);
-        u8* line_end = sb->data + sb->curr_used;
+        umm end_used = sb->curr_used;
         
         if (run_finalize) {
-            sb->curr_used = line_curr_used;
-            string finalized_string = preprocess_finalize_code(string_view(line_begin, line_end));
+            sb->curr_used = begin_used;
+            string expanded_code = create_string(end_used - begin_used, sb->data + begin_used);
+            string finalized_string = preprocess_finalize_code(expanded_code);
             string_builder_push(sb, finalized_string);
             free(finalized_string.data);
             
+            if (current_group.count == 0) {
+                current_group.offset = begin_used;
+            }
             current_group.count += (umm) (curr - curr_line);
         } else {
             // If we skip a line we will start a new source group
             if (current_group.count > 0) {
                 // NOTE(Alexander): count > 0 as we don't want to 
                 array_push(preprocessor->source_groups, current_group);
-                
                 current_group = {};
-                current_group.offset = (umm) (curr_line - source.data);
+                current_group.offset = sb->curr_used;
                 current_group.file_index = file_index;
             }
             

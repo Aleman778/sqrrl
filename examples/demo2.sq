@@ -19,6 +19,7 @@ main() {
     
     int x = Flag.first;
     
+    
     int 
         square(int num) {
         return num * num;

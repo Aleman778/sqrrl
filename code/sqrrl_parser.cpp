@@ -547,6 +547,9 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
                     lhs_expr->Struct_Expr.fields = parse_compound(parser,
                                                                   Token_Open_Brace, Token_Close_Brace, Token_Comma, 
                                                                   &parse_actual_struct_or_union_argument);
+                } else {
+                    parse_error(parser, token, string_lit("struct literals expects identifier before `{`"));
+                    return rhs_expr;
                 }
                 update_span(parser, lhs_expr);
             } continue;
@@ -966,14 +969,17 @@ parse_compound(Parser* parser,
                 token = peek_token(parser);
                 parse_error_unexpected_token(parser, separator, token);
                 
+                int depth = 1;
                 for (;;) {
                     token = next_token(parser);
-                    if (token.type == Token_EOF ||
-                        token.type == end) {
+                    if      (token.type == begin) depth++;
+                    else if (token.type == end)   depth--;
+                    
+                    if (token.type == Token_EOF || depth <= 0) {
                         return result;
                     }
                     
-                    if (token.type == separator) { 
+                    if (token.type == separator && depth == 1) {
                         break;
                     }
                 }

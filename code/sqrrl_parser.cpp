@@ -14,7 +14,7 @@ next_token_if_matched(Parser* parser, Token_Type expected, bool report_error) {
 }
 
 bool
-parse_keyword(Parser* parser, Keyword expected, bool report_error) {
+parse_keyword(Parser* parser, Var expected, bool report_error) {
     Token token = peek_token(parser);
     if (token.type == Token_Ident) {
         string_id id = vars_save_string(token.source);
@@ -38,7 +38,7 @@ parse_identifier(Parser* parser, bool report_error) {
     Token token = peek_token(parser);
     if (token.type == Token_Ident) {
         string_id id = vars_save_string(token.source);
-        if (id < keyword_last) {
+        if (is_builtin_keyword(id)) {
             if (report_error) parse_error(parser, token, 
                                           string_format("expected `identifier` found keyword `%`", f_string(token.source)));
             return 0;
@@ -642,7 +642,7 @@ parse_statement(Parser* parser, bool report_error) {
     Ast* result = 0;
     
     if (token.type == Token_Ident) {
-        Keyword keyword = (Keyword) vars_save_string(token.source);
+        Var keyword = (Var) vars_save_string(token.source);
         switch (keyword) {
             case Kw_break: {
                 next_token(parser);
@@ -1011,8 +1011,7 @@ parse_type(Parser* parser, bool report_error) {
     
     next_token(parser);
     
-    if (ident >= builtin_types_begin && ident <= builtin_types_end || ident > keyword_last ||
-        ident == Kw_string) {
+    if (is_builtin_type_keyword(ident) || is_not_builtin_keyword(ident)) {
         base = push_ast_node(parser);
         base->type = Ast_Named_Type;
         base->Named_Type = push_ast_node(parser);

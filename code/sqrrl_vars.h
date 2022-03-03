@@ -1,6 +1,7 @@
 
 // Predefined keywords variables that are reserved by the compiler.
 #define DEF_KEYWORDS \
+VAR_GROUP(builtin_keywords_begin) \
 VAR(invalid)  \
 VAR(asm)      \
 VAR(break)    \
@@ -27,9 +28,11 @@ VAR(struct)   \
 VAR(true)     \
 VAR(typedef)  \
 VAR(union)    \
-VAR(while)
+VAR(while)    \
+VAR_GROUP(builtin_keywords_end)
 
 #define DEF_TYPE_KEYWORDS \
+VAR_GROUP(builtin_types_begin) \
 VAR(int)      \
 VAR(s8)       \
 VAR(s16)      \
@@ -49,7 +52,8 @@ VAR(bool)     \
 VAR(b32)      \
 VAR(void)     \
 VAR(string)   \
-VAR(infer)
+VAR(infer)    \
+VAR_GROUP(builtin_types_end)
 
 #define DEF_SYMBOLS \
 VAR(__VA_ARGS__) \
@@ -66,17 +70,6 @@ VAR(ifdef)    \
 VAR(ifndef)   \
 VAR(line)     \
 VAR(undef)    \
-VAR(hh)       \
-VAR(h)        \
-VAR(l)        \
-VAR(ll)       \
-VAR(uhhu)      \
-VAR(hu)       \
-VAR(lu)       \
-VAR(llu)      \
-VAR(u)        \
-VAR(f)        \
-VAR(d)
 
 // NOTE(alexander): interning strings into ids
 typedef u32 string_id;
@@ -114,12 +107,15 @@ void
 vars_initialize() {
     string_map_new_arena(vars_str_to_id);
 #define VAR(symbol) vars_save_cstring(#symbol);
+#define VAR_GROUP(symbol) VAR(symbol)
     DEF_KEYWORDS DEF_TYPE_KEYWORDS DEF_SYMBOLS
+#undef VAR_GROUP
 #undef VAR
 }
 
 typedef string_id Var;
 enum {
+#define VAR_GROUP(symbol) symbol,
 #define VAR(symbol) Kw_##symbol,
     DEF_KEYWORDS DEF_TYPE_KEYWORDS
 #undef VAR
@@ -127,16 +123,20 @@ enum {
 #define VAR(symbol) Sym_##symbol,
     DEF_SYMBOLS
 #undef VAR
+#undef VAR_GROUP
 };
 
-global const u32 builtin_types_begin = Kw_int;
-global const u32 builtin_types_end = Kw_void;
-global const u32 builtin_keywords_begin = Kw_infer;
-global const u32 builtin_keywords_end = builtin_types_end;
-global const u32 keyword_first = Kw_invalid;
-global const u32 keyword_last = Kw_infer;
+inline bool
+is_builtin_keyword(string_id id) {
+    return id > builtin_keywords_begin && id <= builtin_keywords_end;
+}
 
 inline bool
-is_keyword(string_id id) {
-    return id > keyword_first && id <= keyword_last;
+is_builtin_type_keyword(string_id id) {
+    return id > builtin_types_begin && id <= builtin_types_end;
+}
+
+inline bool
+is_not_builtin_keyword(string_id id) {
+    return id > builtin_keywords_begin;
 }

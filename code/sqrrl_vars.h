@@ -1,42 +1,35 @@
 
 // Predefined keywords variables that are reserved by the compiler.
-#define DEF_VARS  \
+#define DEF_KEYWORDS \
 VAR(invalid)  \
 VAR(asm)      \
 VAR(break)    \
 VAR(cast)     \
 VAR(continue) \
 VAR(defer)    \
-VAR(define)   \
-VAR(defined)  \
 VAR(do)       \
 VAR(else)     \
-VAR(elif)     \
 VAR(enum)     \
 VAR(extern)   \
-VAR(endif)    \
 VAR(error)    \
 VAR(false)    \
 VAR(for)      \
 VAR(global)   \
 VAR(internal) \
 VAR(if)       \
-VAR(ifdef)    \
-VAR(ifndef)   \
-VAR(include)  \
 VAR(in)       \
 VAR(inline)   \
 VAR(no_inline)\
 VAR(local_persist) \
-VAR(__VA_ARGS__) \
 VAR(return)   \
 VAR(static)   \
 VAR(struct)   \
 VAR(true)     \
 VAR(typedef)  \
 VAR(union)    \
-VAR(undef)    \
-VAR(while)    \
+VAR(while)
+
+#define DEF_TYPE_KEYWORDS \
 VAR(int)      \
 VAR(s8)       \
 VAR(s16)      \
@@ -57,11 +50,33 @@ VAR(b32)      \
 VAR(void)     \
 VAR(string)   \
 VAR(infer)
-//VAR(pointer)  \
-//VAR(array)    \
-//VAR(tuple)    \
-//VAR(function) \
-//VAR(infer)
+
+#define DEF_SYMBOLS \
+VAR(__VA_ARGS__) \
+VAR(__COUNTER__) \
+VAR(__FILE__) \
+VAR(__FUNCTION__) \
+VAR(__LINE__) \
+VAR(define)   \
+VAR(defined)  \
+VAR(elif)     \
+VAR(endif)    \
+VAR(include)  \
+VAR(ifdef)    \
+VAR(ifndef)   \
+VAR(line)     \
+VAR(undef)    \
+VAR(hh)       \
+VAR(h)        \
+VAR(l)        \
+VAR(ll)       \
+VAR(uhhu)      \
+VAR(hu)       \
+VAR(lu)       \
+VAR(llu)      \
+VAR(u)        \
+VAR(f)        \
+VAR(d)
 
 // NOTE(alexander): interning strings into ids
 typedef u32 string_id;
@@ -99,14 +114,18 @@ void
 vars_initialize() {
     string_map_new_arena(vars_str_to_id);
 #define VAR(symbol) vars_save_cstring(#symbol);
-    DEF_VARS
+    DEF_KEYWORDS DEF_TYPE_KEYWORDS DEF_SYMBOLS
 #undef VAR
 }
 
-typedef string_id Keyword;
+typedef string_id Var;
 enum {
 #define VAR(symbol) Kw_##symbol,
-    DEF_VARS
+    DEF_KEYWORDS DEF_TYPE_KEYWORDS
+#undef VAR
+    
+#define VAR(symbol) Sym_##symbol,
+    DEF_SYMBOLS
 #undef VAR
 };
 

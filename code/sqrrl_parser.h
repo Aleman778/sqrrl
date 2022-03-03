@@ -24,10 +24,11 @@ push_ast_node(Parser* parser, Token* token=0) {
 }
 
 inline Ast*
-push_ast_value(Parser* parser, Value value) {
+push_ast_value(Parser* parser, Value value, Type* type) {
     Ast* result = push_ast_node(parser);
     result->type = Ast_Value;
-    result->Value = value;
+    result->Value.value = value;
+    result->Value.value_type = type;
     return result;
 }
 
@@ -69,7 +70,7 @@ struct Parse_U64_Value_Result {
 Parse_U64_Value_Result parse_u64_value(Token token);
 
 bool next_token_if_matched(Parser* parser, Token_Type expected, bool report_error=true);
-bool parse_keyword(Parser* parser, Keyword keyword, bool report_error=true);
+bool parse_keyword(Parser* parser, Var keyword, bool report_error=true);
 
 Ast* parse_identifier(Parser* parser, bool report_error=true);
 Ast* parse_atom(Parser* parser, bool report_error=true);

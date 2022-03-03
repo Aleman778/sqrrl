@@ -197,16 +197,16 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
     Token token = advance_semantical_token(t);
     
     if (token.type == Token_Ident) {
-        string_id keyword = vars_save_string(token.source);
+        string_id symbol = vars_save_string(token.source);
         
-        switch (keyword) {
-            case Kw_define: {
+        switch (symbol) {
+            case Sym_define: {
                 if (preprocessor->curr_branch_taken) {
                     preprocess_parse_define(preprocessor, t);
                 }
             } break;
             
-            case Kw_undef: {
+            case Sym_undef: {
                 if (preprocessor->curr_branch_taken) {
                     token = advance_semantical_token(t);
                     if (token.type == Token_Ident) {
@@ -218,7 +218,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                 }
             } break;
             
-            case Kw_include: {
+            case Sym_include: {
                 if (preprocessor->curr_branch_taken) {
                     token = advance_semantical_token(t);
                     if (token.type == Token_Lt) {
@@ -243,7 +243,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                 preprocessor->curr_branch_taken = value;
             } break;
             
-            case Kw_elif: {
+            case Sym_elif: {
                 bool value = preprocess_parse_and_eval_constant_expression(preprocessor, t);
                 preprocessor->curr_branch_taken = value;
             } break;
@@ -253,7 +253,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                 // TODO(Alexander): detect two else in row
             } break;
             
-            case Kw_endif: {
+            case Sym_endif: {
                 if (array_count(preprocessor->if_result_stack) > 0) {
                     preprocessor->curr_branch_taken = array_pop(preprocessor->if_result_stack);
                 } else {
@@ -261,15 +261,15 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                 }
             } break;
             
-            case Kw_ifdef:
-            case Kw_ifndef: {
+            case Sym_ifdef:
+            case Sym_ifndef: {
                 token = advance_semantical_token(t);
                 if (token.type == Token_Ident) {
                     string_id ident = vars_save_string(token.source);
                     Preprocessor_Macro macro = map_get(preprocessor->macros, ident);
                     
                     bool value = macro.is_valid;
-                    if (keyword == Kw_ifndef) {
+                    if (symbol == Sym_ifndef) {
                         value = !value;
                     }
                     array_push(preprocessor->if_result_stack, preprocessor->curr_branch_taken);
@@ -330,7 +330,7 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
                             Replacement_List args, 
                             string_id ident) {
     
-    if (ident == Kw_defined) {
+    if (ident == Sym_defined) {
         
         string_id macro_ident = Kw_invalid;
         
@@ -361,7 +361,7 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
             return false;
         }
         
-    } else if (ident == Kw___VA_ARGS__) {
+    } else if (ident == Sym___VA_ARGS__) {
         
         umm formal_arg_count = map_count(parent_macro.arg_mapper);
         umm actual_arg_count = array_count(args.list);

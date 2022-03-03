@@ -255,44 +255,46 @@ scan_number(Tokenizer* tokenizer, Token& token) {
         }
     }
     
-    if (*tokenizer->curr == 'f') {
-        token.type = Token_Float;
-        token.suffix_start = (smm) (tokenizer->curr - tokenizer->start) - token.offset;
-        utf8_advance_character(tokenizer);
-    }
-    
     // Type annotations separated by one ore more underline e.g. 10_u64
     while (*tokenizer->curr == '_' && tokenizer->curr < tokenizer->end) utf8_advance_character(tokenizer);
     token.suffix_start = (smm) (tokenizer->curr - (tokenizer->start + token.offset));
     
-    // NOTE(Alexander): this wasn't really needed unless we want to store
-    // this information to help the parser.
     // C type annotations
-#if 0
     if (token.type == Token_Int) {
         if ((*tokenizer->curr == 'u' || *tokenizer->curr == 'U') &&
             tokenizer->curr < tokenizer->end) {
-            // unsigned
+            token.c_int_type |= CIntType_Unsigned;
             utf8_advance_character(tokenizer);
         }
         
         if ((*tokenizer->curr == 'l' || *tokenizer->curr == 'L') &&
             tokenizer->curr < tokenizer->end) {
             
-            // long
+            token.c_int_type |= CIntType_Long;
+            
             utf8_advance_character(tokenizer);
             if ((*tokenizer->curr == 'l' || *tokenizer->curr == 'L') &&
                 tokenizer->curr < tokenizer->end) {
-                // long long
+                
+                token.c_int_type |= CIntType_Long_Long;
                 utf8_advance_character(tokenizer);
             }
         }
+        
+    } else if (token.type == Token_Float) {
+        if (*tokenizer->curr == 'f') {
+            utf8_advance_character(tokenizer);
+        }
     }
-#endif
     
-    if (is_ident_start(*tokenizer->curr)) {
+    
+    if (is_ident_start(*tokenizer->curr) || token.c_int_type > 0) {
+        if (token.c_int_type == 0) {
+            utf8_advance_character(tokenizer);
+        }
         scan_while(tokenizer, &is_ident_continue);
     }
+    
     
     return;
 }

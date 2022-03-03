@@ -3,7 +3,10 @@
 #define DEF_AST_TYPES                           \
 AST_GROUP(None,        "none")                  \
 AST(Abi,               "abi", string)           \
-AST(Value,             "value", Value)          \
+AST(Value,             "value", struct {        \
+Value value;                                    \
+Type* value_type;                               \
+})                                              \
 AST(Ident,             "identifier", string_id) \
 AST(Ident_String,      "identifier", struct {   \
 string_id ident;                                \
@@ -316,7 +319,8 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
         string_builder_push_format(sb, " \"%\")", f_string(node->Abi));
     } else if (node->type == Ast_Value) {
         string_builder_push(sb, " ");
-        string_builder_push(sb, &node->Value);
+        string_builder_push(sb, &node->Value.value);
+        string_builder_push(sb, node->Value.value_type);
     } else if (node->type == Ast_Ident) {
         string_builder_push_format(sb, " `%`", f_string(vars_load_string(node->Ident)));
     } else if (node->type == Ast_Unary_Expr) {

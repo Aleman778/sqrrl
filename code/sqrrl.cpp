@@ -31,7 +31,8 @@ compiler_main_entry(int argc, char* argv[]) {
     if (argc > 1) {
         filepath = string_lit(argv[1]);
     } else {
-        filepath = string_lit("examples/demo3.sq");
+        //filepath = string_lit("examples/demo.sq");
+        filepath = string_lit("tests/literals.sq");
     }
 #else
     if (argc <= 1) {
@@ -66,12 +67,15 @@ compiler_main_entry(int argc, char* argv[]) {
     Preprocessor preprocessor = {};
     string preprocessed_source = preprocess_file(&preprocessor, file.source, file.filepath, file.index);
     
+#if 0
+    // Source group debugging
     for_array(preprocessor.source_groups, group, index) {
         pln("group(%): file_index: %, line: %, offset: %, count: %\nSource:", f_int(index), f_uint(group->file_index), f_uint(group->line), f_umm(group->offset), f_umm(group->count));
         
         string group_source = create_string(group->count, preprocessed_source.data + group->offset);
         pln("%\n\n", f_string(group_source));
     }
+#endif
     
     if (preprocessor.error_count > 0) {
         pln("\nErrors found during preprocessing, exiting...\n");

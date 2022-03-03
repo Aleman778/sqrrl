@@ -93,6 +93,14 @@ enum Int_Base {
     IntBase_Hexadecimal,
 };
 
+typedef u32 C_Int_Type;
+enum {
+    CIntType_None = bit(0),
+    CIntType_Long = bit(1),
+    CIntType_Long_Long = bit(2),
+    CIntType_Unsigned = bit(3),
+};
+
 struct Token {
     Token_Type type;
     string source;
@@ -104,6 +112,7 @@ struct Token {
     umm offset;
     
     Int_Base int_base;
+    C_Int_Type c_int_type;
     umm suffix_start; // optional defined for literal type suffix e.g.  10i8
     umm num_hashes; // optionally defined for raw string literals.
 };

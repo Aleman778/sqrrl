@@ -263,8 +263,7 @@ string_builder_to_string_nocopy(String_Builder* sb) {
 }
 
 // NOTE(Alexander): improved string formatting and printf
-typedef int Format_Type;
-enum { // TODO(Alexander): add more types
+enum Format_Type { // TODO(Alexander): add more types
     FormatType_None,
     FormatType_void,
     FormatType_char,

@@ -125,7 +125,7 @@ parse_char(Parser* parser) {
     }
     
     // TODO(alexander): should we create a char value type?
-    return push_ast_value(parser, create_unsigned_int_value(character));
+    return push_ast_value(parser, create_unsigned_int_value(character), &global_primitive_types[Kw_char]);
 }
 
 internal Ast*
@@ -174,7 +174,7 @@ parse_string(Parser* parser) {
     
     string result = string_builder_to_string(&sb);
     string_builder_free(&sb);
-    return push_ast_value(parser, create_string_value(result));
+    return push_ast_value(parser, create_string_value(result), &global_string_type);
 }
 
 
@@ -238,11 +238,9 @@ parse_int(Parser* parser) {
     Token token = parser->current_token;
     assert(token.type == Token_Int);
     
+    Type* type = &global_primitive_types[PrimitiveTypeKind_int];
     
     if (token.suffix_start != token.source.count) {
-        assert(0 && "number suffixes are not supported yet!");
-        
-        Type* type = &global_primitive_types[PrimitiveTypeKind_int];
         string suffix = string_view(token.source.data + token.suffix_start, 
                                     token.source.data + token.source.count);
         
@@ -252,20 +250,42 @@ parse_int(Parser* parser) {
 case Kw_##name: type = &global_primitive_types[PrimitiveTypeKind_##name]; break;
             DEF_PRIMITIVE_TYPES
 #undef PRIMITIVE
-            default:
-            if (suffix.count == 1) {
-                if (*suffix.data == 'u') {
-                    type = &global_primitive_types[PrimitiveTypeKind_uint];
-                } else if (*suffix.data == 'f') {
+            default: {
+                if (suffix.count == 1 && *suffix.data == 'f') {
                     type = &global_primitive_types[PrimitiveTypeKind_f32];
+                    
+                } else if (is_bitflag_set(token.c_int_type, CIntType_Unsigned)) {
+                    type = &global_primitive_types[PrimitiveTypeKind_f32];
+                    if (is_bitflag_set(token.c_int_type, CIntType_Long_Long)) {
+                        type = &global_primitive_types[PrimitiveTypeKind_u64];
+                        
+                    } else if (is_bitflag_set(token.c_int_type, CIntType_Long)) {
+                        type = &global_primitive_types[PrimitiveTypeKind_u32];
+                        
+                    } else {
+                        type = &global_primitive_types[PrimitiveTypeKind_uint];
+                    }
+                    
+                } else {
+                    if (is_bitflag_set(token.c_int_type, CIntType_Long_Long)) {
+                        type = &global_primitive_types[PrimitiveTypeKind_s64];
+                        
+                    } else if (is_bitflag_set(token.c_int_type, CIntType_Long)) {
+                        type = &global_primitive_types[PrimitiveTypeKind_s32];
+                        
+                    } else {
+                        parse_error(parser, token, 
+                                    string_format("invalid float literal suffix `%s`, expected primitive type", f_string(suffix)));
+                    }
                 }
-            }
-            // TODO(alexander): improve this error, e.g. show what types are available?
-            //string name = copy_string(suffix, arena_allocator(parser->temp_arena));
-            //parse_error(parser, token, "invalid integer type `%s`", lit(name));
+            } break;
+        }
+        
+        if (type->Primitive.kind == PrimitiveTypeKind_f32 &&
+            type->Primitive.kind == PrimitiveTypeKind_f64) {
             
-            assert(0 && "TODO: add error message");
-            break;
+            parse_error(parser, token, 
+                        string_format("expected integer literal suffix, found `%`", f_string(suffix)));
         }
     }
     
@@ -275,7 +295,7 @@ case Kw_##name: type = &global_primitive_types[PrimitiveTypeKind_##name]; break;
     }
     u64 value = parsed_result.value;
     
-    return push_ast_value(parser, create_signed_int_value(value));
+    return push_ast_value(parser, create_signed_int_value(value), type);
 }
 
 internal Ast*
@@ -288,21 +308,36 @@ parse_float(Parser* parser) {
         return 0;
     }
     
+    Type* type = &global_primitive_types[PrimitiveTypeKind_f64];
     
     if (token.suffix_start != token.source.count) {
-        assert(0 && "number suffixes are not supported yet!");
-#if 0
-        Type type = primitive_types[Primitive_float];
-        String suffix = substring_nocopy(token.source, token.suffix_start, token.source.length);
-        Symbol sym = find_symbol(suffix);
-        switch (sym.index) {
-            case Kw_f32: type = primitive_types[Primitive_f32];
-            case Kw_f64: type = primitive_types[Primitive_f64];
-            default:
-            String name = copy_string(token.source, arena_allocator(parser->temp_arena));
-            parse_error(parser, token, "invalid float type `%s`, expected `f32` or `f64`", lit(name));
+        string suffix = string_view(token.source.data + token.suffix_start, 
+                                    token.source.data + token.source.count);
+        
+        if (suffix.count == 1 && *suffix.data == 'f') {
+            type = &global_primitive_types[PrimitiveTypeKind_f32];
+        } else {
+            Var sym = vars_save_string(suffix);
+            
+            switch (sym) {
+                
+#define PRIMITIVE(symbol, ...) case Kw_##symbol: type = &global_primitive_types[PrimitiveTypeKind_##symbol]; break;
+                DEF_PRIMITIVE_TYPES
+#undef PRIMITIVE
+                
+                default: {
+                    parse_error(parser, token, 
+                                string_format("invalid float literal suffix `%`, expected primitive type", f_string(suffix)));
+                } break;
+            }
         }
-#endif
+        
+        if (type->Primitive.kind != PrimitiveTypeKind_f32 &&
+            type->Primitive.kind != PrimitiveTypeKind_f64) {
+            
+            parse_error(parser, token, 
+                        string_format("invalid float literal suffix `%`, expected primitive type", f_string(suffix)));
+        }
     }
     
     u32 curr_index = 0;
@@ -344,7 +379,7 @@ parse_float(Parser* parser) {
         value = value*pow(10.0, sign*exponent);
     }
     
-    return push_ast_value(parser, create_floating_value(value));
+    return push_ast_value(parser, create_floating_value(value), type);
 }
 
 Ast*
@@ -358,12 +393,14 @@ parse_atom(Parser* parser, bool report_error) {
             switch (sym) {
                 case Kw_false: {
                     next_token(parser);
-                    result = push_ast_value(parser, create_boolean_value(false));
+                    result = push_ast_value(parser, create_boolean_value(false),
+                                            &global_primitive_types[PrimitiveTypeKind_bool]);
                 } break;
                 
                 case Kw_true: {
                     next_token(parser);
-                    result = push_ast_value(parser, create_boolean_value(true));
+                    result = push_ast_value(parser, create_boolean_value(true),
+                                            &global_primitive_types[PrimitiveTypeKind_bool]);
                 } break;
                 
                 case Kw_cast: {

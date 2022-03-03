@@ -97,14 +97,16 @@ format_sprintf(char* dst, umm dst_size, Format_Type type, va_list args) {
             }
         } break;
         
+        case FormatType_s8:
+        case FormatType_s16:
         case FormatType_int: {
             int value = va_arg(args, int);
             result.count = snprintf(dst, dst_size, "%d", value);
         } break;
         
-        case FormatType_uint: {
-            uint value = va_arg(args, uint);
-            result.count= snprintf(dst, dst_size, "%u", value);
+        case FormatType_s32: {
+            s32 value = va_arg(args, s32);
+            result.count = snprintf(dst, dst_size, "%ld", value);
         } break;
         
         case FormatType_s64: {
@@ -112,11 +114,22 @@ format_sprintf(char* dst, umm dst_size, Format_Type type, va_list args) {
             result.count = snprintf(dst, dst_size, "%lld", value);
         } break;
         
+        case FormatType_u8:
+        case FormatType_u16:
+        case FormatType_uint: {
+            uint value = va_arg(args, uint);
+            result.count= snprintf(dst, dst_size, "%u", value);
+        } break;
+        
+        case FormatType_u32: {
+            u32 value = va_arg(args, u32);
+            result.count= snprintf(dst, dst_size, "%lu", value);
+        } break;
+        
         case FormatType_u64: {
             u64 value = va_arg(args, u64);
             result.count= snprintf(dst, dst_size, "%llu", value);
         } break;
-        
         
         case FormatType_u64_HEX: {
             u64 value = va_arg(args, u64);

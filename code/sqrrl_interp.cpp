@@ -147,7 +147,8 @@ interp_expression(Interp* interp, Ast* ast) {
     switch (ast->type) {
         // TODO(alexander): do we want values to be expressions?
         case Ast_Value: {
-            result.value = ast->Value;
+            result.value = ast->Value.value;
+            result.type = *ast->Value.value_type;
         } break;
         
         // TODO(alexander): do we want identifiers to be expressions?

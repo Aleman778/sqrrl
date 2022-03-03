@@ -1,0 +1,11 @@
+
+
+int main() {
+    // Type suffixes
+    pln("%", 10u);      // -> uint in C: unsigned int
+    pln("%", 10__u);    // -> uint in C: unsigned int
+    pln("%", 0x0123456789ABCDEFull);  // -> u64  in C: unsigned long long
+    pln("%", 10_u32); // -> u32  in C: uint32_t
+    pln("%", 73_f32); // -> f32  in C: float
+    pln("%", 73.0f);  // -> f32  in C: float
+}

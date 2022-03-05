@@ -770,7 +770,6 @@ parse_statement(Parser* parser, bool report_error) {
                             result->kind = Ast_Decl_Stmt;
                             result->Decl_Stmt.ident = type->Function_Type.ident;
                             result->Decl_Stmt.type = type;
-                            // TODO(alexander): this is a little bit strange
                             result->Decl_Stmt.decl = parse_block_statement(parser);
                         } break;
                         

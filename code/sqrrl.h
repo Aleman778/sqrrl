@@ -16,6 +16,7 @@
 #include "sqrrl_parser.h"
 #include "sqrrl_preprocessor.h"
 #include "sqrrl_interp.h"
+#include "sqrrl_bytecode.h"
 
 extern "C" int compiler_main_entry(int argc, char* argv[]);
 

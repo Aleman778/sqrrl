@@ -392,8 +392,8 @@ it_index++, it = arr + it_index)
 // Usage: continuing from previous example...
 //
 // int result = 0;
-// for_map(map, it {
-//     result += it;
+// for_map(map, it) {
+//     result += it->value;
 // }
 // pln("%d", f_int(result)); // 10
 #define for_map(map, it) \

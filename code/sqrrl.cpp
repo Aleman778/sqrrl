@@ -10,6 +10,7 @@
 #include "sqrrl_preprocessor.cpp"
 #include "sqrrl_parser.cpp"
 #include "sqrrl_interp.cpp"
+#include "sqrrl_bytecode_generator.cpp"
 
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[]) {
@@ -108,6 +109,7 @@ compiler_main_entry(int argc, char* argv[]) {
         return 1;
     }
     
+#if 0
     // NOTE(Alexander): Interpreter pass
     Interp interp = {};
     interp_register_primitive_types(&interp);
@@ -121,6 +123,9 @@ compiler_main_entry(int argc, char* argv[]) {
             pln("Interpreter exited with code 0");
         }
     }
+#endif
+    
+    bc_generate_from_ast(&ast_file);
     
     return 0;
 }

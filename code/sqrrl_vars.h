@@ -28,8 +28,7 @@ VAR(struct)   \
 VAR(true)     \
 VAR(typedef)  \
 VAR(union)    \
-VAR(while)    \
-VAR_GROUP(builtin_keywords_end)
+VAR(while)
 
 #define DEF_TYPE_KEYWORDS \
 VAR_GROUP(builtin_types_begin) \
@@ -53,7 +52,8 @@ VAR(b32)      \
 VAR(void)     \
 VAR(string)   \
 VAR(infer)    \
-VAR_GROUP(builtin_types_end)
+VAR_GROUP(builtin_types_end) \
+VAR_GROUP(builtin_keywords_end)
 
 #define DEF_SYMBOLS \
 VAR(__VA_ARGS__) \
@@ -138,5 +138,5 @@ is_builtin_type_keyword(string_id id) {
 
 inline bool
 is_not_builtin_keyword(string_id id) {
-    return id > builtin_keywords_begin;
+    return id > builtin_keywords_end;
 }

@@ -210,6 +210,6 @@ Type* interp_type(Interp* interp, Ast* ast);
 
 void interp_declaration_statement(Interp* interp, Ast* ast);
 
-void interp_ast_declarations(Interp* interp, Ast_Decl_Entry* decls);
+void interp_ast_declarations(Interp* interp, Named_Ast* decls);
 
 bool interp_check_type_match_of_value(Interp* interp, Type* type, Interp_Value interp_value);

@@ -1,6 +1,6 @@
 
 // Define the different types of nodes in the Abstract Syntax Tree
-#define DEF_AST_TYPES                           \
+#define DEF_AST                           \
 AST_GROUP(None,        "none")                  \
 AST(Abi,               "abi", string)           \
 AST(Value,             "value", struct {        \
@@ -156,13 +156,13 @@ AST_GROUP(Type_End,    "type")
 // TODO(Alexander): this is really ugly and inefficient, try similar to C++ iterators.
 #define for_compound(compound, it) \
 for (Ast* it = compound->Compound.node; \
-compound && compound->type == Ast_Compound && compound->Compound.node && compound->Compound.node->type != Ast_None; \
+compound && compound->kind == Ast_Compound && compound->Compound.node && compound->Compound.node->kind != Ast_None; \
 compound = compound->Compound.next, it = compound->Compound.node)
 
 global cstring ast_strings[] = {
 #define AST(symbol, name, decl) name,
 #define AST_GROUP(symbol, name) name,
-    DEF_AST_TYPES
+    DEF_AST
 #undef AST_GROUP
 #undef AST
 };
@@ -170,15 +170,15 @@ global cstring ast_strings[] = {
 global cstring ast_struct_strings[] = {
 #define AST(symbol, ...) "Ast_" #symbol,
 #define AST_GROUP(symbol, ...) "Ast_" #symbol,
-    DEF_AST_TYPES
+    DEF_AST
 #undef AST_GROUP
 #undef AST
 };
 
-enum Ast_Type {
+enum Ast_Kind {
 #define AST(symbol, ...) Ast_##symbol,
 #define AST_GROUP(symbol, ...) Ast_##symbol,
-    DEF_AST_TYPES
+    DEF_AST
 #undef AST_GROUP
 #undef AST
 };
@@ -260,11 +260,11 @@ span_combine(Span span1, Span span2) {
 }
 
 struct Ast {
-    Ast_Type type;
+    Ast_Kind kind;
     union {
 #define AST(symbol, name, decl) decl symbol;
 #define AST_GROUP(...)
-        DEF_AST_TYPES 
+        DEF_AST 
 #undef AST_GROUP
 #undef AST
         Ast* children[5];
@@ -272,34 +272,36 @@ struct Ast {
     Span span;
 };
 
-struct Ast_Decl_Entry {
-    string_id key;
-    Ast* value;
+struct Named_Ast {
+    string_id ident;
+    Ast* ast;
 };
 
+typedef map(string_id, Ast*) Ast_Decl_Table;
+
 struct Ast_File {
-    Ast_Decl_Entry* decls;
+    Ast_Decl_Table* decls;
     s32 error_count;
 };
 
 inline bool
 is_ast_decl(Ast* ast) {
-    return ast->type == Ast_Decl;
+    return ast->kind == Ast_Decl;
 }
 
 inline bool
 is_ast_expr(Ast* ast) {
-    return ast->type > Ast_Expr_Begin && ast->type < Ast_Expr_End;
+    return ast->kind > Ast_Expr_Begin && ast->kind < Ast_Expr_End;
 }
 
 inline bool
 is_ast_stmt(Ast* ast) {
-    return ast->type > Ast_Stmt_Begin && ast->type < Ast_Stmt_End;
+    return ast->kind > Ast_Stmt_Begin && ast->kind < Ast_Stmt_End;
 }
 
 inline bool
 is_ast_type(Ast* ast) {
-    return ast->type > Ast_Type_Begin && ast->type < Ast_Type_End;
+    return ast->kind > Ast_Type_Begin && ast->kind < Ast_Type_End;
 }
 
 void
@@ -310,56 +312,72 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
     
     string_builder_push(sb, "\n");
     for (u32 s = 0; s < spacing; s++) string_builder_push(sb, " ");
-    string_builder_push_format(sb, "(%", f_cstring(ast_struct_strings[node->type]));
+    string_builder_push_format(sb, "(%", f_cstring(ast_struct_strings[node->kind]));
     
     spacing += 2;
     
     // some special cases
-    if (node->type == Ast_Abi) {
-        string_builder_push_format(sb, " \"%\")", f_string(node->Abi));
-    } else if (node->type == Ast_Value) {
-        string_builder_push(sb, " ");
-        string_builder_push(sb, &node->Value.value);
-        string_builder_push(sb, node->Value.value_type);
-    } else if (node->type == Ast_Ident) {
-        string_builder_push_format(sb, " `%`", f_string(vars_load_string(node->Ident)));
-    } else if (node->type == Ast_Unary_Expr) {
-        assert_enum(UnaryOp, node->Unary_Expr.op);
-        string_builder_push_format(sb, "(%)", f_cstring(unary_op_strings[node->Unary_Expr.op]));
-        string_builder_push(sb, node->Unary_Expr.first, tokenizer, spacing);
-    } else if (node->type == Ast_Binary_Expr) {
-        assert_enum(BinaryOp, node->Binary_Expr.op);
-        string_builder_push_format(sb, "(%)", f_cstring(binary_op_strings[node->Binary_Expr.op]));
-        string_builder_push(sb, node->Binary_Expr.first, tokenizer, spacing);
-        string_builder_push(sb, node->Binary_Expr.second, tokenizer, spacing);
-    } else if (node->type == Ast_Decl) {
-        if (node->Decl.mods > 0) {
-            string_builder_push(sb, "( ");
-            if (is_bitflag_set(node->Decl.mods, AstDeclModifier_Inline)) {
-                string_builder_push(sb, "inline ");
+    switch (node->kind) {
+        case Ast_Abi: {
+            string_builder_push_format(sb, " \"%\")", f_string(node->Abi));
+        } break;
+        
+        case Ast_Value: {
+            string_builder_push(sb, " ");
+            string_builder_push(sb, &node->Value.value);
+            string_builder_push(sb, node->Value.value_type);
+        } break;
+        
+        case Ast_Ident: {
+            string_builder_push_format(sb, " `%`", f_string(vars_load_string(node->Ident)));
+        } break;
+        
+        case Ast_Unary_Expr: {
+            assert_enum(UnaryOp, node->Unary_Expr.op);
+            string_builder_push_format(sb, "(%)", f_cstring(unary_op_strings[node->Unary_Expr.op]));
+            string_builder_push(sb, node->Unary_Expr.first, tokenizer, spacing);
+        } break;
+        
+        case Ast_Binary_Expr: {
+            assert_enum(BinaryOp, node->Binary_Expr.op);
+            string_builder_push_format(sb, "(%)", f_cstring(binary_op_strings[node->Binary_Expr.op]));
+            string_builder_push(sb, node->Binary_Expr.first, tokenizer, spacing);
+            string_builder_push(sb, node->Binary_Expr.second, tokenizer, spacing);
+        } break;
+        
+        case Ast_Decl: {
+            if (node->Decl.mods > 0) {
+                string_builder_push(sb, "( ");
+                if (is_bitflag_set(node->Decl.mods, AstDeclModifier_Inline)) {
+                    string_builder_push(sb, "inline ");
+                }
+                if (is_bitflag_set(node->Decl.mods, AstDeclModifier_No_Inline)) {
+                    string_builder_push(sb, "no_inline ");
+                }
+                if (is_bitflag_set(node->Decl.mods, AstDeclModifier_Internal)) {
+                    string_builder_push(sb, "internal ");
+                }
+                if (is_bitflag_set(node->Decl.mods, AstDeclModifier_Global)) {
+                    string_builder_push(sb, "global ");
+                }
+                string_builder_push(sb, ")");
             }
-            if (is_bitflag_set(node->Decl.mods, AstDeclModifier_No_Inline)) {
-                string_builder_push(sb, "no_inline ");
+            string_builder_push(sb, node->Decl.stmt, tokenizer, spacing);
+        } break;
+        
+        case Ast_Compound: {
+            for_compound(node, child_node) {
+                string_builder_push(sb, child_node, tokenizer, spacing);
             }
-            if (is_bitflag_set(node->Decl.mods, AstDeclModifier_Internal)) {
-                string_builder_push(sb, "internal ");
-            }
-            if (is_bitflag_set(node->Decl.mods, AstDeclModifier_Global)) {
-                string_builder_push(sb, "global ");
-            }
-            string_builder_push(sb, ")");
-        }
-        string_builder_push(sb, node->Decl.stmt, tokenizer, spacing);
-    } else if (node->type == Ast_Compound) {
-        for_compound(node, child_node) {
-            string_builder_push(sb, child_node, tokenizer, spacing);
-        }
-    } else {
-        // otherwise parse all possible children
-        string_builder_push(sb, node->children[0], tokenizer, spacing);
-        string_builder_push(sb, node->children[1], tokenizer, spacing);
-        string_builder_push(sb, node->children[2], tokenizer, spacing);
-        string_builder_push(sb, node->children[3], tokenizer, spacing);
+        } break;
+        
+        default: {
+            // otherwise parse all possible children
+            string_builder_push(sb, node->children[0], tokenizer, spacing);
+            string_builder_push(sb, node->children[1], tokenizer, spacing);
+            string_builder_push(sb, node->children[2], tokenizer, spacing);
+            string_builder_push(sb, node->children[3], tokenizer, spacing);
+        } break;
     }
     
 #if 0

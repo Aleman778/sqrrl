@@ -1,12 +1,13 @@
 
-#include "demo2.sq"
+
+
+    struct v2 {
+    f32 x;
+    f32 y;
+}
 
 int
 main() {
-    
-    int x = 0;
-    
-    y = 10
-        
-        return x;
+    int x = 10;
+    return x + 20;
 }

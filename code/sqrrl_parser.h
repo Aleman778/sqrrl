@@ -26,7 +26,7 @@ push_ast_node(Parser* parser, Token* token=0) {
 inline Ast*
 push_ast_value(Parser* parser, Value value, Type* type) {
     Ast* result = push_ast_node(parser);
-    result->type = Ast_Value;
+    result->kind = Ast_Value;
     result->Value.value = value;
     result->Value.value_type = type;
     return result;

@@ -31,8 +31,8 @@ compiler_main_entry(int argc, char* argv[]) {
     if (argc > 1) {
         filepath = string_lit(argv[1]);
     } else {
-        //filepath = string_lit("examples/demo.sq");
-        filepath = string_lit("tests/literals.sq");
+        filepath = string_lit("examples/demo3.sq");
+        //filepath = string_lit("tests/literals.sq");
     }
 #else
     if (argc <= 1) {
@@ -98,9 +98,8 @@ compiler_main_entry(int argc, char* argv[]) {
     
 #if BUILD_MAX_DEBUG
     // NOTE(Alexander): Print the AST
-    for (int i = 0; i < map_count(ast_file.decls); i++) {
-        Ast_Decl_Entry entry = ast_file.decls[i];
-        print_ast(entry.value, &tokenizer);
+    for_map(ast_file.decls, decl) {
+        print_ast(decl->value, &tokenizer);
     }
 #endif
     

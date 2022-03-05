@@ -298,6 +298,7 @@ enum Format_Type { // TODO(Alexander): add more types
 #define f_int(x) FormatType_int, (int) (x)
 #define f_uint(x) FormatType_uint, (uint) (x)
 #define f_s64(x) FormatType_s64, (s64) (x)
+#define f_u32(x) FormatType_u32, (u32) (x)
 #define f_u64(x) FormatType_u64, (u64) (x)
 #define f_u64_HEX(x) FormatType_u64_HEX, (u64) (x)
 #define f_smm(x) FormatType_smm, (smm) (x)
@@ -391,15 +392,12 @@ it_index++, it = arr + it_index)
 // Usage: continuing from previous example...
 //
 // int result = 0;
-// for_map(map, it, it_index) {
+// for_map(map, it {
 //     result += it;
 // }
 // pln("%d", f_int(result)); // 10
-#define for_map(map, it, it_index) \
-int it_index = 0; \
-for (auto it = map[0]; \
-it_index < map_count(map); \
-it_index++, it = map[it_index])
+#define for_map(map, it) \
+for (auto it = map; it < map + map_count(map); it++)
 
 // NOTE(Alexander): string hash maps
 #define string_map(V) struct { cstring key, V value }

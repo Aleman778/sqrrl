@@ -140,11 +140,11 @@ value.##V = *((T*) data); \
 
 Interp_Value 
 interp_expression(Interp* interp, Ast* ast) {
-    assert(is_ast_expr(ast) || ast->type == Ast_Value || ast->type == Ast_Ident || ast->type == Ast_None);
+    assert(is_ast_expr(ast) || ast->kind == Ast_Value || ast->kind == Ast_Ident || ast->kind == Ast_None);
     
     Interp_Value result = create_interp_value(interp);
     
-    switch (ast->type) {
+    switch (ast->kind) {
         // TODO(alexander): do we want values to be expressions?
         case Ast_Value: {
             result.value = ast->Value.value;
@@ -187,7 +187,7 @@ interp_expression(Interp* interp, Ast* ast) {
                 case UnaryOp_Address_Of: {
                     Ast* expr = ast->Unary_Expr.first;
                     
-                    if (expr->type == Ast_Ident) {
+                    if (expr->kind == Ast_Ident) {
                         Interp_Entity entity = interp_load_entity_from_current_scope(interp, expr->Ident);
                         if (entity.is_valid) {
                             
@@ -271,7 +271,7 @@ interp_expression(Interp* interp, Ast* ast) {
             // NOTE(Alexander): handle assign binary expression
             if (result.value.type != Value_void && is_binary_assign(ast->Binary_Expr.op)) {
                 
-                if (ast->Binary_Expr.first->type == Ast_Ident) {
+                if (ast->Binary_Expr.first->kind == Ast_Ident) {
                     string_id ident = ast->Binary_Expr.first->Ident;
                     Interp_Entity entity = interp_load_entity_from_current_scope(interp, ident);
                     if (interp_entity_is_declared(interp, &entity, ident)) {
@@ -317,7 +317,7 @@ interp_expression(Interp* interp, Ast* ast) {
         case Ast_Field_Expr: {
             Interp_Value var = interp_expression(interp, ast->Field_Expr.var);
             
-            assert(ast->Field_Expr.field->type == Ast_Ident); // TODO(Alexander): turn into an error, where?
+            assert(ast->Field_Expr.field->kind == Ast_Ident); // TODO(Alexander): turn into an error, where?
             string_id ident = ast->Field_Expr.field->Ident;
             
             result = interp_field_expr(interp, var, ident);
@@ -627,11 +627,11 @@ interp_field_expr(Interp* interp, Interp_Value var, string_id ident) {
 
 Interp_Value
 interp_statement(Interp* interp, Ast* ast) {
-    assert(is_ast_stmt(ast) || ast->type == Ast_None);
+    assert(is_ast_stmt(ast) || ast->kind == Ast_None);
     
     Interp_Value result = {};
     
-    switch (ast->type) {
+    switch (ast->kind) {
         case Ast_Assign_Stmt: {
             Interp_Value expr = interp_expression(interp, ast->Assign_Stmt.expr);
             
@@ -655,11 +655,11 @@ interp_statement(Interp* interp, Ast* ast) {
                     
                     if (is_ast_node(expr.value)) {
                         ast = expr.value.ast;
-                        if (ast && ast->type == Ast_Array_Expr) {
+                        if (ast && ast->kind == Ast_Array_Expr) {
                             Ast* elements = ast->Array_Expr.elements;
                             Type* elem_type = type->Array.type;
                             
-                            while (elements && elements->type == Ast_Compound) {
+                            while (elements && elements->kind == Ast_Compound) {
                                 Ast* element = elements->Compound.node;
                                 elements = elements->Compound.next;
                                 
@@ -701,7 +701,7 @@ interp_statement(Interp* interp, Ast* ast) {
                     
                     if (is_ast_node(expr.value)) {
                         assert(expr.value.type == Value_ast_node &&
-                               expr.value.ast->type == Ast_Struct_Expr);
+                               expr.value.ast->kind == Ast_Struct_Expr);
                         
                         // Struct initialization
                         Ast* fields = expr.value.ast->Struct_Expr.fields;
@@ -710,7 +710,7 @@ interp_statement(Interp* interp, Ast* ast) {
                         // NOTE(Alexander): push elements onto the stack in the order defined by the type
                         // so first push the compound actual values into a auxillary hash map.
                         for_compound(fields, field) {
-                            assert(field->type == Ast_Argument);
+                            assert(field->kind == Ast_Argument);
                             
                             Interp_Value field_expr = interp_expression(interp, field->Argument.assign);
                             
@@ -730,10 +730,10 @@ interp_statement(Interp* interp, Ast* ast) {
                         
                         // Store the result
                         if (field_values) {
-                            for_map(field_values, field, i) {
-                                string_id field_ident = field.key;
+                            for_map(field_values, field) {
+                                string_id field_ident = field->key;
                                 Type* field_type = map_get(type_table->ident_to_type, field_ident);
-                                Value field_value = value_cast(field.value, field_type);
+                                Value field_value = value_cast(field->value, field_type);
                                 smm offset = map_get(type_table->ident_to_offset, field_ident);
                                 void* storage = (u8*) base_address + offset;
                                 interp_save_value(interp, field_type, storage, field_value);
@@ -871,7 +871,7 @@ interp_block(Interp* interp, Ast* ast) {
     }
     
     Interp_Value result = {};
-    while (ast->type == Ast_Compound) {
+    while (ast->kind == Ast_Compound) {
         result = interp_statement(interp, ast->Compound.node);
         if (interp->error_count) {
             break;
@@ -910,7 +910,7 @@ interp_struct_or_union_type(Interp* interp, Ast* arguments, Type_Kind typekind) 
     smm align = 0;
     
     for_compound(arguments, argument) {
-        assert(argument->type == Ast_Argument);
+        assert(argument->kind == Ast_Argument);
         
         if (!argument->Argument.type) {
             break;
@@ -925,11 +925,11 @@ interp_struct_or_union_type(Interp* interp, Ast* arguments, Type_Kind typekind) 
         Ast* ast_type = argument->Argument.type;
         Type* type = interp_type(interp, ast_type);
         
-        switch (argument->Argument.ident->type) {
+        switch (argument->Argument.ident->kind) {
             case Ast_Compound: {
                 unimplemented;
                 for_compound(argument->Argument.ident, ast_ident) {
-                    assert(ast_ident->type == Ast_Ident);
+                    assert(ast_ident->kind == Ast_Ident);
                     string_id ident = ast_ident->Ident;
                     
                     // TODO(Alexander): NEED TO HANDLE THE TYPE TABLE HASH MAP MEMORY
@@ -944,17 +944,17 @@ interp_struct_or_union_type(Interp* interp, Ast* arguments, Type_Kind typekind) 
             case Ast_None: {
                 if (type->kind == TypeKind_Struct) {
                     // NOTE(Alexander): anonymous type, pull out the identifiers from struct
-                    if(ast_type->Struct_Type.ident->type == Ast_None) {
+                    if(ast_type->Struct_Type.ident->kind == Ast_None) {
                         if (type->Struct_Or_Union.count > 0) {
-                            for_map(type->Struct_Or_Union.ident_to_type, other, i) {
+                            for_map(type->Struct_Or_Union.ident_to_type, other) {
                                 // TODO(Alexander): check collisions!! we don't want two vars with same identifier
-                                map_put(fields->ident_to_type, other.key, other.value);
-                                array_push(fields->idents, other.key);
+                                map_put(fields->ident_to_type, other->key, other->value);
+                                array_push(fields->idents, other->key);
                                 fields->count++;
                             }
                             
-                            for_map(type->Struct_Or_Union.ident_to_offset, other, j) {
-                                map_put(fields->ident_to_offset, other.key, other.value);
+                            for_map(type->Struct_Or_Union.ident_to_offset, other) {
+                                map_put(fields->ident_to_offset, other->key, other->value);
                             }
                         }
                         
@@ -978,7 +978,7 @@ interp_struct_or_union_type(Interp* interp, Ast* arguments, Type_Kind typekind) 
             } break;
             
             case Ast_Ident: {
-                assert(argument->Argument.ident->type == Ast_Ident);
+                assert(argument->Argument.ident->kind == Ast_Ident);
                 string_id ident = argument->Argument.ident->Ident;
                 
                 // TODO(Alexander): NEED TO HANDLE THE TYPE TABLE HASH MAP MEMORY
@@ -1015,7 +1015,7 @@ interp_type(Interp* interp, Ast* ast) {
     // since this will likely get used elsewhere in the system.
     
     Type* result = 0;
-    switch (ast->type) {
+    switch (ast->kind) {
         case Ast_Named_Type: {
             string_id ident = ast->Named_Type->Ident;
             if (ident == Kw_string) {
@@ -1077,7 +1077,7 @@ interp_type(Interp* interp, Ast* ast) {
             Type_Table* type_arguments = &result->Function.arguments;
             smm offset = 0;
             for_compound(ast_arguments, ast_argument) {
-                assert(ast_argument->type == Ast_Argument);
+                assert(ast_argument->kind == Ast_Argument);
                 if (!ast_argument->Argument.type) {
                     break;
                 }
@@ -1096,7 +1096,7 @@ interp_type(Interp* interp, Ast* ast) {
             }
             
             result->Function.return_value = interp_type(interp, ast->Function_Type.return_type);
-            assert(ast->Function_Type.ident && ast->Function_Type.ident->type == Ast_Ident);
+            assert(ast->Function_Type.ident && ast->Function_Type.ident->kind == Ast_Ident);
             result->Function.ident = ast->Function_Type.ident->Ident;
             result->cached_size = sizeof(smm);
             result->cached_align = alignof(smm);
@@ -1115,7 +1115,7 @@ interp_type(Interp* interp, Ast* ast) {
             result->kind = TypeKind_Enum;
             
             Type* type;
-            if (ast->Enum_Type.elem_type && ast->Enum_Type.elem_type->type != Ast_None) {
+            if (ast->Enum_Type.elem_type && ast->Enum_Type.elem_type->kind != Ast_None) {
                 type = interp_type(interp, ast->Enum_Type.elem_type);
                 if (type->kind != TypeKind_Primitive) {
                     interp_error(interp, string_lit("enums can only be defined as primitive types"));
@@ -1137,16 +1137,16 @@ interp_type(Interp* interp, Ast* ast) {
             }
             
             Ast* arguments = ast->Enum_Type.fields;
-            while (arguments && arguments->type == Ast_Compound) {
+            while (arguments && arguments->kind == Ast_Compound) {
                 Ast* argument = arguments->Compound.node;
                 arguments = arguments->Compound.next;
-                if (argument->type == Ast_None) {
+                if (argument->kind == Ast_None) {
                     continue;
                 }
                 
                 assert(!argument->Argument.type && "enums fields don't have different types, parsing bug");
                 
-                if (argument->Argument.assign && argument->Argument.assign->type != Ast_None) {
+                if (argument->Argument.assign && argument->Argument.assign->kind != Ast_None) {
                     value = interp_expression(interp, argument->Argument.assign).value;
                     if (!is_integer(value)) {
                         // TODO(Alexander): show the value in the message
@@ -1330,45 +1330,43 @@ DEBUG_interp_register_intrinsics(Interp* interp) {
 
 void
 interp_declaration_statement(Interp* interp, Ast* ast) {
-    assert(ast->type == Ast_Decl_Stmt);
+    assert(ast->kind == Ast_Decl_Stmt);
     
     Type* type = interp_type(interp, ast->Decl_Stmt.type);
     if (type->kind == TypeKind_Function) {
         type->Function.block = ast->Decl_Stmt.decl;
     }
     
-    assert(ast->Decl_Stmt.ident->type == Ast_Ident);
+    assert(ast->Decl_Stmt.ident->kind == Ast_Ident);
     string_id ident = ast->Decl_Stmt.ident->Ident;
     interp_push_entity_to_current_scope(interp, ident, 0, type);
 }
 
 void
-interp_ast_declarations(Interp* interp, Ast_Decl_Entry* decls) {
+interp_ast_declarations(Interp* interp, Ast_Decl_Table* decls) {
     Ast** interp_statements = 0;
     
-    for (int i = 0; i < map_count(decls); i++) {
-        Ast_Decl_Entry decl = decls[i];
-        assert(decl.value->type == Ast_Decl);
-        Ast* stmt = decl.value->Decl.stmt;
+    for_map (decls, decl) {
+        assert(decl->value->kind == Ast_Decl);
+        Ast* stmt = decl->value->Decl.stmt;
         
-        if (stmt->type == Ast_Decl_Stmt) {
+        if (stmt->kind == Ast_Decl_Stmt) {
             interp_declaration_statement(interp, stmt);
         }
     }
     
     // HACK(alexander): this should be merged with the loop above,
     // but for the time being we don't want to run any code before injecting the types.
-    for (int i = 0; i < map_count(decls); i++) {
-        Ast_Decl_Entry decl = decls[i];
-        assert(decl.value->type == Ast_Decl);
-        Ast* stmt = decl.value->Decl.stmt;
+    for_map (decls, decl) {
+        assert(decl->value->kind == Ast_Decl);
+        Ast* stmt = decl->value->Decl.stmt;
         
-        if (stmt->type != Ast_Decl_Stmt) {
+        if (stmt->kind != Ast_Decl_Stmt) {
             Interp_Value interp_result = interp_statement(interp, stmt);
             if (!is_void(interp_result.value)) {
                 void* data = interp_push_value(interp, &interp_result.type, interp_result.value);
                 if (!data) {
-                    interp_push_entity_to_current_scope(interp, decl.key, data, &interp_result.type);
+                    interp_push_entity_to_current_scope(interp, decl->key, data, &interp_result.type);
                 }
             }
         }

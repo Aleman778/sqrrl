@@ -472,7 +472,7 @@ align_forward(umm address, umm align) {
 }
 
 // NOTE(Alexander): memory arena
-struct Arena {
+struct Memory_Arena {
     u8* base;
     umm size;
     umm curr_used;
@@ -481,7 +481,7 @@ struct Arena {
 };
 
 inline void
-arena_initialize(Arena* arena, void* base, umm size) {
+arena_initialize(Memory_Arena* arena, void* base, umm size) {
     arena->base = (u8*) base;
     arena->size = size;
     arena->curr_used = 0;
@@ -490,7 +490,7 @@ arena_initialize(Arena* arena, void* base, umm size) {
 }
 
 inline void
-arena_initialize(Arena* arena, umm min_block_size) {
+arena_initialize(Memory_Arena* arena, umm min_block_size) {
     arena->base = 0;
     arena->size = 0;
     arena->curr_used = 0;
@@ -499,7 +499,7 @@ arena_initialize(Arena* arena, umm min_block_size) {
 }
 
 void*
-arena_push_size(Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT, umm flags=0) {
+arena_push_size(Memory_Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT, umm flags=0) {
     umm current = (umm) (arena->base + arena->curr_used);
     umm offset = align_forward(current, align) - (umm) arena->base;
     
@@ -530,12 +530,12 @@ arena_push_size(Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT, umm flags=0
 #define arena_push_struct(arena, type, ...) (type*) arena_push_size(arena, (umm) sizeof(type), (umm) alignof(type), __VA_ARGS__)
 
 inline void
-arena_rewind(Arena* arena) {
+arena_rewind(Memory_Arena* arena) {
     arena->curr_used = arena->prev_used;
 }
 
 inline void
-arena_clear(Arena* arena) {
+arena_clear(Memory_Arena* arena) {
     arena->curr_used = 0;
     arena->prev_used = 0;
 }

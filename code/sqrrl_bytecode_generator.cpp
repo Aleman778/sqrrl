@@ -1,33 +1,96 @@
 
 
 struct Bc_Generator {
-    Arena* storage;
+    Memory_Arena arena;
     
+    Bc_Basic_Block entry_basic_block;
+    
+    // Current building block
+    Bc_Instruction* curr_instruction;
+    Bc_Basic_Block* curr_basic_block;
+    u32 curr_local_count;
+    map(string_id, Bc_Operand)* ident_to_operand;
 };
 
+// TODO(Alexander): we might want to use this approach, but keep it simple for now
+// This approach essentially only allocates the number of operands that are actually needed
+// given the opcode.
+#if 0
 Bc_Instruction
-bc_generate_add_instruction(Bc_Generator* bc) {
+push_instruction(Bc_Generator* bc, Bc_Opcode opcode) {
     Bc_Instruction result = {};
     
-    Bc_Register var_x = {};
-    var_x.index = 0;
+    Bc_Basic_Block* bb = bc->curr_basic_block;
     
-    result.opcode = Op_Add;
+    Bc_Opcode* opcode = push_size(&bc->arena, sizeof(Bc_Opcode), alignof(Bc_Opcode));
     
-    result.dest.kind = BcOperand_Register;
-    result.dest.Register = var_x;
+    u32 num_operands = bytecode_num_operands[opcode];
+    if (num_operands > 0) {
+        u32 size =  + num_operands * sizeof(Bc_Operand);
+        Bc_Operands* operands = push_size(&bc->arena, sizeof(Bc_Opcode), alignof(Bc_Opcode));
+    }
     
-    result.src0.kind = BcOperand_Register;
-    result.src0.Register = var_x;
-    result.src0.type.kind = BcTypeKind_s32;
-    
-    result.src1.kind = BcOperand_Const;
-    result.src1.Const.type = Value_signed_int;
-    result.src1.Const.signed_int = 20;
-    result.src1.type.kind = BcTypeKind_s32;
-    
+    array_push(bb->instructions, result);
     return result;
 }
+#endif
+
+
+void
+push_instruction(Bc_Generator* bc, Bc_Opcode opcode) {
+    Bc_Basic_Block* bb = bc->curr_basic_block;
+    if (!bb) {
+        bb = &bc->entry_basic_block;
+    }
+    
+    Bc_Instruction* insn = arena_push_struct(&bc->arena, Bc_Instruction);
+    insn->opcode = opcode;
+    
+    bc->curr_instruction = insn;
+    
+    bb->count++;
+    if (!bb->first) {
+        bb->first = insn;
+    }
+}
+
+void
+push_operand(Bc_Generator* bc, Bc_Operand operand) {
+    Bc_Instruction* insn = bc->curr_instruction;
+    if (!insn) {
+        assert(0 && "no current instruction, forgot to push_instruction() first?");
+        return;
+    }
+    
+    // HACK(Alexander): this is not really pushing at the moment
+    // we are just inserting the next slot available
+    if (!insn->dest.kind) {
+        insn->dest = operand;
+    } else if (!insn->src0.kind) {
+        insn->src0 = operand;
+    } else if (!insn->src1.kind) {
+        insn->src1 = operand;
+    } else {
+        assert(0 && "reached maximum allowed operands per instruction");
+    }
+}
+
+inline Bc_Operand
+push_unique_register(Bc_Generator* bc, Bc_Type type) {
+    Bc_Operand result;
+    
+    Bc_Register reg;
+    reg.ident = 0;
+    reg.index = bc->curr_local_count++;
+    
+    result.kind = BcOperand_Register;
+    result.type = type;
+    result.Register = reg;
+    
+    push_operand(bc, result);
+    return result;
+}
+
 
 Bc_Type
 bc_generate_type(Bc_Generator* bc, Ast* type) {
@@ -35,15 +98,15 @@ bc_generate_type(Bc_Generator* bc, Ast* type) {
     
     switch (type->kind) {
         case Ast_Named_Type: {
-            Ast* ast_ident = type->Named_Type;
-            assert(ast_ident->kind == Ast_Ident);
-            string_id ident = ast_ident->Ident;
+            string_id ident = ast_unwrap_ident(type->Named_Type);
             
             if (ident == Kw_string) {
                 // TODO(Alexander): string type
             } else if (is_builtin_type_keyword(ident)) {
+                // HACK(Alexander): this is a little bit hack of trying to convert between enums
                 u32 primitive = (u32) ident - (u32) builtin_types_begin;
-                result.kind = (Bc_Type_Kind) ((u32) BcTypeKind_int + primitive);
+                assert(primitive > 0 && "invalid primitive type");
+                result.kind = (Bc_Type_Kind) ((u32) BcTypeKind_int + (primitive - 1));
             }
         } break;
         
@@ -52,12 +115,71 @@ bc_generate_type(Bc_Generator* bc, Ast* type) {
     return result;
 }
 
-Bc_Instruction
-bc_generate_statement(Bc_Generator* bc, Ast* stmt) { 
-    Bc_Instruction result = {};
+Bc_Type
+bc_generate_type(Bc_Generator* bc, Type* type) {
+    Bc_Type result = {};
     
-    switch (stmt->kind) {
+    switch (type->kind) {
+        case TypeKind_Primitive: {
+            Primitive_Type_Kind primitive_kind = type->Primitive.kind;
+            
+            // HACK(Alexander): this is a little bit hack of trying to convert between enums
+            result.kind = (Bc_Type_Kind) ((u32) BcTypeKind_int + (u32) primitive_kind);
+        } break;
+    }
+    
+    return result;
+}
+
+Bc_Operand
+bc_generate_expression(Bc_Generator* bc, Ast* node) {
+    Bc_Operand result = {};
+    
+    switch (node->kind) {
+        case Ast_Ident: {
+            result = map_get(bc->ident_to_operand, node->Ident);
+            assert(result.kind && "bug: failed to load operand from identifier");
+        } break;
+        
+        case Ast_Value: {
+            result.kind = BcOperand_Const;
+            result.type = bc_generate_type(bc, node->Value.type);
+            result.Const.value = node->Value.value;
+        } break;
+        
+        case Ast_Unary_Expr: {
+            
+        } break;
+        
+        case Ast_Binary_Expr: {
+            
+        } break;
+        
+        default: assert(0 && "bug: not an expression");
+    }
+    
+    return result;
+}
+
+void
+bc_generate_statement(Bc_Generator* bc, Ast* node) {
+    
+    switch (node->kind) {
         case Ast_Assign_Stmt: {
+            
+            Bc_Operand source = bc_generate_expression(bc, node->Assign_Stmt.expr);
+            
+            string_id ident = ast_unwrap_ident(node->Assign_Stmt.ident);
+            
+            Bc_Instruction insn = {};
+            Bc_Type type = bc_generate_type(bc, node->Assign_Stmt.type);
+            
+            push_instruction(bc, Bytecode_stack_alloc);
+            
+            Bc_Operand operand = push_unique_register(bc, type);
+            map_put(bc->ident_to_operand, ident, operand);
+            
+            push_operand(bc, source);
             
         } break;
         
@@ -87,28 +209,32 @@ bc_generate_statement(Bc_Generator* bc, Ast* stmt) {
         
         case Ast_Return_Stmt: {
         } break;
+        
+        default: assert(0 && "bug: not an expression");
     }
-    
-    return result;
 }
 
 Bc_Basic_Block
 bc_generate_basic_block(Bc_Generator* bc, Ast* stmts) {
     Bc_Basic_Block result = {};
+    bc->curr_basic_block = &result;
     
-    Ast* curr = stmts;
-    while (curr) {
-        Ast* stmt = curr->Compound.node;
-        curr = curr->Compound.next;
-        Bc_Instruction insn = bc_generate_statement(bc, stmt);
-        
-        String_Builder sb = {};
-        string_builder_push(&sb, &insn);
-        string str = string_builder_to_string_nocopy(&sb);
-        pln("%", f_string(str));
-        string_builder_free(&sb);
-        
+    for_compound(stmts, stmt) {
+        bc_generate_statement(bc, stmt);
     }
+    
+    String_Builder sb = {};
+    
+    Bc_Instruction* curr_insn = result.first;
+    for (int i = 0; i < result.count; i++) {
+        string_builder_push(&sb, curr_insn++);
+    }
+    
+    string str = string_builder_to_string_nocopy(&sb);
+    pln("%", f_string(str));
+    string_builder_free(&sb);
+    
+    bc->curr_basic_block = 0;
     
     return result;
 }
@@ -135,10 +261,8 @@ bc_generate_from_top_level_declaration(Bc_Generator* bc, Ast* ast) {
     
     switch (stmt->kind) {
         case Ast_Decl_Stmt: {
-            Ast* ast_ident = stmt->Decl_Stmt.ident;
-            assert(ast_ident->kind == Ast_Ident);
+            string_id ident = ast_unwrap_ident(stmt->Decl_Stmt.ident);
             
-            string_id ident = ast_ident->Ident;
             Ast* type = stmt->Decl_Stmt.type;
             Ast* decl = stmt->Decl_Stmt.decl;
             bc_register_declaration(bc, ident, type, decl);
@@ -154,6 +278,9 @@ bc_generate_from_top_level_declaration(Bc_Generator* bc, Ast* ast) {
 void
 bc_generate_from_ast(Ast_File* ast_file) {
     Bc_Generator bc = {};
+    
+    pln("sizeof(Bc_Instruction) = %", f_umm(sizeof(Bc_Instruction)));
+    pln("sizeof(Bc_Operand) = %", f_umm(sizeof(Bc_Operand)));
     
     String_Builder sb = {};
     

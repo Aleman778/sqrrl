@@ -10,7 +10,7 @@ struct Parser {
     
     s32 error_count;
     
-    Arena ast_arena;
+    Memory_Arena ast_arena;
 };
 
 inline Ast*
@@ -28,7 +28,7 @@ push_ast_value(Parser* parser, Value value, Type* type) {
     Ast* result = push_ast_node(parser);
     result->kind = Ast_Value;
     result->Value.value = value;
-    result->Value.value_type = type;
+    result->Value.type = type;
     return result;
 }
 

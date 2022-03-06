@@ -1,11 +1,4 @@
 
-
-
-    struct v2 {
-    f32 x;
-    f32 y;
-}
-
 int
 main() {
     int x = 10;

@@ -22,7 +22,7 @@ struct Interp {
     array(Interp_Scope)* scopes;
     map(string_id, Interp_Entity)* globals;
     
-    Arena stack;
+    Memory_Arena stack;
     smm base_pointer;
     
     s32 block_depth;

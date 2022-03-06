@@ -5,7 +5,7 @@ AST_GROUP(None,        "none")                  \
 AST(Abi,               "abi", string)           \
 AST(Value,             "value", struct {        \
 Value value;                                    \
-Type* value_type;                               \
+Type* type;                                     \
 })                                              \
 AST(Ident,             "identifier", string_id) \
 AST(Ident_String,      "identifier", struct {   \
@@ -284,6 +284,12 @@ struct Ast_File {
     s32 error_count;
 };
 
+inline string_id
+ast_unwrap_ident(Ast* ast_ident) {
+    assert(ast_ident->kind == Ast_Ident);
+    return ast_ident->Ident;
+}
+
 inline bool
 is_ast_decl(Ast* ast) {
     return ast->kind == Ast_Decl;
@@ -325,7 +331,7 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
         case Ast_Value: {
             string_builder_push(sb, " ");
             string_builder_push(sb, &node->Value.value);
-            string_builder_push(sb, node->Value.value_type);
+            string_builder_push(sb, node->Value.type);
         } break;
         
         case Ast_Ident: {

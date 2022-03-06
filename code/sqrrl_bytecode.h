@@ -1,11 +1,30 @@
 
+// BC(name, num_operands)
+#define DEF_BYTECODES \
+BC(noop, 0) \
+BC(stack_alloc, 2) \
+BC(load, 2) \
+BC(store, 2) \
+BC(add, 3) \
+BC(call, 1) \
+BC(ret, 1)
+
 enum Bc_Opcode {
-    Op_Noop,
-    Op_Stack_Alloc,
-    Op_Store,
-    Op_Load,
-    Op_Add,
-    Op_Return,
+#define BC(name, ...) Bytecode_##name,
+    DEF_BYTECODES
+#undef BC
+};
+
+global cstring bytecode_opcode_names[] = {
+#define BC(name, ...) #name,
+    DEF_BYTECODES
+#undef BC
+};
+
+global u32 bytecode_num_operands[] = {
+#define BC(_, num_operands) num_operands,
+    DEF_BYTECODES
+#undef BC
 };
 
 enum Bc_Type_Kind {
@@ -30,6 +49,7 @@ enum Bc_Operand_Kind {
     BcOperand_None,
     BcOperand_Register,
     BcOperand_Const,
+    BcOperand_Basic_Block,
     BcOperand_Type
 };
 
@@ -38,12 +58,26 @@ struct Bc_Register {
     u32 index;
 };
 
+struct Bc_Const {
+    Value value;
+};
+
+// NOTE(Alexander): forward declare
+struct Bc_Instruction;
+
+struct Bc_Basic_Block {
+    string_id label;
+    Bc_Instruction* first;
+    umm count;
+};
+
 struct Bc_Operand {
     Bc_Operand_Kind kind;
     Bc_Type type;
     union {
         Bc_Register Register;
-        Value Const;
+        Bc_Const Const;
+        Bc_Basic_Block Basic_Block; // NOTE(Alexander): it's lightweight right now, but maybe not later, we may instead want to store and id or something
     };
 };
 
@@ -52,10 +86,6 @@ struct Bc_Instruction {
     Bc_Operand dest;
     Bc_Operand src0;
     Bc_Operand src1;
-};
-
-struct Bc_Basic_Block {
-    array(Bc_Instruction)* instructions;
 };
 
 bool
@@ -101,7 +131,7 @@ string_builder_push(String_Builder* sb, Bc_Operand* operand) {
         } break;
         
         case BcOperand_Const: {
-            string_builder_push(sb, &operand->Const);
+            string_builder_push(sb, &operand->Const.value);
         } break;
         
         case BcOperand_Type: {
@@ -118,16 +148,16 @@ string_builder_push(String_Builder* sb, Bc_Instruction* insn, u32 spacing = 0) {
         string_builder_push(sb, " = ");
     }
     
-    switch (insn->opcode) {
-        case Op_Stack_Alloc: string_builder_push(sb, "stack_alloc "); break;
-        case Op_Store: string_builder_push(sb, "store "); break;
-        case Op_Load: string_builder_push(sb, "load "); break;
-        case Op_Add: string_builder_push(sb, "add "); break;
-        case Op_Return: string_builder_push(sb, "return "); break;
+    string_builder_push(sb, bytecode_opcode_names[insn->opcode]);
+    
+    if (insn->src0.kind) {
+        string_builder_push(sb, " ");
     }
     
     if (string_builder_push(sb, &insn->src0)) {
-        string_builder_push(sb, ", ");
+        if (insn->src1.kind) {
+            string_builder_push(sb, ", ");
+        }
     }
     
     string_builder_push(sb, &insn->src1);

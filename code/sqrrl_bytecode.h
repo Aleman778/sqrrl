@@ -5,7 +5,27 @@ BC(noop, 0) \
 BC(stack_alloc, 2) \
 BC(load, 2) \
 BC(store, 2) \
+BC(neg, 2) \
+BC(not, 2) \
+BC(mul, 3) \
+BC(div, 3) \
+BC(mod, 3) \
 BC(add, 3) \
+BC(sub, 3) \
+BC(shl, 3) \
+BC(shr, 3) \
+BC(lt, 3) \
+BC(le, 3) \
+BC(gt, 3) \
+BC(ge, 3) \
+BC(eq, 3) \
+BC(neq, 3) \
+BC(and, 3) \
+BC(or, 3) \
+BC(xor, 3) \
+BC(land, 3) \
+BC(lor, 3) \
+BC(param, 1) \
 BC(call, 1) \
 BC(ret, 1)
 
@@ -34,7 +54,7 @@ enum Bc_Type_Kind {
     DEF_PRIMITIVE_TYPES
 #undef PRIMITIVE
     
-#define PRIMITIVE(symbol,...) BcTypeKind_ptr_##symbol,
+#define PRIMITIVE(symbol,...) BcTypeKind_##symbol##_ptr,
     DEF_PRIMITIVE_TYPES
 #undef PRIMITIVE
     
@@ -100,9 +120,9 @@ string_builder_push(String_Builder* sb, Bc_Type* type) {
         DEF_PRIMITIVE_TYPES
 #undef PRIMITIVE
         
-#define PRIMITIVE(symbol,...) case BcTypeKind_ptr_##symbol: { \
-string_builder_push(sb, "*"); \
+#define PRIMITIVE(symbol,...) case BcTypeKind_##symbol##_ptr: { \
 string_builder_push(sb, #symbol); \
+string_builder_push(sb, "*"); \
 } break;
         DEF_PRIMITIVE_TYPES
 #undef PRIMITIVE

@@ -1,4 +1,7 @@
 
+// NOTE(Alexander): forward declare
+struct Ast_Node;
+
 void
 print_format(const char* format...) {
     va_list args;
@@ -61,6 +64,10 @@ print_format(const char* format...) {
                 
                 case FormatType_cstring: {
                     printf("%s", va_arg(args, char*));
+                } break;
+                
+                case FormatType_ast: {
+                    print_ast(va_arg(args, Ast*), 0);
                 } break;
                 
                 default: {

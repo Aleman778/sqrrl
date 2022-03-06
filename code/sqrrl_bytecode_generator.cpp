@@ -37,7 +37,7 @@ push_instruction(Bc_Generator* bc, Bc_Opcode opcode) {
 
 
 void
-push_instruction(Bc_Generator* bc, Bc_Opcode opcode) {
+bc_push_instruction(Bc_Generator* bc, Bc_Opcode opcode) {
     Bc_Basic_Block* bb = bc->curr_basic_block;
     if (!bb) {
         bb = &bc->entry_basic_block;
@@ -55,7 +55,7 @@ push_instruction(Bc_Generator* bc, Bc_Opcode opcode) {
 }
 
 void
-push_operand(Bc_Generator* bc, Bc_Operand operand) {
+bc_push_operand(Bc_Generator* bc, Bc_Operand operand) {
     Bc_Instruction* insn = bc->curr_instruction;
     if (!insn) {
         assert(0 && "no current instruction, forgot to push_instruction() first?");
@@ -76,7 +76,7 @@ push_operand(Bc_Generator* bc, Bc_Operand operand) {
 }
 
 inline Bc_Operand
-push_unique_register(Bc_Generator* bc, Bc_Type type) {
+bc_get_unique_register(Bc_Generator* bc, Bc_Type type) {
     Bc_Operand result;
     
     Bc_Register reg;
@@ -86,8 +86,6 @@ push_unique_register(Bc_Generator* bc, Bc_Type type) {
     result.kind = BcOperand_Register;
     result.type = type;
     result.Register = reg;
-    
-    push_operand(bc, result);
     return result;
 }
 
@@ -148,11 +146,66 @@ bc_generate_expression(Bc_Generator* bc, Ast* node) {
         } break;
         
         case Ast_Unary_Expr: {
+            Bc_Operand first = bc_generate_expression(bc, node->Unary_Expr.first);
             
+            switch (node->Unary_Expr.op) {
+                case UnaryOp_Negate: {
+                    bc_push_instruction(bc, Bytecode_neg);
+                } break;
+                
+                case UnaryOp_Bitwise_Not: {
+                    bc_push_instruction(bc, Bytecode_not);
+                } break;
+                
+                case UnaryOp_Address_Of: {
+                    bc_push_instruction(bc, Bytecode_not);
+                } break;
+                
+                case UnaryOp_Dereference: {
+                    bc_push_instruction(bc, Bytecode_not);
+                } break;
+                
+                default: assert(0 && "bug: not a valid unary op");
+            }
+            
+            result = bc_get_unique_register(bc, first.type);
+            
+            bc_push_operand(bc, result);
+            bc_push_operand(bc, first);
         } break;
         
         case Ast_Binary_Expr: {
+            bool is_assign = is_assignment_binary_operator(node->Binary_Expr.op);
             
+            Bc_Operand first = bc_generate_expression(bc, node->Binary_Expr.first);
+            Bc_Operand second = bc_generate_expression(bc, node->Binary_Expr.second);
+            
+            if (is_assign) {
+                result = first;
+            }
+            
+            pln("is_assign (%) = %\n", f_ast(node), f_bool(is_assign));
+            
+            switch (node->Binary_Expr.op) {
+#define BINOP(name, op, prec, assoc, bc_mnemonic) \
+case BinaryOp_##name: bc_push_instruction(bc, Bytecode_##bc_mnemonic); break;
+                DEF_BINARY_OPS
+#undef BINOP
+            }
+            
+            
+            if (!is_assign) {
+                result = bc_get_unique_register(bc, {});
+            }
+            // TODO(Alexander): we don't have the type, however can be easily infered
+            
+            bc_push_operand(bc, result);
+            bc_push_operand(bc, first);;
+            bc_push_operand(bc, second);
+        } break;
+        
+        case Ast_Ternary_Expr: {
+            unimplemented;
         } break;
         
         default: assert(0 && "bug: not an expression");
@@ -174,40 +227,54 @@ bc_generate_statement(Bc_Generator* bc, Ast* node) {
             Bc_Instruction insn = {};
             Bc_Type type = bc_generate_type(bc, node->Assign_Stmt.type);
             
-            push_instruction(bc, Bytecode_stack_alloc);
+            bc_push_instruction(bc, Bytecode_stack_alloc);
             
-            Bc_Operand operand = push_unique_register(bc, type);
+            Bc_Operand operand = bc_get_unique_register(bc, type);
             map_put(bc->ident_to_operand, ident, operand);
             
-            push_operand(bc, source);
+            bc_push_operand(bc, operand);
+            bc_push_operand(bc, source);
             
         } break;
         
         case Ast_Expr_Stmt: {
+            bc_generate_expression(bc, node->Expr_Stmt);
         } break;
         
         case Ast_Block_Stmt: {
+            unimplemented;
         } break;
         
         case Ast_Break_Stmt: {
+            unimplemented;
         } break;
         
         case Ast_Continue_Stmt: {
+            unimplemented;
         } break;
         
         case Ast_Decl_Stmt: {
+            unimplemented;
         } break;
         
         case Ast_If_Stmt: {
+            unimplemented;
         } break;
         
         case Ast_For_Stmt: {
+            unimplemented;
         } break;
         
         case Ast_While_Stmt: {
+            unimplemented;
         } break;
         
         case Ast_Return_Stmt: {
+            Bc_Operand source = bc_generate_expression(bc, node->Return_Stmt.expr);
+            
+            bc_push_instruction(bc, Bytecode_ret);
+            // HACK(Alexander): we can't set the operands directly
+            bc->curr_instruction->src0 = source;
         } break;
         
         default: assert(0 && "bug: not an expression");
@@ -228,6 +295,7 @@ bc_generate_basic_block(Bc_Generator* bc, Ast* stmts) {
     Bc_Instruction* curr_insn = result.first;
     for (int i = 0; i < result.count; i++) {
         string_builder_push(&sb, curr_insn++);
+        string_builder_push(&sb, "\n");
     }
     
     string str = string_builder_to_string_nocopy(&sb);
@@ -280,7 +348,7 @@ bc_generate_from_ast(Ast_File* ast_file) {
     Bc_Generator bc = {};
     
     pln("sizeof(Bc_Instruction) = %", f_umm(sizeof(Bc_Instruction)));
-    pln("sizeof(Bc_Operand) = %", f_umm(sizeof(Bc_Operand)));
+    pln("sizeof(Bc_Operand) = %\n", f_umm(sizeof(Bc_Operand)));
     
     String_Builder sb = {};
     

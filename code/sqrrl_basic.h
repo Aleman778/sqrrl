@@ -294,6 +294,7 @@ enum Format_Type { // TODO(Alexander): add more types
 };
 
 // TODO(Alexander): add more types
+#define f_bool(x) FormatType_cstring, (x) ? "true" : "false"
 #define f_char(x) FormatType_char, (char) (x)
 #define f_int(x) FormatType_int, (int) (x)
 #define f_uint(x) FormatType_uint, (uint) (x)

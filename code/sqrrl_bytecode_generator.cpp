@@ -102,12 +102,30 @@ bc_generate_type(Bc_Generator* bc, Ast* type) {
                 // TODO(Alexander): string type
             } else if (is_builtin_type_keyword(ident)) {
                 // HACK(Alexander): this is a little bit hack of trying to convert between enums
-                u32 primitive = (u32) ident - (u32) builtin_types_begin;
-                assert(primitive > 0 && "invalid primitive type");
-                result.kind = (Bc_Type_Kind) ((u32) BcTypeKind_int + (primitive - 1));
+                
+                switch (ident) {
+                    case Kw_int:  result.kind = BcTypeKind_s32; break; // Arch dep?
+                    case Kw_s8:   result.kind = BcTypeKind_s8; break;
+                    case Kw_s16:  result.kind = BcTypeKind_s16; break;
+                    case Kw_s32:  result.kind = BcTypeKind_s32; break;
+                    case Kw_s64:  result.kind = BcTypeKind_s64; break;
+                    case Kw_smm:  result.kind = BcTypeKind_s64; break; // Arch dep.
+                    case Kw_uint: result.kind = BcTypeKind_u32; break; // Arch dep?
+                    case Kw_u8:   result.kind = BcTypeKind_u8; break;
+                    case Kw_u16:  result.kind = BcTypeKind_u16; break;
+                    case Kw_u32:  result.kind = BcTypeKind_u32; break;
+                    case Kw_u64:  result.kind = BcTypeKind_u64; break;
+                    case Kw_umm:  result.kind = BcTypeKind_u64; break; // Arch dep.
+                    case Kw_f32:  result.kind = BcTypeKind_f32; break;
+                    case Kw_f64:  result.kind = BcTypeKind_f64; break;
+                    case Kw_char: result.kind = BcTypeKind_u8; break;
+                    case Kw_bool: result.kind = BcTypeKind_s8; break;
+                    case Kw_b32:  result.kind = BcTypeKind_s32; break;
+                    case Kw_void: result.kind = BcTypeKind_None; break;
+                    default: assert(0 && "invalid primitive type");
+                }
             }
         } break;
-        
     }
     
     return result;
@@ -121,8 +139,27 @@ bc_generate_type(Bc_Generator* bc, Type* type) {
         case TypeKind_Primitive: {
             Primitive_Type_Kind primitive_kind = type->Primitive.kind;
             
-            // HACK(Alexander): this is a little bit hack of trying to convert between enums
-            result.kind = (Bc_Type_Kind) ((u32) BcTypeKind_int + (u32) primitive_kind);
+            switch (primitive_kind) {
+                case PrimitiveTypeKind_int:  result.kind = BcTypeKind_s32; break; // Arch dep?
+                case PrimitiveTypeKind_s8:   result.kind = BcTypeKind_s8; break;
+                case PrimitiveTypeKind_s16:  result.kind = BcTypeKind_s16; break;
+                case PrimitiveTypeKind_s32:  result.kind = BcTypeKind_s32; break;
+                case PrimitiveTypeKind_s64:  result.kind = BcTypeKind_s64; break;
+                case PrimitiveTypeKind_smm:  result.kind = BcTypeKind_s64; break; // Arch dep.
+                case PrimitiveTypeKind_uint: result.kind = BcTypeKind_u32; break; // Arch dep?
+                case PrimitiveTypeKind_u8:   result.kind = BcTypeKind_u8; break;
+                case PrimitiveTypeKind_u16:  result.kind = BcTypeKind_u16; break;
+                case PrimitiveTypeKind_u32:  result.kind = BcTypeKind_u32; break;
+                case PrimitiveTypeKind_u64:  result.kind = BcTypeKind_u64; break;
+                case PrimitiveTypeKind_umm:  result.kind = BcTypeKind_u64; break; // Arch dep.
+                case PrimitiveTypeKind_f32:  result.kind = BcTypeKind_f32; break;
+                case PrimitiveTypeKind_f64:  result.kind = BcTypeKind_f64; break;
+                case PrimitiveTypeKind_char: result.kind = BcTypeKind_u8; break;
+                case PrimitiveTypeKind_bool: result.kind = BcTypeKind_s8; break;
+                case PrimitiveTypeKind_b32:  result.kind = BcTypeKind_s32; break;
+                case PrimitiveTypeKind_void: result.kind = BcTypeKind_None; break;
+                default: assert(0 && "invalid primitive type");
+            }
         } break;
     }
     
@@ -136,6 +173,19 @@ bc_generate_expression(Bc_Generator* bc, Ast* node) {
     switch (node->kind) {
         case Ast_Ident: {
             result = map_get(bc->ident_to_operand, node->Ident);
+            
+            if (result.type.ptr_depth == 1) {
+                Bc_Operand variable = result;
+                bc_push_instruction(bc, Bytecode_load);
+                
+                Bc_Type loaded_type = result.type;
+                loaded_type.ptr_depth--;
+                result = bc_get_unique_register(bc, loaded_type);
+                bc_push_operand(bc, result);
+                bc_push_operand(bc, variable);
+                
+            }
+            
             assert(result.kind && "bug: failed to load operand from identifier");
         } break;
         
@@ -180,12 +230,6 @@ bc_generate_expression(Bc_Generator* bc, Ast* node) {
             Bc_Operand first = bc_generate_expression(bc, node->Binary_Expr.first);
             Bc_Operand second = bc_generate_expression(bc, node->Binary_Expr.second);
             
-            if (is_assign) {
-                result = first;
-            }
-            
-            pln("is_assign (%) = %\n", f_ast(node), f_bool(is_assign));
-            
             switch (node->Binary_Expr.op) {
 #define BINOP(name, op, prec, assoc, bc_mnemonic) \
 case BinaryOp_##name: bc_push_instruction(bc, Bytecode_##bc_mnemonic); break;
@@ -193,15 +237,25 @@ case BinaryOp_##name: bc_push_instruction(bc, Bytecode_##bc_mnemonic); break;
 #undef BINOP
             }
             
-            
-            if (!is_assign) {
-                result = bc_get_unique_register(bc, {});
-            }
             // TODO(Alexander): we don't have the type, however can be easily infered
-            
-            bc_push_operand(bc, result);
-            bc_push_operand(bc, first);;
+            Bc_Operand temp_register = bc_get_unique_register(bc, {});
+            bc_push_operand(bc, temp_register);
+            bc_push_operand(bc, first);
             bc_push_operand(bc, second);
+            
+            
+            if (is_assign) {
+                string_id ident = ast_unwrap_ident(node->Binary_Expr.first);
+                Bc_Operand dest_register = map_get(bc->ident_to_operand, ident);
+                bc_push_instruction(bc, Bytecode_store);
+                bc_push_operand(bc, dest_register);
+                bc_push_operand(bc, temp_register);
+                
+            } else {
+                result = temp_register;
+            }
+            
+            
         } break;
         
         case Ast_Ternary_Expr: {
@@ -219,7 +273,6 @@ bc_generate_statement(Bc_Generator* bc, Ast* node) {
     
     switch (node->kind) {
         case Ast_Assign_Stmt: {
-            
             Bc_Operand source = bc_generate_expression(bc, node->Assign_Stmt.expr);
             
             string_id ident = ast_unwrap_ident(node->Assign_Stmt.ident);
@@ -227,12 +280,19 @@ bc_generate_statement(Bc_Generator* bc, Ast* node) {
             Bc_Instruction insn = {};
             Bc_Type type = bc_generate_type(bc, node->Assign_Stmt.type);
             
+            Bc_Operand dest = bc_get_unique_register(bc, type);
+            Bc_Operand alloc_type = dest;
+            alloc_type.kind = BcOperand_Type;
+            dest.type.ptr_depth++;
+            map_put(bc->ident_to_operand, ident, dest);
+            
             bc_push_instruction(bc, Bytecode_stack_alloc);
+            bc_push_operand(bc, dest);
+            bc_push_operand(bc, alloc_type);
+            // TODO(Alexander): we should maybe also push the allignment 
             
-            Bc_Operand operand = bc_get_unique_register(bc, type);
-            map_put(bc->ident_to_operand, ident, operand);
-            
-            bc_push_operand(bc, operand);
+            bc_push_instruction(bc, Bytecode_store);
+            bc_push_operand(bc, dest);
             bc_push_operand(bc, source);
             
         } break;
@@ -337,8 +397,7 @@ bc_generate_from_top_level_declaration(Bc_Generator* bc, Ast* ast) {
         } break;
         
         case Ast_Assign_Stmt: {
-            
-            
+            unimplemented;
         } break;
     }
 }
@@ -347,6 +406,8 @@ void
 bc_generate_from_ast(Ast_File* ast_file) {
     Bc_Generator bc = {};
     
+    // NOTE(Alexander): we want to minimize this as far as possible
+    // to be able to compile large programs.
     pln("sizeof(Bc_Instruction) = %", f_umm(sizeof(Bc_Instruction)));
     pln("sizeof(Bc_Operand) = %\n", f_umm(sizeof(Bc_Operand)));
     

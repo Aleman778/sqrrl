@@ -50,19 +50,25 @@ global u32 bytecode_num_operands[] = {
 enum Bc_Type_Kind {
     BcTypeKind_None,
     
-#define PRIMITIVE(symbol,...) BcTypeKind_##symbol,
-    DEF_PRIMITIVE_TYPES
-#undef PRIMITIVE
+    BcTypeKind_s8,
+    BcTypeKind_s16,
+    BcTypeKind_s32,
+    BcTypeKind_s64,
     
-#define PRIMITIVE(symbol,...) BcTypeKind_##symbol##_ptr,
-    DEF_PRIMITIVE_TYPES
-#undef PRIMITIVE
+    BcTypeKind_u8,
+    BcTypeKind_u16,
+    BcTypeKind_u32,
+    BcTypeKind_u64,
+    
+    BcTypeKind_f32,
+    BcTypeKind_f64,
     
     BcTypeKind_Aggregate,
 };
 
 struct Bc_Type {
     Bc_Type_Kind kind;
+    u32 ptr_depth;
 };
 
 enum Bc_Operand_Kind {
@@ -111,35 +117,35 @@ struct Bc_Instruction {
 bool
 string_builder_push(String_Builder* sb, Bc_Type* type) {
     switch (type->kind) {
-        case BcTypeKind_None: {
-            return false;
-        } break;
+        case BcTypeKind_None: return false;
         
+        case BcTypeKind_s8: string_builder_push(sb, "s8"); break;
+        case BcTypeKind_s16: string_builder_push(sb, "s16"); break;
+        case BcTypeKind_s32: string_builder_push(sb, "s32"); break;
+        case BcTypeKind_s64: string_builder_push(sb, "s64"); break;
         
-#define PRIMITIVE(symbol,...) case BcTypeKind_##symbol: string_builder_push(sb, #symbol); break;
-        DEF_PRIMITIVE_TYPES
-#undef PRIMITIVE
+        case BcTypeKind_u8: string_builder_push(sb, "u8"); break;
+        case BcTypeKind_u16: string_builder_push(sb, "u16"); break;
+        case BcTypeKind_u32: string_builder_push(sb, "u32"); break;
+        case BcTypeKind_u64: string_builder_push(sb, "u64"); break;
         
-#define PRIMITIVE(symbol,...) case BcTypeKind_##symbol##_ptr: { \
-string_builder_push(sb, #symbol); \
-string_builder_push(sb, "*"); \
-} break;
-        DEF_PRIMITIVE_TYPES
-#undef PRIMITIVE
-        
-        // TODO(Alexander): aggregate types etc.
+    }
+    
+    
+    for (u32 i = 0; i < type->ptr_depth; i++) {
+        string_builder_push(sb, "*");
     }
     
     return true;
 }
 
 bool
-string_builder_push(String_Builder* sb, Bc_Operand* operand) {
+string_builder_push(String_Builder* sb, Bc_Operand* operand, bool show_type = true) {
     switch (operand->kind) {
         case BcOperand_None: return false;
         
         case BcOperand_Register: {
-            if (string_builder_push(sb, &operand->type)) {
+            if (show_type && string_builder_push(sb, &operand->type)) {
                 string_builder_push(sb, " ");
             }
             string_builder_push(sb, "%");
@@ -155,7 +161,7 @@ string_builder_push(String_Builder* sb, Bc_Operand* operand) {
         } break;
         
         case BcOperand_Type: {
-            string_builder_push(sb, &operand->type);
+            if (show_type) string_builder_push(sb, &operand->type);
         } break;
     }
     
@@ -164,7 +170,7 @@ string_builder_push(String_Builder* sb, Bc_Operand* operand) {
 
 void
 string_builder_push(String_Builder* sb, Bc_Instruction* insn, u32 spacing = 0) {
-    if (string_builder_push(sb, &insn->dest)) {
+    if (string_builder_push(sb, &insn->dest, false)) {
         string_builder_push(sb, " = ");
     }
     

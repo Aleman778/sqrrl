@@ -11,6 +11,7 @@
 #include "sqrrl_parser.cpp"
 #include "sqrrl_interp.cpp"
 #include "sqrrl_bytecode_generator.cpp"
+#include "sqrrl_bytecode_interp.cpp"
 
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[]) {
@@ -110,22 +111,32 @@ compiler_main_entry(int argc, char* argv[]) {
     }
     
 #if 0
-    // NOTE(Alexander): Interpreter pass
-    Interp interp = {};
-    interp_register_primitive_types(&interp);
-    DEBUG_interp_register_intrinsics(&interp);
-    interp_ast_declarations(&interp, ast_file.decls);
-    Interp_Value result = interp_function_call(&interp, vars_save_cstring("main"), 0);
-    if (result.modifier == InterpValueMod_Return) {
-        if (is_integer(result.value)) {
-            pln("Interpreter exited with code %", f_int((int) result.value.signed_int));
-        } else {
-            pln("Interpreter exited with code 0");
+    {
+        // NOTE(Alexander): Interpret the AST
+        Interp interp = {};
+        interp_register_primitive_types(&interp);
+        DEBUG_interp_register_intrinsics(&interp);
+        interp_ast_declarations(&interp, ast_file.decls);
+        Interp_Value result = interp_function_call(&interp, Sym_main, 0);
+        if (result.modifier == InterpValueMod_Return) {
+            if (is_integer(result.value)) {
+                pln("Interpreter exited with code %", f_int((int) result.value.signed_int));
+            } else {
+                pln("Interpreter exited with code 0");
+            }
         }
     }
 #endif
     
-    bc_generate_from_ast(&ast_file);
+#if 1
+    {
+        // NOTE(Alexander): Interpret the bytecode
+        Interp interp = {};
+        Bc_Basic_Block main_block = bc_generate_from_ast(&ast_file);
+        interp_bc_basic_block(&interp, &main_block);
+    }
+    
+#endif
     
     return 0;
 }

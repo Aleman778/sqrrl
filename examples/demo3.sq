@@ -5,5 +5,5 @@ main() {
     
     x += 10;
     
-    return x + 20 - 10 / 20 * 10;
+    return x + 20;
 }

@@ -70,6 +70,7 @@ VAR(ifdef)    \
 VAR(ifndef)   \
 VAR(line)     \
 VAR(undef)    \
+VAR(main)     \
 
 // NOTE(alexander): interning strings into ids
 typedef u32 string_id;

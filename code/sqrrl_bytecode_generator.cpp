@@ -10,6 +10,8 @@ struct Bc_Generator {
     Bc_Basic_Block* curr_basic_block;
     u32 curr_local_count;
     map(string_id, Bc_Operand)* ident_to_operand;
+    
+    map(string_id, Bc_Basic_Block)* declarations;
 };
 
 // TODO(Alexander): we might want to use this approach, but keep it simple for now
@@ -176,12 +178,17 @@ bc_generate_expression(Bc_Generator* bc, Ast* node) {
             
             if (result.type.ptr_depth == 1) {
                 Bc_Operand variable = result;
-                bc_push_instruction(bc, Bytecode_load);
                 
                 Bc_Type loaded_type = result.type;
                 loaded_type.ptr_depth--;
                 result = bc_get_unique_register(bc, loaded_type);
+                Bc_Operand type_operand = {};
+                type_operand.kind = BcOperand_Type;
+                type_operand.type = loaded_type;
+                
+                bc_push_instruction(bc, Bytecode_load);
                 bc_push_operand(bc, result);
+                bc_push_operand(bc, type_operand);
                 bc_push_operand(bc, variable);
                 
             }
@@ -374,8 +381,10 @@ bc_register_declaration(Bc_Generator* bc, string_id ident, Ast* type, Ast* decl)
             assert(decl->kind == Ast_Block_Stmt);
             
             Ast* stmts = decl->Block_Stmt.stmts;
-            bc_generate_basic_block(bc, stmts);
+            Bc_Basic_Block block = bc_generate_basic_block(bc, stmts);
+            block.label = ident;
             
+            map_put(bc->declarations, ident, block);
         } break;
     }
 }
@@ -402,7 +411,7 @@ bc_generate_from_top_level_declaration(Bc_Generator* bc, Ast* ast) {
     }
 }
 
-void
+Bc_Basic_Block
 bc_generate_from_ast(Ast_File* ast_file) {
     Bc_Generator bc = {};
     
@@ -411,13 +420,12 @@ bc_generate_from_ast(Ast_File* ast_file) {
     pln("sizeof(Bc_Instruction) = %", f_umm(sizeof(Bc_Instruction)));
     pln("sizeof(Bc_Operand) = %\n", f_umm(sizeof(Bc_Operand)));
     
-    String_Builder sb = {};
     
     for_map(ast_file->decls, decl) {
         bc_generate_from_top_level_declaration(&bc, decl->value);
     }
     
-    string result = string_builder_to_string_nocopy(&sb);
-    
-    pln("%", f_string(result));
+    string_id ident = Sym_main;
+    Bc_Basic_Block main_block = map_get(bc.declarations, ident);
+    return main_block;
 }

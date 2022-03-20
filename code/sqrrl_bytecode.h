@@ -25,6 +25,14 @@ BC(or, 3) \
 BC(xor, 3) \
 BC(land, 3) \
 BC(lor, 3) \
+BC(cmpeq, 3) \
+BC(cmpneq, 3) \
+BC(cmple, 3) \
+BC(cmplt, 3) \
+BC(cmpge, 3) \
+BC(cmpgt, 3) \
+BC(branch, 3) \
+BC(label, 1) \
 BC(param, 1) \
 BC(call, 1) \
 BC(ret, 1)
@@ -50,6 +58,7 @@ global u32 bytecode_num_operands[] = {
 enum Bc_Type_Kind {
     BcTypeKind_None,
     
+    BcTypeKind_s1,
     BcTypeKind_s8,
     BcTypeKind_s16,
     BcTypeKind_s32,
@@ -92,9 +101,10 @@ struct Bc_Const {
 struct Bc_Instruction;
 
 struct Bc_Basic_Block {
-    string_id label;
+    Bc_Register label;
     Bc_Instruction* first;
     umm count;
+    Bc_Basic_Block* next;
 };
 
 struct Bc_Operand {
@@ -103,7 +113,7 @@ struct Bc_Operand {
     union {
         Bc_Register Register;
         Bc_Const Const;
-        Bc_Basic_Block Basic_Block; // NOTE(Alexander): it's lightweight right now, but maybe not later, we may instead want to store and id or something
+        Bc_Basic_Block* Basic_Block;
     };
 };
 
@@ -119,6 +129,7 @@ string_builder_push(String_Builder* sb, Bc_Type* type) {
     switch (type->kind) {
         case BcTypeKind_None: return false;
         
+        case BcTypeKind_s1: string_builder_push(sb, "s1"); break;
         case BcTypeKind_s8: string_builder_push(sb, "s8"); break;
         case BcTypeKind_s16: string_builder_push(sb, "s16"); break;
         case BcTypeKind_s32: string_builder_push(sb, "s32"); break;
@@ -128,7 +139,6 @@ string_builder_push(String_Builder* sb, Bc_Type* type) {
         case BcTypeKind_u16: string_builder_push(sb, "u16"); break;
         case BcTypeKind_u32: string_builder_push(sb, "u32"); break;
         case BcTypeKind_u64: string_builder_push(sb, "u64"); break;
-        
     }
     
     
@@ -169,22 +179,32 @@ string_builder_push(String_Builder* sb, Bc_Operand* operand, bool show_type = tr
 }
 
 void
-string_builder_push(String_Builder* sb, Bc_Instruction* insn, u32 spacing = 0) {
-    if (string_builder_push(sb, &insn->dest, false)) {
-        string_builder_push(sb, " = ");
-    }
-    
-    string_builder_push(sb, bytecode_opcode_names[insn->opcode]);
-    
-    if (insn->src0.kind) {
-        string_builder_push(sb, " ");
-    }
-    
-    if (string_builder_push(sb, &insn->src0)) {
-        if (insn->src1.kind) {
-            string_builder_push(sb, ", ");
+string_builder_push(String_Builder* sb, Bc_Instruction* insn) {
+    if (insn->opcode == Bytecode_label) {
+        Bc_Basic_Block* block = insn->dest.Basic_Block;
+        if (block->label.ident > 0) {
+            string_builder_push_format(sb, "%:", f_string(vars_load_string(block->label.ident)));
+        } else {
+            string_builder_push_format(sb, "%:", f_u32(block->label.index));
         }
+    } else {
+        string_builder_push(sb, "    ");
+        if (string_builder_push(sb, &insn->dest, false)) {
+            string_builder_push(sb, " = ");
+        }
+        
+        string_builder_push(sb, bytecode_opcode_names[insn->opcode]);
+        
+        if (insn->src0.kind) {
+            string_builder_push(sb, " ");
+        }
+        
+        if (string_builder_push(sb, &insn->src0)) {
+            if (insn->src1.kind) {
+                string_builder_push(sb, ", ");
+            }
+        }
+        
+        string_builder_push(sb, &insn->src1);
     }
-    
-    string_builder_push(sb, &insn->src1);
 }

@@ -291,6 +291,11 @@ ast_unwrap_ident(Ast* ast_ident) {
 }
 
 inline bool
+is_ast_none(Ast* ast) {
+    return ast->kind == Ast_None;
+}
+
+inline bool
 is_ast_decl(Ast* ast) {
     return ast->kind == Ast_Decl;
 }

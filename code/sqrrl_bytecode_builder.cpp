@@ -1,6 +1,6 @@
 
 
-struct Bc_Generator {
+struct Bc_Builder {
     Memory_Arena arena;
     
     Bc_Basic_Block entry_basic_block;
@@ -11,7 +11,7 @@ struct Bc_Generator {
     u32 curr_local_count;
     map(string_id, Bc_Operand)* ident_to_operand;
     
-    map(string_id, Bc_Basic_Block)* declarations;
+    map(string_id, Bc_Basic_Block*)* declarations;
 };
 
 // TODO(Alexander): we might want to use this approach, but keep it simple for now
@@ -19,7 +19,7 @@ struct Bc_Generator {
 // given the opcode.
 #if 0
 Bc_Instruction
-push_instruction(Bc_Generator* bc, Bc_Opcode opcode) {
+push_instruction(Bc_Builder* bc, Bc_Opcode opcode) {
     Bc_Instruction result = {};
     
     Bc_Basic_Block* bb = bc->curr_basic_block;
@@ -37,9 +37,8 @@ push_instruction(Bc_Generator* bc, Bc_Opcode opcode) {
 }
 #endif
 
-
 void
-bc_push_instruction(Bc_Generator* bc, Bc_Opcode opcode) {
+bc_push_instruction(Bc_Builder* bc, Bc_Opcode opcode) {
     Bc_Basic_Block* bb = bc->curr_basic_block;
     if (!bb) {
         bb = &bc->entry_basic_block;
@@ -57,7 +56,7 @@ bc_push_instruction(Bc_Generator* bc, Bc_Opcode opcode) {
 }
 
 void
-bc_push_operand(Bc_Generator* bc, Bc_Operand operand) {
+bc_push_operand(Bc_Builder* bc, Bc_Operand operand) {
     Bc_Instruction* insn = bc->curr_instruction;
     if (!insn) {
         assert(0 && "no current instruction, forgot to push_instruction() first?");
@@ -78,7 +77,7 @@ bc_push_operand(Bc_Generator* bc, Bc_Operand operand) {
 }
 
 inline Bc_Operand
-bc_get_unique_register(Bc_Generator* bc, Bc_Type type) {
+bc_get_unique_register_operand(Bc_Builder* bc, Bc_Type type) {
     Bc_Operand result;
     
     Bc_Register reg;
@@ -91,9 +90,37 @@ bc_get_unique_register(Bc_Generator* bc, Bc_Type type) {
     return result;
 }
 
+inline Bc_Register
+bc_get_unique_register(Bc_Builder* bc) {
+    Bc_Register result;
+    result.ident = 0;
+    result.index = bc->curr_local_count++;
+    return result;
+}
+
+Bc_Basic_Block*
+bc_push_basic_block(Bc_Builder* bc) {
+    
+    Bc_Basic_Block* block = arena_push_struct(&bc->arena, Bc_Basic_Block);
+    if (bc->curr_basic_block) {
+        bc->curr_basic_block->next = block;
+    }
+    bc->curr_basic_block = block;
+    block->label = bc_get_unique_register(bc);
+    
+    Bc_Operand block_operand = {};
+    block_operand.kind = BcOperand_Basic_Block;
+    block_operand.Basic_Block = block;
+    bc_push_instruction(bc, Bytecode_label);
+    bc_push_operand(bc, block_operand);
+    
+    block->first = bc->curr_instruction;
+    block->count = 1;
+    return block;
+}
 
 Bc_Type
-bc_generate_type(Bc_Generator* bc, Ast* type) {
+bc_build_type(Bc_Builder* bc, Ast* type) {
     Bc_Type result = {};
     
     switch (type->kind) {
@@ -134,7 +161,7 @@ bc_generate_type(Bc_Generator* bc, Ast* type) {
 }
 
 Bc_Type
-bc_generate_type(Bc_Generator* bc, Type* type) {
+bc_build_type(Bc_Builder* bc, Type* type) {
     Bc_Type result = {};
     
     switch (type->kind) {
@@ -169,7 +196,7 @@ bc_generate_type(Bc_Generator* bc, Type* type) {
 }
 
 Bc_Operand
-bc_generate_expression(Bc_Generator* bc, Ast* node) {
+bc_build_expression(Bc_Builder* bc, Ast* node) {
     Bc_Operand result = {};
     
     switch (node->kind) {
@@ -181,7 +208,7 @@ bc_generate_expression(Bc_Generator* bc, Ast* node) {
                 
                 Bc_Type loaded_type = result.type;
                 loaded_type.ptr_depth--;
-                result = bc_get_unique_register(bc, loaded_type);
+                result = bc_get_unique_register_operand(bc, loaded_type);
                 Bc_Operand type_operand = {};
                 type_operand.kind = BcOperand_Type;
                 type_operand.type = loaded_type;
@@ -198,12 +225,12 @@ bc_generate_expression(Bc_Generator* bc, Ast* node) {
         
         case Ast_Value: {
             result.kind = BcOperand_Const;
-            result.type = bc_generate_type(bc, node->Value.type);
+            result.type = bc_build_type(bc, node->Value.type);
             result.Const.value = node->Value.value;
         } break;
         
         case Ast_Unary_Expr: {
-            Bc_Operand first = bc_generate_expression(bc, node->Unary_Expr.first);
+            Bc_Operand first = bc_build_expression(bc, node->Unary_Expr.first);
             
             switch (node->Unary_Expr.op) {
                 case UnaryOp_Negate: {
@@ -225,7 +252,7 @@ bc_generate_expression(Bc_Generator* bc, Ast* node) {
                 default: assert(0 && "bug: not a valid unary op");
             }
             
-            result = bc_get_unique_register(bc, first.type);
+            result = bc_get_unique_register_operand(bc, first.type);
             
             bc_push_operand(bc, result);
             bc_push_operand(bc, first);
@@ -234,8 +261,8 @@ bc_generate_expression(Bc_Generator* bc, Ast* node) {
         case Ast_Binary_Expr: {
             bool is_assign = is_assignment_binary_operator(node->Binary_Expr.op);
             
-            Bc_Operand first = bc_generate_expression(bc, node->Binary_Expr.first);
-            Bc_Operand second = bc_generate_expression(bc, node->Binary_Expr.second);
+            Bc_Operand first = bc_build_expression(bc, node->Binary_Expr.first);
+            Bc_Operand second = bc_build_expression(bc, node->Binary_Expr.second);
             
             switch (node->Binary_Expr.op) {
 #define BINOP(name, op, prec, assoc, bc_mnemonic) \
@@ -245,7 +272,7 @@ case BinaryOp_##name: bc_push_instruction(bc, Bytecode_##bc_mnemonic); break;
             }
             
             // TODO(Alexander): we don't have the type, however can be easily infered
-            Bc_Operand temp_register = bc_get_unique_register(bc, {});
+            Bc_Operand temp_register = bc_get_unique_register_operand(bc, {});
             bc_push_operand(bc, temp_register);
             bc_push_operand(bc, first);
             bc_push_operand(bc, second);
@@ -275,19 +302,54 @@ case BinaryOp_##name: bc_push_instruction(bc, Bytecode_##bc_mnemonic); break;
     return result;
 }
 
+Bc_Operand
+bc_build_compare_expression(Bc_Builder* bc, Ast* node) {
+    Bc_Operand result = {};
+    
+    if (node->kind == Ast_Binary_Expr) {
+        Bc_Operand first = bc_build_expression(bc, node->Binary_Expr.first);
+        Bc_Operand second = bc_build_expression(bc, node->Binary_Expr.second);
+        
+        Bc_Type dest_type = {};
+        dest_type.kind = BcTypeKind_s1;
+        Bc_Operand dest = bc_get_unique_register_operand(bc, dest_type);
+        
+        Bc_Opcode cmp_code = Bytecode_cmpeq;
+        switch (node->Binary_Expr.op) {
+            case BinaryOp_Equals: cmp_code = Bytecode_cmpeq; break;
+            case BinaryOp_Not_Equals: cmp_code = Bytecode_cmpneq; break;
+            case BinaryOp_Less_Equals: cmp_code = Bytecode_cmple; break;
+            case BinaryOp_Less_Than: cmp_code = Bytecode_cmplt; break;
+            case BinaryOp_Greater_Equals: cmp_code = Bytecode_cmpge; break;
+            case BinaryOp_Greater_Than: cmp_code = Bytecode_cmpgt; break;
+            default: assert(0 && "invalid compare expression");
+        }
+        
+        bc_push_instruction(bc, cmp_code);
+        bc_push_operand(bc, dest);
+        bc_push_operand(bc, first);
+        bc_push_operand(bc, second);
+        
+    } else {
+        Bc_Operand expr = bc_build_expression(bc, node);
+    }
+    
+    return result;
+}
+
 void
-bc_generate_statement(Bc_Generator* bc, Ast* node) {
+bc_build_statement(Bc_Builder* bc, Ast* node) {
     
     switch (node->kind) {
         case Ast_Assign_Stmt: {
-            Bc_Operand source = bc_generate_expression(bc, node->Assign_Stmt.expr);
+            Bc_Operand source = bc_build_expression(bc, node->Assign_Stmt.expr);
             
             string_id ident = ast_unwrap_ident(node->Assign_Stmt.ident);
             
             Bc_Instruction insn = {};
-            Bc_Type type = bc_generate_type(bc, node->Assign_Stmt.type);
+            Bc_Type type = bc_build_type(bc, node->Assign_Stmt.type);
             
-            Bc_Operand dest = bc_get_unique_register(bc, type);
+            Bc_Operand dest = bc_get_unique_register_operand(bc, type);
             Bc_Operand alloc_type = dest;
             alloc_type.kind = BcOperand_Type;
             dest.type.ptr_depth++;
@@ -305,11 +367,14 @@ bc_generate_statement(Bc_Generator* bc, Ast* node) {
         } break;
         
         case Ast_Expr_Stmt: {
-            bc_generate_expression(bc, node->Expr_Stmt);
+            bc_build_expression(bc, node->Expr_Stmt);
         } break;
         
         case Ast_Block_Stmt: {
-            unimplemented;
+            Ast* stmts = node->Block_Stmt.stmts;
+            for_compound(stmts, stmt) {
+                bc_build_statement(bc, stmt);
+            }
         } break;
         
         case Ast_Break_Stmt: {
@@ -325,7 +390,45 @@ bc_generate_statement(Bc_Generator* bc, Ast* node) {
         } break;
         
         case Ast_If_Stmt: {
-            unimplemented;
+            Bc_Operand cond = bc_build_compare_expression(bc, node->If_Stmt.cond);
+            
+            // Branch
+            Bc_Operand empty_reg_op = {};
+            empty_reg_op.kind = BcOperand_Register;
+            bc_push_instruction(bc, Bytecode_branch);
+            bc_push_operand(bc, cond);
+            bc_push_operand(bc, empty_reg_op);
+            bc_push_operand(bc, empty_reg_op);
+            Bc_Instruction* branch_insn = bc->curr_instruction;
+            
+            
+            branch_insn->src0.Register = bc_push_basic_block(bc)->label;
+            
+            bc_build_statement(bc, node->If_Stmt.then_block);
+            
+            bc_push_instruction(bc, Bytecode_branch);
+            bc_push_operand(bc, empty_reg_op);
+            Bc_Instruction* exit_insn = bc->curr_instruction;
+            
+            if (is_ast_none(node->If_Stmt.else_block)) {
+                Bc_Basic_Block* exit_block = bc_push_basic_block(bc);
+                branch_insn->src1.Register = exit_block->label;
+                exit_insn->dest.Register = exit_block->label;
+                
+            } else {
+                
+                branch_insn->src1.Register = bc_push_basic_block(bc)->label;
+                bc_build_statement(bc, node->If_Stmt.else_block);
+                
+                bc_push_instruction(bc, Bytecode_branch);
+                bc_push_operand(bc, empty_reg_op);
+                Bc_Instruction* exit2_insn = bc->curr_instruction;
+                
+                Bc_Basic_Block* exit_block = bc_push_basic_block(bc);
+                exit_insn->dest.Register = exit_block->label;
+                exit2_insn->dest.Register = exit_block->label;
+            }
+            
         } break;
         
         case Ast_For_Stmt: {
@@ -337,7 +440,7 @@ bc_generate_statement(Bc_Generator* bc, Ast* node) {
         } break;
         
         case Ast_Return_Stmt: {
-            Bc_Operand source = bc_generate_expression(bc, node->Return_Stmt.expr);
+            Bc_Operand source = bc_build_expression(bc, node->Return_Stmt.expr);
             
             bc_push_instruction(bc, Bytecode_ret);
             // HACK(Alexander): we can't set the operands directly
@@ -348,49 +451,25 @@ bc_generate_statement(Bc_Generator* bc, Ast* node) {
     }
 }
 
-Bc_Basic_Block
-bc_generate_basic_block(Bc_Generator* bc, Ast* stmts) {
-    Bc_Basic_Block result = {};
-    bc->curr_basic_block = &result;
-    
-    for_compound(stmts, stmt) {
-        bc_generate_statement(bc, stmt);
-    }
-    
-    String_Builder sb = {};
-    
-    Bc_Instruction* curr_insn = result.first;
-    for (int i = 0; i < result.count; i++) {
-        string_builder_push(&sb, curr_insn++);
-        string_builder_push(&sb, "\n");
-    }
-    
-    string str = string_builder_to_string_nocopy(&sb);
-    pln("%", f_string(str));
-    string_builder_free(&sb);
-    
-    bc->curr_basic_block = 0;
-    
-    return result;
-}
-
 void
-bc_register_declaration(Bc_Generator* bc, string_id ident, Ast* type, Ast* decl) {
+bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* type, Ast* decl) {
     switch (type->kind) {
         case Ast_Function_Type: {
             assert(decl->kind == Ast_Block_Stmt);
             
-            Ast* stmts = decl->Block_Stmt.stmts;
-            Bc_Basic_Block block = bc_generate_basic_block(bc, stmts);
-            block.label = ident;
+            Bc_Basic_Block* block = bc_push_basic_block(bc);
+            block->label.ident = ident;
             
+            bc->curr_local_count = 1;
+            
+            bc_build_statement(bc, decl);
             map_put(bc->declarations, ident, block);
         } break;
     }
 }
 
 void
-bc_generate_from_top_level_declaration(Bc_Generator* bc, Ast* ast) {
+bc_build_from_top_level_declaration(Bc_Builder* bc, Ast* ast) {
     assert(ast->kind == Ast_Decl);
     
     Bc_Instruction result = {};
@@ -411,9 +490,9 @@ bc_generate_from_top_level_declaration(Bc_Generator* bc, Ast* ast) {
     }
 }
 
-Bc_Basic_Block
-bc_generate_from_ast(Ast_File* ast_file) {
-    Bc_Generator bc = {};
+Bc_Basic_Block*
+bc_build_from_ast(Ast_File* ast_file) {
+    Bc_Builder bc = {};
     
     // NOTE(Alexander): we want to minimize this as far as possible
     // to be able to compile large programs.
@@ -422,10 +501,10 @@ bc_generate_from_ast(Ast_File* ast_file) {
     
     
     for_map(ast_file->decls, decl) {
-        bc_generate_from_top_level_declaration(&bc, decl->value);
+        bc_build_from_top_level_declaration(&bc, decl->value);
     }
     
     string_id ident = Sym_main;
-    Bc_Basic_Block main_block = map_get(bc.declarations, ident);
+    Bc_Basic_Block* main_block = map_get(bc.declarations, ident);
     return main_block;
 }

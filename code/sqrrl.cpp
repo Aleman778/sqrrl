@@ -10,7 +10,7 @@
 #include "sqrrl_preprocessor.cpp"
 #include "sqrrl_parser.cpp"
 #include "sqrrl_interp.cpp"
-#include "sqrrl_bytecode_generator.cpp"
+#include "sqrrl_bytecode_builder.cpp"
 #include "sqrrl_bytecode_interp.cpp"
 
 int // NOTE(alexander): this is called by the platform layer
@@ -131,9 +131,25 @@ compiler_main_entry(int argc, char* argv[]) {
 #if 1
     {
         // NOTE(Alexander): Interpret the bytecode
-        Interp interp = {};
-        Bc_Basic_Block main_block = bc_generate_from_ast(&ast_file);
-        interp_bc_basic_block(&interp, &main_block);
+        Bc_Basic_Block* curr_block = bc_build_from_ast(&ast_file);
+        
+        String_Builder sb = {};
+        while (curr_block) {
+            Bc_Instruction* curr_insn = curr_block->first;
+            for (int i = 0; i < curr_block->count; i++) {
+                string_builder_push(&sb, curr_insn++);
+                string_builder_push(&sb, "\n");
+            }
+            
+            curr_block = curr_block->next;
+        }
+        
+        string str = string_builder_to_string_nocopy(&sb);
+        pln("%", f_string(str));
+        string_builder_free(&sb);
+        
+        //Interp interp = {};
+        //interp_bc_basic_block(&interp, main_block);
     }
     
 #endif

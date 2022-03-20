@@ -304,17 +304,15 @@ case BinaryOp_##name: bc_push_instruction(bc, Bytecode_##bc_mnemonic); break;
 
 Bc_Operand
 bc_build_compare_expression(Bc_Builder* bc, Ast* node) {
-    Bc_Operand result = {};
+    
+    Bc_Opcode cmp_code = Bytecode_cmpeq;
+    Bc_Operand first;
+    Bc_Operand second;
     
     if (node->kind == Ast_Binary_Expr) {
-        Bc_Operand first = bc_build_expression(bc, node->Binary_Expr.first);
-        Bc_Operand second = bc_build_expression(bc, node->Binary_Expr.second);
+        first = bc_build_expression(bc, node->Binary_Expr.first);
+        second = bc_build_expression(bc, node->Binary_Expr.second);
         
-        Bc_Type dest_type = {};
-        dest_type.kind = BcTypeKind_s1;
-        Bc_Operand dest = bc_get_unique_register_operand(bc, dest_type);
-        
-        Bc_Opcode cmp_code = Bytecode_cmpeq;
         switch (node->Binary_Expr.op) {
             case BinaryOp_Equals: cmp_code = Bytecode_cmpeq; break;
             case BinaryOp_Not_Equals: cmp_code = Bytecode_cmpneq; break;
@@ -324,17 +322,23 @@ bc_build_compare_expression(Bc_Builder* bc, Ast* node) {
             case BinaryOp_Greater_Than: cmp_code = Bytecode_cmpgt; break;
             default: assert(0 && "invalid compare expression");
         }
-        
-        bc_push_instruction(bc, cmp_code);
-        bc_push_operand(bc, dest);
-        bc_push_operand(bc, first);
-        bc_push_operand(bc, second);
-        
     } else {
-        Bc_Operand expr = bc_build_expression(bc, node);
+        first = bc_build_expression(bc, node->Binary_Expr.first);
+        second = {};
+        second.kind = BcOperand_Const;
+        second.Const.value = create_signed_int_value(0);
     }
     
-    return result;
+    Bc_Type dest_type = {};
+    dest_type.kind = BcTypeKind_s1;
+    Bc_Operand dest = bc_get_unique_register_operand(bc, dest_type);
+    
+    bc_push_instruction(bc, cmp_code);
+    bc_push_operand(bc, dest);
+    bc_push_operand(bc, first);
+    bc_push_operand(bc, second);
+    
+    return dest;
 }
 
 void

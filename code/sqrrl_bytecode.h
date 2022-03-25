@@ -83,7 +83,7 @@ struct Bc_Type {
 enum Bc_Operand_Kind {
     BcOperand_None,
     BcOperand_Register,
-    BcOperand_Const,
+    BcOperand_Value,
     BcOperand_Basic_Block,
     BcOperand_Type
 };
@@ -91,10 +91,6 @@ enum Bc_Operand_Kind {
 struct Bc_Register {
     string_id ident;
     u32 index;
-};
-
-struct Bc_Const {
-    Value value;
 };
 
 // NOTE(Alexander): forward declare
@@ -107,12 +103,20 @@ struct Bc_Basic_Block {
     Bc_Basic_Block* next;
 };
 
+union Bc_Value {
+    s64 signed_int;
+    u64 unsigned_int;
+    f64 floating;
+    void* data;
+    Bc_Basic_Block* label;
+};
+
 struct Bc_Operand {
     Bc_Operand_Kind kind;
     Bc_Type type;
     union {
         Bc_Register Register;
-        Bc_Const Const;
+        Bc_Value Value;
         Bc_Basic_Block* Basic_Block;
     };
 };
@@ -125,8 +129,8 @@ struct Bc_Instruction {
 };
 
 bool
-string_builder_push(String_Builder* sb, Bc_Type* type) {
-    switch (type->kind) {
+string_builder_push(String_Builder* sb, Bc_Type type) {
+    switch (type.kind) {
         case BcTypeKind_None: return false;
         
         case BcTypeKind_s1: string_builder_push(sb, "s1"); break;
@@ -142,11 +146,40 @@ string_builder_push(String_Builder* sb, Bc_Type* type) {
     }
     
     
-    for (u32 i = 0; i < type->ptr_depth; i++) {
+    for (u32 i = 0; i < type.ptr_depth; i++) {
         string_builder_push(sb, "*");
     }
     
     return true;
+}
+
+void
+string_builder_push(String_Builder* sb, Bc_Value value, Bc_Type type) {
+    if (type.ptr_depth == 0) {
+        switch (type.kind) {
+            case BcTypeKind_s1:  
+            case BcTypeKind_s8:  
+            case BcTypeKind_s16: 
+            case BcTypeKind_s32: 
+            case BcTypeKind_s64: {
+                string_builder_push_format(sb, "%", f_s64(value.signed_int));
+            } break;
+            
+            case BcTypeKind_u8:  
+            case BcTypeKind_u16: 
+            case BcTypeKind_u32: 
+            case BcTypeKind_u64: {
+                string_builder_push_format(sb, "%", f_u64(value.unsigned_int));
+            } break;
+            
+            case BcTypeKind_f32: 
+            case BcTypeKind_f64: {
+                string_builder_push_format(sb, "%", f_float(value.floating));
+            } break;
+        }
+    } else {
+        string_builder_push_format(sb, "%", f_u64_HEX(value.unsigned_int));
+    }
 }
 
 bool
@@ -155,7 +188,7 @@ string_builder_push(String_Builder* sb, Bc_Operand* operand, bool show_type = tr
         case BcOperand_None: return false;
         
         case BcOperand_Register: {
-            if (show_type && string_builder_push(sb, &operand->type)) {
+            if (show_type && string_builder_push(sb, operand->type)) {
                 string_builder_push(sb, " ");
             }
             string_builder_push(sb, "%");
@@ -166,12 +199,12 @@ string_builder_push(String_Builder* sb, Bc_Operand* operand, bool show_type = tr
             string_builder_push_format(sb, "%", f_u32(operand->Register.index));
         } break;
         
-        case BcOperand_Const: {
-            string_builder_push(sb, &operand->Const.value);
+        case BcOperand_Value: {
+            string_builder_push(sb, operand->Value, operand->type);
         } break;
         
         case BcOperand_Type: {
-            if (show_type) string_builder_push(sb, &operand->type);
+            if (show_type) string_builder_push(sb, operand->type);
         } break;
     }
     
@@ -188,12 +221,26 @@ string_builder_push(String_Builder* sb, Bc_Instruction* insn) {
             string_builder_push_format(sb, "%:", f_u32(block->label.index));
         }
     } else {
+        bool is_opcode_assign = insn->opcode == Bytecode_branch;
+        
         string_builder_push(sb, "    ");
-        if (string_builder_push(sb, &insn->dest, false)) {
-            string_builder_push(sb, " = ");
+        
+        if (!is_opcode_assign) {
+            if (string_builder_push(sb, &insn->dest, false)) {
+                string_builder_push(sb, " = ");
+            }
         }
         
         string_builder_push(sb, bytecode_opcode_names[insn->opcode]);
+        
+        if (is_opcode_assign) {
+            string_builder_push(sb, " ");
+            if (string_builder_push(sb, &insn->dest)) {
+                if (insn->src1.kind) {
+                    string_builder_push(sb, ",");
+                }
+            }
+        }
         
         if (insn->src0.kind) {
             string_builder_push(sb, " ");

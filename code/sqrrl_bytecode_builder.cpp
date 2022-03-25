@@ -224,9 +224,30 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
         } break;
         
         case Ast_Value: {
-            result.kind = BcOperand_Const;
+            result.kind = BcOperand_Value;
             result.type = bc_build_type(bc, node->Value.type);
-            result.Const.value = node->Value.value;
+            
+            switch (result.type.kind) {
+                case BcTypeKind_s1:  
+                case BcTypeKind_s8:  
+                case BcTypeKind_s16: 
+                case BcTypeKind_s32: 
+                case BcTypeKind_s64: {
+                    result.Value.signed_int = node->Value.value.signed_int;
+                } break;
+                
+                case BcTypeKind_u8:  
+                case BcTypeKind_u16: 
+                case BcTypeKind_u32: 
+                case BcTypeKind_u64: {
+                    result.Value.unsigned_int = node->Value.value.unsigned_int;
+                } break;
+                
+                case BcTypeKind_f32: 
+                case BcTypeKind_f64: {
+                    result.Value.floating = node->Value.value.floating;
+                } break;
+            }
         } break;
         
         case Ast_Unary_Expr: {
@@ -325,8 +346,8 @@ bc_build_compare_expression(Bc_Builder* bc, Ast* node) {
     } else {
         first = bc_build_expression(bc, node->Binary_Expr.first);
         second = {};
-        second.kind = BcOperand_Const;
-        second.Const.value = create_signed_int_value(0);
+        second.kind = BcOperand_Value;
+        second.Value.signed_int = 0;
     }
     
     Bc_Type dest_type = {};
@@ -510,5 +531,8 @@ bc_build_from_ast(Ast_File* ast_file) {
     
     string_id ident = Sym_main;
     Bc_Basic_Block* main_block = map_get(bc.declarations, ident);
+    
+    pln("Bytecode size: % bytes", f_umm(bc.arena.curr_used));
+    
     return main_block;
 }

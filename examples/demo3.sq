@@ -1,10 +1,15 @@
 
 int
 main() {
-    int x = 10;
+    int x = -5;
+    int y = 10;
     
-    if (x > 15) {
+    if (x < 0 && y == 10) {
         x += 10;
+    } else if (x > 100) {
+        x += 400;
+    } else {
+        x += 40000;
     }
     
     return x + 20;

@@ -36,6 +36,10 @@ print_format(const char* format...) {
                     printf("%lld", va_arg(args, s64));
                 } break;
                 
+                case FormatType_u32: {
+                    printf("%lu", va_arg(args, u32));
+                } break;
+                
                 case FormatType_u64: {
                     printf("%llu", va_arg(args, u64));
                 } break;
@@ -71,7 +75,7 @@ print_format(const char* format...) {
                 } break;
                 
                 default: {
-                    printf("%c", *format);
+                    assert(0 && "unimplemented format type");
                 } break;
             }
         } else {

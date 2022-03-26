@@ -607,8 +607,8 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
             prec = 1;
             assoc = Assoc_Right;
         } else {
-            prec = binary_get_prec(binary_op);
-            assoc = binary_get_assoc(binary_op);
+            prec = binary_prec_table[binary_op];
+            assoc = binary_assoc_table[binary_op];
         }
         
         if (prec < min_prec) {

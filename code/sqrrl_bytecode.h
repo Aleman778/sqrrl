@@ -108,7 +108,7 @@ union Bc_Value {
     u64 unsigned_int;
     f64 floating;
     void* data;
-    Bc_Basic_Block* label;
+    Bc_Basic_Block* basic_block;
 };
 
 struct Bc_Operand {
@@ -127,6 +127,8 @@ struct Bc_Instruction {
     Bc_Operand src0;
     Bc_Operand src1;
 };
+
+typedef map(Bc_Register, Bc_Value) Bc_Label_To_Value_Table;
 
 bool
 string_builder_push(String_Builder* sb, Bc_Type type) {
@@ -151,6 +153,15 @@ string_builder_push(String_Builder* sb, Bc_Type type) {
     }
     
     return true;
+}
+
+void
+string_builder_push(String_Builder* sb, Bc_Register reg) {
+    if (reg.index == 0) {
+        string_builder_push_format(sb, "%", f_string(vars_load_string(reg.ident)));
+    } else {
+        string_builder_push_format(sb, "%", f_u32(reg.index));
+    }
 }
 
 void
@@ -192,11 +203,7 @@ string_builder_push(String_Builder* sb, Bc_Operand* operand, bool show_type = tr
                 string_builder_push(sb, " ");
             }
             string_builder_push(sb, "%");
-            
-            if (operand->Register.ident > 0) {
-                string_builder_push(sb, vars_load_string(operand->Register.ident));
-            }
-            string_builder_push_format(sb, "%", f_u32(operand->Register.index));
+            string_builder_push(sb, operand->Register);
         } break;
         
         case BcOperand_Value: {
@@ -215,11 +222,8 @@ void
 string_builder_push(String_Builder* sb, Bc_Instruction* insn) {
     if (insn->opcode == Bytecode_label) {
         Bc_Basic_Block* block = insn->dest.Basic_Block;
-        if (block->label.ident > 0) {
-            string_builder_push_format(sb, "%:", f_string(vars_load_string(block->label.ident)));
-        } else {
-            string_builder_push_format(sb, "%:", f_u32(block->label.index));
-        }
+        string_builder_push(sb, block->label);
+        string_builder_push(sb, ":");
     } else {
         bool is_opcode_assign = insn->opcode == Bytecode_branch;
         

@@ -131,7 +131,8 @@ compiler_main_entry(int argc, char* argv[]) {
 #if 1
     {
         // NOTE(Alexander): Interpret the bytecode
-        Bc_Basic_Block* main_block = bc_build_from_ast(&ast_file);
+        Bc_Builder bytecode_builder = {};
+        Bc_Basic_Block* main_block = bc_build_from_ast(&bytecode_builder, &ast_file);
         
         String_Builder sb = {};
         Bc_Basic_Block* curr_block = main_block;
@@ -150,6 +151,7 @@ compiler_main_entry(int argc, char* argv[]) {
         string_builder_free(&sb);
         
         Bc_Interp interp = {};
+        interp.declarations = bytecode_builder.declarations;
         interp.curr_block = main_block;
         bc_interp_function(&interp, Sym_main);
     }

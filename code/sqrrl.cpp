@@ -12,6 +12,7 @@
 #include "sqrrl_interp.cpp"
 #include "sqrrl_bytecode_builder.cpp"
 #include "sqrrl_bytecode_interp.cpp"
+#include "sqrrl_x64_builder.cpp"
 
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[]) {
@@ -150,10 +151,15 @@ compiler_main_entry(int argc, char* argv[]) {
         pln("%", f_string(str));
         string_builder_free(&sb);
         
+        // Interpret the bytecode
         Bc_Interp interp = {};
         interp.declarations = bytecode_builder.declarations;
         interp.curr_block = main_block;
         bc_interp_function(&interp, Sym_main);
+        
+        // Generate X64 machine code
+        X64_Builder x64_builder = {};
+        x64_build_function(&x64_builder, main_block);
     }
     
 #endif

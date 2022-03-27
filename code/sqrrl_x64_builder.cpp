@@ -4,51 +4,72 @@
 struct X64_Builder {
     Memory_Arena arena;
     
+    X64_Instruction* curr_instruction;
+    
     u64 allocated_register_mask;
     map(Bc_Register, u32)* allocated_registers;
     map(u32, s32)* stack_offsets;
     s32 curr_stack_offset;
 };
 
-X64_Operand
-bc_operand_to_x64_operand(Bc_Operand operand) {
-    X64_Operand result = {};
+
+X64_Instruction*
+push_instruction(X64_Builder* x64, X64_Opcode opcode) {
+    X64_Instruction* insn = arena_push_struct(&x64->arena, X64_Instruction);
+    insn->opcode = opcode;
+    x64->curr_instruction = insn;
+    return insn;
+}
+
+
+X64_Operand*
+push_register_operand(X64_Builder* x64, X64_Register reg) {
+    assert(x64->curr_instruction);
     
-    switch (operand.kind) {
-        case BcOperand_Register: {
-            
-            
+    X64_Operand* op = arena_push_struct(&x64->arena, X64_Operand);
+    op->Register = reg;
+    
+    if (register_is_gpr(reg)) {
+        int size = register_size_table[reg];
+        switch (size) {
+            case 1: op->kind = register_
+        }
+    }
+    
+    return op;
+}
+
+X64_Operand
+push_immediate_operand(X64_Builder* x64, Bc_Value value, Bc_Type type) {
+    assert(x64->curr_instruction);
+    
+    X64_Operand* op = arena_push_struct(&x64->arena, X64_Operand);
+    x64->curr_instruction
+        
+        switch (type.kind) {
+        case BcTypeKind_s1:
+        case BcTypeKind_s8:
+        case BcTypeKind_u8: {
+            result.kind = X64Operand_imm8;
+            result.imm8 = (s8) value.signed_int;
         } break;
         
-        case BcOperand_Value: {
-            switch (operand.type.kind) {
-                case BcTypeKind_s1:
-                case BcTypeKind_s8:
-                case BcTypeKind_u8: {
-                    result.kind = X64Operand_imm8;
-                } break;
-                
-                
-                case BcTypeKind_s16:
-                case BcTypeKind_u16: {
-                    result.kind = X64Operand_imm16;
-                } break;
-                
-                case BcTypeKind_s32:
-                case BcTypeKind_u32: {
-                    result.kind = X64Operand_imm32;
-                } break;
-                
-                case BcTypeKind_s64:
-                case BcTypeKind_u64: {
-                    result.kind = X64Operand_imm64;
-                } break;
-            }
-            
+        case BcTypeKind_s16:
+        case BcTypeKind_u16: {
+            result.kind = X64Operand_imm16;
+            result.imm16 = (s16) value.signed_int;
         } break;
         
-        default: {
-            //unimplemented;
+        case BcTypeKind_s32:
+        case BcTypeKind_u32: {
+            result.kind = X64Operand_imm32;
+            result.imm32 = (s32) value.signed_int;
+        } break;
+        
+        case BcTypeKind_s64:
+        case BcTypeKind_u64: {
+            result.kind = X64Operand_imm64;
+            result.imm64 = (s64) value.signed_int;
         } break;
     }
     
@@ -115,6 +136,40 @@ x64_build_instruction(X64_Builder* x64, Bc_Instruction* bc) {
     }
 }
 
+void
+x64_push_prologue(X64_Builder* x64) {
+    // push rbp
+    // mov rbp rsp
+    // sub rbp stack_size (only relevant for non-leaf functions)
+    
+    
+    push_instruction(x64, X64Opcode_PUSH);
+    push_register_operand(x64, X64_rbp);
+    
+    push_instruction(x64, X64Opcode_MOV);
+    push_register_operand(x64, X64_rbp);
+    push_register_operand(x64, X64_rsp);
+    
+    push_instruction(x64, X64Opcode_SUB);
+    push_register_operand(x64, X64_rbp);
+    push_immediate_operand(x64, stack_size);
+}
+
+
+void
+x64_push_epilogue(X64_Builder* x64) {
+    // add rsp stack_size (only relevant for non-leaf functions)
+    // pop rbp
+    // ret
+    
+    push_instruction(x64, X64Opcode_MOV);
+    push_register_operand(x64, X64_rbp);
+    push_register_operand(x64, X64_rsp);
+    
+    push_instruction(x64, X64Opcode_PUSH);
+    push_register_operand(x64, X64_rbp);
+}
+
 #define for_basic_block(x64, first_block, curr_block, curr_block_insn, function) { \
 Bc_Basic_Block* curr_block = first_block; \
 umm curr_block_insn = 0; \
@@ -129,26 +184,32 @@ curr_block_insn = 0; \
 }
 
 void
-x64_analyse_stack(X64_Builder* x64, Bc_Instruction* bc) {
-    if (bc->opcode == Bytecode_stack_alloc) {
-        assert(bc->dest.kind == BcOperand_Register);
-        assert(bc->src0.kind == BcOperand_Type);
-        assert(bc->src1.kind == BcOperand_None);
+x64_analyse_function(X64_Builder* x64, Bc_Instruction* bc) {
+    switch (bc->opcode) {
+        case Bytecode_stack_alloc: {
+            assert(bc->dest.kind == BcOperand_Register);
+            assert(bc->src0.kind == BcOperand_Type);
+            assert(bc->src1.kind == BcOperand_None);
+            
+            Type* type = bc_type_to_type(bc->src0.type);
+            assert(type->cached_size > 0 && "bad size");
+            assert(type->cached_align > 0 && "bad align");
+            
+            s32 stack_offset = (s32) align_forward((umm) x64->curr_stack_offset, type->cached_align);
+            map_put(x64->stack_offsets, bc->dest.kind, stack_offset);
+            x64->curr_stack_offset = stack_offset + type->cached_size;
+            
+            pln("stack_offset(size = %, align = %, %) = %", f_umm(type->cached_size), f_umm(type->cached_align), f_u32(bc->dest.Register.index), f_s64(stack_offset));
+        } break;
         
-        Type* type = bc_type_to_type(bc->src0.type);
-        assert(type->cached_size > 0 && "bad size");
-        assert(type->cached_align > 0 && "bad align");
-        
-        s32 stack_offset = (s32) align_forward((umm) x64->curr_stack_offset, type->cached_align);
-        map_put(x64->stack_offsets, bc->dest.kind, stack_offset);
-        x64->curr_stack_offset = stack_offset + type->cached_size;
-        
-        pln("stack_offset(size = %, align = %, %) = %", f_umm(type->cached_size), f_umm(type->cached_align), f_u32(bc->dest.Register.index), f_s64(stack_offset));
     }
 }
 
 void
 x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
     for_basic_block(x64, first_block, block, offset, x64_analyse_stack);
+    
+    x64_push_prologue(x64);
     for_basic_block(x64, first_block, block, offset, x64_build_instruction);
+    x64_push_epilogue(x64);
 }

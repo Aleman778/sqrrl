@@ -2,7 +2,160 @@
 enum X64_Opcode {
     X64Opcode_ADD,
     X64Opcode_MOV,
+    X64Opcode_PUSH,
+    X64Opcode_POP,
+    X64Opcode_RET,
+    
+    X64Opcode_LABEL, // pseudo opcode
 };
+
+enum X64_Register_Type {
+    X64RegisterType_GPR, // General purpose register
+    X64RegisterType_FPU, // Floating point unit
+    X64RegisterType_MMX, // First version of SIMD
+    X64RegisterType_SSE, // Streaming SIMD Extension
+    X64RegisterType_AVX, // Advanced Vector Extension
+};
+
+// X64_GPR_BYTE(index, qword, dword, word, byte_low, byte_high)
+// X64_GPR(index, qword, dword, word, byte_low)
+// X64_MMX_FPU(index, mmx, stx)
+
+// X64_REGISTER(mnemonic, size, type)
+#define DEF_X64_REGISTERS \
+X64_REGISTER(unallocated_r8,   1, GPR) \
+X64_REGISTER(unallocated_r16,   2, GPR) \
+X64_REGISTER(unallocated_r32,  4, GPR) \
+X64_REGISTER(unallocated_r64,  8, GPR) \
+X64_REGISTER(unallocated_stx,  10, GPR) \
+X64_REGISTER(unallocated_mmx,  8, GPR) \
+\
+X64_REGISTER(ah,   1, GPR) \
+X64_REGISTER(al,   1, GPR) \
+X64_REGISTER(ax,   2, GPR) \
+X64_REGISTER(eax,  4, GPR) \
+X64_REGISTER(rax,  8, GPR) \
+\
+X64_REGISTER(bh,   1, GPR) \
+X64_REGISTER(bl,   1, GPR) \
+X64_REGISTER(bx,   2, GPR) \
+X64_REGISTER(ebx,  4, GPR) \
+X64_REGISTER(rbx,  8, GPR) \
+\
+X64_REGISTER(ch,   1, GPR) \
+X64_REGISTER(cl,   1, GPR) \
+X64_REGISTER(cx,   2, GPR) \
+X64_REGISTER(ecx,  4, GPR) \
+X64_REGISTER(rcx,  8, GPR) \
+\
+X64_REGISTER(dh,   1, GPR) \
+X64_REGISTER(dl,   1, GPR) \
+X64_REGISTER(dx,   2, GPR) \
+X64_REGISTER(edx,  4, GPR) \
+X64_REGISTER(rdx,  8, GPR) \
+\
+X64_REGISTER(sil,  1, GPR) \
+X64_REGISTER(si,   2, GPR) \
+X64_REGISTER(esi,  4, GPR) \
+X64_REGISTER(rsi,  8, GPR) \
+\
+X64_REGISTER(dil,  1, GPR) \
+X64_REGISTER(di,   2, GPR) \
+X64_REGISTER(edi,  4, GPR) \
+X64_REGISTER(rdi,  8, GPR) \
+\
+X64_REGISTER(dil,  1, GPR) \
+X64_REGISTER(di,   2, GPR) \
+X64_REGISTER(edi,  4, GPR) \
+X64_REGISTER(rdi,  8, GPR) \
+\
+X64_REGISTER(bpl,  1, GPR) \
+X64_REGISTER(bp,   2, GPR) \
+X64_REGISTER(ebp,  4, GPR) \
+X64_REGISTER(rbp,  8, GPR) \
+\
+X64_REGISTER(spl,  1, GPR) \
+X64_REGISTER(sp,   2, GPR) \
+X64_REGISTER(esp,  4, GPR) \
+X64_REGISTER(rsp,  8, GPR) \
+\
+X64_REGISTER(r8b,  1, GPR) \
+X64_REGISTER(r8w,  2, GPR) \
+X64_REGISTER(r8d,  4, GPR) \
+X64_REGISTER(r8,   8, GPR) \
+\
+X64_REGISTER(r9b,  1, GPR) \
+X64_REGISTER(r9w,  2, GPR) \
+X64_REGISTER(r9d,  4, GPR) \
+X64_REGISTER(r9,   8, GPR) \
+\
+X64_REGISTER(r10b,  1, GPR) \
+X64_REGISTER(r10w,  2, GPR) \
+X64_REGISTER(r10d,  4, GPR) \
+X64_REGISTER(r10,   8, GPR) \
+\
+X64_REGISTER(r11b,  1, GPR) \
+X64_REGISTER(r11w,  2, GPR) \
+X64_REGISTER(r11d,  4, GPR) \
+X64_REGISTER(r11,   8, GPR) \
+\
+X64_REGISTER(r12b,  1, GPR) \
+X64_REGISTER(r12w,  2, GPR) \
+X64_REGISTER(r12d,  4, GPR) \
+X64_REGISTER(r12,   8, GPR) \
+\
+X64_REGISTER(r13b,  1, GPR) \
+X64_REGISTER(r13w,  2, GPR) \
+X64_REGISTER(r13d,  4, GPR) \
+X64_REGISTER(r13,   8, GPR) \
+\
+X64_REGISTER(r14b,  1, GPR) \
+X64_REGISTER(r14w,  2, GPR) \
+X64_REGISTER(r14d,  4, GPR) \
+X64_REGISTER(r14,   8, GPR) \
+\
+X64_REGISTER(r15b,  1, GPR) \
+X64_REGISTER(r15w,  2, GPR) \
+X64_REGISTER(r15d,  4, GPR) \
+X64_REGISTER(r15,   8, GPR) \
+\
+X64_REGISTER(st0, 10, FPU) \
+X64_REGISTER(st1, 10, FPU) \
+X64_REGISTER(st2, 10, FPU) \
+X64_REGISTER(st3, 10, FPU) \
+X64_REGISTER(st4, 10, FPU) \
+X64_REGISTER(st5, 10, FPU) \
+X64_REGISTER(st6, 10, FPU) \
+X64_REGISTER(st7, 10, FPU) \
+\
+X64_REGISTER(mm0, 8, MMX) \
+X64_REGISTER(mm1, 8, MMX) \
+X64_REGISTER(mm2, 8, MMX) \
+X64_REGISTER(mm3, 8, MMX) \
+X64_REGISTER(mm4, 8, MMX) \
+X64_REGISTER(mm5, 8, MMX) \
+X64_REGISTER(mm6, 8, MMX) \
+X64_REGISTER(mm7, 8, MMX)
+// TODO(Alexander): add more registers
+
+global int const x64_num_physical_registers = 24; // counting rax and eax as the same
+
+enum X64_Register {
+#define X64_REGISTER(mnemonic, ...) X64Register_##mnemonic,
+    DEF_X64_REGISTERS
+#undef X64_REGISTER
+};
+
+global int register_size_table[] = {
+#define X64_REGISTER(mnemonic, size, ...) size,
+    DEF_X64_REGISTERS
+#undef X64_REGISTER
+};
+
+bool
+register_is_gpr(X64_Register) {
+    return reg >= X64Register_ah && reg <= X64Register_r15;
+}
 
 enum X64_Operand_Kind {
     X64Operand_None,
@@ -30,97 +183,6 @@ enum X64_Operand_Kind {
     X64Operand_rel8,
     X64Operand_rel32,
 };
-// X64_GPR_BYTE(index, qword, dword, word, byte_low, byte_high)
-// X64_GPR(index, qword, dword, word, byte_low)
-// X64_MMX_FPU(index, mmx, stx)
-#define DEF_X64_REGISTERS \
-X64_GPR_BYTE(0, rax, eax, ax, al, ah) \
-X64_GPR_BYTE(1, rbx, ebx, bx, bl, bh) \
-X64_GPR_BYTE(2, rcx, ecx, cx, cl, ch) \
-X64_GPR_BYTE(3, rdx, edx, dx, dl, dh) \
-X64_GPR(4,  rsi, esi,  si,   sil) \
-X64_GPR(5,  rdi, edi,  di,   dil) \
-X64_GPR(6,  rbp, ebp,  bp,   bpl) \
-X64_GPR(7,  rsp, esp,  sp,   spl) \
-X64_GPR(8,  r8,  r8d,  r8w,  r8b) \
-X64_GPR(9,  r9,  r9d,  r9w,  r9b) \
-X64_GPR(10, r10, r10d, r10w, r10b) \
-X64_GPR(11, r11, r11d, r11w, r11b) \
-X64_GPR(12, r12, r12d, r12w, r12b) \
-X64_GPR(13, r13, r13d, r13w, r13b) \
-X64_GPR(14, r14, r14d, r14w, r14b) \
-X64_GPR(15, r15, r15d, r15w, r15b) \
-X64_MMX_FPU(16, mm0, st0) \
-X64_MMX_FPU(17, mm1, st1) \
-X64_MMX_FPU(18, mm2, st2) \
-X64_MMX_FPU(19, mm3, st3) \
-X64_MMX_FPU(20, mm4, st4) \
-X64_MMX_FPU(21, mm5, st5) \
-X64_MMX_FPU(22, mm6, st6) \
-X64_MMX_FPU(23, mm7, st7) \
-X64_AVX_SSE(24, zmm0,  ymm0,  xmm0) \
-X64_AVX_SSE(25, zmm1,  ymm1,  xmm1) \
-X64_AVX_SSE(26, zmm2,  ymm2,  xmm2) \
-X64_AVX_SSE(27, zmm3,  ymm3,  xmm3) \
-X64_AVX_SSE(28, zmm4,  ymm4,  xmm4) \
-X64_AVX_SSE(29, zmm5,  ymm5,  xmm5) \
-X64_AVX_SSE(30, zmm6,  ymm6,  xmm6) \
-X64_AVX_SSE(31, zmm7,  ymm7,  xmm7) \
-X64_AVX_SSE(32, zmm8,  ymm8,  xmm8) \
-X64_AVX_SSE(33, zmm9,  ymm9,  xmm9) \
-X64_AVX_SSE(34, zmm10, ymm10, xmm10) \
-X64_AVX_SSE(35, zmm11, ymm11, xmm11) \
-X64_AVX_SSE(36, zmm12, ymm12, xmm12) \
-X64_AVX_SSE(37, zmm13, ymm13, xmm13) \
-X64_AVX_SSE(38, zmm14, ymm14, xmm14) \
-X64_AVX_SSE(39, zmm15, ymm15, xmm15) \
-X64_AVX(40, zmm16) \
-X64_AVX(41, zmm17) \
-X64_AVX(42, zmm18) \
-X64_AVX(43, zmm19) \
-X64_AVX(44, zmm20) \
-X64_AVX(45, zmm21) \
-X64_AVX(46, zmm22) \
-X64_AVX(47, zmm23) \
-X64_AVX(48, zmm24) \
-X64_AVX(49, zmm25) \
-X64_AVX(50, zmm26) \
-X64_AVX(51, zmm27) \
-X64_AVX(52, zmm28) \
-X64_AVX(53, zmm29) \
-X64_AVX(54, zmm30) \
-X64_AVX(55, zmm31)
-
-global int const x64_num_physical_registers = 24; // counting rax and eax as the same
-
-enum X64_Register {
-#define X64_GPR_BYTE(index, qword, dword, word, byte_low, byte_high) X64_##qword, X64_##dword, X64_##word, X64_##byte_low, X64_##byte_high,
-#define X64_GPR(index, qword, dword, word, byte_low) X64_##qword, X64_##dword, X64_##word, X64_##byte_low,
-#define X64_MMX_FPU(index, mmx, fpu) X64_##mmx, X64_##fpu,
-#define X64_AVX_SSE(index, zmm, ymm, xmm) X64_##zmm, X64_##ymm, X64_##xmm,
-#define X64_AVX(index, zmm) X64_##zmm,
-    DEF_X64_REGISTERS
-#undef X64_GPR_BYTE
-#undef X64_GPR
-#undef X64_MMX_FPU
-#undef X64_AVX_SSE
-#undef X64_AVX
-};
-
-// TODO(Alexander): is this really needed?
-int x64_register_to_index[] = {
-#define X64_GPR_BYTE(index, ...) index, index, index, index, index,
-#define X64_GPR(index, ...) index, index, index, index,
-#define X64_MMX_FPU(index, ...) index, index,
-#define X64_AVX_SSE(index, ...) index, index, index,
-#define X64_AVX(index, ...) index,
-    DEF_X64_REGISTERS
-#undef X64_GPR_BYTE
-#undef X64_GPR
-#undef X64_MMX_FPU
-#undef X64_AVX_SSE
-#undef X64_AVX
-};
 
 struct X64_Operand {
     X64_Operand_Kind kind;
@@ -133,20 +195,31 @@ struct X64_Operand {
     };
 };
 
-struct X64_Encoding {
-    
-};
-
 struct X64_Instruction {
     X64_Opcode opcode;
     union {
         struct {
-            X64_Operand dest;
-            X64_Operand src0;
-            X64_Operand src1;
+            X64_Operand op0;
+            X64_Operand op1;
+            X64_Operand op2;
         };
         X64_Operand operands[3];
     };
 };
 
+union X64_Instruction_Index {
+    struct {
+        u8 opcode;
+        u8 op0;
+        u8 op1;
+        u8 op2;
+    };
+    u32 packed;
+};
 
+
+struct X64_Encoding {
+    u8 prefix;
+    u8 modrm;
+    u8 sib;
+};

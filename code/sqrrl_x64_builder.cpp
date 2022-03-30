@@ -1,9 +1,8 @@
 
-
-
 struct X64_Builder {
     Memory_Arena arena;
     
+    umm instruction_count;
     X64_Instruction* curr_instruction;
     
     u64 allocated_register_mask;
@@ -16,60 +15,85 @@ struct X64_Builder {
 X64_Instruction*
 push_instruction(X64_Builder* x64, X64_Opcode opcode) {
     X64_Instruction* insn = arena_push_struct(&x64->arena, X64_Instruction);
+    pln("sizeof = %", f_umm(sizeof(X64_Instruction)));
     insn->opcode = opcode;
     x64->curr_instruction = insn;
+    x64->instruction_count++;
     return insn;
 }
 
 
 X64_Operand*
-push_register_operand(X64_Builder* x64, X64_Register reg) {
+push_operand(X64_Builder* x64) {
     assert(x64->curr_instruction);
+    X64_Instruction* insn = x64->curr_instruction;
+    X64_Operand* result = 0;
     
-    X64_Operand* op = arena_push_struct(&x64->arena, X64_Operand);
-    op->Register = reg;
+    // HACK(Alexander): this is not really pushing at the moment
+    // we are just inserting the next slot available
+    if (!insn->op0.kind) {
+        result = &insn->op0;
+    } else if (!insn->op1.kind) {
+        result = &insn->op1;
+    } else if (!insn->op2.kind) {
+        result = &insn->op2;
+    } else {
+        assert(0 && "reached maximum allowed operands per instruction");
+    }
+    
+    return result;
+}
+
+
+X64_Operand*
+push_register_operand(X64_Builder* x64, X64_Register reg) {
+    
+    
+    X64_Operand* result = push_operand(x64);
+    result->reg = reg;
     
     if (register_is_gpr(reg)) {
         int size = register_size_table[reg];
         switch (size) {
-            case 1: op->kind = register_
+            case 1: result->kind = X64Operand_r8; break;
+            case 2: result->kind = X64Operand_r16; break;
+            case 4: result->kind = X64Operand_r32; break;
+            case 8: result->kind = X64Operand_r64; break;
+            default: assert(0 && "invalid register size"); break;
         }
     }
     
-    return op;
+    return result;
 }
 
-X64_Operand
+X64_Operand*
 push_immediate_operand(X64_Builder* x64, Bc_Value value, Bc_Type type) {
-    assert(x64->curr_instruction);
+    X64_Operand* result = push_operand(x64);
     
-    X64_Operand* op = arena_push_struct(&x64->arena, X64_Operand);
-    x64->curr_instruction
-        
-        switch (type.kind) {
+    switch (type.kind) {
         case BcTypeKind_s1:
         case BcTypeKind_s8:
         case BcTypeKind_u8: {
-            result.kind = X64Operand_imm8;
-            result.imm8 = (s8) value.signed_int;
+            result->kind = X64Operand_imm8;
+            result->imm8 = (s8) value.signed_int;
         } break;
         
         case BcTypeKind_s16:
         case BcTypeKind_u16: {
-            result.kind = X64Operand_imm16;
-            result.imm16 = (s16) value.signed_int;
+            result->kind = X64Operand_imm16;
+            result->imm16 = (s16) value.signed_int;
         } break;
         
         case BcTypeKind_s32:
         case BcTypeKind_u32: {
-            result.kind = X64Operand_imm32;
-            result.imm32 = (s32) value.signed_int;
+            result->kind = X64Operand_imm32;
+            result->imm32 = (s32) value.signed_int;
         } break;
         
         case BcTypeKind_s64:
         case BcTypeKind_u64: {
-            result.kind = X64Operand_imm64;
-            result.imm64 = (s64) value.signed_int;
+            result->kind = X64Operand_imm64;
+            result->imm64 = (s64) value.signed_int;
         } break;
     }
     
@@ -143,16 +167,16 @@ x64_push_prologue(X64_Builder* x64) {
     // sub rbp stack_size (only relevant for non-leaf functions)
     
     
-    push_instruction(x64, X64Opcode_PUSH);
-    push_register_operand(x64, X64_rbp);
+    push_instruction(x64, X64Opcode_push);
+    push_register_operand(x64, X64Register_rbp);
     
-    push_instruction(x64, X64Opcode_MOV);
-    push_register_operand(x64, X64_rbp);
-    push_register_operand(x64, X64_rsp);
+    push_instruction(x64, X64Opcode_mov);
+    push_register_operand(x64, X64Register_rbp);
+    push_register_operand(x64, X64Register_rsp);
     
-    push_instruction(x64, X64Opcode_SUB);
-    push_register_operand(x64, X64_rbp);
-    push_immediate_operand(x64, stack_size);
+    //push_instruction(x64, X64Opcode_sub);
+    //push_register_operand(x64, X64Register_rbp);
+    //push_immediate_operand(x64, stack_size);
 }
 
 
@@ -162,12 +186,10 @@ x64_push_epilogue(X64_Builder* x64) {
     // pop rbp
     // ret
     
-    push_instruction(x64, X64Opcode_MOV);
-    push_register_operand(x64, X64_rbp);
-    push_register_operand(x64, X64_rsp);
+    push_instruction(x64, X64Opcode_pop);
+    push_register_operand(x64, X64Register_rbp);
     
-    push_instruction(x64, X64Opcode_PUSH);
-    push_register_operand(x64, X64_rbp);
+    push_instruction(x64, X64Opcode_ret);
 }
 
 #define for_basic_block(x64, first_block, curr_block, curr_block_insn, function) { \
@@ -207,7 +229,7 @@ x64_analyse_function(X64_Builder* x64, Bc_Instruction* bc) {
 
 void
 x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
-    for_basic_block(x64, first_block, block, offset, x64_analyse_stack);
+    for_basic_block(x64, first_block, block, offset, x64_analyse_function);
     
     x64_push_prologue(x64);
     for_basic_block(x64, first_block, block, offset, x64_build_instruction);

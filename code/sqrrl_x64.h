@@ -1,13 +1,26 @@
 
+#define DEF_X64_OPCODES \
+X64_OPCODE(add) \
+X64_OPCODE(mov) \
+X64_OPCODE(push) \
+X64_OPCODE(pop) \
+X64_OPCODE(ret) \
+X64_OPCODE(label)
+// NOTE(Alexander): LABEL is a pseudo opcode
+
 enum X64_Opcode {
-    X64Opcode_ADD,
-    X64Opcode_MOV,
-    X64Opcode_PUSH,
-    X64Opcode_POP,
-    X64Opcode_RET,
-    
-    X64Opcode_LABEL, // pseudo opcode
+#define X64_OPCODE(mnemonic) X64Opcode_##mnemonic,
+    DEF_X64_OPCODES
+#undef X64_OPCODE
 };
+
+
+global const cstring x64_opcode_names[] = {
+#define X64_OPCODE(mnemonic) #mnemonic,
+    DEF_X64_OPCODES
+#undef X64_OPCODE
+};
+
 
 enum X64_Register_Type {
     X64RegisterType_GPR, // General purpose register
@@ -58,11 +71,6 @@ X64_REGISTER(sil,  1, GPR) \
 X64_REGISTER(si,   2, GPR) \
 X64_REGISTER(esi,  4, GPR) \
 X64_REGISTER(rsi,  8, GPR) \
-\
-X64_REGISTER(dil,  1, GPR) \
-X64_REGISTER(di,   2, GPR) \
-X64_REGISTER(edi,  4, GPR) \
-X64_REGISTER(rdi,  8, GPR) \
 \
 X64_REGISTER(dil,  1, GPR) \
 X64_REGISTER(di,   2, GPR) \
@@ -152,8 +160,15 @@ global int register_size_table[] = {
 #undef X64_REGISTER
 };
 
+global cstring register_name_table[] = {
+#define X64_REGISTER(mnemonic, ...) #mnemonic,
+    DEF_X64_REGISTERS
+#undef X64_REGISTER
+};
+
+
 bool
-register_is_gpr(X64_Register) {
+register_is_gpr(X64_Register reg) {
     return reg >= X64Register_ah && reg <= X64Register_r15;
 }
 
@@ -223,3 +238,32 @@ struct X64_Encoding {
     u8 modrm;
     u8 sib;
 };
+
+
+void
+string_builder_push(String_Builder* sb, X64_Operand* operand) {
+    switch (operand->kind) {
+        case X64Operand_r8:
+        case X64Operand_r16:
+        case X64Operand_r32:
+        case X64Operand_r64: {
+            string_builder_push(sb, register_name_table[operand->reg]);
+        } break;
+        
+        case X64Operand_imm8: {
+            string_builder_push_cformat(sb, "%hhd", operand->imm8);
+        } break;
+        
+        case X64Operand_imm16: {
+            string_builder_push_cformat(sb, "%hd", operand->imm16);
+        } break;
+        
+        case X64Operand_imm32: {
+            string_builder_push_cformat(sb, "%ld", operand->imm32);
+        } break;
+        
+        case X64Operand_imm64: {
+            string_builder_push_cformat(sb, "%lld", operand->imm64);
+        } break;
+    }
+}

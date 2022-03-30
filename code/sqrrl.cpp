@@ -135,21 +135,23 @@ compiler_main_entry(int argc, char* argv[]) {
         Bc_Builder bytecode_builder = {};
         Bc_Basic_Block* main_block = bc_build_from_ast(&bytecode_builder, &ast_file);
         
-        String_Builder sb = {};
-        Bc_Basic_Block* curr_block = main_block;
-        while (curr_block) {
-            Bc_Instruction* curr_insn = curr_block->first;
-            for (int i = 0; i < curr_block->count; i++) {
-                string_builder_push(&sb, curr_insn++);
-                string_builder_push(&sb, "\n");
+        {
+            String_Builder sb = {};
+            Bc_Basic_Block* curr_block = main_block;
+            while (curr_block) {
+                Bc_Instruction* curr_insn = curr_block->first;
+                for (int i = 0; i < curr_block->count; i++) {
+                    string_builder_push(&sb, curr_insn++);
+                    string_builder_push(&sb, "\n");
+                }
+                
+                curr_block = curr_block->next;
             }
             
-            curr_block = curr_block->next;
+            string str = string_builder_to_string_nocopy(&sb);
+            pln("%", f_string(str));
+            string_builder_free(&sb);
         }
-        
-        string str = string_builder_to_string_nocopy(&sb);
-        pln("%", f_string(str));
-        string_builder_free(&sb);
         
         // Interpret the bytecode
         Bc_Interp interp = {};
@@ -160,6 +162,38 @@ compiler_main_entry(int argc, char* argv[]) {
         // Generate X64 machine code
         X64_Builder x64_builder = {};
         x64_build_function(&x64_builder, main_block);
+        
+        {
+            // Print the human readable x64 assembly code
+            String_Builder sb = {};
+            X64_Instruction* insns = (X64_Instruction*) x64_builder.arena.base;
+            
+            // TODO(Alexander): won't work for expanded memory arenas
+            for (umm insn_index = 0; insn_index < x64_builder.instruction_count; insn_index++) {
+                X64_Instruction* insn = insns + insn_index;
+                cstring mnemonic = x64_opcode_names[insn->opcode];
+                
+                string_builder_push_format(&sb, "%", f_cstring(mnemonic));
+                if (insn->op0.kind) {
+                    string_builder_push(&sb, " ");
+                    string_builder_push(&sb, &insn->op0);
+                }
+                
+                if (insn->op1.kind) {
+                    string_builder_push(&sb, ", ");
+                    string_builder_push(&sb, &insn->op1);
+                }
+                
+                if (insn->op2.kind) {
+                    string_builder_push(&sb, ", ");
+                    string_builder_push(&sb, &insn->op2);
+                }
+                string_builder_push(&sb, "\n");
+            }
+            string str = string_builder_to_string_nocopy(&sb);
+            pln("\nX64 Assembly:\n%", f_string(str));
+            string_builder_free(&sb);
+        }
     }
     
 #endif

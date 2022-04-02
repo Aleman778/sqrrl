@@ -6,7 +6,7 @@ X64_OPCODE(push) \
 X64_OPCODE(pop) \
 X64_OPCODE(ret) \
 X64_OPCODE(label)
-// NOTE(Alexander): LABEL is a pseudo opcode
+// NOTE(Alexander): label is not a real opcode
 
 enum X64_Opcode {
 #define X64_OPCODE(mnemonic) X64Opcode_##mnemonic,
@@ -154,13 +154,13 @@ enum X64_Register {
 #undef X64_REGISTER
 };
 
-global int register_size_table[] = {
+global int x64_register_size_table[] = {
 #define X64_REGISTER(mnemonic, size, ...) size,
     DEF_X64_REGISTERS
 #undef X64_REGISTER
 };
 
-global cstring register_name_table[] = {
+global cstring x64_register_name_table[] = {
 #define X64_REGISTER(mnemonic, ...) #mnemonic,
     DEF_X64_REGISTERS
 #undef X64_REGISTER
@@ -197,7 +197,11 @@ enum X64_Operand_Kind {
     X64Operand_zmm,
     X64Operand_rel8,
     X64Operand_rel32,
+    X64Operand_basic_block,
 };
+
+// NOTE(Alexander): forward declare
+struct X64_Basic_Block;
 
 struct X64_Operand {
     X64_Operand_Kind kind;
@@ -207,7 +211,16 @@ struct X64_Operand {
         s16 imm16;
         s32 imm32;
         s64 imm64;
+        X64_Basic_Block* basic_block;
+        u32 virtual_register;
     };
+    union {
+        s64 disp8;
+        s64 disp16;
+        s64 disp32;
+        s64 disp64;
+    };
+    b32 is_allocated;
 };
 
 struct X64_Instruction {
@@ -220,6 +233,13 @@ struct X64_Instruction {
         };
         X64_Operand operands[3];
     };
+};
+
+struct X64_Basic_Block {
+    Bc_Register label;
+    X64_Instruction* first;
+    umm count;
+    X64_Basic_Block* next;
 };
 
 union X64_Instruction_Index {
@@ -247,23 +267,47 @@ string_builder_push(String_Builder* sb, X64_Operand* operand) {
         case X64Operand_r16:
         case X64Operand_r32:
         case X64Operand_r64: {
-            string_builder_push(sb, register_name_table[operand->reg]);
+            if (operand->is_allocated) {
+                string_builder_push_format(sb, "%", f_cstring(x64_register_name_table[operand->reg]));
+            } else {
+                string_builder_push_format(sb, "r%", f_u32(operand->virtual_register));
+            }
+        } break;
+        
+        case X64Operand_rm8:
+        case X64Operand_rm16:
+        case X64Operand_rm32:
+        case X64Operand_rm64: {
+            if (operand->is_allocated) {
+                string_builder_push_format(sb, "[%", f_cstring(x64_register_name_table[operand->reg]));
+            } else {
+                string_builder_push_format(sb, "[r%", f_u32(operand->virtual_register));
+            }
+            
+            if (operand->disp64 > 0) {
+                string_builder_push_format(sb, " + %", f_u32(operand->disp64));
+            } else if (operand->disp64 < 0) {
+                string_builder_push_format(sb, " - %", f_u32(-operand->disp64));
+            }
+            
+            string_builder_push(sb, "]");
         } break;
         
         case X64Operand_imm8: {
-            string_builder_push_cformat(sb, "%hhd", operand->imm8);
+            string_builder_push_format(sb, "%", f_s64(operand->imm8));
         } break;
         
         case X64Operand_imm16: {
-            string_builder_push_cformat(sb, "%hd", operand->imm16);
+            string_builder_push_format(sb, "%", f_s64(operand->imm16));
         } break;
         
         case X64Operand_imm32: {
-            string_builder_push_cformat(sb, "%ld", operand->imm32);
+            string_builder_push_format(sb, "%", f_s64(operand->imm32));
         } break;
         
         case X64Operand_imm64: {
-            string_builder_push_cformat(sb, "%lld", operand->imm64);
+            string_builder_push_format(sb, "%", f_s64(operand->imm64));
         } break;
+        
     }
 }

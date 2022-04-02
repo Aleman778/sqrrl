@@ -4,18 +4,43 @@ struct X64_Builder {
     
     umm instruction_count;
     X64_Instruction* curr_instruction;
+    X64_Basic_Block* curr_basic_block;
     
-    u64 allocated_register_mask;
-    map(Bc_Register, u32)* allocated_registers;
     map(u32, s32)* stack_offsets;
     s32 curr_stack_offset;
+    
+    u32 next_free_virtual_register;
+    map(Bc_Register, u32)* allocated_virtual_registers;
 };
+
+struct X64_Register_Node {
+    u32 virtual_register;
+    X64_Register physical_register;
+    array(X64_Register_Node*)* dependencies;
+    b32 is_allocated;
+};
+
+u32
+x64_allocate_virtual_register(X64_Builder* x64, Bc_Register ident) {
+    // TODO(Alexander): do we need 0 to be invalid? Only needed for checking for 0 on map_get
+    if (x64->next_free_virtual_register == 0) {
+        x64->next_free_virtual_register++;
+    }
+    
+    u32 result = x64->next_free_virtual_register++;
+    if (ident.ident) {
+        map_put(x64->allocated_virtual_registers, ident, result);
+    }
+    
+    // TODO(Alexander): build interference graph node
+    
+    return result;
+}
 
 
 X64_Instruction*
-push_instruction(X64_Builder* x64, X64_Opcode opcode) {
+x64_push_instruction(X64_Builder* x64, X64_Opcode opcode) {
     X64_Instruction* insn = arena_push_struct(&x64->arena, X64_Instruction);
-    pln("sizeof = %", f_umm(sizeof(X64_Instruction)));
     insn->opcode = opcode;
     x64->curr_instruction = insn;
     x64->instruction_count++;
@@ -23,86 +48,71 @@ push_instruction(X64_Builder* x64, X64_Opcode opcode) {
 }
 
 
-X64_Operand*
-push_operand(X64_Builder* x64) {
-    assert(x64->curr_instruction);
-    X64_Instruction* insn = x64->curr_instruction;
-    X64_Operand* result = 0;
-    
-    // HACK(Alexander): this is not really pushing at the moment
-    // we are just inserting the next slot available
-    if (!insn->op0.kind) {
-        result = &insn->op0;
-    } else if (!insn->op1.kind) {
-        result = &insn->op1;
-    } else if (!insn->op2.kind) {
-        result = &insn->op2;
-    } else {
-        assert(0 && "reached maximum allowed operands per instruction");
+X64_Basic_Block*
+x64_push_basic_block(X64_Builder* x64, Bc_Register label) {
+    X64_Basic_Block* block = arena_push_struct(&x64->arena, X64_Basic_Block);
+    if (x64->curr_basic_block) {
+        x64->curr_basic_block->next = block;
     }
+    x64->curr_basic_block = block;
     
-    return result;
+    X64_Instruction* insn =x64_push_instruction(x64, X64Opcode_label);
+    insn->op0.kind = X64Operand_basic_block;
+    insn->op0.basic_block = block;
+    
+    
+    block->label = label;
+    block->first = x64->curr_instruction;
+    block->count = 0;
+    return block;
 }
 
-
-X64_Operand*
-push_register_operand(X64_Builder* x64, X64_Register reg) {
-    
-    
-    X64_Operand* result = push_operand(x64);
-    result->reg = reg;
-    
-    if (register_is_gpr(reg)) {
-        int size = register_size_table[reg];
-        switch (size) {
-            case 1: result->kind = X64Operand_r8; break;
-            case 2: result->kind = X64Operand_r16; break;
-            case 4: result->kind = X64Operand_r32; break;
-            case 8: result->kind = X64Operand_r64; break;
-            default: assert(0 && "invalid register size"); break;
-        }
-    }
-    
-    return result;
-}
-
-X64_Operand*
-push_immediate_operand(X64_Builder* x64, Bc_Value value, Bc_Type type) {
-    X64_Operand* result = push_operand(x64);
+X64_Operand
+x64_build_immediate(X64_Builder* x64, Bc_Value value, Bc_Type type) {
+    X64_Operand result = {};
     
     switch (type.kind) {
         case BcTypeKind_s1:
         case BcTypeKind_s8:
         case BcTypeKind_u8: {
-            result->kind = X64Operand_imm8;
-            result->imm8 = (s8) value.signed_int;
+            result.kind = X64Operand_imm8;
+            result.imm8 = (s8) value.signed_int;
         } break;
         
         case BcTypeKind_s16:
         case BcTypeKind_u16: {
-            result->kind = X64Operand_imm16;
-            result->imm16 = (s16) value.signed_int;
+            result.kind = X64Operand_imm16;
+            result.imm16 = (s16) value.signed_int;
         } break;
         
         case BcTypeKind_s32:
         case BcTypeKind_u32: {
-            result->kind = X64Operand_imm32;
-            result->imm32 = (s32) value.signed_int;
+            result.kind = X64Operand_imm32;
+            result.imm32 = (s32) value.signed_int;
         } break;
         
         case BcTypeKind_s64:
         case BcTypeKind_u64: {
-            result->kind = X64Operand_imm64;
-            result->imm64 = (s64) value.signed_int;
+            result.kind = X64Operand_imm64;
+            result.imm64 = (s64) value.signed_int;
         } break;
+        // TODO(Alexander): need to support floats
     }
     
     return result;
 }
 
 X64_Operand
-x64_allocate_register(X64_Builder* x64, Bc_Type type) {
+x64_build_register(X64_Builder* x64, Bc_Register ident, Bc_Type type) {
     X64_Operand result = {};
+    
+    u32 reg = map_get(x64->allocated_virtual_registers, ident);
+    pln("loaded reg(r%) = %", f_u32(ident.index), f_u32(reg));
+    if (reg) {
+        result.virtual_register = reg;
+    } else {
+        result.virtual_register = x64_allocate_virtual_register(x64, ident);
+    }
     
     switch (type.kind) {
         case BcTypeKind_s1:
@@ -110,7 +120,6 @@ x64_allocate_register(X64_Builder* x64, Bc_Type type) {
         case BcTypeKind_u8: {
             result.kind = X64Operand_r8;
         } break;
-        
         
         case BcTypeKind_s16:
         case BcTypeKind_u16: {
@@ -136,26 +145,99 @@ x64_allocate_register(X64_Builder* x64, Bc_Type type) {
     return result;
 }
 
+X64_Operand
+x64_build_stack_offset(X64_Builder* x64, s64 stack_offset, X64_Register reg = X64Register_rbp) {
+    X64_Operand result = {};
+    result.kind = X64Operand_rm64;
+    result.reg = reg;
+    result.disp64 = stack_offset;
+    result.is_allocated = true;
+    return result;
+}
+
+X64_Operand
+x64_build_physical_register(X64_Builder* x64, X64_Register reg, X64_Operand_Kind kind) {
+    // TODO(Alexander): we need to tell the register allocate which physical register
+    //                  to preallocate for this virtual register.
+    
+    X64_Operand result = {};
+    result.kind = kind;
+    
+    // NOTE(Alexander): we don't need to consider RSP and RBP in register allocation
+    // since they should never be allocated anyways.
+    if (reg == X64Register_rbp || reg == X64Register_rsp) {
+        result.reg = reg;
+        result.is_allocated = true;
+    } else {
+        result.virtual_register = x64_allocate_virtual_register(x64, { Kw_invalid, 0 });
+    }
+    return result;
+}
+
+X64_Operand
+x64_build_operand(X64_Builder* x64, Bc_Operand* operand) {
+    X64_Operand result = {};
+    
+    switch (operand->kind) {
+        case BcOperand_Register: {
+            result = x64_build_register(x64, operand->Register, operand->type);
+        } break;
+        
+        case BcOperand_Value: {
+            result = x64_build_immediate(x64, operand->Value, operand->type);
+        } break;
+    }
+    
+    return result;
+}
+
 void
-x64_build_instruction(X64_Builder* x64, Bc_Instruction* bc) {
+x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
     switch (bc->opcode) {
         case Bytecode_stack_alloc: break;
         
         case Bytecode_store: {
-            assert(bc->dest.kind == BcOperand_Register);
-            assert(bc->src0.kind != BcOperand_None);
-            assert(bc->src1.kind == BcOperand_None);
+            smm stack_index = map_get_index(x64->stack_offsets, bc->dest.Register.index);
+            assert(stack_index != -1 && "not stored on stack");
+            s32 stack_offset = x64->stack_offsets[stack_index].value;
+            // TODO(Alexander): should also support memory addresses
             
-            umm stack_offset = map_get(x64->stack_offsets, bc->dest.Register.index);
+            X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
+            insn->op0 = x64_build_stack_offset(x64, stack_offset);
+            insn->op1 = x64_build_operand(x64, &bc->src0);
+        } break;
+        
+        case Bytecode_load: {
+            Bc_Type type = bc->src0.type;
             
-            //x64_push_instruction(x64, X64Opcode_MOV);
-            //x64_push_rm_operand();
+            smm stack_index = map_get_index(x64->stack_offsets, bc->src1.Register.index);
+            assert(stack_index != -1 && "not stored on stack");
+            umm stack_offset = x64->stack_offsets[stack_index].value;
+            
+            X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
+            insn->op0 = x64_build_operand(x64, &bc->dest);
+            insn->op1 = x64_build_stack_offset(x64, stack_offset);
+            
             
         } break;
         
         case Bytecode_add: {
             Bc_Type type = bc->src0.type;
             
+            X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
+            mov_insn->op0 = x64_build_operand(x64, &bc->dest);
+            mov_insn->op1 = x64_build_operand(x64, &bc->src0);
+            
+            X64_Instruction* add_insn = x64_push_instruction(x64, X64Opcode_add);
+            add_insn->op0 = mov_insn->op0;
+            add_insn->op1 = x64_build_operand(x64, &bc->src1);
+        } break;
+        
+        case Bytecode_ret: {
+            X64_Instruction* mov_insn =x64_push_instruction(x64, X64Opcode_mov);
+            // TODO(Alexander): should not always be r64
+            mov_insn->op0 = x64_build_physical_register(x64, X64Register_rax, X64Operand_r64);
+            mov_insn->op1 = x64_build_operand(x64, &bc->src0);
         } break;
     }
 }
@@ -167,12 +249,12 @@ x64_push_prologue(X64_Builder* x64) {
     // sub rbp stack_size (only relevant for non-leaf functions)
     
     
-    push_instruction(x64, X64Opcode_push);
-    push_register_operand(x64, X64Register_rbp);
+    X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_push);
+    insn->op0 = x64_build_physical_register(x64, X64Register_rbp, X64Operand_r64);
     
-    push_instruction(x64, X64Opcode_mov);
-    push_register_operand(x64, X64Register_rbp);
-    push_register_operand(x64, X64Register_rsp);
+    insn = x64_push_instruction(x64, X64Opcode_mov);
+    insn->op0 = x64_build_physical_register(x64, X64Register_rbp, X64Operand_r64);
+    insn->op1 = x64_build_physical_register(x64, X64Register_rsp, X64Operand_r64);
     
     //push_instruction(x64, X64Opcode_sub);
     //push_register_operand(x64, X64Register_rbp);
@@ -186,10 +268,10 @@ x64_push_epilogue(X64_Builder* x64) {
     // pop rbp
     // ret
     
-    push_instruction(x64, X64Opcode_pop);
-    push_register_operand(x64, X64Register_rbp);
+    X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_pop);
+    insn->op0 = x64_build_physical_register(x64, X64Register_rbp, X64Operand_r64);
     
-    push_instruction(x64, X64Opcode_ret);
+    x64_push_instruction(x64, X64Opcode_ret);
 }
 
 #define for_basic_block(x64, first_block, curr_block, curr_block_insn, function) { \
@@ -218,8 +300,10 @@ x64_analyse_function(X64_Builder* x64, Bc_Instruction* bc) {
             assert(type->cached_align > 0 && "bad align");
             
             s32 stack_offset = (s32) align_forward((umm) x64->curr_stack_offset, type->cached_align);
-            map_put(x64->stack_offsets, bc->dest.kind, stack_offset);
-            x64->curr_stack_offset = stack_offset + type->cached_size;
+            stack_offset += stack_offset + type->cached_size;
+            // NOTE(Alexander): we use negative because stack grows downwards
+            map_put(x64->stack_offsets, bc->dest.kind, -stack_offset);
+            x64->curr_stack_offset = stack_offset;
             
             pln("stack_offset(size = %, align = %, %) = %", f_umm(type->cached_size), f_umm(type->cached_align), f_u32(bc->dest.Register.index), f_s64(stack_offset));
         } break;
@@ -232,6 +316,6 @@ x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
     for_basic_block(x64, first_block, block, offset, x64_analyse_function);
     
     x64_push_prologue(x64);
-    for_basic_block(x64, first_block, block, offset, x64_build_instruction);
+    for_basic_block(x64, first_block, block, offset, x64_build_instruction_from_bytecode);
     x64_push_epilogue(x64);
 }

@@ -26,7 +26,7 @@ inline Bc_Value
 bc_interp_load_register(Bc_Interp* interp, Bc_Register reg) {
     assert(array_count(interp->scopes) > 0);
     Bc_Interp_Scope* scope = &array_last(interp->scopes);
-    smm index = map_key_index(scope->registers, reg.index);
+    smm index = map_get_index(scope->registers, reg.index);
     if (index != -1) {
         return scope->registers[index].value;
     } else {

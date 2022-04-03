@@ -1,4 +1,11 @@
 
+struct X64_Register_Node {
+    u32 virtual_register;
+    X64_Register physical_register;
+    array(X64_Register_Node*)* dependencies;
+    b32 is_allocated;
+};
+
 struct X64_Builder {
     Memory_Arena arena;
     
@@ -11,13 +18,8 @@ struct X64_Builder {
     
     u32 next_free_virtual_register;
     map(Bc_Register, u32)* allocated_virtual_registers;
-};
-
-struct X64_Register_Node {
-    u32 virtual_register;
-    X64_Register physical_register;
-    array(X64_Register_Node*)* dependencies;
-    b32 is_allocated;
+    
+    map(u32, X64_Register_Node)* interference_graph;
 };
 
 u32
@@ -32,14 +34,46 @@ x64_allocate_virtual_register(X64_Builder* x64, Bc_Register ident) {
         map_put(x64->allocated_virtual_registers, ident, result);
     }
     
-    // TODO(Alexander): build interference graph node
+    X64_Register_Node node = {};
+    node.virtual_register = result;
+    map_put(x64->interference_graph, result, node);
     
     return result;
 }
 
+inline bool
+operand_is_unallocated_register(X64_Operand operand) {
+    return operand_is_register(operand.kind) && !operand.is_allocated;
+}
 
 X64_Instruction*
 x64_push_instruction(X64_Builder* x64, X64_Opcode opcode) {
+    X64_Instruction* prev_insn = x64->curr_instruction;
+    if (prev_insn) {
+        // Connect interfering edges
+        u32 r0 = operand_is_unallocated_register(prev_insn->op0) ? prev_insn->op0.virtual_register: 0;
+        u32 r1 = operand_is_unallocated_register(prev_insn->op1) ? prev_insn->op1.virtual_register: 0;
+        u32 r2 = operand_is_unallocated_register(prev_insn->op2) ? prev_insn->op2.virtual_register: 0;
+        
+        X64_Register_Node* n0 = r0 ? &map_get(x64->interference_graph, r0) : 0;
+        X64_Register_Node* n1 = r1 ? &map_get(x64->interference_graph, r1) : 0;
+        X64_Register_Node* n2 = r2 ? &map_get(x64->interference_graph, r2) : 0;
+        
+        if (n0 && n1) {
+            array_push(n0->dependencies, n1);
+            array_push(n1->dependencies, n0);
+        }
+        if (n0 && n2) {
+            array_push(n0->dependencies, n2);
+            array_push(n2->dependencies, n0);
+        }
+        if (n1 && n2) {
+            array_push(n1->dependencies, n2);
+            array_push(n2->dependencies, n1);
+        }
+    }
+    
+    
     X64_Instruction* insn = arena_push_struct(&x64->arena, X64_Instruction);
     insn->opcode = opcode;
     x64->curr_instruction = insn;
@@ -318,4 +352,24 @@ x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
     x64_push_prologue(x64);
     for_basic_block(x64, first_block, block, offset, x64_build_instruction_from_bytecode);
     x64_push_epilogue(x64);
+}
+
+string
+x64_interference_graph_to_graphviz_dot(X64_Builder* x64) {
+    String_Builder sb = {};
+    string_builder_push(&sb, "strict graph G {\n");
+    for_map(x64->interference_graph, it) {
+        X64_Register_Node* node = &it->value;
+        
+        for_array(node->dependencies, other_it, index) {
+            X64_Register_Node* other_node = *other_it;
+            string_builder_push_format(&sb, "  r% -- r%\n", 
+                                       f_u32(node->virtual_register),
+                                       f_u32(other_node->virtual_register));
+            
+        }
+    }
+    string_builder_push(&sb, "}");
+    
+    return string_builder_to_string_nocopy(&sb);
 }

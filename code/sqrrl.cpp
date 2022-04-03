@@ -193,6 +193,9 @@ compiler_main_entry(int argc, char* argv[]) {
             string str = string_builder_to_string_nocopy(&sb);
             pln("\nX64 Assembly:\n%", f_string(str));
             string_builder_free(&sb);
+            
+            string interference_graph = x64_interference_graph_to_graphviz_dot(&x64_builder);
+            pln("\nGraphviz interference graph:\n%", f_string(interference_graph));
         }
     }
     

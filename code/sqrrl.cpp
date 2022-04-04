@@ -162,6 +162,7 @@ compiler_main_entry(int argc, char* argv[]) {
         // Generate X64 machine code
         X64_Builder x64_builder = {};
         x64_build_function(&x64_builder, main_block);
+        x64_perform_register_allocation(&x64_builder);
         
         {
             // Print the human readable x64 assembly code
@@ -169,26 +170,40 @@ compiler_main_entry(int argc, char* argv[]) {
             X64_Instruction* insns = (X64_Instruction*) x64_builder.arena.base;
             
             // TODO(Alexander): won't work for expanded memory arenas
-            for (umm insn_index = 0; insn_index < x64_builder.instruction_count; insn_index++) {
-                X64_Instruction* insn = insns + insn_index;
-                cstring mnemonic = x64_opcode_names[insn->opcode];
+            X64_Basic_Block* curr_block = x64_builder.first_basic_block; 
+            for (umm insn_index = 0; insn_index < curr_block->count; insn_index++) {
+                X64_Instruction* insn = curr_block->first + insn_index;
                 
-                string_builder_push_format(&sb, "%", f_cstring(mnemonic));
-                if (insn->op0.kind) {
-                    string_builder_push(&sb, " ");
-                    string_builder_push(&sb, &insn->op0);
+                if (insn->opcode == X64Opcode_label) {
+                    X64_Basic_Block* block = insn->op0.basic_block;
+                    if (block->label.ident) {
+                        string_builder_push_format(&sb, "%:\n", 
+                                                   f_string(vars_load_string(block->label.ident)));
+                    } else {
+                        string_builder_push_format(&sb, "%:\n",
+                                                   vars_load_string(block->label.index));
+                    }
+                } else {
+                    
+                    cstring mnemonic = x64_opcode_names[insn->opcode];
+                    
+                    string_builder_push_format(&sb, "    %", f_cstring(mnemonic));
+                    if (insn->op0.kind) {
+                        string_builder_push(&sb, " ");
+                        string_builder_push(&sb, &insn->op0);
+                    }
+                    
+                    if (insn->op1.kind) {
+                        string_builder_push(&sb, ", ");
+                        string_builder_push(&sb, &insn->op1);
+                    }
+                    
+                    if (insn->op2.kind) {
+                        string_builder_push(&sb, ", ");
+                        string_builder_push(&sb, &insn->op2);
+                    }
+                    string_builder_push(&sb, "\n");
                 }
-                
-                if (insn->op1.kind) {
-                    string_builder_push(&sb, ", ");
-                    string_builder_push(&sb, &insn->op1);
-                }
-                
-                if (insn->op2.kind) {
-                    string_builder_push(&sb, ", ");
-                    string_builder_push(&sb, &insn->op2);
-                }
-                string_builder_push(&sb, "\n");
             }
             string str = string_builder_to_string_nocopy(&sb);
             pln("\nX64 Assembly:\n%", f_string(str));

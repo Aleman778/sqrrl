@@ -4,10 +4,12 @@ struct X64_Register_Node {
     X64_Register physical_register;
     array(X64_Register_Node*)* dependencies;
     b32 is_allocated;
+    b32 is_spilled;
 };
 
 struct X64_Builder {
     Memory_Arena arena;
+    X64_Basic_Block* first_basic_block;
     
     umm instruction_count;
     X64_Instruction* curr_instruction;
@@ -21,6 +23,62 @@ struct X64_Builder {
     
     map(u32, X64_Register_Node)* interference_graph;
 };
+
+inline bool
+x64_register_allocation_check_dependencies(X64_Register_Node* node) {
+    for_array(node->dependencies, other_node, _) {
+        if (node->physical_register == (*other_node)->physical_register) {
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+void
+x64_perform_register_allocation(X64_Builder* x64) {
+    
+    
+    for_map (x64->interference_graph, it) {
+        X64_Register_Node* node = &it->value;
+        
+        if (!node->is_allocated) {
+            for (int physical_reg_index = 0;
+                 physical_reg_index < fixed_array_count(x64_gpr_register_table);
+                 physical_reg_index++) {
+                
+                node->physical_register = x64_gpr_register_table[physical_reg_index];
+                node->is_allocated = x64_register_allocation_check_dependencies(node);
+                if (node->is_allocated) break;
+            }
+            
+            if (!node->is_allocated) {
+                // NOTE(Alexander): no more free registers needs to be spilled
+                node->is_spilled = true;
+            }
+        }
+    }
+    
+    
+    X64_Basic_Block* curr_block = x64->first_basic_block; 
+    for (umm insn_index = 0; insn_index < curr_block->count; insn_index++) {
+        X64_Instruction* insn = curr_block->first + insn_index;
+        
+#define ALLOC_REG(operand) \
+if (operand_is_register(operand.kind)) { \
+if (!operand.is_allocated) { \
+X64_Register_Node* node = \
+&map_get(x64->interference_graph, operand.virtual_register); \
+operand.reg = node->physical_register; \
+operand.is_allocated = true; \
+} \
+}
+        
+        ALLOC_REG(insn->op0);
+        ALLOC_REG(insn->op1);
+        ALLOC_REG(insn->op2);
+    }
+}
 
 u32
 x64_allocate_virtual_register(X64_Builder* x64, Bc_Register ident) {
@@ -73,11 +131,14 @@ x64_push_instruction(X64_Builder* x64, X64_Opcode opcode) {
         }
     }
     
+    assert(x64->curr_basic_block);
+    x64->curr_basic_block->count++;
     
     X64_Instruction* insn = arena_push_struct(&x64->arena, X64_Instruction);
     insn->opcode = opcode;
     x64->curr_instruction = insn;
     x64->instruction_count++;
+    
     return insn;
 }
 
@@ -87,10 +148,12 @@ x64_push_basic_block(X64_Builder* x64, Bc_Register label) {
     X64_Basic_Block* block = arena_push_struct(&x64->arena, X64_Basic_Block);
     if (x64->curr_basic_block) {
         x64->curr_basic_block->next = block;
+    } else {
+        x64->first_basic_block = block;
     }
     x64->curr_basic_block = block;
     
-    X64_Instruction* insn =x64_push_instruction(x64, X64Opcode_label);
+    X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_label);
     insn->op0.kind = X64Operand_basic_block;
     insn->op0.basic_block = block;
     
@@ -349,6 +412,7 @@ void
 x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
     for_basic_block(x64, first_block, block, offset, x64_analyse_function);
     
+    x64_push_basic_block(x64, first_block->label);
     x64_push_prologue(x64);
     for_basic_block(x64, first_block, block, offset, x64_build_instruction_from_bytecode);
     x64_push_epilogue(x64);

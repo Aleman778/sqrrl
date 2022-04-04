@@ -36,12 +36,12 @@ enum X64_Register_Type {
 
 // X64_REGISTER(mnemonic, size, type)
 #define DEF_X64_REGISTERS \
-X64_REGISTER(unallocated_r8,   1, GPR) \
-X64_REGISTER(unallocated_r16,   2, GPR) \
-X64_REGISTER(unallocated_r32,  4, GPR) \
-X64_REGISTER(unallocated_r64,  8, GPR) \
+X64_REGISTER(unallocated_r8,   1,  GPR) \
+X64_REGISTER(unallocated_r16,  2,  GPR) \
+X64_REGISTER(unallocated_r32,  4,  GPR) \
+X64_REGISTER(unallocated_r64,  8,  GPR) \
 X64_REGISTER(unallocated_stx,  10, GPR) \
-X64_REGISTER(unallocated_mmx,  8, GPR) \
+X64_REGISTER(unallocated_mmx,  8,  GPR) \
 \
 X64_REGISTER(ah,   1, GPR) \
 X64_REGISTER(al,   1, GPR) \
@@ -166,11 +166,18 @@ global cstring x64_register_name_table[] = {
 #undef X64_REGISTER
 };
 
+global X64_Register x64_gpr_register_table[] = {
+    X64Register_rax, X64Register_rcx, X64Register_rdx, X64Register_rbx,
+    X64Register_rsi, X64Register_rdi, X64Register_r8,  X64Register_r9,
+    X64Register_r10, X64Register_r11, X64Register_r12, X64Register_r13,
+    X64Register_r14, X64Register_r15
+};
 
 bool
 register_is_gpr(X64_Register reg) {
     return reg >= X64Register_ah && reg <= X64Register_r15;
 }
+
 
 enum X64_Operand_Kind {
     X64Operand_None,

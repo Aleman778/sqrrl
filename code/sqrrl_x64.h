@@ -267,9 +267,9 @@ union X64_Instruction_Index {
 
 
 struct X64_Encoding {
-    u8 prefix;
-    u8 modrm;
-    u8 sib;
+    bool rex_w;
+    
+    bool is_valid;
 };
 
 

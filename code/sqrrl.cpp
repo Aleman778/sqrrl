@@ -13,6 +13,7 @@
 #include "sqrrl_bytecode_builder.cpp"
 #include "sqrrl_bytecode_interp.cpp"
 #include "sqrrl_x64_builder.cpp"
+#include "sqrrl_x64_assembler.cpp"
 
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[]) {
@@ -211,6 +212,18 @@ compiler_main_entry(int argc, char* argv[]) {
             
             string interference_graph = x64_interference_graph_to_graphviz_dot(&x64_builder);
             pln("\nGraphviz interference graph:\n%", f_string(interference_graph));
+        }
+        
+        
+        // x64 assembler
+        X64_Machine_Code code = x64_assemble_to_machine_code(x64_builder.first_basic_block);
+        
+        pln("\nX64 Machine Code:");
+        for (int byte_index = 0; byte_index < code.count; byte_index++) {
+            printf("0x%hhX ", (u8) code.bytes[byte_index]);
+            if (byte_index % 10 == 9) {
+                printf("\n");
+            }
         }
     }
     

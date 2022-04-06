@@ -30,11 +30,7 @@ enum X64_Register_Type {
     X64RegisterType_AVX, // Advanced Vector Extension
 };
 
-// X64_GPR_BYTE(index, qword, dword, word, byte_low, byte_high)
-// X64_GPR(index, qword, dword, word, byte_low)
-// X64_MMX_FPU(index, mmx, stx)
-
-// X64_REGISTER(mnemonic, size, type)
+// X64_REGISTER(mnemonic, size, id, type)
 #define DEF_X64_REGISTERS \
 X64_REGISTER(unallocated_r8,   1,  GPR) \
 X64_REGISTER(unallocated_r16,  2,  GPR) \
@@ -43,107 +39,107 @@ X64_REGISTER(unallocated_r64,  8,  GPR) \
 X64_REGISTER(unallocated_stx,  10, GPR) \
 X64_REGISTER(unallocated_mmx,  8,  GPR) \
 \
-X64_REGISTER(ah,   1, GPR) \
-X64_REGISTER(al,   1, GPR) \
-X64_REGISTER(ax,   2, GPR) \
-X64_REGISTER(eax,  4, GPR) \
-X64_REGISTER(rax,  8, GPR) \
+X64_REGISTER(ah,   1, 4, GPR) \
+X64_REGISTER(al,   1, 0, GPR) \
+X64_REGISTER(ax,   2, 0, GPR) \
+X64_REGISTER(eax,  4, 0, GPR) \
+X64_REGISTER(rax,  8, 0, GPR) \
 \
-X64_REGISTER(bh,   1, GPR) \
-X64_REGISTER(bl,   1, GPR) \
-X64_REGISTER(bx,   2, GPR) \
-X64_REGISTER(ebx,  4, GPR) \
-X64_REGISTER(rbx,  8, GPR) \
+X64_REGISTER(bh,   1, 7, GPR) \
+X64_REGISTER(bl,   1, 3, GPR) \
+X64_REGISTER(bx,   2, 3, GPR) \
+X64_REGISTER(ebx,  4, 3, GPR) \
+X64_REGISTER(rbx,  8, 3, GPR) \
 \
-X64_REGISTER(ch,   1, GPR) \
-X64_REGISTER(cl,   1, GPR) \
-X64_REGISTER(cx,   2, GPR) \
-X64_REGISTER(ecx,  4, GPR) \
-X64_REGISTER(rcx,  8, GPR) \
+X64_REGISTER(ch,   1, 5, GPR) \
+X64_REGISTER(cl,   1, 1, GPR) \
+X64_REGISTER(cx,   2, 1, GPR) \
+X64_REGISTER(ecx,  4, 1, GPR) \
+X64_REGISTER(rcx,  8, 1, GPR) \
 \
-X64_REGISTER(dh,   1, GPR) \
-X64_REGISTER(dl,   1, GPR) \
-X64_REGISTER(dx,   2, GPR) \
-X64_REGISTER(edx,  4, GPR) \
-X64_REGISTER(rdx,  8, GPR) \
+X64_REGISTER(dh,   1, 6, GPR) \
+X64_REGISTER(dl,   1, 2, GPR) \
+X64_REGISTER(dx,   2, 2, GPR) \
+X64_REGISTER(edx,  4, 2, GPR) \
+X64_REGISTER(rdx,  8, 2, GPR) \
 \
-X64_REGISTER(sil,  1, GPR) \
-X64_REGISTER(si,   2, GPR) \
-X64_REGISTER(esi,  4, GPR) \
-X64_REGISTER(rsi,  8, GPR) \
+X64_REGISTER(sil,  1, 6, GPR) \
+X64_REGISTER(si,   2, 6, GPR) \
+X64_REGISTER(esi,  4, 6, GPR) \
+X64_REGISTER(rsi,  8, 6, GPR) \
 \
-X64_REGISTER(dil,  1, GPR) \
-X64_REGISTER(di,   2, GPR) \
-X64_REGISTER(edi,  4, GPR) \
-X64_REGISTER(rdi,  8, GPR) \
+X64_REGISTER(dil,  1, 7, GPR) \
+X64_REGISTER(di,   2, 7, GPR) \
+X64_REGISTER(edi,  4, 7, GPR) \
+X64_REGISTER(rdi,  8, 7, GPR) \
 \
-X64_REGISTER(bpl,  1, GPR) \
-X64_REGISTER(bp,   2, GPR) \
-X64_REGISTER(ebp,  4, GPR) \
-X64_REGISTER(rbp,  8, GPR) \
+X64_REGISTER(bpl,  1, 5, GPR) \
+X64_REGISTER(bp,   2, 5, GPR) \
+X64_REGISTER(ebp,  4, 5, GPR) \
+X64_REGISTER(rbp,  8, 5, GPR) \
 \
-X64_REGISTER(spl,  1, GPR) \
-X64_REGISTER(sp,   2, GPR) \
-X64_REGISTER(esp,  4, GPR) \
-X64_REGISTER(rsp,  8, GPR) \
+X64_REGISTER(spl,  1, 4, GPR) \
+X64_REGISTER(sp,   2, 4, GPR) \
+X64_REGISTER(esp,  4, 4, GPR) \
+X64_REGISTER(rsp,  8, 4, GPR) \
 \
-X64_REGISTER(r8b,  1, GPR) \
-X64_REGISTER(r8w,  2, GPR) \
-X64_REGISTER(r8d,  4, GPR) \
-X64_REGISTER(r8,   8, GPR) \
+X64_REGISTER(r8b,  1, 8, GPR) \
+X64_REGISTER(r8w,  2, 8, GPR) \
+X64_REGISTER(r8d,  4, 8, GPR) \
+X64_REGISTER(r8,   8, 8, GPR) \
 \
-X64_REGISTER(r9b,  1, GPR) \
-X64_REGISTER(r9w,  2, GPR) \
-X64_REGISTER(r9d,  4, GPR) \
-X64_REGISTER(r9,   8, GPR) \
+X64_REGISTER(r9b,  1, 9, GPR) \
+X64_REGISTER(r9w,  2, 9, GPR) \
+X64_REGISTER(r9d,  4, 9, GPR) \
+X64_REGISTER(r9,   8, 9, GPR) \
 \
-X64_REGISTER(r10b,  1, GPR) \
-X64_REGISTER(r10w,  2, GPR) \
-X64_REGISTER(r10d,  4, GPR) \
-X64_REGISTER(r10,   8, GPR) \
+X64_REGISTER(r10b,  1, 10, GPR) \
+X64_REGISTER(r10w,  2, 10, GPR) \
+X64_REGISTER(r10d,  4, 10, GPR) \
+X64_REGISTER(r10,   8, 10, GPR) \
 \
-X64_REGISTER(r11b,  1, GPR) \
-X64_REGISTER(r11w,  2, GPR) \
-X64_REGISTER(r11d,  4, GPR) \
-X64_REGISTER(r11,   8, GPR) \
+X64_REGISTER(r11b,  1, 11, GPR) \
+X64_REGISTER(r11w,  2, 11, GPR) \
+X64_REGISTER(r11d,  4, 11, GPR) \
+X64_REGISTER(r11,   8, 11, GPR) \
 \
-X64_REGISTER(r12b,  1, GPR) \
-X64_REGISTER(r12w,  2, GPR) \
-X64_REGISTER(r12d,  4, GPR) \
-X64_REGISTER(r12,   8, GPR) \
+X64_REGISTER(r12b,  1, 12, GPR) \
+X64_REGISTER(r12w,  2, 12, GPR) \
+X64_REGISTER(r12d,  4, 12, GPR) \
+X64_REGISTER(r12,   8, 12, GPR) \
 \
-X64_REGISTER(r13b,  1, GPR) \
-X64_REGISTER(r13w,  2, GPR) \
-X64_REGISTER(r13d,  4, GPR) \
-X64_REGISTER(r13,   8, GPR) \
+X64_REGISTER(r13b,  1, 13, GPR) \
+X64_REGISTER(r13w,  2, 13, GPR) \
+X64_REGISTER(r13d,  4, 13, GPR) \
+X64_REGISTER(r13,   8, 13, GPR) \
 \
-X64_REGISTER(r14b,  1, GPR) \
-X64_REGISTER(r14w,  2, GPR) \
-X64_REGISTER(r14d,  4, GPR) \
-X64_REGISTER(r14,   8, GPR) \
+X64_REGISTER(r14b,  1, 14, GPR) \
+X64_REGISTER(r14w,  2, 14, GPR) \
+X64_REGISTER(r14d,  4, 14, GPR) \
+X64_REGISTER(r14,   8, 14, GPR) \
 \
-X64_REGISTER(r15b,  1, GPR) \
-X64_REGISTER(r15w,  2, GPR) \
-X64_REGISTER(r15d,  4, GPR) \
-X64_REGISTER(r15,   8, GPR) \
+X64_REGISTER(r15b,  1, 15, GPR) \
+X64_REGISTER(r15w,  2, 15, GPR) \
+X64_REGISTER(r15d,  4, 15, GPR) \
+X64_REGISTER(r15,   8, 15, GPR) \
 \
-X64_REGISTER(st0, 10, FPU) \
-X64_REGISTER(st1, 10, FPU) \
-X64_REGISTER(st2, 10, FPU) \
-X64_REGISTER(st3, 10, FPU) \
-X64_REGISTER(st4, 10, FPU) \
-X64_REGISTER(st5, 10, FPU) \
-X64_REGISTER(st6, 10, FPU) \
-X64_REGISTER(st7, 10, FPU) \
+X64_REGISTER(st0, 10, 0, FPU) \
+X64_REGISTER(st1, 10, 1, FPU) \
+X64_REGISTER(st2, 10, 2, FPU) \
+X64_REGISTER(st3, 10, 3, FPU) \
+X64_REGISTER(st4, 10, 4, FPU) \
+X64_REGISTER(st5, 10, 5, FPU) \
+X64_REGISTER(st6, 10, 6, FPU) \
+X64_REGISTER(st7, 10, 7, FPU) \
 \
-X64_REGISTER(mm0, 8, MMX) \
-X64_REGISTER(mm1, 8, MMX) \
-X64_REGISTER(mm2, 8, MMX) \
-X64_REGISTER(mm3, 8, MMX) \
-X64_REGISTER(mm4, 8, MMX) \
-X64_REGISTER(mm5, 8, MMX) \
-X64_REGISTER(mm6, 8, MMX) \
-X64_REGISTER(mm7, 8, MMX)
+X64_REGISTER(mm0, 8, 0, MMX) \
+X64_REGISTER(mm1, 8, 1, MMX) \
+X64_REGISTER(mm2, 8, 2, MMX) \
+X64_REGISTER(mm3, 8, 3, MMX) \
+X64_REGISTER(mm4, 8, 4, MMX) \
+X64_REGISTER(mm5, 8, 5, MMX) \
+X64_REGISTER(mm6, 8, 6, MMX) \
+X64_REGISTER(mm7, 8, 7, MMX)
 // TODO(Alexander): add more registers
 
 global int const x64_num_physical_registers = 24; // counting rax and eax as the same
@@ -155,6 +151,12 @@ enum X64_Register {
 };
 
 global int x64_register_size_table[] = {
+#define X64_REGISTER(mnemonic, size, ...) size,
+    DEF_X64_REGISTERS
+#undef X64_REGISTER
+};
+
+global int x64_register_id_table[] = {
 #define X64_REGISTER(mnemonic, size, ...) size,
     DEF_X64_REGISTERS
 #undef X64_REGISTER
@@ -266,8 +268,26 @@ union X64_Instruction_Index {
 };
 
 
+typedef u8 ModRM_Mod;
+enum {
+    ModRM_indirect = 0,
+    ModRM_indirect_disp8 = 1,
+    ModRM_indirect_disp16 = 2,
+    ModRM_direct = 3,
+};
+
+typedef u8 X64_Encoded_Operand;
+enum {
+    X64EncodedOperand_None,
+    X64EncodedOperand_reg,
+    X64EncodedOperand_rm,
+};
+
 struct X64_Encoding {
-    bool rex_w;
+    bool rex_prefix_mandatory;
+    u8 opcode;
+    X64_Encoded_Operand[3] operands;
+    ModRM_Mod modrm_mod;
     
     bool is_valid;
 };

@@ -224,9 +224,9 @@ struct X64_Operand {
         u32 virtual_register;
     };
     union {
-        s64 disp8;
-        s64 disp16;
-        s64 disp32;
+        s8 disp8;
+        s16 disp16;
+        s32 disp32;
         s64 disp64;
     };
     b32 is_allocated;
@@ -270,10 +270,11 @@ union X64_Instruction_Index {
 
 typedef u8 ModRM_Mod;
 enum {
-    ModRM_indirect = 0,
-    ModRM_indirect_disp8 = 1,
-    ModRM_indirect_disp16 = 2,
-    ModRM_direct = 3,
+    ModRM_indirect        = (u8) 0b00 << 6,
+    ModRM_indirect_disp8  = (u8) 0b01 << 6,
+    ModRM_indirect_disp32 = (u8) 0b10 << 6,
+    ModRM_direct          = (u8) 0b11 << 6,
+    ModRM_not_used        = (u8) 0b11111111,
 };
 
 typedef u8 X64_Encoded_Operand;
@@ -286,8 +287,9 @@ enum {
 struct X64_Encoding {
     bool rex_prefix_mandatory;
     u8 opcode;
-    X64_Encoded_Operand[3] operands;
-    ModRM_Mod modrm_mod;
+    u8 modrm_mod;
+    u8 modrm_reg;
+    u8 modrm_rm;
     
     bool is_valid;
 };

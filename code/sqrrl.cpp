@@ -15,8 +15,11 @@
 #include "sqrrl_x64_builder.cpp"
 #include "sqrrl_x64_assembler.cpp"
 
+typedef void asm_main(void);
+
 int // NOTE(alexander): this is called by the platform layer
-compiler_main_entry(int argc, char* argv[]) {
+compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
+                    void (*asm_make_executable)(void*, umm)) {
     
     {
         // Put dummy file as index 0
@@ -216,15 +219,21 @@ compiler_main_entry(int argc, char* argv[]) {
         
         
         // x64 assembler
-        X64_Machine_Code code = x64_assemble_to_machine_code(x64_builder.first_basic_block);
+        X64_Machine_Code code = x64_assemble_to_machine_code(x64_builder.first_basic_block, 
+                                                             asm_buffer);
         
-        pln("\nX64 Machine Code:");
+        pln("\nX64 Machine Code (% bytes):", f_umm(code.count));
         for (int byte_index = 0; byte_index < code.count; byte_index++) {
             printf("0x%hhX ", (u8) code.bytes[byte_index]);
             if (byte_index % 10 == 9) {
                 printf("\n");
             }
         }
+        
+        asm_make_executable(asm_buffer, asm_size);
+        
+        asm_main* func = (asm_main*) asm_buffer;
+        func();
     }
     
 #endif

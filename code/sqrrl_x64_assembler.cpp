@@ -1,6 +1,5 @@
 
 
-
 struct X64_Machine_Code {
     u8* bytes;
     umm count;
@@ -8,17 +7,20 @@ struct X64_Machine_Code {
 
 
 X64_Machine_Code
-x64_assemble_to_machine_code(X64_Basic_Block* basic_block) {
+x64_assemble_to_machine_code(X64_Basic_Block* basic_block, void* backing_buffer) {
     X64_Machine_Code result = {};
     
     umm machine_code_count = 1024;
-    u8* machine_code = (u8*) malloc(machine_code_count);
-    u8* curr = machine_code;
+    result.bytes = (u8*) backing_buffer;
+    u8* curr = result.bytes;
+    
+    *curr++ = 0xCC;
+    result.count++;
     
     map(X64_Instruction_Index, X64_Encoding)* x64_instuction_encodings = 0;
     
     {
-        // mov rm32, r32
+        // mov r32, r32
         X64_Instruction_Index index = {};
         index.opcode = X64Opcode_mov;
         index.op0 = X64Operand_r32;
@@ -26,11 +28,17 @@ x64_assemble_to_machine_code(X64_Basic_Block* basic_block) {
         
         X64_Encoding encoding = {};
         encoding.rex_prefix_mandatory = false;
+        encoding.opcode = 0x8B;
         encoding.modrm_mod = ModRM_direct;
-        encoding.operands[0] = X64EncodedOperand_reg;
-        encoding.operands[1] = X64EncodedOperand_rm;
+        encoding.modrm_reg = 0;
+        encoding.modrm_rm = 1;
         encoding.is_valid = true;
         
+        map_put(x64_instuction_encodings, index, encoding);
+        
+        // mov r32, rm32
+        index.op1 = X64Operand_rm32;
+        encoding.modrm_mod = ModRM_indirect;
         map_put(x64_instuction_encodings, index, encoding);
     }
     
@@ -50,68 +58,64 @@ x64_assemble_to_machine_code(X64_Basic_Block* basic_block) {
         X64_Encoding encoding = map_get(x64_instuction_encodings, index);
         pln("is_valid: %", f_bool(encoding.is_valid));
         
+        if (!encoding.is_valid) {
+            continue;
+        }
+        
         
         u8 rex_prefix = 0b11000000;
         bool use_rex_prefix = encoding.rex_prefix_mandatory;
         
-        u8 modrm = encoding->modrm_mod << 6;
-        if (encoding.operands[0]) {
-            for (int operand_index = 0;
-                 operand_index < fixed_array_count(encoding.operands);
-                 operand_index++) {
-                
-                switch (encoding.operands[operand_index]) {
-                    case X64EncodedOperand_reg:  {
-                        u8 reg = x64_register_id_table[insn->operands[operand_index].reg];
-                        if (reg >= 8) {
-                            reg -= 8;
-                            use_rex_prefix = true;
-                        }
-                        modrm |= reg << 3;
-                    } break;
-                    
+        
+        u8 modrm = encoding.modrm_mod;
+        s32 displacement = 0;
+        s32 displacement_bytes = 0;
+        if (encoding.modrm_mod != ModRM_not_used) {
+            X64_Operand* modrm_reg = &insn->operands[encoding.modrm_reg];
+            X64_Operand* modrm_rm = &insn->operands[encoding.modrm_rm];
+            
+            // TODO(Alexander): need to update REX prefix to support upper 8 regs
+            u8 reg = x64_register_id_table[modrm_reg->reg] % 8;
+            u8 rm = x64_register_id_table[modrm_rm->reg] % 8;
+            
+            if (encoding.modrm_mod != ModRM_direct) {
+                displacement = modrm_rm->disp32;
+            }
+            
+            
+            if (displacement != 0) {
+                if (displacement >= S8_MIN && displacement <= S8_MAX) {
+                    modrm = ModRM_indirect_disp8;
+                    displacement_bytes = 1;
+                } else {
+                    modrm = ModRM_indirect_disp32;
+                    displacement_bytes = 4;
                 }
             }
+            modrm = modrm | (reg << 3) | rm;
         }
         
+        if (use_rex_prefix) {
+            *curr++ = rex_prefix;
+            result.count++;
+        }
         
-#if 0
-        // Rex prefix
-        bool rex_w = false;
-        bool rex_r = false;
-        bool rex_x = false;
-        bool rex_b = false;
+        *curr++ = encoding.opcode;
+        result.count++;
         
-        // ModR/M
-        bool is_indirect = false;
-        s8 reg = -1;
-        s8 rm = -1;
+        if (encoding.modrm_mod != ModRM_not_used) {
+            *curr++ = modrm;
+            result.count++;
+        }
         
-        if (insn->opcode == X64Opcode_mov) {
-            
-            // Lets start with encoding mov instruction
-            switch (insn->op0.kind) {
-                
-                case X64Operand_r8:
-                case X64Operand_r15:
-                case X64Operand_r32:
-                case X64Operand_r64: {
-                    reg = insn->op0;
-                } break;
-                
-                case X64Operand_rm8:
-                case X64Operand_rm15:
-                case X64Operand_rm32:
-                case X64Operand_rm64: 
-                case X64Operand_m8:
-                case X64Operand_m15:
-                case X64Operand_m32:
-                case X64Operand_m64: {
-                    rm = insn->op0;
-                } break;
+        if (encoding.modrm_mod != ModRM_direct && displacement != 0) {
+            // TODO(Alexander): might now work for cross compiling
+            u8* disp_bytes = (u8*) &displacement;
+            for (s32 byte_index = 0; byte_index < displacement_bytes; byte_index++) {
+                *curr++ = disp_bytes[byte_index];
+                result.count++;
             }
         }
-#endif
     }
     
     return result;

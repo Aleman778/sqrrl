@@ -243,9 +243,35 @@ x64_build_register(X64_Builder* x64, Bc_Register ident, Bc_Type type) {
 }
 
 X64_Operand
-x64_build_stack_offset(X64_Builder* x64, s64 stack_offset, X64_Register reg = X64Register_rbp) {
+x64_build_stack_offset(X64_Builder* x64, 
+                       Bc_Type type, 
+                       s64 stack_offset, 
+                       X64_Register reg = X64Register_rbp) {
     X64_Operand result = {};
-    result.kind = X64Operand_rm64;
+    switch (type.kind) {
+        case BcTypeKind_s1:
+        case BcTypeKind_s8:
+        case BcTypeKind_u8: {
+            result.kind = X64Operand_rm64;
+        } break;
+        
+        case BcTypeKind_s16:
+        case BcTypeKind_u16: {
+            result.kind = X64Operand_rm16;
+        } break;
+        
+        case BcTypeKind_s32:
+        case BcTypeKind_u32: {
+            result.kind = X64Operand_rm32;
+        } break;
+        
+        case BcTypeKind_s64:
+        case BcTypeKind_u64: {
+            result.kind = X64Operand_rm64;
+        } break;
+        
+        // TODO(Alexander): floating point
+    }
     result.reg = reg;
     result.disp64 = stack_offset;
     result.is_allocated = true;
@@ -300,7 +326,7 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             // TODO(Alexander): should also support memory addresses
             
             X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
-            insn->op0 = x64_build_stack_offset(x64, stack_offset);
+            insn->op0 = x64_build_stack_offset(x64, bc->src0.type, stack_offset);
             insn->op1 = x64_build_operand(x64, &bc->src0);
         } break;
         
@@ -313,7 +339,7 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             
             X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
             insn->op0 = x64_build_operand(x64, &bc->dest);
-            insn->op1 = x64_build_stack_offset(x64, stack_offset);
+            insn->op1 = x64_build_stack_offset(x64, bc->src0.type, stack_offset);
             
             
         } break;

@@ -16,7 +16,7 @@
 #include "sqrrl_x64_insn_def.cpp"
 #include "sqrrl_x64_assembler.cpp"
 
-typedef void asm_main(void);
+typedef int asm_main(void);
 
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
@@ -234,10 +234,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             }
         }
         
-        //asm_make_executable(asm_buffer, asm_size);
-        
-        //asm_main* func = (asm_main*) asm_buffer;
-        //func();
+        asm_make_executable(asm_buffer, asm_size);
+        asm_main* func = (asm_main*) asm_buffer;
+        int exit_code = func();
+        pln("\n\nProgram exited with code: %", f_int(exit_code));
     }
     
 #endif

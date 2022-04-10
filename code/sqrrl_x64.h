@@ -286,12 +286,16 @@ enum {
 };
 
 struct X64_Encoding {
-    bool rex_prefix_mandatory;
+    bool is_rex_mandatory;
+    bool set_rex_w;
     u8 opcode;
+    bool use_opcode_addend;
+    u8 opcode_addend;
     u8 modrm_mod;
     u8 modrm_reg;
     u8 modrm_rm;
-    
+    u8 immediate_operand;
+    u8 immediate_size;
     bool is_valid;
 };
 

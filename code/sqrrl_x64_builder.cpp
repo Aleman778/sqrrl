@@ -160,7 +160,7 @@ x64_push_basic_block(X64_Builder* x64, Bc_Register label) {
     
     block->label = label;
     block->first = x64->curr_instruction;
-    block->count = 0;
+    block->count = 1;
     return block;
 }
 
@@ -354,11 +354,12 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
         } break;
         
         case Bytecode_ret: {
-            X64_Instruction* mov_insn =x64_push_instruction(x64, X64Opcode_mov);
+            X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
             // TODO(Alexander): should not always be r64
             X64_Operand_Kind operand_kind = x64_get_register_kind(bc->src0.type.kind);
             mov_insn->op0 = x64_build_physical_register(x64, X64Register_rax, operand_kind);
             mov_insn->op1 = x64_build_operand(x64, &bc->src0);
+            
         } break;
     }
 }
@@ -393,6 +394,7 @@ x64_push_epilogue(X64_Builder* x64) {
     insn->op0 = x64_build_physical_register(x64, X64Register_rbp, X64Operand_r64);
     
     x64_push_instruction(x64, X64Opcode_ret);
+    pln("bb.count = %", f_umm(x64->curr_basic_block->count));
 }
 
 #define for_basic_block(x64, first_block, curr_block, curr_block_insn, function) { \

@@ -32,12 +32,12 @@ enum X64_Register_Type {
 
 // X64_REGISTER(mnemonic, size, id, type)
 #define DEF_X64_REGISTERS \
-X64_REGISTER(unallocated_r8,   1,  GPR) \
-X64_REGISTER(unallocated_r16,  2,  GPR) \
-X64_REGISTER(unallocated_r32,  4,  GPR) \
-X64_REGISTER(unallocated_r64,  8,  GPR) \
-X64_REGISTER(unallocated_stx,  10, GPR) \
-X64_REGISTER(unallocated_mmx,  8,  GPR) \
+X64_REGISTER(unallocated_r8,   1,  0, GPR) \
+X64_REGISTER(unallocated_r16,  2,  0, GPR) \
+X64_REGISTER(unallocated_r32,  4,  0, GPR) \
+X64_REGISTER(unallocated_r64,  8,  0, GPR) \
+X64_REGISTER(unallocated_stx,  10, 0, GPR) \
+X64_REGISTER(unallocated_mmx,  8,  0, GPR) \
 \
 X64_REGISTER(ah,   1, 4, GPR) \
 X64_REGISTER(al,   1, 0, GPR) \
@@ -157,7 +157,7 @@ global int x64_register_size_table[] = {
 };
 
 global int x64_register_id_table[] = {
-#define X64_REGISTER(mnemonic, size, ...) size,
+#define X64_REGISTER(mnemonic, size, id, ...) id,
     DEF_X64_REGISTERS
 #undef X64_REGISTER
 };
@@ -293,7 +293,6 @@ struct X64_Encoding {
     
     bool is_valid;
 };
-
 
 void
 string_builder_push(String_Builder* sb, X64_Operand* operand) {

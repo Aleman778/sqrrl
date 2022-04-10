@@ -13,10 +13,14 @@
 #include "sqrrl_bytecode_builder.cpp"
 #include "sqrrl_bytecode_interp.cpp"
 #include "sqrrl_x64_builder.cpp"
+#include "sqrrl_x64_insn_def.cpp"
 #include "sqrrl_x64_assembler.cpp"
 
+typedef int asm_main(void);
+
 int // NOTE(alexander): this is called by the platform layer
-compiler_main_entry(int argc, char* argv[]) {
+compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
+                    void (*asm_make_executable)(void*, umm)) {
     
     {
         // Put dummy file as index 0
@@ -66,7 +70,7 @@ compiler_main_entry(int argc, char* argv[]) {
     vars_initialize();
     
     // Read entire source file
-    Loaded_Source_File file = read_entire_file(filename);
+    Loaded_Source_File file = read_entire_source_file(filename);
     
     Preprocessor preprocessor = {};
     string preprocessed_source = preprocess_file(&preprocessor, file.source, file.filepath, file.index);
@@ -214,17 +218,26 @@ compiler_main_entry(int argc, char* argv[]) {
             pln("\nGraphviz interference graph:\n%", f_string(interference_graph));
         }
         
+        // x64 build instruction definitions
+        X64_Instruction_Def_Table* x64_instruction_definitions = parse_x86_64_definitions();
         
         // x64 assembler
-        X64_Machine_Code code = x64_assemble_to_machine_code(x64_builder.first_basic_block);
+        X64_Machine_Code code = x64_assemble_to_machine_code(x64_instruction_definitions,
+                                                             x64_builder.first_basic_block, 
+                                                             asm_buffer);
         
-        pln("\nX64 Machine Code:");
+        pln("\nX64 Machine Code (% bytes):", f_umm(code.count));
         for (int byte_index = 0; byte_index < code.count; byte_index++) {
             printf("0x%hhX ", (u8) code.bytes[byte_index]);
             if (byte_index % 10 == 9) {
                 printf("\n");
             }
         }
+        
+        asm_make_executable(asm_buffer, asm_size);
+        asm_main* func = (asm_main*) asm_buffer;
+        int exit_code = func();
+        pln("\n\nProgram exited with code: %", f_int(exit_code));
     }
     
 #endif

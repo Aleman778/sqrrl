@@ -137,7 +137,17 @@ DEBUG_free_file_memory(void* memory) {
     VirtualFree(memory, 0, MEM_RELEASE);
 }
 
+void
+asm_buffer_prepare_for_execute(void* data, umm size) {
+    DWORD prev_protect = 0;
+    VirtualProtect(data, size, PAGE_EXECUTE_READ, &prev_protect);
+}
+
+
 int main(int argc, char* argv[]) {
+    umm asm_buffer_size = 1024;
+    void* asm_buffer = VirtualAlloc(0, asm_buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    
     // NOTE(alexander): here goes any platform specific initialization
-    return compiler_main_entry(argc, argv);
+    return compiler_main_entry(argc, argv, asm_buffer, asm_buffer_size, &asm_buffer_prepare_for_execute);
 }

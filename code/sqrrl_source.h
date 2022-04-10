@@ -10,10 +10,8 @@ global string working_directory = {};
 global array(Loaded_Source_File)* loaded_source_files = 0;
 global map(string_id, u32)* file_index_table = 0;
 
-
-
 Loaded_Source_File
-read_entire_file(string filename) {
+read_entire_source_file(string filename) {
     Loaded_Source_File result = {};
     
     // TODO(Alexander): hackish way to join two paths!!! Use OS service for this later.

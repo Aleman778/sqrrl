@@ -225,7 +225,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                         preprocess_error(preprocessor, string_lit("system header files include directives `#include <file>` are not supported"));
                     } else if (token.type == Token_String) {
                         string filename = string_unquote_nocopy(token.source);
-                        Loaded_Source_File included_file = read_entire_file(filename);
+                        Loaded_Source_File included_file = read_entire_source_file(filename);
                         if (included_file.is_valid) {
                             preprocess_file(preprocessor, included_file.source, 
                                             included_file.filepath, included_file.index);

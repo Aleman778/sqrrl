@@ -160,7 +160,7 @@ x64_push_basic_block(X64_Builder* x64, Bc_Register label) {
     
     block->label = label;
     block->first = x64->curr_instruction;
-    block->count = 0;
+    block->count = 1;
     return block;
 }
 
@@ -199,6 +199,29 @@ x64_build_immediate(X64_Builder* x64, Bc_Value value, Bc_Type type) {
     return result;
 }
 
+X64_Operand_Kind
+x64_get_register_kind(Bc_Type_Kind type_kind) {
+    switch (type_kind) {
+        case BcTypeKind_s1:
+        case BcTypeKind_s8:
+        case BcTypeKind_u8: return X64Operand_r8;
+        
+        case BcTypeKind_s16:
+        case BcTypeKind_u16: return X64Operand_r16;
+        
+        case BcTypeKind_s32:
+        case BcTypeKind_u32: return X64Operand_r32;
+        
+        case BcTypeKind_s64:
+        case BcTypeKind_u64: return X64Operand_r64;
+        
+        case BcTypeKind_f32:
+        case BcTypeKind_f64: return X64Operand_mm;
+    }
+    
+    return X64Operand_None;
+}
+
 X64_Operand
 x64_build_register(X64_Builder* x64, Bc_Register ident, Bc_Type type) {
     X64_Operand result = {};
@@ -211,41 +234,41 @@ x64_build_register(X64_Builder* x64, Bc_Register ident, Bc_Type type) {
         result.virtual_register = x64_allocate_virtual_register(x64, ident);
     }
     
-    switch (type.kind) {
-        case BcTypeKind_s1:
-        case BcTypeKind_s8:
-        case BcTypeKind_u8: {
-            result.kind = X64Operand_r8;
-        } break;
-        
-        case BcTypeKind_s16:
-        case BcTypeKind_u16: {
-            result.kind = X64Operand_r16;
-        } break;
-        
-        case BcTypeKind_s32:
-        case BcTypeKind_u32: {
-            result.kind = X64Operand_r32;
-        } break;
-        
-        case BcTypeKind_s64:
-        case BcTypeKind_u64: {
-            result.kind = X64Operand_r64;
-        } break;
-        
-        case BcTypeKind_f32:
-        case BcTypeKind_f64: {
-            result.kind = X64Operand_mm;
-        } break;
-    }
+    result.kind = x64_get_register_kind(type.kind);
     
     return result;
 }
 
 X64_Operand
-x64_build_stack_offset(X64_Builder* x64, s64 stack_offset, X64_Register reg = X64Register_rbp) {
+x64_build_stack_offset(X64_Builder* x64, 
+                       Bc_Type type, 
+                       s64 stack_offset, 
+                       X64_Register reg = X64Register_rbp) {
     X64_Operand result = {};
-    result.kind = X64Operand_rm64;
+    switch (type.kind) {
+        case BcTypeKind_s1:
+        case BcTypeKind_s8:
+        case BcTypeKind_u8: {
+            result.kind = X64Operand_m64;
+        } break;
+        
+        case BcTypeKind_s16:
+        case BcTypeKind_u16: {
+            result.kind = X64Operand_m16;
+        } break;
+        
+        case BcTypeKind_s32:
+        case BcTypeKind_u32: {
+            result.kind = X64Operand_m32;
+        } break;
+        
+        case BcTypeKind_s64:
+        case BcTypeKind_u64: {
+            result.kind = X64Operand_m64;
+        } break;
+        
+        // TODO(Alexander): floating point
+    }
     result.reg = reg;
     result.disp64 = stack_offset;
     result.is_allocated = true;
@@ -300,7 +323,7 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             // TODO(Alexander): should also support memory addresses
             
             X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
-            insn->op0 = x64_build_stack_offset(x64, stack_offset);
+            insn->op0 = x64_build_stack_offset(x64, bc->src0.type, stack_offset);
             insn->op1 = x64_build_operand(x64, &bc->src0);
         } break;
         
@@ -313,7 +336,7 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             
             X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
             insn->op0 = x64_build_operand(x64, &bc->dest);
-            insn->op1 = x64_build_stack_offset(x64, stack_offset);
+            insn->op1 = x64_build_stack_offset(x64, bc->src0.type, stack_offset);
             
             
         } break;
@@ -331,10 +354,12 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
         } break;
         
         case Bytecode_ret: {
-            X64_Instruction* mov_insn =x64_push_instruction(x64, X64Opcode_mov);
+            X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
             // TODO(Alexander): should not always be r64
-            mov_insn->op0 = x64_build_physical_register(x64, X64Register_rax, X64Operand_r64);
+            X64_Operand_Kind operand_kind = x64_get_register_kind(bc->src0.type.kind);
+            mov_insn->op0 = x64_build_physical_register(x64, X64Register_rax, operand_kind);
             mov_insn->op1 = x64_build_operand(x64, &bc->src0);
+            
         } break;
     }
 }
@@ -369,6 +394,7 @@ x64_push_epilogue(X64_Builder* x64) {
     insn->op0 = x64_build_physical_register(x64, X64Register_rbp, X64Operand_r64);
     
     x64_push_instruction(x64, X64Opcode_ret);
+    pln("bb.count = %", f_umm(x64->curr_basic_block->count));
 }
 
 #define for_basic_block(x64, first_block, curr_block, curr_block_insn, function) { \

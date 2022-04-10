@@ -189,10 +189,7 @@ x64_assemble_to_machine_code(X64_Instruction_Def_Table* x64_instruction_definiti
         X64_Encoding encoding = map_get(x64_instruction_definitions, index);
         pln("is_valid: %", f_bool(encoding.is_valid));
         
-        if (!encoding.is_valid) {
-            continue;
-        }
-        
+        assert(encoding.is_valid && "illegal instruction");
         
         u8 rex_prefix = 0b01000000;
         bool use_rex_prefix = encoding.rex_prefix_mandatory;

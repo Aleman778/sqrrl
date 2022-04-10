@@ -1,22 +1,23 @@
 
 #define DEF_X64_OPCODES \
-X64_OPCODE(add) \
-X64_OPCODE(mov) \
-X64_OPCODE(push) \
-X64_OPCODE(pop) \
-X64_OPCODE(ret) \
-X64_OPCODE(label)
+X64_OPCODE(invalid, INVALID) \
+X64_OPCODE(add, ADD) \
+X64_OPCODE(mov, MOV) \
+X64_OPCODE(push, PUSH) \
+X64_OPCODE(pop, POP) \
+X64_OPCODE(ret, RET) \
+X64_OPCODE(label, LABEL)
 // NOTE(Alexander): label is not a real opcode
 
 enum X64_Opcode {
-#define X64_OPCODE(mnemonic) X64Opcode_##mnemonic,
+#define X64_OPCODE(mnemonic,...) X64Opcode_##mnemonic,
     DEF_X64_OPCODES
 #undef X64_OPCODE
 };
 
 
 global const cstring x64_opcode_names[] = {
-#define X64_OPCODE(mnemonic) #mnemonic,
+#define X64_OPCODE(mnemonic,...) #mnemonic,
     DEF_X64_OPCODES
 #undef X64_OPCODE
 };
@@ -180,33 +181,33 @@ register_is_gpr(X64_Register reg) {
     return reg >= X64Register_ah && reg <= X64Register_r15;
 }
 
+#define DEF_X64_OPERANDS \
+X64_OP(None) \
+X64_OP(r8) \
+X64_OP(r16) \
+X64_OP(r32) \
+X64_OP(r64) \
+X64_OP(m8) \
+X64_OP(m16) \
+X64_OP(m32) \
+X64_OP(m64) \
+X64_OP(imm8) \
+X64_OP(imm16) \
+X64_OP(imm32) \
+X64_OP(imm64) \
+X64_OP(st) \
+X64_OP(mm) \
+X64_OP(xmm) \
+X64_OP(ymm) \
+X64_OP(zmm) \
+X64_OP(rel8) \
+X64_OP(rel32) \
+X64_OP(basic_block)
 
 enum X64_Operand_Kind {
-    X64Operand_None,
-    X64Operand_r8,
-    X64Operand_r16,
-    X64Operand_r32,
-    X64Operand_r64,
-    X64Operand_m8,
-    X64Operand_m16,
-    X64Operand_m32,
-    X64Operand_m64,
-    X64Operand_rm8,
-    X64Operand_rm16,
-    X64Operand_rm32,
-    X64Operand_rm64,
-    X64Operand_imm8,
-    X64Operand_imm16,
-    X64Operand_imm32,
-    X64Operand_imm64,
-    X64Operand_st,
-    X64Operand_mm,
-    X64Operand_xmm,
-    X64Operand_ymm,
-    X64Operand_zmm,
-    X64Operand_rel8,
-    X64Operand_rel32,
-    X64Operand_basic_block,
+#define X64_OP(op) X64Operand_##op,
+    DEF_X64_OPERANDS
+#undef X64_OP
 };
 
 // NOTE(Alexander): forward declare
@@ -235,7 +236,7 @@ struct X64_Operand {
 inline bool
 operand_is_register(X64_Operand_Kind kind) {
     return ((kind >= X64Operand_r8  && kind <= X64Operand_r64) ||
-            (kind >= X64Operand_rm8 && kind <= X64Operand_rm64));
+            (kind >= X64Operand_m8 && kind <= X64Operand_m64));
 }
 
 struct X64_Instruction {
@@ -294,6 +295,8 @@ struct X64_Encoding {
     bool is_valid;
 };
 
+typedef map(X64_Instruction_Index, X64_Encoding) X64_Instruction_Def_Table;
+
 void
 string_builder_push(String_Builder* sb, X64_Operand* operand) {
     switch (operand->kind) {
@@ -308,10 +311,10 @@ string_builder_push(String_Builder* sb, X64_Operand* operand) {
             }
         } break;
         
-        case X64Operand_rm8:
-        case X64Operand_rm16:
-        case X64Operand_rm32:
-        case X64Operand_rm64: {
+        case X64Operand_m8:
+        case X64Operand_m16:
+        case X64Operand_m32:
+        case X64Operand_m64: {
             if (operand->is_allocated) {
                 string_builder_push_format(sb, "[%", f_cstring(x64_register_name_table[operand->reg]));
             } else {

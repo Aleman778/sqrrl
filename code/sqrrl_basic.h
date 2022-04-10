@@ -402,7 +402,7 @@ it_index++, it = arr + it_index)
 for (auto it = map; it < map + map_count(map); it++)
 
 // NOTE(Alexander): string hash maps
-#define string_map(V) struct { cstring key, V value }
+#define string_map(V) struct { cstring key; V value; }
 #define string_map_free(m) smfree(m)
 #define string_map_count(m) shlen(m)
 #define string_map_put(m, k, v) shput(m, k, v)

@@ -74,7 +74,7 @@ VAR(main)     \
 
 // NOTE(alexander): interning strings into ids
 typedef u32 string_id;
-global struct { cstring key; string_id value; }* vars_str_to_id = 0; // stb_ds hashmap maps strings to ids
+global string_map(string_id)* vars_str_to_id = 0; // stb_ds hashmap maps strings to ids
 global string* vars_id_to_str = 0; // stb_ds array of strings where the index is the string id
 global u32 vars_id_counter = 0;
 

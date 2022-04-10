@@ -13,6 +13,7 @@
 #include "sqrrl_bytecode_builder.cpp"
 #include "sqrrl_bytecode_interp.cpp"
 #include "sqrrl_x64_builder.cpp"
+#include "sqrrl_x64_insn_def.cpp"
 #include "sqrrl_x64_assembler.cpp"
 
 typedef void asm_main(void);
@@ -69,7 +70,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     vars_initialize();
     
     // Read entire source file
-    Loaded_Source_File file = read_entire_file(filename);
+    Loaded_Source_File file = read_entire_source_file(filename);
     
     Preprocessor preprocessor = {};
     string preprocessed_source = preprocess_file(&preprocessor, file.source, file.filepath, file.index);
@@ -217,9 +218,12 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             pln("\nGraphviz interference graph:\n%", f_string(interference_graph));
         }
         
+        // x64 build instruction definitions
+        X64_Instruction_Def_Table* x64_instruction_definitions = parse_x86_64_definitions();
         
         // x64 assembler
-        X64_Machine_Code code = x64_assemble_to_machine_code(x64_builder.first_basic_block, 
+        X64_Machine_Code code = x64_assemble_to_machine_code(x64_instruction_definitions,
+                                                             x64_builder.first_basic_block, 
                                                              asm_buffer);
         
         pln("\nX64 Machine Code (% bytes):", f_umm(code.count));
@@ -230,10 +234,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             }
         }
         
-        asm_make_executable(asm_buffer, asm_size);
+        //asm_make_executable(asm_buffer, asm_size);
         
-        asm_main* func = (asm_main*) asm_buffer;
-        func();
+        //asm_main* func = (asm_main*) asm_buffer;
+        //func();
     }
     
 #endif

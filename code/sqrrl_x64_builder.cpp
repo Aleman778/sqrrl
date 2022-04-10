@@ -252,22 +252,22 @@ x64_build_stack_offset(X64_Builder* x64,
         case BcTypeKind_s1:
         case BcTypeKind_s8:
         case BcTypeKind_u8: {
-            result.kind = X64Operand_rm64;
+            result.kind = X64Operand_m64;
         } break;
         
         case BcTypeKind_s16:
         case BcTypeKind_u16: {
-            result.kind = X64Operand_rm16;
+            result.kind = X64Operand_m16;
         } break;
         
         case BcTypeKind_s32:
         case BcTypeKind_u32: {
-            result.kind = X64Operand_rm32;
+            result.kind = X64Operand_m32;
         } break;
         
         case BcTypeKind_s64:
         case BcTypeKind_u64: {
-            result.kind = X64Operand_rm64;
+            result.kind = X64Operand_m64;
         } break;
         
         // TODO(Alexander): floating point

@@ -353,6 +353,18 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             add_insn->op1 = x64_build_operand(x64, &bc->src1);
         } break;
         
+        case Bytecode_sub: {
+            Bc_Type type = bc->src0.type;
+            
+            X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
+            mov_insn->op0 = x64_build_operand(x64, &bc->dest);
+            mov_insn->op1 = x64_build_operand(x64, &bc->src0);
+            
+            X64_Instruction* sub_insn = x64_push_instruction(x64, X64Opcode_sub);
+            sub_insn->op0 = mov_insn->op0;
+            sub_insn->op1 = x64_build_operand(x64, &bc->src1);
+        } break;
+        
         case Bytecode_ret: {
             X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
             // TODO(Alexander): should not always be r64

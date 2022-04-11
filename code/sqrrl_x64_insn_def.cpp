@@ -1,12 +1,17 @@
 #include "sqrrl_json.h"
 
 
+#define for_json_array(json_array, it, it_name, it_value) \
+json_array_element_s* it = json_array->start; \
+json_string_s* it_name = it->name; \
+json_value_s* it_value = it->value; \
+for (; it; it = it->next, it_name = it ? it->name : 0, it_value = it ? it->value : 0)
 
 #define for_json_object(json_object, it, it_name, it_value) \
 json_object_element_s* it = json_object->start; \
 json_string_s* it_name = it->name; \
 json_value_s* it_value = it->value; \
-for (; it->next; it = it->next, it_name = it->name, it_value = it->value)
+for (; it; it = it->next, it_name = it ? it->name : 0, it_value = it ? it->value : 0)
 
 #define json_bool_value(val) val->type == json_type_true
 #define json_string_value(val) create_string(((json_string_s*) val->payload)->string_size, \
@@ -105,148 +110,145 @@ parse_x86_64_definitions() {
         while (curr_form_elem) {
             json_object_s* curr_form = (json_object_s*) curr_form_elem->value->payload;
             
-            json_array_s* operands = 0;
-            json_array_s* encodings = 0;
-            if (curr_form->length == 1) {
-                encodings = (json_array_s*) curr_form->start->value->payload;
-            } else if (curr_form->length == 2) {
-                operands = (json_array_s*) curr_form->start->value->payload;
-                encodings = (json_array_s*) curr_form->start->next->value->payload;
-            } else {
-                assert(0 && "expect encodings or both operands and encodings");
-            }
-            
-            
-            
-            // Operands
             X64_Instruction_Index index = {};
             index.opcode = (u8) opcode;
-            if (operands) {
-                json_array_element_s* op0 = operands->start;
-                if (op0) {
-                    index.op0 = x64_encode_operand((json_object_s*) op0->value->payload, operand_kind_table);
-                    json_array_element_s* op1 = op0->next;
-                    
-                    if (op1) {
-                        index.op1 = 
-                            x64_encode_operand((json_object_s*) op1->value->payload, operand_kind_table);
-                        json_array_element_s* op2 = op1->next;
-                        
-                        if (op2) {
-                            index.op2 = 
-                                x64_encode_operand((json_object_s*) op2->value->payload, operand_kind_table);
-                        }
-                    }
-                }
-            }
             
-            // Encoding
             X64_Encoding encoding = {};
-            encoding.modrm_mod = ModRM_not_used;
-            // TODO(Alexander): we will start with a single encoding
-            json_array_element_s* encoding_elem = encodings->start;
-            if (encoding_elem) {
-                json_object_s* encoding_parts = (json_object_s*) encoding_elem->value->payload;
-                
-                json_object_element_s* curr_encoding_part_elem = encoding_parts->start;
-                while (curr_encoding_part_elem) {
-                    if (!curr_encoding_part_elem) {
-                        break;
-                    }
-                    json_object_s* curr_encoding_part = (json_object_s*)
-                        curr_encoding_part_elem->value->payload;
-                    
-                    cstring part_name = curr_encoding_part_elem->name->string;
-                    json_object_s* part_value = (json_object_s*) curr_encoding_part_elem->value->payload;
-                    
-                    if (strcmp(part_name, "REX") == 0) {
-                        
-                        for_json_object(part_value, it, name, value) {
-                            if (strcmp(name->string, "mandatory") == 0) {
-                                encoding.is_rex_mandatory = json_bool_value(value);
-                            } else if (strcmp(name->string, "W") == 0) {
-                                encoding.set_rex_w = json_string_value(value).data[0] == '1';
+            
+            for_json_object(curr_form, curr_form_entry_elem, entry_name, entry_value) {
+                if (strcmp(entry_name->string, "operands") == 0) {
+                    // Operands
+                    json_array_s* operands = (json_array_s*) entry_value->payload;
+                    if (operands) {
+                        json_array_element_s* op0 = operands->start;
+                        if (op0) {
+                            index.op0 = x64_encode_operand((json_object_s*) op0->value->payload, operand_kind_table);
+                            json_array_element_s* op1 = op0->next;
+                            
+                            if (op1) {
+                                index.op1 = 
+                                    x64_encode_operand((json_object_s*) op1->value->payload, operand_kind_table);
+                                json_array_element_s* op2 = op1->next;
+                                
+                                if (op2) {
+                                    index.op2 = 
+                                        x64_encode_operand((json_object_s*) op2->value->payload, operand_kind_table);
+                                }
                             }
                         }
+                    }
+                } else if (strcmp(entry_name->string, "encodings") == 0) {
+                    
+                    // Encoding
+                    json_array_s* encodings = (json_array_s*) entry_value->payload;
+                    encoding.is_valid = true;
+                    encoding.modrm_mod = ModRM_not_used;
+                    // TODO(Alexander): we will start with a single encoding
+                    json_array_element_s* encoding_elem = encodings->start;
+                    if (encoding_elem) {
+                        json_object_s* encoding_parts = (json_object_s*) encoding_elem->value->payload;
                         
-                    } else if (strcmp(part_name, "opcode") == 0) {
-                        assert(part_value->start);
-                        json_string_s* opcode_kind = part_value->start->name;
-                        json_value_s* opcode_data = part_value->start->value;
-                        
-                        if (strcmp(opcode_kind->string, "byte") == 0) {
-                            string hex = json_string_value(opcode_data);
-                            assert(hex.count == 2);
-                            u8 second = (u8) hex_digit_to_s32(hex.data[0]);
-                            u8 first = (u8) hex_digit_to_s32(hex.data[1]);
-                            encoding.opcode = (second << 4) | first;
-                        } else {
-                            assert(0 && "unknown opcode data");
-                        }
-                        
-                        json_object_element_s* addend_elem = part_value->start->next;
-                        
-                        if (addend_elem) {
-                            json_string_s* addend_kind = addend_elem->name;
-                            json_value_s* addend_data = addend_elem->value;
-                            assert(strcmp(addend_kind->string, "addend") == 0);
+                        json_object_element_s* curr_encoding_part_elem = encoding_parts->start;
+                        while (curr_encoding_part_elem) {
+                            if (!curr_encoding_part_elem) {
+                                break;
+                            }
+                            json_object_s* curr_encoding_part = (json_object_s*)
+                                curr_encoding_part_elem->value->payload;
                             
-                            encoding.use_opcode_addend = true;
-                            encoding.opcode_addend = x64_encode_operand_field(addend_data);
-                        }
-                        
-                        
-                    } else if (strcmp(part_name, "ModRM") == 0) {
-                        assert(part_value->start);
-                        json_object_element_s* mod_elem = part_value->start;
-                        if (mod_elem) {
-                            assert(strcmp(mod_elem->name->string, "mode") == 0);
+                            cstring part_name = curr_encoding_part_elem->name->string;
+                            json_object_s* part_value = (json_object_s*) curr_encoding_part_elem->value->payload;
                             
-                            string str = json_string_value(mod_elem->value);
-                            assert(str.count == 2);
-                            if (str.data[0] == '1' && str.data[1] == '1') {
-                                encoding.modrm_mod = 0b11000000;
+                            if (strcmp(part_name, "REX") == 0) {
+                                
+                                for_json_object(part_value, it, name, value) {
+                                    if (strcmp(name->string, "mandatory") == 0) {
+                                        encoding.is_rex_mandatory = json_bool_value(value);
+                                    } else if (strcmp(name->string, "W") == 0) {
+                                        encoding.set_rex_w = json_string_value(value).data[0] == '1';
+                                    }
+                                }
+                                
+                            } else if (strcmp(part_name, "opcode") == 0) {
+                                assert(part_value->start);
+                                json_string_s* opcode_kind = part_value->start->name;
+                                json_value_s* opcode_data = part_value->start->value;
+                                
+                                if (strcmp(opcode_kind->string, "byte") == 0) {
+                                    string hex = json_string_value(opcode_data);
+                                    assert(hex.count == 2);
+                                    u8 second = (u8) hex_digit_to_s32(hex.data[0]);
+                                    u8 first = (u8) hex_digit_to_s32(hex.data[1]);
+                                    encoding.opcode = (second << 4) | first;
+                                } else {
+                                    assert(0 && "unknown opcode data");
+                                }
+                                
+                                json_object_element_s* addend_elem = part_value->start->next;
+                                
+                                if (addend_elem) {
+                                    json_string_s* addend_kind = addend_elem->name;
+                                    json_value_s* addend_data = addend_elem->value;
+                                    assert(strcmp(addend_kind->string, "addend") == 0);
+                                    
+                                    encoding.use_opcode_addend = true;
+                                    encoding.opcode_addend = x64_encode_operand_field(addend_data);
+                                }
+                                
+                                
+                            } else if (strcmp(part_name, "ModRM") == 0) {
+                                assert(part_value->start);
+                                json_object_element_s* mod_elem = part_value->start;
+                                if (mod_elem) {
+                                    assert(strcmp(mod_elem->name->string, "mode") == 0);
+                                    
+                                    string str = json_string_value(mod_elem->value);
+                                    assert(str.count == 2);
+                                    if (str.data[0] == '1' && str.data[1] == '1') {
+                                        encoding.modrm_mod = 0b11000000;
+                                    } else {
+                                        encoding.modrm_mod = 0b00000000;
+                                    }
+                                }
+                                
+                                json_object_element_s* rm_elem = mod_elem->next;
+                                if (rm_elem) {
+                                    assert(strcmp(rm_elem->name->string, "rm") == 0);
+                                    encoding.modrm_rm = x64_encode_operand_field(rm_elem->value);
+                                }
+                                
+                                json_object_element_s* reg_elem = rm_elem->next;
+                                if (reg_elem) {
+                                    assert(strcmp(reg_elem->name->string, "reg") == 0);
+                                    encoding.modrm_reg = x64_encode_operand_field(reg_elem->value);
+                                }
+                                
+                            } else if (strcmp(part_name, "immediate") == 0) {
+                                json_object_element_s* size_elem = part_value->start;
+                                json_object_element_s* value_elem = size_elem->next;
+                                
+                                if (size_elem) {
+                                    assert(strcmp(size_elem->name->string, "size") == 0);
+                                    string size = json_string_value(size_elem->value);
+                                    encoding.immediate_size = (u8) (size.data[0] - '0');
+                                }
+                                
+                                if (value_elem) {
+                                    assert(strcmp(value_elem->name->string, "value") == 0);
+                                    encoding.immediate_operand = x64_encode_operand_field(value_elem->value);
+                                }
                             } else {
-                                encoding.modrm_mod = 0b00000000;
+                                //assert(0 && "invalid encoding part");
                             }
+                            
+                            // Next encoding part
+                            curr_encoding_part_elem = curr_encoding_part_elem->next;
                         }
-                        
-                        json_object_element_s* rm_elem = mod_elem->next;
-                        if (rm_elem) {
-                            assert(strcmp(rm_elem->name->string, "rm") == 0);
-                            encoding.modrm_rm = x64_encode_operand_field(rm_elem->value);
-                        }
-                        
-                        json_object_element_s* reg_elem = rm_elem->next;
-                        if (reg_elem) {
-                            assert(strcmp(reg_elem->name->string, "reg") == 0);
-                            encoding.modrm_reg = x64_encode_operand_field(reg_elem->value);
-                        }
-                        
-                    } else if (strcmp(part_name, "immediate") == 0) {
-                        json_object_element_s* size_elem = part_value->start;
-                        json_object_element_s* value_elem = size_elem->next;
-                        
-                        if (size_elem) {
-                            assert(strcmp(size_elem->name->string, "size") == 0);
-                            string size = json_string_value(size_elem->value);
-                            encoding.immediate_size = (u8) (size.data[0] - '0');
-                        }
-                        
-                        if (value_elem) {
-                            assert(strcmp(value_elem->name->string, "value") == 0);
-                            encoding.immediate_operand = x64_encode_operand_field(value_elem->value);
-                        }
-                    } else {
-                        //assert(0 && "invalid encoding part");
                     }
-                    
-                    // Next encoding part
-                    curr_encoding_part_elem = curr_encoding_part_elem->next;
                 }
             }
-            
             // Store the resulting index to instruction encoding
+            assert(index.opcode != X64Opcode_invalid);
             encoding.is_valid = true;
             map_put(result, index, encoding);
             

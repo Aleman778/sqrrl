@@ -2,7 +2,7 @@
 struct X64_Register_Node {
     u32 virtual_register;
     X64_Register physical_register;
-    array(X64_Register_Node*)* dependencies;
+    array(u32)* dependencies;
     b32 is_allocated;
     b32 is_spilled;
 };
@@ -25,9 +25,10 @@ struct X64_Builder {
 };
 
 inline bool
-x64_register_allocation_check_dependencies(X64_Register_Node* node) {
-    for_array(node->dependencies, other_node, _) {
-        if (node->physical_register == (*other_node)->physical_register) {
+x64_register_allocation_check_dependencies(X64_Builder* x64, X64_Register_Node* node) {
+    for_array(node->dependencies, dep_id, _) {
+        X64_Register_Node* other_node = &map_get(x64->interference_graph, *dep_id);
+        if (node->physical_register == other_node->physical_register) {
             return false;
         }
     }
@@ -48,7 +49,7 @@ x64_perform_register_allocation(X64_Builder* x64) {
                  physical_reg_index++) {
                 
                 node->physical_register = x64_gpr_register_table[physical_reg_index];
-                node->is_allocated = x64_register_allocation_check_dependencies(node);
+                node->is_allocated = x64_register_allocation_check_dependencies(x64, node);
                 if (node->is_allocated) break;
             }
             
@@ -81,7 +82,7 @@ operand.is_allocated = true; \
 }
 
 u32
-x64_allocate_virtual_register(X64_Builder* x64, Bc_Register ident) {
+x64_allocate_virtual_register(X64_Builder* x64, Bc_Register ident = {}) {
     // TODO(Alexander): do we need 0 to be invalid? Only needed for checking for 0 on map_get
     if (x64->next_free_virtual_register == 0) {
         x64->next_free_virtual_register++;
@@ -98,6 +99,17 @@ x64_allocate_virtual_register(X64_Builder* x64, Bc_Register ident) {
     
     return result;
 }
+
+X64_Register_Node*
+x64_allocate_specific_register(X64_Builder* x64, X64_Register physical_register) {
+    u32 virtual_register = x64_allocate_virtual_register(x64);
+    X64_Register_Node* result = &map_get(x64->interference_graph, virtual_register);
+    result->physical_register = physical_register;
+    result->is_allocated = true;
+    
+    return result;
+}
+
 
 inline bool
 operand_is_unallocated_register(X64_Operand operand) {
@@ -118,16 +130,16 @@ x64_push_instruction(X64_Builder* x64, X64_Opcode opcode) {
         X64_Register_Node* n2 = r2 ? &map_get(x64->interference_graph, r2) : 0;
         
         if (n0 && n1) {
-            array_push(n0->dependencies, n1);
-            array_push(n1->dependencies, n0);
+            array_push(n0->dependencies, n1->virtual_register);
+            array_push(n1->dependencies, n0->virtual_register);
         }
         if (n0 && n2) {
-            array_push(n0->dependencies, n2);
-            array_push(n2->dependencies, n0);
+            array_push(n0->dependencies, n2->virtual_register);
+            array_push(n2->dependencies, n0->virtual_register);
         }
         if (n1 && n2) {
-            array_push(n1->dependencies, n2);
-            array_push(n2->dependencies, n1);
+            array_push(n1->dependencies, n2->virtual_register);
+            array_push(n2->dependencies, n1->virtual_register);
         }
     }
     
@@ -365,6 +377,55 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             sub_insn->op1 = x64_build_operand(x64, &bc->src1);
         } break;
         
+        case Bytecode_mul: {
+            Bc_Type type = bc->src0.type;
+            X64_Operand_Kind operand_kind = x64_get_register_kind(type.kind);
+            X64_Opcode mul_opcode = X64Opcode_imul; // TODO(Alexander): check signedness
+            
+            if (bc->src0.kind == BcOperand_Value || bc->src1.kind == BcOperand_Value) {
+                Bc_Operand* reg;
+                Bc_Operand* imm;
+                if (bc->src1.kind == BcOperand_Value) {
+                    reg = &bc->src0;
+                    imm = &bc->src1;
+                } else {
+                    reg = &bc->src1;
+                    imm = &bc->src0;
+                }
+                
+                X64_Instruction* mul_insn = x64_push_instruction(x64, mul_opcode);
+                mul_insn->op0 = x64_build_operand(x64, &bc->dest);
+                mul_insn->op1 = x64_build_operand(x64, reg);
+                mul_insn->op2 = x64_build_operand(x64, imm);
+                
+            } else {
+                // RAX is used as input and RDX:RAX is used as output
+                X64_Register_Node* rax = x64_allocate_specific_register(x64, X64Register_rax);
+                X64_Register_Node* rdx = x64_allocate_specific_register(x64, X64Register_rdx);
+                array_push(rax->dependencies, rdx->virtual_register);
+                array_push(rdx->dependencies, rax->virtual_register);
+                
+                // Move source1 into RAX
+                X64_Instruction* mov_rax_insn = x64_push_instruction(x64, X64Opcode_mov);
+                mov_rax_insn->op0 = x64_build_physical_register(x64, X64Register_rax, operand_kind);
+                mov_rax_insn->op1 = x64_build_operand(x64, &bc->src0);
+                array_push(rax->dependencies, mov_rax_insn->op1.virtual_register);
+                
+                // Perform multiplication
+                X64_Instruction* mul_insn = x64_push_instruction(x64, mul_opcode);
+                mul_insn->op0 = mov_rax_insn->op0;
+                mul_insn->op1 = x64_build_operand(x64, &bc->src1);
+                
+                array_push(rax->dependencies, mul_insn->op1.virtual_register);
+                array_push(rdx->dependencies, mul_insn->op1.virtual_register);
+                
+                // Store the result back into dest
+                X64_Instruction* mov_dest_insn = x64_push_instruction(x64, X64Opcode_mov);
+                mov_dest_insn->op0 = x64_build_operand(x64, &bc->dest);
+                mov_dest_insn->op1 = x64_build_physical_register(x64, X64Register_rax, operand_kind);
+            }
+        } break;
+        
         case Bytecode_ret: {
             X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
             // TODO(Alexander): should not always be r64
@@ -463,8 +524,8 @@ x64_interference_graph_to_graphviz_dot(X64_Builder* x64) {
     for_map(x64->interference_graph, it) {
         X64_Register_Node* node = &it->value;
         
-        for_array(node->dependencies, other_it, index) {
-            X64_Register_Node* other_node = *other_it;
+        for_array(node->dependencies, dep_id, index) {
+            X64_Register_Node* other_node = &map_get(x64->interference_graph, *dep_id);
             string_builder_push_format(&sb, "  r% -- r%\n", 
                                        f_u32(node->virtual_register),
                                        f_u32(other_node->virtual_register));

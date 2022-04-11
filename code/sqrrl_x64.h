@@ -3,6 +3,8 @@
 X64_OPCODE(invalid, INVALID) \
 X64_OPCODE(add, ADD) \
 X64_OPCODE(sub, SUB) \
+X64_OPCODE(mul, MUL) \
+X64_OPCODE(imul, IMUL) \
 X64_OPCODE(mov, MOV) \
 X64_OPCODE(push, PUSH) \
 X64_OPCODE(pop, POP) \

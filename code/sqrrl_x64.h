@@ -260,6 +260,9 @@ struct X64_Instruction {
         };
         X64_Operand operands[3];
     };
+#if BUILD_DEBUG
+    cstring comment; // NOTE(Alexander): only for debug purposes
+#endif
 };
 
 struct X64_Basic_Block {
@@ -407,6 +410,23 @@ string_builder_push(String_Builder* sb,
                 string_builder_push(sb, ", ");
                 string_builder_push(sb, &insn->op2, show_virtual_registers);
             }
+            
+#if BUILD_DEBUG
+            if (insn->comment) {
+                // Find line length by going back to previous newline character
+                u32 line_length = 0;
+                u8* curr = sb->data + sb->curr_used;
+                while (line_length++ < 30 && *curr-- != '\n');
+                
+                // Add spaces to make line length at least 30 characters long
+                if (line_length < 30) {
+                    for (int i = line_length; i < 30; i++) string_builder_push(sb, " ");
+                }
+                
+                string_builder_push_format(sb, " // %", f_cstring(insn->comment));
+            }
+#endif
+            
             string_builder_push(sb, "\n");
         }
     }

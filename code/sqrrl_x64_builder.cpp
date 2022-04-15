@@ -38,8 +38,6 @@ x64_register_allocation_check_interference(X64_Builder* x64, X64_Register_Node* 
 
 void
 x64_perform_register_allocation(X64_Builder* x64) {
-    
-    
     for_map (x64->interference_graph, it) {
         X64_Register_Node* node = &it->value;
         
@@ -101,6 +99,7 @@ x64_allocate_virtual_register(X64_Builder* x64, Bc_Register ident = {}) {
         map_put(x64->allocated_virtual_registers, ident, result);
     }
     
+    pln("map_put = %", f_u32(result));
     X64_Register_Node node = {};
     node.virtual_register = result;
     map_put(x64->interference_graph, result, node);
@@ -124,8 +123,18 @@ operand_is_unallocated_register(X64_Operand operand) {
     return operand_is_register(operand.kind) && !operand.is_allocated;
 }
 
+#if BUILD_DEBUG
+// TODO(Alexander): ugh macro nonsense
+#define S1(x) #x
+#define S2(x) S1(x)
+#define x64_push_instruction(x64, opcode) _x64_push_instruction(x64, opcode, __FILE__ ":" S2(__LINE__))
+#else 
+#define x64_push_instruction(x64, opcode) _x64_push_instruction(x64, opcode) 
+#endif 
+
+
 X64_Instruction*
-x64_push_instruction(X64_Builder* x64, X64_Opcode opcode) {
+_x64_push_instruction(X64_Builder* x64, X64_Opcode opcode, cstring comment = 0) {
     X64_Instruction* prev_insn = x64->curr_instruction;
     if (prev_insn) {
         // Connect interfering edges
@@ -158,6 +167,12 @@ x64_push_instruction(X64_Builder* x64, X64_Opcode opcode) {
     insn->opcode = opcode;
     x64->curr_instruction = insn;
     x64->instruction_count++;
+    
+#if BUILD_DEBUG
+    insn->comment = comment;
+#else
+    (void) comment;
+#endif
     
     return insn;
 }
@@ -310,6 +325,9 @@ x64_build_physical_register(X64_Builder* x64, X64_Register reg, X64_Operand_Kind
         result.is_allocated = true;
     } else {
         result.virtual_register = x64_allocate_virtual_register(x64, { Kw_invalid, 0 });
+        X64_Register_Node* node = &map_get(x64->interference_graph, result.virtual_register);
+        node->physical_register = reg;
+        node->is_allocated = true;
     }
     return result;
 }
@@ -365,8 +383,6 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
             insn->op0 = x64_build_operand(x64, &bc->dest);
             insn->op1 = x64_build_stack_offset(x64, bc->src0.type, stack_offset);
-            
-            
         } break;
         
 #define BINARY_CASE(opcode) \
@@ -436,6 +452,7 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
             X64_Instruction* mov_rax_insn = x64_push_instruction(x64, X64Opcode_mov);
             mov_rax_insn->op0 = x64_build_virtual_register(x64, rax, operand_kind);
             mov_rax_insn->op1 = x64_build_operand(x64, &bc->src0);
+            // TODO(Alexander): are we sure this will become a register?
             x64_add_interference(x64, rax, mov_rax_insn->op1.virtual_register);
             
             // Convert RAX into RDX:RAX
@@ -446,8 +463,8 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
             X64_Instruction* div_insn = x64_push_instruction(x64, div_opcode);
             div_insn->op0 = x64_build_operand(x64, &bc->src1);
             
-            x64_add_interference(x64, rax, div_insn->op1.virtual_register);
-            x64_add_interference(x64, rdx, div_insn->op1.virtual_register);
+            x64_add_interference(x64, rax, div_insn->op0.virtual_register);
+            x64_add_interference(x64, rdx, div_insn->op0.virtual_register);
             
             // Store the result back into dest
             X64_Instruction* mov_dest_insn = x64_push_instruction(x64, X64Opcode_mov);
@@ -455,7 +472,7 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
             mov_dest_insn->op1 = x64_build_virtual_register(x64, rax, operand_kind);
             
             x64_add_interference(x64, rax, mov_dest_insn->op0.virtual_register);
-        };
+        } break;
         
         case Bytecode_ret: {
             X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);

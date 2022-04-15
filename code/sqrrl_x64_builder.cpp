@@ -421,27 +421,33 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
             }
         } break;
         
-#if 0
         case Bytecode_div: {
+            Bc_Type type = bc->src0.type;
+            X64_Operand_Kind operand_kind = x64_get_register_kind(type.kind);
+            X64_Opcode div_opcode = X64Opcode_idiv; // TODO(Alexander): check signedness
+            
             // RAX is used as input and RDX:RAX is used as output
-            //u32 rax = x64_allocate_specific_register(x64, X64Register_rax);
+            u32 rax = x64_allocate_specific_register(x64, X64Register_rax);
             u32 rdx = x64_allocate_specific_register(x64, X64Register_rdx);
             x64_add_interference(x64, rax, rdx);
             x64_add_interference(x64, rdx, rax);
             
             // Move source1 into RAX
-            //X64_Instruction* mov_rax_insn = x64_push_instruction(x64, X64Opcode_mov);
-            //mov_rax_insn->op0 = x64_build_virtual_register(x64, rax, operand_kind);
-            //mov_rax_insn->op1 = x64_build_operand(x64, &bc->src0);
-            //x64_add_interference(x64, rax, mov_rax_insn->op1.virtual_register);
+            X64_Instruction* mov_rax_insn = x64_push_instruction(x64, X64Opcode_mov);
+            mov_rax_insn->op0 = x64_build_virtual_register(x64, rax, operand_kind);
+            mov_rax_insn->op1 = x64_build_operand(x64, &bc->src0);
+            x64_add_interference(x64, rax, mov_rax_insn->op1.virtual_register);
             
-            // Perform multiplication
-            X64_Instruction* mul_insn = x64_push_instruction(x64, mul_opcode);
-            mul_insn->op0 = x64_build_operand(x64, &bc->src0);
-            mul_insn->op1 = x64_build_operand(x64, &bc->src1);
+            // Convert RAX into RDX:RAX
+            // TODO(Alexander): check type to pick one of cwd, cwq, cwo
+            x64_push_instruction(x64, X64Opcode_cwd);
             
-            x64_add_interference(x64, rax, mul_insn->op1.virtual_register);
-            x64_add_interference(x64, rdx, mul_insn->op1.virtual_register);
+            // Perform division
+            X64_Instruction* div_insn = x64_push_instruction(x64, div_opcode);
+            div_insn->op0 = x64_build_operand(x64, &bc->src1);
+            
+            x64_add_interference(x64, rax, div_insn->op1.virtual_register);
+            x64_add_interference(x64, rdx, div_insn->op1.virtual_register);
             
             // Store the result back into dest
             X64_Instruction* mov_dest_insn = x64_push_instruction(x64, X64Opcode_mov);
@@ -450,7 +456,6 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
             
             x64_add_interference(x64, rax, mov_dest_insn->op0.virtual_register);
         };
-#endif
         
         case Bytecode_ret: {
             X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);

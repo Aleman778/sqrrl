@@ -18,8 +18,8 @@ x64_assemble_to_machine_code(X64_Instruction_Def_Table* x64_instruction_definiti
     u8* curr = result.bytes;
     
     // TODO(Alexander): int3 breakpoint for debugging
-    *curr++ = 0xCC;
-    result.count++;
+    //*curr++ = 0xCC;
+    //result.count++;
     
     X64_Basic_Block* curr_block = basic_block; 
     for (umm insn_index = 0; insn_index < curr_block->count; insn_index++) {

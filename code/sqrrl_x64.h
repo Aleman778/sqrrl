@@ -5,23 +5,31 @@ X64_OPCODE(add, ADD) \
 X64_OPCODE(sub, SUB) \
 X64_OPCODE(mul, MUL) \
 X64_OPCODE(imul, IMUL) \
+X64_OPCODE(idiv, IDIV) \
+X64_OPCODE(cwd, CWD) \
 X64_OPCODE(mov, MOV) \
 X64_OPCODE(push, PUSH) \
 X64_OPCODE(pop, POP) \
 X64_OPCODE(ret, RET) \
-X64_OPCODE(label, LABEL)
+X64_OPCODE(label, LABEL) \
+X64_OPCODE_ALIAS(cwd, cwq, CWQ) \
+X64_OPCODE_ALIAS(cwd, cwo, CWO)
 // NOTE(Alexander): label is not a real opcode
 
 enum X64_Opcode {
 #define X64_OPCODE(mnemonic,...) X64Opcode_##mnemonic,
+#define X64_OPCODE_ALIAS(alias, mnemonic,...) X64Opcode_##mnemonic = X64Opcode_##alias,
     DEF_X64_OPCODES
+#undef X64_OPCODE_ALIAS
 #undef X64_OPCODE
 };
 
 
 global const cstring x64_opcode_names[] = {
 #define X64_OPCODE(mnemonic,...) #mnemonic,
+#define X64_OPCODE_ALIAS(...)
     DEF_X64_OPCODES
+#undef X64_OPCODE_ALIAS
 #undef X64_OPCODE
 };
 

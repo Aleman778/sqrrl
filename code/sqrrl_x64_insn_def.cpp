@@ -65,7 +65,9 @@ parse_x86_64_definitions() {
     // Create string to opcode table
     string_map(X64_Opcode)* opcode_table = 0;
 #define X64_OPCODE(mnemonic, uc_mnemonic) string_map_put(opcode_table, #uc_mnemonic, X64Opcode_##mnemonic);
+#define X64_OPCODE_ALIAS(...)
     DEF_X64_OPCODES
+#undef X64_OPCODE_ALIAS
 #undef X64_OPCODE
     
     X64_Operand_Kind_Table* operand_kind_table = 0;
@@ -304,8 +306,8 @@ parse_x86_64_definitions() {
         curr_insn = curr_insn->next;
     }
     
-    pln("sqrrl_x64_insn_def.cpp: number of encodings built %", f_umm(map_count(result)));
-    
+    pln("sqrrl_x64_insn_def.cpp: number of encodings built: %", f_umm(map_count(result)));
+    pln("sqrrl_x64_insn_def.cpp: size of x86_64 encoding data: %", f_umm(map_count(result)*sizeof(X64_Encoding)));
     
     free(root);
     DEBUG_free_file_memory(x64_file.contents);

@@ -17,6 +17,14 @@ for (; it; it = it->next, it_name = it ? it->name : 0, it_value = it ? it->value
 #define json_string_value(val) create_string(((json_string_s*) val->payload)->string_size, \
 (u8*) ((json_string_s*) val->payload)->string)
 
+inline u8
+json_hex_byte_value(json_value_s* val) {
+    string hex = json_string_value(val);
+    assert(hex.count == 2);
+    u8 second = (u8) hex_digit_to_s32(hex.data[0]);
+    u8 first = (u8) hex_digit_to_s32(hex.data[1]);
+    return (second << 4) | first;
+}
 
 typedef string_map(X64_Operand_Kind) X64_Operand_Kind_Table;
 
@@ -86,7 +94,7 @@ parse_x86_64_definitions() {
     assert(insns_elem->value->type == json_type_object);
     
     json_object_s* insns = (json_object_s*) insns_elem->value->payload;
-    pln("\n\nnumber of instructions loaded: %", f_umm(insns->length));
+    pln("\n\nsqrrl_x64_insn_def.cpp: number of instructions loaded: %", f_umm(insns->length));
     
     
     json_object_element_s* curr_insn = insns->start;
@@ -157,8 +165,46 @@ parse_x86_64_definitions() {
                                 curr_encoding_part_elem->value->payload;
                             
                             cstring part_name = curr_encoding_part_elem->name->string;
-                            json_object_s* part_value = (json_object_s*) curr_encoding_part_elem->value->payload;
+                            json_value_s* part_value = (json_value_s*) curr_encoding_part_elem->value;
                             
+                            if (strcmp(part_name, "use_prefix") == 0) {
+                                encoding.use_prefix = json_bool_value(part_value);
+                            } else if (strcmp(part_name, "use_0f_prefix") == 0) {
+                                encoding.use_0f_prefix = json_bool_value(part_value);
+                            } else if (strcmp(part_name, "use_rex_prefix") == 0) {
+                                encoding.use_rex_prefix = json_bool_value(part_value);
+                            } else if (strcmp(part_name, "use_rex_w") == 0) {
+                                encoding.use_rex_w = json_bool_value(part_value);
+                            } else if (strcmp(part_name, "use_opcode_addend") == 0) {
+                                encoding.use_opcode_addend = json_bool_value(part_value);
+                            } else if (strcmp(part_name, "prefix") == 0) {
+                                encoding.prefix = json_hex_byte_value(part_value);
+                            } else if (strcmp(part_name, "primary_opcode") == 0) {
+                                encoding.primary_opcode = json_hex_byte_value(part_value);
+                            } else if (strcmp(part_name, "secondary_opcode") == 0) {
+                                encoding.secondary_opcode = json_hex_byte_value(part_value);
+                            } else if (strcmp(part_name, "modrm_mod") == 0) {
+                                string str = json_string_value(part_value);
+                                assert(str.count == 2);
+                                if (str.data[0] == '1' && str.data[1] == '1') {
+                                    encoding.modrm_mod = 0b11000000;
+                                } else {
+                                    encoding.modrm_mod = 0b00000000;
+                                }
+                            } else if (strcmp(part_name, "modrm_reg") == 0) {
+                                encoding.modrm_reg = x64_encode_operand_field(part_value);
+                            } else if (strcmp(part_name, "modrm_rm") == 0) {
+                                encoding.modrm_rm = x64_encode_operand_field(part_value);
+                            } else if (strcmp(part_name, "imm_size") == 0) {
+                                string size = json_string_value(part_value);
+                                assert(size.count == 1);
+                                encoding.imm_size = (u8) (size.data[0] - '0');
+                            } else if (strcmp(part_name, "imm_op") == 0) {
+                                encoding.imm_op = x64_encode_operand_field(part_value);
+                            } else {
+                                assert(0 && "invalid encoding part");
+                            }
+#if 0
                             if (strcmp(part_name, "REX") == 0) {
                                 
                                 for_json_object(part_value, it, name, value) {
@@ -240,6 +286,7 @@ parse_x86_64_definitions() {
                             } else {
                                 //assert(0 && "invalid encoding part");
                             }
+#endif
                             
                             // Next encoding part
                             curr_encoding_part_elem = curr_encoding_part_elem->next;
@@ -259,6 +306,8 @@ parse_x86_64_definitions() {
         // Next instruction
         curr_insn = curr_insn->next;
     }
+    
+    pln("sqrrl_x64_insn_def.cpp: number of encodings built %", f_umm(map_count(result)));
     
     
     free(root);

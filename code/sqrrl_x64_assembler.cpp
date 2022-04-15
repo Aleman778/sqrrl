@@ -18,8 +18,8 @@ x64_assemble_to_machine_code(X64_Instruction_Def_Table* x64_instruction_definiti
     u8* curr = result.bytes;
     
     // TODO(Alexander): int3 breakpoint for debugging
-    //*curr++ = 0xCC;
-    //result.count++;
+    *curr++ = 0xCC;
+    result.count++;
     
 #if 0
     map(X64_Instruction_Index, X64_Encoding)* x64_instruction_definitions = 0;
@@ -188,13 +188,12 @@ x64_assemble_to_machine_code(X64_Instruction_Def_Table* x64_instruction_definiti
         index.op1 = (u8) insn->op1.kind;
         index.op2 = (u8) insn->op2.kind;
         X64_Encoding encoding = map_get(x64_instruction_definitions, index);
-        pln("is_valid: %", f_bool(encoding.is_valid));
         
         assert(encoding.is_valid && "illegal instruction");
         
         u8 rex_prefix = 0b01000000;
-        bool use_rex_prefix = encoding.is_rex_mandatory;
-        if (encoding.set_rex_w) {
+        bool use_rex_prefix = encoding.use_rex_prefix;
+        if (encoding.use_rex_w) {
             rex_prefix |= 1 << 3;
             use_rex_prefix = true;
         }
@@ -202,9 +201,9 @@ x64_assemble_to_machine_code(X64_Instruction_Def_Table* x64_instruction_definiti
         u8 modrm = encoding.modrm_mod;
         s32 displacement = 0;
         s32 displacement_bytes = 0;
+        u8 reg = 0;
         if (encoding.modrm_mod != ModRM_not_used) {
             // TODO(Alexander): need to update REX prefix to support upper 8 regs
-            u8 reg = 0;
             if (encoding.modrm_reg >= 0b00000111) {
                 reg = encoding.modrm_reg >> 3;
             } else {
@@ -232,6 +231,12 @@ x64_assemble_to_machine_code(X64_Instruction_Def_Table* x64_instruction_definiti
             modrm = modrm | (reg << 3) | rm;
         }
         
+        // Prefix
+        if (encoding.use_prefix) {
+            *curr++ = encoding.prefix;
+            result.count++;
+        }
+        
         // REX prefix
         if (use_rex_prefix) {
             *curr++ = rex_prefix;
@@ -239,15 +244,22 @@ x64_assemble_to_machine_code(X64_Instruction_Def_Table* x64_instruction_definiti
         }
         
         // Opcode
-        u8 opcode = encoding.opcode;
-        if (encoding.use_opcode_addend) {
-            X64_Operand* addend_operand = &insn->operands[encoding.opcode_addend];
-            // TODO(Alexander): need to update REX prefix to support upper 8 regs
-            u8 addend = x64_register_id_table[addend_operand->reg] % 8;
-            opcode += addend;
+        if (encoding.use_0f_prefix) {
+            *curr++ = 0x0F;
+            result.count++;
         }
-        *curr++ = opcode;
+        
+        u8 primary_opcode = encoding.primary_opcode;
+        if (encoding.use_opcode_addend) {
+            primary_opcode += reg;
+        }
+        *curr++ = primary_opcode;
         result.count++;
+        
+        if (encoding.secondary_opcode) {
+            *curr++ = encoding.secondary_opcode;
+            result.count++;
+        }
         
         // ModRM
         if (encoding.modrm_mod != ModRM_not_used) {
@@ -265,11 +277,11 @@ x64_assemble_to_machine_code(X64_Instruction_Def_Table* x64_instruction_definiti
         }
         
         // Immediate
-        if (encoding.immediate_size > 0) {
-            s64 immediate = insn->operands[encoding.immediate_operand].imm64;
-            u8* immediate_bytes = (u8*) &immediate;
-            for (s32 byte_index = 0; byte_index < encoding.immediate_size; byte_index++) {
-                *curr++ = immediate_bytes[byte_index];
+        if (encoding.imm_size > 0) {
+            s64 imm = insn->operands[encoding.imm_op].imm64;
+            u8* imm_bytes = (u8*) &imm;
+            for (s32 byte_index = 0; byte_index < encoding.imm_size; byte_index++) {
+                *curr++ = imm_bytes[byte_index];
                 result.count++;
             }
             

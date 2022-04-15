@@ -289,23 +289,31 @@ enum {
 };
 
 struct X64_Encoding {
-    bool is_rex_mandatory;
-    bool set_rex_w;
-    u8 opcode;
+    bool use_prefix;
+    bool use_0f_prefix;
+    bool use_rex_prefix;
+    bool use_rex_w;
     bool use_opcode_addend;
-    u8 opcode_addend;
+    
+    u8 prefix;
+    
+    u8 primary_opcode;
+    u8 secondary_opcode;
+    
     u8 modrm_mod;
     u8 modrm_reg;
     u8 modrm_rm;
-    u8 immediate_operand;
-    u8 immediate_size;
+    
+    u8 imm_size;
+    u8 imm_op;
+    
     bool is_valid;
 };
 
 typedef map(X64_Instruction_Index, X64_Encoding) X64_Instruction_Def_Table;
 
 void
-string_builder_push(String_Builder* sb, X64_Operand* operand) {
+string_builder_push(String_Builder* sb, X64_Operand* operand, bool show_virtual_registers=false) {
     switch (operand->kind) {
         case X64Operand_r8:
         case X64Operand_r16:
@@ -314,7 +322,11 @@ string_builder_push(String_Builder* sb, X64_Operand* operand) {
             if (operand->is_allocated) {
                 string_builder_push_format(sb, "%", f_cstring(x64_register_name_table[operand->reg]));
             } else {
-                string_builder_push_format(sb, "r%", f_u32(operand->virtual_register));
+                if (show_virtual_registers) {
+                    string_builder_push_format(sb, "r%", f_u32(operand->virtual_register));
+                } else {
+                    string_builder_push(sb, "???");
+                }
             }
         } break;
         
@@ -353,5 +365,47 @@ string_builder_push(String_Builder* sb, X64_Operand* operand) {
             string_builder_push_format(sb, "%", f_s64(operand->imm64));
         } break;
         
+    }
+}
+
+void
+string_builder_push(String_Builder* sb, 
+                    X64_Basic_Block* first_block,
+                    bool show_virtual_registers=false) {
+    
+    X64_Basic_Block* curr_block = first_block;
+    for (umm insn_index = 0; insn_index < curr_block->count; insn_index++) {
+        X64_Instruction* insn = curr_block->first + insn_index;
+        
+        if (insn->opcode == X64Opcode_label) {
+            X64_Basic_Block* block = insn->op0.basic_block;
+            if (block->label.ident) {
+                string_builder_push_format(sb, "%:\n", 
+                                           f_string(vars_load_string(block->label.ident)));
+            } else {
+                string_builder_push_format(sb, "%:\n",
+                                           vars_load_string(block->label.index));
+            }
+        } else {
+            
+            cstring mnemonic = x64_opcode_names[insn->opcode];
+            
+            string_builder_push_format(sb, "    %", f_cstring(mnemonic));
+            if (insn->op0.kind) {
+                string_builder_push(sb, " ");
+                string_builder_push(sb, &insn->op0, show_virtual_registers);
+            }
+            
+            if (insn->op1.kind) {
+                string_builder_push(sb, ", ");
+                string_builder_push(sb, &insn->op1, show_virtual_registers);
+            }
+            
+            if (insn->op2.kind) {
+                string_builder_push(sb, ", ");
+                string_builder_push(sb, &insn->op2, show_virtual_registers);
+            }
+            string_builder_push(sb, "\n");
+        }
     }
 }

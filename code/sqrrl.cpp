@@ -167,55 +167,37 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         // Generate X64 machine code
         X64_Builder x64_builder = {};
         x64_build_function(&x64_builder, main_block);
+        
+        // Print interference graph before register allocation
+        string interference_graph = x64_interference_graph_to_graphviz_dot(&x64_builder);
+        pln("\nGraphviz interference graph (before):\n%", f_string(interference_graph));
+        
+        {
+            // Print the human readable x64 assembly code (before register allocation)
+            String_Builder sb = {};
+            string_builder_push(&sb, x64_builder.first_basic_block, true);
+            
+            string str = string_builder_to_string_nocopy(&sb);
+            pln("\nX64 Assembly (without register allocation):\n%", f_string(str));
+            string_builder_free(&sb);
+        }
+        
+        // Perform register allocation
         x64_perform_register_allocation(&x64_builder);
+        
+        // Print interference graph before register allocation
+        interference_graph = x64_interference_graph_to_graphviz_dot(&x64_builder);
+        pln("\nGraphviz interference graph (after):\n%", f_string(interference_graph));
+        
         
         {
             // Print the human readable x64 assembly code
             String_Builder sb = {};
-            X64_Instruction* insns = (X64_Instruction*) x64_builder.arena.base;
+            string_builder_push(&sb, x64_builder.first_basic_block, false);
             
-            // TODO(Alexander): won't work for expanded memory arenas
-            X64_Basic_Block* curr_block = x64_builder.first_basic_block; 
-            for (umm insn_index = 0; insn_index < curr_block->count; insn_index++) {
-                X64_Instruction* insn = curr_block->first + insn_index;
-                
-                if (insn->opcode == X64Opcode_label) {
-                    X64_Basic_Block* block = insn->op0.basic_block;
-                    if (block->label.ident) {
-                        string_builder_push_format(&sb, "%:\n", 
-                                                   f_string(vars_load_string(block->label.ident)));
-                    } else {
-                        string_builder_push_format(&sb, "%:\n",
-                                                   vars_load_string(block->label.index));
-                    }
-                } else {
-                    
-                    cstring mnemonic = x64_opcode_names[insn->opcode];
-                    
-                    string_builder_push_format(&sb, "    %", f_cstring(mnemonic));
-                    if (insn->op0.kind) {
-                        string_builder_push(&sb, " ");
-                        string_builder_push(&sb, &insn->op0);
-                    }
-                    
-                    if (insn->op1.kind) {
-                        string_builder_push(&sb, ", ");
-                        string_builder_push(&sb, &insn->op1);
-                    }
-                    
-                    if (insn->op2.kind) {
-                        string_builder_push(&sb, ", ");
-                        string_builder_push(&sb, &insn->op2);
-                    }
-                    string_builder_push(&sb, "\n");
-                }
-            }
             string str = string_builder_to_string_nocopy(&sb);
             pln("\nX64 Assembly:\n%", f_string(str));
             string_builder_free(&sb);
-            
-            string interference_graph = x64_interference_graph_to_graphviz_dot(&x64_builder);
-            pln("\nGraphviz interference graph:\n%", f_string(interference_graph));
         }
         
         // x64 build instruction definitions

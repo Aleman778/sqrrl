@@ -183,14 +183,11 @@ parse_x86_64_definitions() {
                                 encoding.primary_opcode = json_hex_byte_value(part_value);
                             } else if (strcmp(part_name, "secondary_opcode") == 0) {
                                 encoding.secondary_opcode = json_hex_byte_value(part_value);
-                            } else if (strcmp(part_name, "modrm_mod") == 0) {
-                                string str = json_string_value(part_value);
-                                assert(str.count == 2);
-                                if (str.data[0] == '1' && str.data[1] == '1') {
-                                    encoding.modrm_mod = 0b11000000;
-                                } else {
-                                    encoding.modrm_mod = 0b00000000;
-                                }
+                            } else if (strcmp(part_name, "opcode_addend") == 0) {
+                                encoding.opcode_addend = x64_encode_operand_field(part_value);
+                            } else if (strcmp(part_name, "modrm_mod_direct") == 0) {
+                                bool is_direct = json_bool_value(part_value);
+                                encoding.modrm_mod = (u8) (is_direct ? ModRM_direct : ModRM_indirect);
                             } else if (strcmp(part_name, "modrm_reg") == 0) {
                                 encoding.modrm_reg = x64_encode_operand_field(part_value);
                             } else if (strcmp(part_name, "modrm_rm") == 0) {

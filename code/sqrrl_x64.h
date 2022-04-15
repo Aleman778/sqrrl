@@ -281,13 +281,6 @@ enum {
     ModRM_not_used        = (u8) 0b11111111,
 };
 
-typedef u8 X64_Encoded_Operand;
-enum {
-    X64EncodedOperand_None,
-    X64EncodedOperand_reg,
-    X64EncodedOperand_rm,
-};
-
 struct X64_Encoding {
     bool use_prefix;
     bool use_0f_prefix;
@@ -299,6 +292,7 @@ struct X64_Encoding {
     
     u8 primary_opcode;
     u8 secondary_opcode;
+    u8 opcode_addend;
     
     u8 modrm_mod;
     u8 modrm_reg;

@@ -21,159 +21,6 @@ x64_assemble_to_machine_code(X64_Instruction_Def_Table* x64_instruction_definiti
     *curr++ = 0xCC;
     result.count++;
     
-#if 0
-    map(X64_Instruction_Index, X64_Encoding)* x64_instruction_definitions = 0;
-    
-    {
-        // 0x8A: mov r8, r8/rm8
-        X64_Encoding encoding = {};
-        encoding.rex_prefix_mandatory = false;
-        encoding.opcode = 0x8B;
-        encoding.modrm_mod = ModRM_direct;
-        encoding.modrm_reg = 0;
-        encoding.modrm_rm = 1;
-        encoding.is_valid = true;
-        
-        X64_Instruction_Index index = {};
-        index.opcode = X64Opcode_mov;
-        index.op0 = X64Operand_r8;
-        index.op1 = X64Operand_r8;
-        encoding.opcode = 0x8A;
-        encoding.modrm_mod = ModRM_direct;
-        map_put(x64_instruction_definitions, index, encoding);
-        index.op1 = X64Operand_rm8;
-        encoding.modrm_mod = ModRM_indirect;
-        map_put(x64_instruction_definitions, index, encoding);
-        
-        // 0x88: mov rm8, r8
-        encoding.opcode = 0x88;
-        encoding.modrm_reg = 1;
-        encoding.modrm_rm = 0;
-        index.op0 = X64Operand_rm8;
-        index.op1 = X64Operand_r8;
-        encoding.modrm_mod = ModRM_indirect;
-        map_put(x64_instruction_definitions, index, encoding);
-        
-        // 0x8B: mov r, r/rm8
-        encoding.opcode = 0x8B;
-        encoding.modrm_reg = 0;
-        encoding.modrm_rm = 1;
-        index.op0 = X64Operand_r16;
-        index.op1 = X64Operand_r16;
-        encoding.modrm_mod = ModRM_direct;
-        map_put(x64_instruction_definitions, index, encoding);
-        index.op1 = X64Operand_rm16;
-        encoding.modrm_mod = ModRM_indirect;
-        map_put(x64_instruction_definitions, index, encoding);
-        
-        index.op0 = X64Operand_r32;
-        index.op1 = X64Operand_r32;
-        encoding.modrm_mod = ModRM_direct;
-        map_put(x64_instruction_definitions, index, encoding);
-        index.op1 = X64Operand_rm32;
-        encoding.modrm_mod = ModRM_indirect;
-        map_put(x64_instruction_definitions, index, encoding);
-        
-        index.op0 = X64Operand_r64;
-        index.op1 = X64Operand_r64;
-        encoding.modrm_mod = ModRM_direct;
-        encoding.rex_prefix_mandatory = true;
-        map_put(x64_instruction_definitions, index, encoding);
-        index.op1 = X64Operand_rm64;
-        encoding.modrm_mod = ModRM_indirect;
-        map_put(x64_instruction_definitions, index, encoding);
-        
-        // 0x89: mov rm, r
-        encoding.opcode = 0x89;
-        encoding.modrm_reg = 0;
-        encoding.modrm_rm = 1;
-        encoding.modrm_mod = ModRM_indirect;
-        
-        index.op0 = X64Operand_rm16;
-        index.op1 = X64Operand_r16;
-        map_put(x64_instruction_definitions, index, encoding);
-        
-        index.op0 = X64Operand_rm32;
-        index.op1 = X64Operand_r32;
-        map_put(x64_instruction_definitions, index, encoding);
-        
-        index.op0 = X64Operand_rm64;
-        index.op1 = X64Operand_r64;
-        encoding.rex_prefix_mandatory = true;
-        map_put(x64_instruction_definitions, index, encoding);
-    }
-    
-    {
-        // 0xFF /6: push r/rm
-        X64_Encoding encoding = {};
-        encoding.rex_prefix_mandatory = false;
-        encoding.opcode = 0xFF;
-        encoding.modrm_mod = ModRM_direct;
-        encoding.modrm_reg = 6 << 3;
-        encoding.modrm_rm = 0;
-        encoding.is_valid = true;
-        
-        X64_Instruction_Index index = {};
-        index.opcode = X64Opcode_push;
-        index.op0 = X64Operand_r16;
-        encoding.modrm_mod = ModRM_direct;
-        map_put(x64_instruction_definitions, index, encoding);
-        index.op0 = X64Operand_rm16;
-        encoding.modrm_mod = ModRM_indirect;
-        map_put(x64_instruction_definitions, index, encoding);
-        
-        index.op0 = X64Operand_r32;
-        encoding.modrm_mod = ModRM_direct;
-        map_put(x64_instruction_definitions, index, encoding);
-        index.op0 = X64Operand_rm32;
-        encoding.modrm_mod = ModRM_indirect;
-        map_put(x64_instruction_definitions, index, encoding);
-        
-        index.op0 = X64Operand_r64;
-        encoding.modrm_mod = ModRM_direct;
-        encoding.rex_prefix_mandatory = true;
-        map_put(x64_instruction_definitions, index, encoding);
-        index.op0 = X64Operand_rm64;
-        encoding.modrm_mod = ModRM_indirect;
-        map_put(x64_instruction_definitions, index, encoding);
-    }
-    
-    {
-        // 0x8F /6: pop r/rm
-        X64_Encoding encoding = {};
-        encoding.rex_prefix_mandatory = false;
-        encoding.opcode = 0x8F;
-        encoding.modrm_mod = ModRM_direct;
-        encoding.modrm_reg = 0b00000111;
-        encoding.modrm_rm = 0;
-        encoding.is_valid = true;
-        
-        X64_Instruction_Index index = {};
-        index.opcode = X64Opcode_pop;
-        index.op0 = X64Operand_r16;
-        encoding.modrm_mod = ModRM_direct;
-        map_put(x64_instruction_definitions, index, encoding);
-        index.op0 = X64Operand_rm16;
-        encoding.modrm_mod = ModRM_indirect;
-        map_put(x64_instruction_definitions, index, encoding);
-        
-        index.op0 = X64Operand_r32;
-        encoding.modrm_mod = ModRM_direct;
-        map_put(x64_instruction_definitions, index, encoding);
-        index.op0 = X64Operand_rm32;
-        encoding.modrm_mod = ModRM_indirect;
-        map_put(x64_instruction_definitions, index, encoding);
-        
-        index.op0 = X64Operand_r64;
-        encoding.modrm_mod = ModRM_direct;
-        encoding.rex_prefix_mandatory = true;
-        map_put(x64_instruction_definitions, index, encoding);
-        index.op0 = X64Operand_rm64;
-        encoding.modrm_mod = ModRM_indirect;
-        map_put(x64_instruction_definitions, index, encoding);
-    }
-#endif
-    
     X64_Basic_Block* curr_block = basic_block; 
     for (umm insn_index = 0; insn_index < curr_block->count; insn_index++) {
         X64_Instruction* insn = curr_block->first + insn_index;
@@ -201,8 +48,8 @@ x64_assemble_to_machine_code(X64_Instruction_Def_Table* x64_instruction_definiti
         u8 modrm = encoding.modrm_mod;
         s32 displacement = 0;
         s32 displacement_bytes = 0;
-        u8 reg = 0;
         if (encoding.modrm_mod != ModRM_not_used) {
+            u8 reg = 0;
             // TODO(Alexander): need to update REX prefix to support upper 8 regs
             if (encoding.modrm_reg >= 0b00000111) {
                 reg = encoding.modrm_reg >> 3;
@@ -251,7 +98,10 @@ x64_assemble_to_machine_code(X64_Instruction_Def_Table* x64_instruction_definiti
         
         u8 primary_opcode = encoding.primary_opcode;
         if (encoding.use_opcode_addend) {
-            primary_opcode += reg;
+            X64_Operand* addend_operand = &insn->operands[encoding.opcode_addend];
+            // TODO(Alexander): need to update REX prefix to support upper 8 regs
+            u8 addend = x64_register_id_table[addend_operand->reg] % 8;
+            primary_opcode += addend;
         }
         *curr++ = primary_opcode;
         result.count++;

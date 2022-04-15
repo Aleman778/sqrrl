@@ -1,19 +1,55 @@
 
 #define DEF_X64_OPCODES \
 X64_OPCODE(invalid, INVALID) \
+X64_OPCODE(noop, NOOP) \
 X64_OPCODE(add, ADD) \
 X64_OPCODE(sub, SUB) \
 X64_OPCODE(mul, MUL) \
 X64_OPCODE(imul, IMUL) \
 X64_OPCODE(idiv, IDIV) \
 X64_OPCODE(cwd, CWD) \
+X64_OPCODE_ALIAS(cwd, cwq, CWQ) \
+X64_OPCODE_ALIAS(cwd, cwo, CWO) \
 X64_OPCODE(mov, MOV) \
 X64_OPCODE(push, PUSH) \
 X64_OPCODE(pop, POP) \
+X64_OPCODE(jmp, JMP) \
+X64_OPCODE(cmp, CMP) \
+X64_OPCODE(ja, JA) \
+X64_OPCODE(jae, JAE) \
+X64_OPCODE(jb, JB) \
+X64_OPCODE(jbe, JBE) \
+X64_OPCODE(jc, JC) \
+X64_OPCODE(jcxz, JCXZ) \
+X64_OPCODE(jecxz, JECXZ) \
+X64_OPCODE(jrcxz, JRCXZ) \
+X64_OPCODE(je, JE) \
+X64_OPCODE(jg, JG) \
+X64_OPCODE(jge, JGE) \
+X64_OPCODE(jl, JL) \
+X64_OPCODE(jle, JLE) \
+X64_OPCODE(jna, JNA) \
+X64_OPCODE(jnae, JNAE) \
+X64_OPCODE(jnb, JNB) \
+X64_OPCODE(jnbe, JNBE) \
+X64_OPCODE(jnc, JNC) \
+X64_OPCODE(jne, JNE) \
+X64_OPCODE(jng, JNG) \
+X64_OPCODE(jnge, JNGE) \
+X64_OPCODE(jnl, JNL) \
+X64_OPCODE(jnle, JNLE) \
+X64_OPCODE(jno, JNO) \
+X64_OPCODE(jnp, JNP) \
+X64_OPCODE(jns, JNS) \
+X64_OPCODE(jnz, JNZ) \
+X64_OPCODE(jo, JO) \
+X64_OPCODE(jp, JP) \
+X64_OPCODE(jpe, JPE) \
+X64_OPCODE(jpo, JPO) \
+X64_OPCODE(js, JS) \
+X64_OPCODE(jz, JZ) \
 X64_OPCODE(ret, RET) \
-X64_OPCODE(label, LABEL) \
-X64_OPCODE_ALIAS(cwd, cwq, CWQ) \
-X64_OPCODE_ALIAS(cwd, cwo, CWO)
+X64_OPCODE(label, LABEL)
 // NOTE(Alexander): label is not a real opcode
 
 enum X64_Opcode {
@@ -379,55 +415,58 @@ string_builder_push(String_Builder* sb,
                     bool show_virtual_registers=false) {
     
     X64_Basic_Block* curr_block = first_block;
-    for (umm insn_index = 0; insn_index < curr_block->count; insn_index++) {
-        X64_Instruction* insn = curr_block->first + insn_index;
-        
-        if (insn->opcode == X64Opcode_label) {
-            X64_Basic_Block* block = insn->op0.basic_block;
-            if (block->label.ident) {
-                string_builder_push_format(sb, "%:\n", 
-                                           f_string(vars_load_string(block->label.ident)));
+    while (curr_block) {
+        for (umm insn_index = 0; insn_index < curr_block->count; insn_index++) {
+            X64_Instruction* insn = curr_block->first + insn_index;
+            
+            if (insn->opcode == X64Opcode_label) {
+                X64_Basic_Block* block = insn->op0.basic_block;
+                if (block->label.ident) {
+                    string_builder_push_format(sb, "%:\n", 
+                                               f_string(vars_load_string(block->label.ident)));
+                } else {
+                    string_builder_push_format(sb, "%:\n",
+                                               vars_load_string(block->label.index));
+                }
             } else {
-                string_builder_push_format(sb, "%:\n",
-                                           vars_load_string(block->label.index));
-            }
-        } else {
-            
-            cstring mnemonic = x64_opcode_names[insn->opcode];
-            
-            string_builder_push_format(sb, "    %", f_cstring(mnemonic));
-            if (insn->op0.kind) {
-                string_builder_push(sb, " ");
-                string_builder_push(sb, &insn->op0, show_virtual_registers);
-            }
-            
-            if (insn->op1.kind) {
-                string_builder_push(sb, ", ");
-                string_builder_push(sb, &insn->op1, show_virtual_registers);
-            }
-            
-            if (insn->op2.kind) {
-                string_builder_push(sb, ", ");
-                string_builder_push(sb, &insn->op2, show_virtual_registers);
-            }
-            
-#if BUILD_DEBUG
-            if (insn->comment) {
-                // Find line length by going back to previous newline character
-                u32 line_length = 0;
-                u8* curr = sb->data + sb->curr_used;
-                while (line_length++ < 30 && *curr-- != '\n');
                 
-                // Add spaces to make line length at least 30 characters long
-                if (line_length < 30) {
-                    for (int i = line_length; i < 30; i++) string_builder_push(sb, " ");
+                cstring mnemonic = x64_opcode_names[insn->opcode];
+                
+                string_builder_push_format(sb, "    %", f_cstring(mnemonic));
+                if (insn->op0.kind) {
+                    string_builder_push(sb, " ");
+                    string_builder_push(sb, &insn->op0, show_virtual_registers);
                 }
                 
-                string_builder_push_format(sb, " // %", f_cstring(insn->comment));
-            }
+                if (insn->op1.kind) {
+                    string_builder_push(sb, ", ");
+                    string_builder_push(sb, &insn->op1, show_virtual_registers);
+                }
+                
+                if (insn->op2.kind) {
+                    string_builder_push(sb, ", ");
+                    string_builder_push(sb, &insn->op2, show_virtual_registers);
+                }
+                
+#if BUILD_DEBUG
+                if (insn->comment) {
+                    // Find line length by going back to previous newline character
+                    u32 line_length = 0;
+                    u8* curr = sb->data + sb->curr_used;
+                    while (line_length++ < 30 && *curr-- != '\n');
+                    
+                    // Add spaces to make line length at least 30 characters long
+                    if (line_length < 30) {
+                        for (int i = line_length; i < 30; i++) string_builder_push(sb, " ");
+                    }
+                    
+                    string_builder_push_format(sb, " // %", f_cstring(insn->comment));
+                }
 #endif
-            
-            string_builder_push(sb, "\n");
+                
+                string_builder_push(sb, "\n");
+            }
         }
+        curr_block = curr_block->next;
     }
 }

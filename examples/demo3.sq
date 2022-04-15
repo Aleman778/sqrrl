@@ -2,5 +2,9 @@
 int
 main() {
     int x = 10;
-    return 20 / x;
+    if (x == 10) {
+        return 20 / x;
+    } else {
+        return x;
+    }
 }

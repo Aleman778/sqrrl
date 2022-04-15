@@ -7,6 +7,8 @@ struct X64_Register_Node {
     b32 is_spilled;
 };
 
+typedef map(u32, X64_Register_Node) Interference_Graph;
+
 struct X64_Builder {
     Memory_Arena arena;
     X64_Basic_Block* first_basic_block;
@@ -18,16 +20,19 @@ struct X64_Builder {
     map(u32, s32)* stack_offsets;
     s32 curr_stack_offset;
     
+    X64_Opcode conditional_jump_opcode;
+    
     u32 next_free_virtual_register;
     map(Bc_Register, u32)* allocated_virtual_registers;
     
-    map(u32, X64_Register_Node)* interference_graph;
+    Interference_Graph* interference_graph;
 };
 
 inline bool
-x64_register_allocation_check_interference(X64_Builder* x64, X64_Register_Node* node) {
+x64_register_allocation_check_interference(Interference_Graph* interference_graph,
+                                           X64_Register_Node* node) {
     for_array(node->interference, dep_id, _) {
-        X64_Register_Node* other_node = &map_get(x64->interference_graph, *dep_id);
+        X64_Register_Node* other_node = &map_get(interference_graph, *dep_id);
         if (node->physical_register == other_node->physical_register) {
             return false;
         }
@@ -47,7 +52,7 @@ x64_perform_register_allocation(X64_Builder* x64) {
                  physical_reg_index++) {
                 
                 node->physical_register = x64_gpr_register_table[physical_reg_index];
-                node->is_allocated = x64_register_allocation_check_interference(x64, node);
+                node->is_allocated = x64_register_allocation_check_interference(x64->interference_graph, node);
                 if (node->is_allocated) break;
             }
             
@@ -362,6 +367,13 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
     switch (bc->opcode) {
         case Bytecode_stack_alloc: break;
         
+        case Bytecode_label: {
+            assert(bc->dest.kind == BcOperand_Basic_Block);
+            Bc_Basic_Block* next_block = bc->dest.Basic_Block;
+            x64_push_basic_block(x64, next_block->label);
+            
+        } break;
+        
         case Bytecode_store: {
             smm stack_index = map_get_index(x64->stack_offsets, bc->dest.Register.index);
             assert(stack_index != -1 && "not stored on stack");
@@ -474,6 +486,18 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
             x64_add_interference(x64, rax, mov_dest_insn->op0.virtual_register);
         } break;
         
+        case Bytecode_cmpeq: x64->conditional_jump_opcode = X64Opcode_je; break;
+        case Bytecode_cmpneq: x64->conditional_jump_opcode = X64Opcode_jne; break;
+        case Bytecode_cmple: x64->conditional_jump_opcode = X64Opcode_jle; break;
+        case Bytecode_cmplt: x64->conditional_jump_opcode = X64Opcode_jl; break;
+        case Bytecode_cmpge: x64->conditional_jump_opcode = X64Opcode_jge; break;
+        case Bytecode_cmpgt: x64->conditional_jump_opcode = X64Opcode_jg; break;
+        
+        case Bytecode_branch: {
+            
+            
+        } break;
+        
         case Bytecode_ret: {
             X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
             // TODO(Alexander): should not always be r64
@@ -518,19 +542,6 @@ x64_push_epilogue(X64_Builder* x64) {
     //pln("bb.count = %", f_umm(x64->curr_basic_block->count));
 }
 
-#define for_basic_block(x64, first_block, curr_block, curr_block_insn, function) { \
-Bc_Basic_Block* curr_block = first_block; \
-umm curr_block_insn = 0; \
-\
-while (curr_block) { \
-while (curr_block_insn++ < curr_block->count) { \
-function(x64, block->first + offset); \
-} \
-curr_block = curr_block->next; \
-curr_block_insn = 0; \
-} \
-}
-
 void
 x64_analyse_function(X64_Builder* x64, Bc_Instruction* bc) {
     switch (bc->opcode) {
@@ -553,6 +564,20 @@ x64_analyse_function(X64_Builder* x64, Bc_Instruction* bc) {
         } break;
         
     }
+}
+
+#define for_basic_block(x64, first_block, curr_block, curr_block_insn, function) { \
+Bc_Basic_Block* curr_block = first_block; \
+umm curr_block_insn = 0; \
+\
+while (curr_block) { \
+while (curr_block_insn < curr_block->count) { \
+function(x64, block->first + curr_block_insn); \
+curr_block_insn++; \
+} \
+curr_block = curr_block->next; \
+curr_block_insn = 0; \
+} \
 }
 
 void

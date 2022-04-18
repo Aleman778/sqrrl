@@ -340,6 +340,11 @@ bc_build_compare_expression(Bc_Builder* bc, Ast* node) {
     Bc_Operand first = {};
     Bc_Operand second = {};
     
+    // NOTE(Alexander): unwrap expressions inside statement
+    if (node->kind == Ast_Expr_Stmt) {
+        node = node->Expr_Stmt;
+    }
+    
     if (node->kind == Ast_Binary_Expr) {
         switch (node->Binary_Expr.op) {
             case BinaryOp_Equals: cmp_code = Bytecode_cmpeq; break;
@@ -469,7 +474,31 @@ bc_build_statement(Bc_Builder* bc, Ast* node) {
         } break;
         
         case Ast_For_Stmt: {
-            unimplemented;
+            bc_build_statement(bc, node->For_Stmt.init);
+            
+            // Condition
+            Bc_Register condition_label = bc_push_basic_block(bc)->label;
+            Bc_Operand cond = bc_build_compare_expression(bc, node->For_Stmt.cond);
+            Bc_Operand empty_reg_op = {};
+            empty_reg_op.kind = BcOperand_Register;
+            bc_push_instruction(bc, Bytecode_branch);
+            bc_push_operand(bc, cond);
+            bc_push_operand(bc, empty_reg_op);
+            bc_push_operand(bc, empty_reg_op);
+            Bc_Instruction* cond_insn = bc->curr_instruction;
+            cond_insn->src0.Register = bc_push_basic_block(bc)->label;
+            
+            // Update and block
+            bc_build_statement(bc, node->For_Stmt.block);
+            bc_build_expression(bc, node->For_Stmt.update);
+            
+            // Next iteration
+            bc_push_instruction(bc, Bytecode_branch);
+            bc_push_operand(bc, empty_reg_op);
+            Bc_Instruction* next_it_insn = bc->curr_instruction;
+            next_it_insn->dest.Register = condition_label;
+            
+            cond_insn->src1.Register = bc_push_basic_block(bc)->label;
         } break;
         
         case Ast_While_Stmt: {

@@ -585,7 +585,7 @@ x64_analyse_function(X64_Builder* x64, Bc_Instruction* bc) {
             s32 stack_offset = (s32) align_forward((umm) x64->curr_stack_offset, type->cached_align);
             stack_offset += stack_offset + type->cached_size;
             // NOTE(Alexander): we use negative because stack grows downwards
-            map_put(x64->stack_offsets, bc->dest.kind, -stack_offset);
+            map_put(x64->stack_offsets, bc->dest.Register.index, -stack_offset);
             x64->curr_stack_offset = stack_offset;
             
             //pln("stack_offset(size = %, align = %, %) = %", f_umm(type->cached_size), f_umm(type->cached_align), f_u32(bc->dest.Register.index), f_s64(stack_offset));

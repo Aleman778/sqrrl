@@ -430,6 +430,11 @@ string_builder_push(String_Builder* sb, X64_Operand* operand, bool show_virtual_
             string_builder_push_format(sb, "%", f_s64(operand->imm64));
         } break;
         
+        case X64Operand_jump_target: {
+            string_builder_push_format(sb, "%", f_string(vars_load_string(operand->jump_target.ident)));
+            string_builder_push_format(sb, "%", f_u32(operand->jump_target.index));
+        } break;
+        
     }
 }
 

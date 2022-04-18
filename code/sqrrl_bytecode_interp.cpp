@@ -18,7 +18,6 @@ inline void
 bc_interp_store_register(Bc_Interp* interp, Bc_Register reg, Bc_Value value) {
     assert(array_count(interp->scopes) > 0);
     Bc_Interp_Scope* scope = &array_last(interp->scopes);
-    //pln("store: %, %", f_u32(reg.index), f_s64(value.signed_int));
     map_put(scope->registers, reg.index, value);
 }
 
@@ -137,7 +136,8 @@ void
 bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
     
     switch (bc->opcode) {
-        case Bytecode_noop: break;
+        case Bytecode_noop:
+        case Bytecode_label: break;
         
         case Bytecode_stack_alloc: {
             assert(bc->dest.kind == BcOperand_Register);
@@ -145,7 +145,6 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             assert(bc->src1.kind == BcOperand_None);
             
             Type* type = bc_type_to_type(bc->src0.type);
-            
             bc_interp_alloc_register(interp, bc->dest.Register, type);
         } break;
         
@@ -220,7 +219,7 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
         
         case Bytecode_ret: {
             Bc_Value value = bc_interp_operand_value(interp, &bc->src0);
-            pln("%", f_s64(value.signed_int));
+            pln("DEBUG: interpreter returned: %", f_s64(value.signed_int));
         } break;
         
         default: {
@@ -236,8 +235,9 @@ bc_interp_function(Bc_Interp* interp, string_id ident) {
     array_push(interp->scopes, new_scope);
     
     while (interp->curr_block) {
-        while (interp->curr_block_insn++ < interp->curr_block->count) {
-            bc_interp_instruction(interp, interp->curr_block->first + interp->curr_block_insn);
+        while (interp->curr_block_insn < interp->curr_block->count) {
+            Bc_Instruction* insn = interp->curr_block->first + interp->curr_block_insn++;
+            bc_interp_instruction(interp, insn);
         }
         interp->curr_block = interp->curr_block->next;
         interp->curr_block_insn = 0;

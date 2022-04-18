@@ -16,11 +16,10 @@ struct X64_Builder {
     umm instruction_count;
     X64_Instruction* curr_instruction;
     X64_Basic_Block* curr_basic_block;
+    Bc_Instruction* curr_compare_insn;
     
     map(u32, s32)* stack_offsets;
     s32 curr_stack_offset;
-    
-    X64_Opcode conditional_jump_opcode;
     
     u32 next_free_virtual_register;
     map(Bc_Register, u32)* allocated_virtual_registers;
@@ -63,11 +62,6 @@ x64_perform_register_allocation(X64_Builder* x64) {
         }
     }
     
-    
-    X64_Basic_Block* curr_block = x64->first_basic_block; 
-    for (umm insn_index = 0; insn_index < curr_block->count; insn_index++) {
-        X64_Instruction* insn = curr_block->first + insn_index;
-        
 #define ALLOC_REG(operand) \
 if (operand_is_register(operand.kind)) { \
 if (!operand.is_allocated) { \
@@ -77,11 +71,11 @@ operand.reg = node->physical_register; \
 operand.is_allocated = true; \
 } \
 }
-        
-        ALLOC_REG(insn->op0);
-        ALLOC_REG(insn->op1);
-        ALLOC_REG(insn->op2);
-    }
+    
+    for_x64_basic_block(x64->first_basic_block, insn, insn_index, {
+                            ALLOC_REG(insn->op0);
+                            ALLOC_REG(insn->op1);
+                            ALLOC_REG(insn->op2);});
 }
 
 void
@@ -239,6 +233,14 @@ x64_build_immediate(X64_Builder* x64, Bc_Value value, Bc_Type type) {
     return result;
 }
 
+X64_Operand
+x64_build_jump_target(X64_Builder* x64, Bc_Register label) {
+    X64_Operand result = {};
+    result.kind = X64Operand_jump_target;
+    result.jump_target = label;
+    return result;
+}
+
 X64_Operand_Kind
 x64_get_register_kind(Bc_Type_Kind type_kind) {
     switch (type_kind) {
@@ -367,12 +369,7 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
     switch (bc->opcode) {
         case Bytecode_stack_alloc: break;
         
-        case Bytecode_label: {
-            assert(bc->dest.kind == BcOperand_Basic_Block);
-            Bc_Basic_Block* next_block = bc->dest.Basic_Block;
-            x64_push_basic_block(x64, next_block->label);
-            
-        } break;
+        case Bytecode_label: break;
         
         case Bytecode_store: {
             smm stack_index = map_get_index(x64->stack_offsets, bc->dest.Register.index);
@@ -486,16 +483,47 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
             x64_add_interference(x64, rax, mov_dest_insn->op0.virtual_register);
         } break;
         
-        case Bytecode_cmpeq: x64->conditional_jump_opcode = X64Opcode_je; break;
-        case Bytecode_cmpneq: x64->conditional_jump_opcode = X64Opcode_jne; break;
-        case Bytecode_cmple: x64->conditional_jump_opcode = X64Opcode_jle; break;
-        case Bytecode_cmplt: x64->conditional_jump_opcode = X64Opcode_jl; break;
-        case Bytecode_cmpge: x64->conditional_jump_opcode = X64Opcode_jge; break;
-        case Bytecode_cmpgt: x64->conditional_jump_opcode = X64Opcode_jg; break;
+        
+        case Bytecode_cmpeq: 
+        case Bytecode_cmpneq: 
+        case Bytecode_cmple: 
+        case Bytecode_cmplt: 
+        case Bytecode_cmpge: 
+        case Bytecode_cmpgt: {
+            x64->curr_compare_insn = bc;
+        } break;
         
         case Bytecode_branch: {
             
+            X64_Opcode jmp_opcode = X64Opcode_jmp;
+            Bc_Register jump_label;
             
+            Bc_Instruction* cmp = x64->curr_compare_insn;
+            if (cmp) {
+                X64_Instruction* cmp_insn = x64_push_instruction(x64, X64Opcode_cmp);
+                cmp_insn->op0 = x64_build_operand(x64, &cmp->src0);
+                cmp_insn->op1 = x64_build_operand(x64, &cmp->src1);
+                
+                // NOTE(Alexander): we use inverted condition and so we only jump when condition is false
+                switch (cmp->opcode) {
+                    case Bytecode_cmpeq:  jmp_opcode = X64Opcode_jne;  break;
+                    case Bytecode_cmpneq: jmp_opcode = X64Opcode_je;   break;
+                    case Bytecode_cmple:  jmp_opcode = X64Opcode_jnle; break;
+                    case Bytecode_cmplt:  jmp_opcode = X64Opcode_jnl;  break;
+                    case Bytecode_cmpge:  jmp_opcode = X64Opcode_jnge; break;
+                    case Bytecode_cmpgt:  jmp_opcode = X64Opcode_jng;  break;
+                }
+                
+                // TODO(Alexander): for now we will assume that true_label is always following instruction
+                //Bc_Register true_label = bc->src0->Register;
+                jump_label = bc->src1.Register;
+                x64->curr_compare_insn = 0;
+            } else {
+                jump_label = bc->dest.Register;
+            }
+            
+            X64_Instruction* jmp_insn = x64_push_instruction(x64, jmp_opcode);
+            jmp_insn->op0 = x64_build_jump_target(x64, jump_label);
         } break;
         
         case Bytecode_ret: {
@@ -566,27 +594,27 @@ x64_analyse_function(X64_Builder* x64, Bc_Instruction* bc) {
     }
 }
 
-#define for_basic_block(x64, first_block, curr_block, curr_block_insn, function) { \
-Bc_Basic_Block* curr_block = first_block; \
-umm curr_block_insn = 0; \
-\
-while (curr_block) { \
-while (curr_block_insn < curr_block->count) { \
-function(x64, block->first + curr_block_insn); \
-curr_block_insn++; \
-} \
-curr_block = curr_block->next; \
-curr_block_insn = 0; \
-} \
-}
-
 void
 x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
-    for_basic_block(x64, first_block, block, offset, x64_analyse_function);
+    for_bc_basic_block(first_block, insn, insn_index, x64_analyse_function(x64, insn));
     
     x64_push_basic_block(x64, first_block->label);
     x64_push_prologue(x64);
-    for_basic_block(x64, first_block, block, offset, x64_build_instruction_from_bytecode);
+    
+    Bc_Basic_Block* curr_block = first_block;
+    umm curr_block_insn = 0;
+    while (curr_block) {
+        while (curr_block_insn < curr_block->count) {
+            x64_build_instruction_from_bytecode(x64, curr_block->first + curr_block_insn);
+            curr_block_insn++;
+        }
+        curr_block = curr_block->next;
+        curr_block_insn = 0;
+        
+        if (curr_block) {
+            x64_push_basic_block(x64, curr_block->label);
+        }
+    }
     x64_push_epilogue(x64);
 }
 

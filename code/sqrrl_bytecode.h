@@ -103,6 +103,21 @@ struct Bc_Basic_Block {
     Bc_Basic_Block* next;
 };
 
+#define for_bc_basic_block(first_block, it, it_index, code) { \
+Bc_Basic_Block* it_block = first_block; \
+umm it_index = 0; \
+\
+while (it_block) { \
+while (it_index < it_block->count) { \
+Bc_Instruction* it = it_block->first + it_index; \
+code; \
+it_index++; \
+} \
+it_block = it_block->next; \
+it_index = 0; \
+} \
+}
+
 union Bc_Value {
     s64 signed_int;
     u64 unsigned_int;

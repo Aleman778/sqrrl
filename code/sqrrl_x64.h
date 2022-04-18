@@ -13,8 +13,8 @@ X64_OPCODE_ALIAS(cwd, cwo, CWO) \
 X64_OPCODE(mov, MOV) \
 X64_OPCODE(push, PUSH) \
 X64_OPCODE(pop, POP) \
-X64_OPCODE(jmp, JMP) \
 X64_OPCODE(cmp, CMP) \
+X64_OPCODE(jmp, JMP) \
 X64_OPCODE(ja, JA) \
 X64_OPCODE(jae, JAE) \
 X64_OPCODE(jb, JB) \
@@ -249,6 +249,7 @@ X64_OP(ymm) \
 X64_OP(zmm) \
 X64_OP(rel8) \
 X64_OP(rel32) \
+X64_OP(jump_target) \
 X64_OP(basic_block)
 
 enum X64_Operand_Kind {
@@ -269,6 +270,7 @@ struct X64_Operand {
         s32 imm32;
         s64 imm64;
         X64_Basic_Block* basic_block;
+        Bc_Register jump_target;
         u32 virtual_register;
     };
     union {
@@ -301,12 +303,34 @@ struct X64_Instruction {
 #endif
 };
 
+struct X64_Machine_Code {
+    u8* bytes;
+    umm size;
+    umm offset;
+};
+
 struct X64_Basic_Block {
     Bc_Register label;
     X64_Instruction* first;
     umm count;
     X64_Basic_Block* next;
+    X64_Machine_Code code;
 };
+
+#define for_x64_basic_block(first_block, it, it_index, code) { \
+X64_Basic_Block* it_block = first_block; \
+umm it_index = 0; \
+\
+while (it_block) { \
+while (it_index < it_block->count) { \
+X64_Instruction* it = it_block->first + it_index; \
+code; \
+it_index++; \
+} \
+it_block = it_block->next; \
+it_index = 0; \
+} \
+}
 
 union X64_Instruction_Index {
     struct {
@@ -422,11 +446,16 @@ string_builder_push(String_Builder* sb,
             if (insn->opcode == X64Opcode_label) {
                 X64_Basic_Block* block = insn->op0.basic_block;
                 if (block->label.ident) {
-                    string_builder_push_format(sb, "%:\n", 
-                                               f_string(vars_load_string(block->label.ident)));
+                    if (block->label.index > 0) {
+                        string_builder_push_format(sb, "%", 
+                                                   f_string(vars_load_string(block->label.ident)));
+                        string_builder_push_format(sb, "%:\n", f_u32(block->label.index));
+                    } else {
+                        string_builder_push_format(sb, "%:\n",
+                                                   f_string(vars_load_string(block->label.ident)));
+                    }
                 } else {
-                    string_builder_push_format(sb, "%:\n",
-                                               vars_load_string(block->label.index));
+                    string_builder_push_format(sb, "%:\n", f_u32(block->label.index));
                 }
             } else {
                 

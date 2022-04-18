@@ -204,13 +204,20 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         X64_Instruction_Def_Table* x64_instruction_definitions = parse_x86_64_definitions();
         
         // x64 assembler
-        X64_Machine_Code code = x64_assemble_to_machine_code(x64_instruction_definitions,
-                                                             x64_builder.first_basic_block, 
-                                                             asm_buffer);
+        X64_Assembler assembler = {};
+        assembler.bytes = (u8*) asm_buffer;
+        assembler.size = asm_size;
         
-        pln("\nX64 Machine Code (% bytes):", f_umm(code.count));
-        for (int byte_index = 0; byte_index < code.count; byte_index++) {
-            printf("0x%hhX ", (u8) code.bytes[byte_index]);
+        // TODO(Alexander): int3 breakpoint for debugging
+        push_u8(&assembler, 0xCC);
+        
+        x64_assemble_to_machine_code(&assembler,
+                                     x64_instruction_definitions,
+                                     x64_builder.first_basic_block);
+        
+        pln("\nX64 Machine Code (% bytes):", f_umm(assembler.curr_used));
+        for (int byte_index = 0; byte_index < assembler.curr_used; byte_index++) {
+            printf("0x%hhX ", (u8) assembler.bytes[byte_index]);
             if (byte_index % 10 == 9) {
                 printf("\n");
             }

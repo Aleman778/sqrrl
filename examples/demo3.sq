@@ -1,17 +1,34 @@
-
 int
 main() {
+#if 0
     int x = 10;
-    //if (x == 10) {
-    //return 20 / x;
-    //} else {
-    //return x;
-    //}
+    if (x == 10) {
+        return 20 / x;
+    } else {
+        return x;
+    }
+    return y;
     
+#elif 0
+    int x = 10;
     int y = 0;
     for (int i = 0; i < x; i += 1) {
         y += 2;
     }
     
     return y;
+    turn y;
+    
+#elif 1
+    // Truncating integers
+    s64 x = 140234230023;
+    return (int) x; // expects: -1499690745
+    
+#elif 0
+    // Sign extends and wrapping integers
+    s8 x = -10;
+    x += 200;
+    
+    return (int) x; // expects: -66
+#endif
 }

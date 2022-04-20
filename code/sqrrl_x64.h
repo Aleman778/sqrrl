@@ -11,6 +11,8 @@ X64_OPCODE(cwd, CWD) \
 X64_OPCODE_ALIAS(cwd, cwq, CWQ) \
 X64_OPCODE_ALIAS(cwd, cwo, CWO) \
 X64_OPCODE(mov, MOV) \
+X64_OPCODE(movsx, MOVSX) \
+X64_OPCODE(movzx, MOVZX) \
 X64_OPCODE(push, PUSH) \
 X64_OPCODE(pop, POP) \
 X64_OPCODE(cmp, CMP) \
@@ -399,6 +401,14 @@ string_builder_push(String_Builder* sb, X64_Operand* operand, bool show_virtual_
         case X64Operand_m16:
         case X64Operand_m32:
         case X64Operand_m64: {
+            
+            switch (operand->kind) {
+                case X64Operand_m8:  string_builder_push(sb, "byte ptr ");  break;
+                case X64Operand_m16: string_builder_push(sb, "word ptr ");  break;
+                case X64Operand_m32: string_builder_push(sb, "dword ptr "); break;
+                case X64Operand_m64: string_builder_push(sb, "qword ptr "); break;
+            }
+            
             if (operand->is_allocated) {
                 string_builder_push_format(sb, "[%", f_cstring(x64_register_name_table[operand->reg]));
             } else {

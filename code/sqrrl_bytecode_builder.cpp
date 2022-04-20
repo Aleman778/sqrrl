@@ -201,6 +201,20 @@ bc_build_type(Bc_Builder* bc, Type* type) {
     return result;
 }
 
+void
+bc_conform_highest_type(Bc_Operand* first, Bc_Operand* second) {
+    if (first->type.kind != second->type.kind) {
+        s32 first_bitsize = bc_type_to_bitsize(first->type.kind);
+        s32 second_bitsize = bc_type_to_bitsize(second->type.kind);
+        
+        if (first_bitsize > second_bitsize) {
+            second->type = first->type;
+        } else {
+            first->type = second->type;
+        }
+    }
+}
+
 Bc_Operand
 bc_build_expression(Bc_Builder* bc, Ast* node) {
     Bc_Operand result = {};
@@ -289,6 +303,10 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
             Bc_Operand first = bc_build_expression(bc, node->Binary_Expr.first);
             Bc_Operand second = bc_build_expression(bc, node->Binary_Expr.second);
             
+            // TODO(Alexander): conform to largest, maybe this will be done in type stage instead
+            bc_conform_highest_type(&first, &second);
+            
+            
             switch (node->Binary_Expr.op) {
 #define BINOP(name, op, prec, assoc, is_comparator, bc_mnemonic) \
 case BinaryOp_##name: bc_push_instruction(bc, Bytecode_##bc_mnemonic); break;
@@ -320,10 +338,98 @@ case BinaryOp_##name: bc_push_instruction(bc, Bytecode_##bc_mnemonic); break;
                 result = temp_register;
             }
             
-            
         } break;
         
         case Ast_Ternary_Expr: {
+            unimplemented;
+        } break;
+        
+        case Ast_Call_Expr: {
+            unimplemented;
+        } break;
+        
+        case Ast_Field_Expr: {
+            unimplemented;
+        } break;
+        
+        case Ast_Cast_Expr: {
+            Bc_Operand expr = bc_build_expression(bc, node->Cast_Expr.expr);
+            
+            Bc_Type src_type = expr.type;
+            Bc_Type dest_type = bc_build_type(bc, node->Assign_Stmt.type);
+            
+            if (src_type.kind == dest_type.kind) {
+                result = expr;
+            } else {
+                Bc_Opcode opcode = Bytecode_noop;
+                bool is_src_fp = is_bc_type_floating(src_type.kind);
+                bool is_dest_fp = is_bc_type_floating(dest_type.kind);
+                
+                if (is_src_fp && is_dest_fp) {
+                    if (dest_type.kind == BcTypeKind_f64)  {
+                        opcode = Bytecode_fp_extend;
+                    } else {
+                        opcode = Bytecode_fp_truncate;
+                    }
+                } else if (is_src_fp) {
+                    if (is_bc_type_sint(dest_type.kind)) {
+                        opcode = Bytecode_cast_fp_to_sint;
+                    } else {
+                        opcode = Bytecode_cast_fp_to_uint;
+                    }
+                } else if (is_dest_fp) {
+                    if (is_bc_type_sint(src_type.kind)) {
+                        opcode = Bytecode_cast_sint_to_fp;
+                    } else {
+                        opcode = Bytecode_cast_uint_to_fp;
+                    }
+                } else {
+                    int src_size = bc_type_to_bitsize(src_type.kind);
+                    int dest_size = bc_type_to_bitsize(dest_type.kind);
+                    
+                    if (src_size > dest_size) {
+                        opcode = Bytecode_truncate;
+                    } else {
+                        if (is_bc_type_sint(src_type.kind)) {
+                            opcode = Bytecode_sign_extend;
+                        } else {
+                            opcode = Bytecode_zero_extend;
+                        }
+                    }
+                }
+                
+                Bc_Operand dest_type_operand = {};
+                dest_type_operand.kind = BcOperand_Type;
+                dest_type_operand.type = dest_type;
+                
+                Bc_Operand dest = bc_get_unique_register_operand(bc, dest_type);
+                bc_push_instruction(bc, opcode);
+                bc_push_operand(bc, dest);
+                bc_push_operand(bc, expr);
+                bc_push_operand(bc, dest_type_operand);
+                
+                result = dest;
+            }
+            
+        } break;
+        
+        case Ast_Paren_Expr: {
+            unimplemented;
+        } break;
+        
+        case Ast_Index_Expr: {
+            unimplemented;
+        } break;
+        
+        case Ast_Array_Expr: {
+            unimplemented;
+        } break;
+        
+        case Ast_Struct_Expr: {
+            unimplemented;
+        } break;
+        
+        case Ast_Tuple_Expr: {
             unimplemented;
         } break;
         
@@ -392,6 +498,10 @@ bc_build_statement(Bc_Builder* bc, Ast* node) {
             Bc_Type type = bc_build_type(bc, node->Assign_Stmt.type);
             
             Bc_Operand dest = bc_get_unique_register_operand(bc, type);
+            
+            // TODO(Alexander): conform to largest, maybe this will be done in type stage instead
+            bc_conform_highest_type(&dest, &source);
+            
             Bc_Operand alloc_type = dest;
             alloc_type.kind = BcOperand_Type;
             dest.type.ptr_depth++;

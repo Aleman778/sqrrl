@@ -377,9 +377,25 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             s32 stack_offset = x64->stack_offsets[stack_index].value;
             // TODO(Alexander): should also support memory addresses
             
+            X64_Operand source_operand = x64_build_operand(x64, &bc->src0);
+            
+            if (source_operand.kind == X64Operand_imm64) {
+                // NOTE(Alexander): we can only move imm64 to register
+                
+                X64_Operand temp_reg = {};
+                temp_reg.virtual_register = x64_allocate_virtual_register(x64);
+                temp_reg.kind = x64_get_register_kind(bc->dest.type.kind);
+                
+                X64_Instruction* tmp_mov_insn = x64_push_instruction(x64, X64Opcode_mov);
+                tmp_mov_insn->op0 = temp_reg;
+                tmp_mov_insn->op1 = x64_build_operand(x64, &bc->src0);
+                
+                source_operand = temp_reg;
+            }
+            
             X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
             insn->op0 = x64_build_stack_offset(x64, bc->src0.type, stack_offset);
-            insn->op1 = x64_build_operand(x64, &bc->src0);
+            insn->op1 = source_operand;
         } break;
         
         case Bytecode_load: {
@@ -524,6 +540,44 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
             
             X64_Instruction* jmp_insn = x64_push_instruction(x64, jmp_opcode);
             jmp_insn->op0 = x64_build_jump_target(x64, jump_label);
+        } break;
+        
+        case Bytecode_truncate: break;
+        
+        case Bytecode_sign_extend: {
+            X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_movsx);
+            mov_insn->op0 = x64_build_operand(x64, &bc->dest);
+            mov_insn->op1 = x64_build_operand(x64, &bc->src0);
+        } break;
+        
+        case Bytecode_zero_extend: {
+            X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_movzx);
+            mov_insn->op0 = x64_build_operand(x64, &bc->dest);
+            mov_insn->op1 = x64_build_operand(x64, &bc->src0);
+        } break;
+        
+        case Bytecode_cast_fp_to_sint: {
+            unimplemented;
+        } break;
+        
+        case Bytecode_cast_fp_to_uint: {
+            unimplemented;
+        } break;
+        
+        case Bytecode_cast_sint_to_fp: {
+            unimplemented;
+        } break;
+        
+        case Bytecode_cast_uint_to_fp: {
+            unimplemented;
+        } break;
+        
+        case Bytecode_fp_extend: {
+            unimplemented;
+        } break;
+        
+        case Bytecode_fp_truncate: {
+            unimplemented;
         } break;
         
         case Bytecode_ret: {

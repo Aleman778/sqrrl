@@ -33,6 +33,15 @@ BC(cmpge, 3) \
 BC(cmpgt, 3) \
 BC(branch, 3) \
 BC(label, 1) \
+BC(truncate, 3) \
+BC(sign_extend, 3) \
+BC(zero_extend, 3) \
+BC(cast_fp_to_sint, 3) \
+BC(cast_fp_to_uint, 3) \
+BC(cast_sint_to_fp, 3) \
+BC(cast_uint_to_fp, 3) \
+BC(fp_extend, 3) \
+BC(fp_truncate, 3) \
 BC(param, 1) \
 BC(call, 1) \
 BC(ret, 1)
@@ -74,6 +83,42 @@ enum Bc_Type_Kind {
     
     BcTypeKind_Aggregate,
 };
+
+inline bool
+is_bc_type_floating(Bc_Type_Kind kind) {
+    return kind == BcTypeKind_f32 || kind == BcTypeKind_f64;
+}
+
+inline bool
+is_bc_type_sint(Bc_Type_Kind kind) {
+    return kind >= BcTypeKind_s1 && kind <= BcTypeKind_s64;
+}
+
+inline s32
+bc_type_to_bitsize(Bc_Type_Kind kind) {
+    switch (kind) {
+        case BcTypeKind_s1: return 1;
+        case BcTypeKind_s8: return 8;
+        case BcTypeKind_s16: return 16;
+        case BcTypeKind_s32: return 32;
+        case BcTypeKind_s64: return 64;
+        
+        case BcTypeKind_u8: return 8;
+        case BcTypeKind_u16: return 16;
+        case BcTypeKind_u32: return 32;
+        case BcTypeKind_u64: return 64;
+        
+        case BcTypeKind_f32: return 32;
+        case BcTypeKind_f64: return 64;
+    }
+    
+    return 0;
+}
+
+inline bool
+is_bc_type_uint(Bc_Type_Kind kind) {
+    return kind >= BcTypeKind_u8 && kind <= BcTypeKind_u64;
+}
 
 struct Bc_Type {
     Bc_Type_Kind kind;
@@ -160,6 +205,9 @@ string_builder_push(String_Builder* sb, Bc_Type type) {
         case BcTypeKind_u16: string_builder_push(sb, "u16"); break;
         case BcTypeKind_u32: string_builder_push(sb, "u32"); break;
         case BcTypeKind_u64: string_builder_push(sb, "u64"); break;
+        
+        case BcTypeKind_f32: string_builder_push(sb, "f32"); break;
+        case BcTypeKind_f64: string_builder_push(sb, "f64"); break;
     }
     
     

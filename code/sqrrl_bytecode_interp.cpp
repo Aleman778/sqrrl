@@ -217,8 +217,74 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
             interp->curr_block_insn = 0;
         } break;
         
+        // TODO(Alexander): do we need this we should truncate when storing the value instead
+        case Bytecode_truncate: {
+            Bc_Value result = bc_interp_operand_value(interp, &bc->src0);
+            bc_interp_store_register(interp, bc->dest.Register, result);
+        } break;
+        
+        case Bytecode_sign_extend: {
+            Bc_Value value = bc_interp_operand_value(interp, &bc->src0);
+            Bc_Value result = value;
+            
+            bool high_bit_set = (value.unsigned_int & 
+                                 (1ll << (u64) bc_type_to_bitsize(bc->src0.type.kind))) > 0;
+            u64 mask = U64_MAX << (u64) bc_type_to_bitsize(bc->src1.type.kind);
+            if (high_bit_set) {
+                result.unsigned_int = result.unsigned_int | mask;
+            } else {
+                result.unsigned_int = result.unsigned_int & ~mask;
+            }
+            
+            bc_interp_store_register(interp, bc->dest.Register, result);
+        } break;
+        
+        case Bytecode_zero_extend: {
+            Bc_Value value = bc_interp_operand_value(interp, &bc->src0);
+            Bc_Value result = value;
+            
+            u64 mask = U64_MAX << (u64) bc_type_to_bitsize(bc->src1.type.kind);
+            result.unsigned_int = result.unsigned_int & ~mask;
+            
+            bc_interp_store_register(interp, bc->dest.Register, result);
+        } break;
+        
+        case Bytecode_cast_fp_to_sint: {
+            unimplemented;
+        } break;
+        
+        case Bytecode_cast_fp_to_uint: {
+            unimplemented;
+        } break;
+        
+        case Bytecode_cast_sint_to_fp: {
+            unimplemented;
+        } break;
+        
+        case Bytecode_cast_uint_to_fp: {
+            unimplemented;
+        } break;
+        
+        case Bytecode_fp_extend: {
+            unimplemented;
+        } break;
+        
+        case Bytecode_fp_truncate: {
+            unimplemented;
+        } break;
+        
         case Bytecode_ret: {
             Bc_Value value = bc_interp_operand_value(interp, &bc->src0);
+            switch (bc->src0.type.kind) {
+                case BcTypeKind_s1:  value.unsigned_int = (u64) 1 & value.unsigned_int; break;
+                case BcTypeKind_s8:  value.signed_int = (s8) value.signed_int; break;
+                case BcTypeKind_s16: value.signed_int = (s16) value.signed_int; break;
+                case BcTypeKind_s32: value.signed_int = (s32) value.signed_int; break;
+                case BcTypeKind_u8:  value.unsigned_int = (u8) value.unsigned_int; break;
+                case BcTypeKind_u16: value.unsigned_int = (u16) value.unsigned_int; break;
+                case BcTypeKind_u32: value.unsigned_int = (u32) value.unsigned_int; break;
+            }
+            
             pln("DEBUG: interpreter returned: %", f_s64(value.signed_int));
         } break;
         

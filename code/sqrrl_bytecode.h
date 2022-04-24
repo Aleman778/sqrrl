@@ -115,6 +115,31 @@ bc_type_to_bitsize(Bc_Type_Kind kind) {
     return 0;
 }
 
+Value_Type
+bc_type_to_value_type(Bc_Type_Kind kind) {
+    switch (kind) {
+        case BcTypeKind_s1:
+        case BcTypeKind_s8:
+        case BcTypeKind_s16:
+        case BcTypeKind_s32:
+        case BcTypeKind_s64: return Value_signed_int;
+        
+        case BcTypeKind_u8:
+        case BcTypeKind_u16:
+        case BcTypeKind_u32:
+        case BcTypeKind_u64: return Value_unsigned_int;
+        
+        case BcTypeKind_f32:
+        case BcTypeKind_f64: return Value_floating;
+        
+        default: {
+            assert(0 && "unsupprted bytecode type");
+        } break;
+    }
+    
+    return Value_void;
+}
+
 inline bool
 is_bc_type_uint(Bc_Type_Kind kind) {
     return kind >= BcTypeKind_u8 && kind <= BcTypeKind_u64;
@@ -163,20 +188,12 @@ it_index = 0; \
 } \
 }
 
-union Bc_Value {
-    s64 signed_int;
-    u64 unsigned_int;
-    f64 floating;
-    void* data;
-    Bc_Basic_Block* basic_block;
-};
-
 struct Bc_Operand {
     Bc_Operand_Kind kind;
     Bc_Type type;
     union {
         Bc_Register Register;
-        Bc_Value Value;
+        Value_Data Value;
         Bc_Basic_Block* Basic_Block;
     };
 };
@@ -188,7 +205,7 @@ struct Bc_Instruction {
     Bc_Operand src1;
 };
 
-typedef map(Bc_Register, Bc_Value) Bc_Label_To_Value_Table;
+typedef map(Bc_Register, Value_Data) Bc_Label_To_Value_Table;
 
 bool
 string_builder_push(String_Builder* sb, Bc_Type type) {
@@ -228,7 +245,7 @@ string_builder_push(String_Builder* sb, Bc_Register reg) {
 }
 
 void
-string_builder_push(String_Builder* sb, Bc_Value value, Bc_Type type) {
+string_builder_push(String_Builder* sb, Value_Data value, Bc_Type type) {
     if (type.ptr_depth == 0) {
         switch (type.kind) {
             case BcTypeKind_s1:  

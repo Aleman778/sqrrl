@@ -2,6 +2,8 @@
 Value
 value_cast(Value value, Type* type) {
     // TODO(Alexander): handle type errors here
+    Value result = {};
+    
     switch (type->kind) {
         case TypeKind_Primitive: {
             switch (type->Primitive.kind) {
@@ -12,8 +14,8 @@ value_cast(Value value, Type* type) {
                 case PrimitiveTypeKind_b32:
                 case PrimitiveTypeKind_s64:
                 case PrimitiveTypeKind_smm: {
-                    value.signed_int = value_to_s64(value);
-                    value.type = Value_signed_int;
+                    result.data.signed_int = value_to_s64(value);
+                    result.type = Value_signed_int;
                 } break;
                 
                 case PrimitiveTypeKind_uint:
@@ -22,19 +24,19 @@ value_cast(Value value, Type* type) {
                 case PrimitiveTypeKind_u32:
                 case PrimitiveTypeKind_u64:
                 case PrimitiveTypeKind_umm: {
-                    value.unsigned_int = value_to_u64(value);
-                    value.type = Value_unsigned_int;
+                    result.data.unsigned_int = value_to_u64(value);
+                    result.type = Value_unsigned_int;
                 } break;
                 
                 case PrimitiveTypeKind_f32:
                 case PrimitiveTypeKind_f64: {
-                    value.floating = value_to_f64(value);
-                    value.type = Value_floating;
+                    result.data.floating = value_to_f64(value);
+                    result.type = Value_floating;
                 } break;
                 
                 case PrimitiveTypeKind_bool: {
-                    value.boolean = value_to_bool(value);
-                    value.type = Value_boolean;
+                    result.data.boolean = value_to_bool(value);
+                    result.type = Value_boolean;
                 } break;
                 
                 default: {
@@ -49,7 +51,7 @@ value_cast(Value value, Type* type) {
         } break;
     }
     
-    return value;
+    return result;
 }
 
 inline s64
@@ -57,80 +59,80 @@ value_integer_binary_operation(Value first, Value second, Binary_Op op) {
     switch (op) {
         case BinaryOp_Multiply: 
         case BinaryOp_Multiply_Assign: {
-            return first.signed_int * second.signed_int;
+            return first.data.signed_int * second.data.signed_int;
         }
         
         case BinaryOp_Divide:
         case BinaryOp_Divide_Assign:{
-            return first.signed_int / second.signed_int;
+            return first.data.signed_int / second.data.signed_int;
         }
         
         case BinaryOp_Modulo:
         case BinaryOp_Modulo_Assign:{
-            return first.signed_int % second.signed_int;
+            return first.data.signed_int % second.data.signed_int;
         }
         
         case BinaryOp_Add:
         case BinaryOp_Add_Assign:{
-            return first.signed_int + second.signed_int;
+            return first.data.signed_int + second.data.signed_int;
         }
         
         case BinaryOp_Subtract:
         case BinaryOp_Subtract_Assign:{
-            return first.signed_int - second.signed_int;
+            return first.data.signed_int - second.data.signed_int;
         }
         
         case BinaryOp_Shift_Left:
         case BinaryOp_Shift_Left_Assign: {
-            return first.signed_int << second.signed_int;
+            return first.data.signed_int << second.data.signed_int;
         }
         
         case BinaryOp_Shift_Right:
         case BinaryOp_Shift_Right_Assign:{
-            return first.signed_int >> second.signed_int;
+            return first.data.signed_int >> second.data.signed_int;
         }
         
         case BinaryOp_Bitwise_And:
         case BinaryOp_Bitwise_And_Assign:{
-            return first.signed_int & second.signed_int;
+            return first.data.signed_int & second.data.signed_int;
         }
         
         case BinaryOp_Bitwise_Or:
         case BinaryOp_Bitwise_Or_Assign:{
-            return first.signed_int | second.signed_int;
+            return first.data.signed_int | second.data.signed_int;
         }
         
         case BinaryOp_Bitwise_Xor:
         case BinaryOp_Bitwise_Xor_Assign:{
-            return first.signed_int ^ second.signed_int;
+            return first.data.signed_int ^ second.data.signed_int;
         }
         
         case BinaryOp_Less_Than: {
-            return first.signed_int < second.signed_int;
+            return first.data.signed_int < second.data.signed_int;
         }
         
         case BinaryOp_Less_Equals: {
-            return first.signed_int <= second.signed_int;
+            return first.data.signed_int <= second.data.signed_int;
         }
         
         case BinaryOp_Greater_Than: {
-            return first.signed_int > second.signed_int;
+            return first.data.signed_int > second.data.signed_int;
         }
         
         case BinaryOp_Greater_Equals: {
-            return first.signed_int >= second.signed_int;
+            return first.data.signed_int >= second.data.signed_int;
         }
         
         case BinaryOp_Equals: {
-            return first.signed_int == second.signed_int;
+            return first.data.signed_int == second.data.signed_int;
         }
         
         case BinaryOp_Not_Equals: {
-            return first.signed_int != second.signed_int;
+            return first.data.signed_int != second.data.signed_int;
         }
         
         case BinaryOp_Assign: {
-            return second.signed_int;
+            return second.data.signed_int;
         }
         
         default: {
@@ -141,7 +143,6 @@ value_integer_binary_operation(Value first, Value second, Binary_Op op) {
     return 0;
 }
 
-
 inline Value
 value_floating_binary_operation(Value first, Value second, Binary_Op op) {
     Value result;
@@ -150,56 +151,56 @@ value_floating_binary_operation(Value first, Value second, Binary_Op op) {
     switch (op) {
         case BinaryOp_Multiply: 
         case BinaryOp_Multiply_Assign: {
-            result.floating = first.floating * second.floating;
+            result.data.floating = first.data.floating * second.data.floating;
         } break;
         
         case BinaryOp_Divide:
         case BinaryOp_Divide_Assign:{
-            result.floating = first.floating / second.floating;
+            result.data.floating = first.data.floating / second.data.floating;
         } break;
         
         case BinaryOp_Add:
         case BinaryOp_Add_Assign:{
-            result.floating = first.floating + second.floating;
+            result.data.floating = first.data.floating + second.data.floating;
         } break;
         
         case BinaryOp_Subtract:
         case BinaryOp_Subtract_Assign:{
-            result.floating = first.floating - second.floating;
+            result.data.floating = first.data.floating - second.data.floating;
         } break;
         
         case BinaryOp_Less_Than: {
-            result.boolean = first.floating < second.floating;
+            result.data.boolean = first.data.floating < second.data.floating;
             result.type = Value_boolean;
         } break;
         
         case BinaryOp_Less_Equals: {
-            result.boolean = first.floating <= second.floating;
+            result.data.boolean = first.data.floating <= second.data.floating;
             result.type = Value_boolean;
         } break;
         
         case BinaryOp_Greater_Than: {
-            result.boolean = first.floating > second.floating;
+            result.data.boolean = first.data.floating > second.data.floating;
             result.type = Value_boolean;
         } break;
         
         case BinaryOp_Greater_Equals: {
-            result.boolean = first.floating >= second.floating;
+            result.data.boolean = first.data.floating >= second.data.floating;
             result.type = Value_boolean;
         } break;
         
         case BinaryOp_Equals: {
-            result.boolean = first.floating == second.floating;
+            result.data.boolean = first.data.floating == second.data.floating;
             result.type = Value_boolean;
         } break;
         
         case BinaryOp_Not_Equals: {
-            result.boolean = first.floating != second.floating;
+            result.data.boolean = first.data.floating != second.data.floating;
             result.type = Value_boolean;
         } break;
         
         case BinaryOp_Assign: {
-            result.floating = second.floating;
+            result.data.floating = second.data.floating;
         } break;
         
         default: {
@@ -214,27 +215,27 @@ value_floating_binary_operation(Value first, Value second, Binary_Op op) {
 void string_builder_push(String_Builder* sb, Value* value) {
     switch (value->type) {
         case Value_boolean: {
-            string_builder_push(sb, value->boolean ? "true" : "false");
+            string_builder_push(sb, value->data.boolean ? "true" : "false");
         } break;
         
         case Value_signed_int: {
-            string_builder_push_format(sb, "%", f_s64(value->signed_int));
+            string_builder_push_format(sb, "%", f_s64(value->data.signed_int));
         } break;
         
         case Value_unsigned_int: {
-            string_builder_push_format(sb, "%", f_u64(value->unsigned_int));
+            string_builder_push_format(sb, "%", f_u64(value->data.unsigned_int));
         } break;
         
         case Value_floating: {
-            string_builder_push_format(sb, "%", f_float(value->floating));
+            string_builder_push_format(sb, "%", f_float(value->data.floating));
         } break;
         
         case Value_pointer: {
-            string_builder_push_cformat(sb, "0x%I64X", value->pointer);
+            string_builder_push_cformat(sb, "0x%I64X", value->data.pointer);
         } break;
         
         case Value_array: {
-            string_builder_push_cformat(sb, "0x%I64X", (smm) value->array.elements);
+            string_builder_push_cformat(sb, "0x%I64X", (smm) value->data.array.elements);
             // TODO(Alexander): can't know what elements there are without the type!
             //printf("[");
             //Array_Value* arr = &val->array;
@@ -246,7 +247,7 @@ void string_builder_push(String_Builder* sb, Value* value) {
         } break;
         
         case Value_string: {
-            string_builder_push_format(sb, "\"%\"", f_string(value->str));
+            string_builder_push_format(sb, "\"%\"", f_string(value->data.str));
         } break;
     }
 }

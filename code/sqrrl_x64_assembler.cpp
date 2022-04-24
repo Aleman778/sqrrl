@@ -104,6 +104,7 @@ x64_assemble_instruction(X64_Assembler* assembler,
             // TODO(Alexander): might now work for cross compiling
             u8* disp_bytes = (u8*) &displacement;
             for (s32 byte_index = 0; byte_index < displacement_bytes; byte_index++) {
+                // TODO(Alexander): little-endian
                 push_u8(assembler, disp_bytes[byte_index]);
             }
         }
@@ -113,7 +114,9 @@ x64_assemble_instruction(X64_Assembler* assembler,
     if (encoding->imm_size > 0) {
         s64 imm = insn->operands[encoding->imm_op].imm64;
         u8* imm_bytes = (u8*) &imm;
+        
         for (s32 byte_index = 0; byte_index < encoding->imm_size; byte_index++) {
+            // TODO(Alexander): little-endian
             push_u8(assembler, imm_bytes[byte_index]);
         }
     }

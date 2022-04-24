@@ -72,164 +72,6 @@ global const cstring x64_opcode_names[] = {
 };
 
 
-enum X64_Register_Type {
-    X64RegisterType_GPR, // General purpose register
-    X64RegisterType_FPU, // Floating point unit
-    X64RegisterType_MMX, // First version of SIMD
-    X64RegisterType_SSE, // Streaming SIMD Extension
-    X64RegisterType_AVX, // Advanced Vector Extension
-};
-
-// X64_REGISTER(mnemonic, size, id, type)
-#define DEF_X64_REGISTERS \
-X64_REGISTER(unallocated_r8,   1,  0, GPR) \
-X64_REGISTER(unallocated_r16,  2,  0, GPR) \
-X64_REGISTER(unallocated_r32,  4,  0, GPR) \
-X64_REGISTER(unallocated_r64,  8,  0, GPR) \
-X64_REGISTER(unallocated_stx,  10, 0, GPR) \
-X64_REGISTER(unallocated_mmx,  8,  0, GPR) \
-\
-X64_REGISTER(ah,   1, 4, GPR) \
-X64_REGISTER(al,   1, 0, GPR) \
-X64_REGISTER(ax,   2, 0, GPR) \
-X64_REGISTER(eax,  4, 0, GPR) \
-X64_REGISTER(rax,  8, 0, GPR) \
-\
-X64_REGISTER(bh,   1, 7, GPR) \
-X64_REGISTER(bl,   1, 3, GPR) \
-X64_REGISTER(bx,   2, 3, GPR) \
-X64_REGISTER(ebx,  4, 3, GPR) \
-X64_REGISTER(rbx,  8, 3, GPR) \
-\
-X64_REGISTER(ch,   1, 5, GPR) \
-X64_REGISTER(cl,   1, 1, GPR) \
-X64_REGISTER(cx,   2, 1, GPR) \
-X64_REGISTER(ecx,  4, 1, GPR) \
-X64_REGISTER(rcx,  8, 1, GPR) \
-\
-X64_REGISTER(dh,   1, 6, GPR) \
-X64_REGISTER(dl,   1, 2, GPR) \
-X64_REGISTER(dx,   2, 2, GPR) \
-X64_REGISTER(edx,  4, 2, GPR) \
-X64_REGISTER(rdx,  8, 2, GPR) \
-\
-X64_REGISTER(sil,  1, 6, GPR) \
-X64_REGISTER(si,   2, 6, GPR) \
-X64_REGISTER(esi,  4, 6, GPR) \
-X64_REGISTER(rsi,  8, 6, GPR) \
-\
-X64_REGISTER(dil,  1, 7, GPR) \
-X64_REGISTER(di,   2, 7, GPR) \
-X64_REGISTER(edi,  4, 7, GPR) \
-X64_REGISTER(rdi,  8, 7, GPR) \
-\
-X64_REGISTER(bpl,  1, 5, GPR) \
-X64_REGISTER(bp,   2, 5, GPR) \
-X64_REGISTER(ebp,  4, 5, GPR) \
-X64_REGISTER(rbp,  8, 5, GPR) \
-\
-X64_REGISTER(spl,  1, 4, GPR) \
-X64_REGISTER(sp,   2, 4, GPR) \
-X64_REGISTER(esp,  4, 4, GPR) \
-X64_REGISTER(rsp,  8, 4, GPR) \
-\
-X64_REGISTER(r8b,  1, 8, GPR) \
-X64_REGISTER(r8w,  2, 8, GPR) \
-X64_REGISTER(r8d,  4, 8, GPR) \
-X64_REGISTER(r8,   8, 8, GPR) \
-\
-X64_REGISTER(r9b,  1, 9, GPR) \
-X64_REGISTER(r9w,  2, 9, GPR) \
-X64_REGISTER(r9d,  4, 9, GPR) \
-X64_REGISTER(r9,   8, 9, GPR) \
-\
-X64_REGISTER(r10b,  1, 10, GPR) \
-X64_REGISTER(r10w,  2, 10, GPR) \
-X64_REGISTER(r10d,  4, 10, GPR) \
-X64_REGISTER(r10,   8, 10, GPR) \
-\
-X64_REGISTER(r11b,  1, 11, GPR) \
-X64_REGISTER(r11w,  2, 11, GPR) \
-X64_REGISTER(r11d,  4, 11, GPR) \
-X64_REGISTER(r11,   8, 11, GPR) \
-\
-X64_REGISTER(r12b,  1, 12, GPR) \
-X64_REGISTER(r12w,  2, 12, GPR) \
-X64_REGISTER(r12d,  4, 12, GPR) \
-X64_REGISTER(r12,   8, 12, GPR) \
-\
-X64_REGISTER(r13b,  1, 13, GPR) \
-X64_REGISTER(r13w,  2, 13, GPR) \
-X64_REGISTER(r13d,  4, 13, GPR) \
-X64_REGISTER(r13,   8, 13, GPR) \
-\
-X64_REGISTER(r14b,  1, 14, GPR) \
-X64_REGISTER(r14w,  2, 14, GPR) \
-X64_REGISTER(r14d,  4, 14, GPR) \
-X64_REGISTER(r14,   8, 14, GPR) \
-\
-X64_REGISTER(r15b,  1, 15, GPR) \
-X64_REGISTER(r15w,  2, 15, GPR) \
-X64_REGISTER(r15d,  4, 15, GPR) \
-X64_REGISTER(r15,   8, 15, GPR) \
-\
-X64_REGISTER(st0, 10, 0, FPU) \
-X64_REGISTER(st1, 10, 1, FPU) \
-X64_REGISTER(st2, 10, 2, FPU) \
-X64_REGISTER(st3, 10, 3, FPU) \
-X64_REGISTER(st4, 10, 4, FPU) \
-X64_REGISTER(st5, 10, 5, FPU) \
-X64_REGISTER(st6, 10, 6, FPU) \
-X64_REGISTER(st7, 10, 7, FPU) \
-\
-X64_REGISTER(mm0, 8, 0, MMX) \
-X64_REGISTER(mm1, 8, 1, MMX) \
-X64_REGISTER(mm2, 8, 2, MMX) \
-X64_REGISTER(mm3, 8, 3, MMX) \
-X64_REGISTER(mm4, 8, 4, MMX) \
-X64_REGISTER(mm5, 8, 5, MMX) \
-X64_REGISTER(mm6, 8, 6, MMX) \
-X64_REGISTER(mm7, 8, 7, MMX)
-// TODO(Alexander): add more registers
-
-global int const x64_num_physical_registers = 24; // counting rax and eax as the same
-
-enum X64_Register {
-#define X64_REGISTER(mnemonic, ...) X64Register_##mnemonic,
-    DEF_X64_REGISTERS
-#undef X64_REGISTER
-};
-
-global int x64_register_size_table[] = {
-#define X64_REGISTER(mnemonic, size, ...) size,
-    DEF_X64_REGISTERS
-#undef X64_REGISTER
-};
-
-global int x64_register_id_table[] = {
-#define X64_REGISTER(mnemonic, size, id, ...) id,
-    DEF_X64_REGISTERS
-#undef X64_REGISTER
-};
-
-global cstring x64_register_name_table[] = {
-#define X64_REGISTER(mnemonic, ...) #mnemonic,
-    DEF_X64_REGISTERS
-#undef X64_REGISTER
-};
-
-global X64_Register x64_gpr_register_table[] = {
-    X64Register_rax, X64Register_rcx, X64Register_rdx, X64Register_rbx,
-    X64Register_rsi, X64Register_rdi, X64Register_r8,  X64Register_r9,
-    X64Register_r10, X64Register_r11, X64Register_r12, X64Register_r13,
-    X64Register_r14, X64Register_r15
-};
-
-bool
-register_is_gpr(X64_Register reg) {
-    return reg >= X64Register_ah && reg <= X64Register_r15;
-}
-
 #define DEF_X64_OPERANDS \
 X64_OP(None) \
 X64_OP(r8) \
@@ -259,6 +101,171 @@ enum X64_Operand_Kind {
     DEF_X64_OPERANDS
 #undef X64_OP
 };
+
+
+enum X64_Register_Type {
+    X64RegisterType_GPR, // General purpose register
+    X64RegisterType_FPU, // Floating point unit
+    X64RegisterType_MMX, // First version of SIMD
+    X64RegisterType_SSE, // Streaming SIMD Extension
+    X64RegisterType_AVX, // Advanced Vector Extension
+};
+
+// X64_REGISTER(mnemonic, size, id, opcode, operand_kind, type)
+#define DEF_X64_REGISTERS \
+X64_REGISTER(unallocated_r8,   1,  -1, r8, GPR) \
+X64_REGISTER(unallocated_r16,  2,  -1, r16, GPR) \
+X64_REGISTER(unallocated_r32,  4,  -1, r32, GPR) \
+X64_REGISTER(unallocated_r64,  8,  -1, r64, GPR) \
+X64_REGISTER(unallocated_stx,  10, -1, st, GPR) \
+X64_REGISTER(unallocated_mmx,  8,  -1, mm, GPR) \
+\
+X64_REGISTER(ah,   1, 20, r8, GPR) \
+X64_REGISTER(al,   1, 0, r8, GPR) \
+X64_REGISTER(ax,   2, 0, r16, GPR) \
+X64_REGISTER(eax,  4, 0, r32, GPR) \
+X64_REGISTER(rax,  8, 0, r64, GPR) \
+\
+X64_REGISTER(bh,   1, 23, r8, GPR) \
+X64_REGISTER(bl,   1, 3, r8, GPR) \
+X64_REGISTER(bx,   2, 3, r16, GPR) \
+X64_REGISTER(ebx,  4, 3, r32, GPR) \
+X64_REGISTER(rbx,  8, 3, r64, GPR) \
+\
+X64_REGISTER(ch,   1, 21, r8, GPR) \
+X64_REGISTER(cl,   1, 1, r8, GPR) \
+X64_REGISTER(cx,   2, 1, r16, GPR)\
+X64_REGISTER(ecx,  4, 1, r32, GPR) \
+X64_REGISTER(rcx,  8, 1, r64, GPR) \
+\
+X64_REGISTER(dh,   1, 22, r8, GPR) \
+X64_REGISTER(dl,   1, 2, r8, GPR) \
+X64_REGISTER(dx,   2, 2, r16, GPR) \
+X64_REGISTER(edx,  4, 2, r32, GPR) \
+X64_REGISTER(rdx,  8, 2, r64, GPR) \
+\
+X64_REGISTER(sil,  1, 6, r8, GPR) \
+X64_REGISTER(si,   2, 6, r16, GPR) \
+X64_REGISTER(esi,  4, 6, r32, GPR) \
+X64_REGISTER(rsi,  8, 6, r64, GPR) \
+\
+X64_REGISTER(dil,  1, 7, r8, GPR) \
+X64_REGISTER(di,   2, 7, r16, GPR) \
+X64_REGISTER(edi,  4, 7, r32, GPR) \
+X64_REGISTER(rdi,  8, 7, r64, GPR) \
+\
+X64_REGISTER(bpl,  1, 5, r8, GPR) \
+X64_REGISTER(bp,   2, 5, r16, GPR) \
+X64_REGISTER(ebp,  4, 5, r32, GPR) \
+X64_REGISTER(rbp,  8, 5, r64, GPR) \
+\
+X64_REGISTER(spl,  1, 4, r8, GPR) \
+X64_REGISTER(sp,   2, 4, r16, GPR) \
+X64_REGISTER(esp,  4, 4, r32, GPR) \
+X64_REGISTER(rsp,  8, 4, r64, GPR) \
+\
+X64_REGISTER(r8b,  1, 8, r8, GPR) \
+X64_REGISTER(r8w,  2, 8, r16, GPR)\
+X64_REGISTER(r8d,  4, 8, r32, GPR) \
+X64_REGISTER(r8,   8, 8, r64, GPR) \
+\
+X64_REGISTER(r9b,  1, 9, r8, GPR) \
+X64_REGISTER(r9w,  2, 9, r16, GPR) \
+X64_REGISTER(r9d,  4, 9, r32, GPR) \
+X64_REGISTER(r9,   8, 9, r64, GPR) \
+\
+X64_REGISTER(r10b,  1, 10, r8, GPR) \
+X64_REGISTER(r10w,  2, 10, r16, GPR)\
+X64_REGISTER(r10d,  4, 10, r32, GPR) \
+X64_REGISTER(r10,   8, 10, r64, GPR) \
+\
+X64_REGISTER(r11b,  1, 11, r8, GPR) \
+X64_REGISTER(r11w,  2, 11, r16, GPR) \
+X64_REGISTER(r11d,  4, 11, r32, GPR) \
+X64_REGISTER(r11,   8, 11, r64, GPR) \
+\
+X64_REGISTER(r12b,  1, 12, r8, GPR) \
+X64_REGISTER(r12w,  2, 12, r16, GPR)\
+X64_REGISTER(r12d,  4, 12, r32, GPR) \
+X64_REGISTER(r12,   8, 12, r64, GPR) \
+\
+X64_REGISTER(r13b,  1, 13, r8, GPR) \
+X64_REGISTER(r13w,  2, 13, r16, GPR) \
+X64_REGISTER(r13d,  4, 13, r32, GPR) \
+X64_REGISTER(r13,   8, 13, r64, GPR) \
+\
+X64_REGISTER(r14b,  1, 14, r8, GPR) \
+X64_REGISTER(r14w,  2, 14, r16, GPR) \
+X64_REGISTER(r14d,  4, 14, r32, GPR) \
+X64_REGISTER(r14,   8, 14, r64, GPR) \
+\
+X64_REGISTER(r15b,  1, 15, r8, GPR) \
+X64_REGISTER(r15w,  2, 15, r16, GPR) \
+X64_REGISTER(r15d,  4, 15, r32, GPR) \
+X64_REGISTER(r15,   8, 15, r64, GPR) \
+\
+X64_REGISTER(st0, 10, 0, st, FPU) \
+X64_REGISTER(st1, 10, 1, st, FPU) \
+X64_REGISTER(st2, 10, 2, st, FPU) \
+X64_REGISTER(st3, 10, 3, st, FPU) \
+X64_REGISTER(st4, 10, 4, st, FPU) \
+X64_REGISTER(st5, 10, 5, st, FPU) \
+X64_REGISTER(st6, 10, 6, st, FPU) \
+X64_REGISTER(st7, 10, 7, st, FPU) \
+\
+X64_REGISTER(mm0, 8, 0, mm, MMX) \
+X64_REGISTER(mm1, 8, 1, mm, MMX) \
+X64_REGISTER(mm2, 8, 2, mm, MMX) \
+X64_REGISTER(mm3, 8, 3, mm, MMX) \
+X64_REGISTER(mm4, 8, 4, mm, MMX) \
+X64_REGISTER(mm5, 8, 5, mm, MMX) \
+X64_REGISTER(mm6, 8, 6, mm, MMX) \
+X64_REGISTER(mm7, 8, 7, mm, MMX)
+// TODO(Alexander): add more registers
+
+global int const x64_num_physical_registers = 24; // counting rax and eax as the same
+
+enum X64_Register {
+#define X64_REGISTER(mnemonic, ...) X64Register_##mnemonic,
+    DEF_X64_REGISTERS
+#undef X64_REGISTER
+};
+
+global int x64_register_size_table[] = {
+#define X64_REGISTER(mnemonic, size, ...) size,
+    DEF_X64_REGISTERS
+#undef X64_REGISTER
+};
+
+global int x64_register_id_table[] = {
+#define X64_REGISTER(mnemonic, size, id, ...) id,
+    DEF_X64_REGISTERS
+#undef X64_REGISTER
+};
+
+global X64_Operand_Kind x64_register_operand_table[] = {
+#define X64_REGISTER(mnemonic, size, id, operand_kind, ...) X64Operand_##operand_kind,
+    DEF_X64_REGISTERS
+#undef X64_REGISTER
+};
+
+global cstring x64_register_name_table[] = {
+#define X64_REGISTER(mnemonic, ...) #mnemonic,
+    DEF_X64_REGISTERS
+#undef X64_REGISTER
+};
+
+global X64_Register x64_gpr_register_table[] = {
+    X64Register_rax, X64Register_rcx, X64Register_rdx, X64Register_rbx,
+    X64Register_rsi, X64Register_rdi, X64Register_r8,  X64Register_r9,
+    X64Register_r10, X64Register_r11, X64Register_r12, X64Register_r13,
+    X64Register_r14, X64Register_r15
+};
+
+bool
+register_is_gpr(X64_Register reg) {
+    return reg >= X64Register_ah && reg <= X64Register_r15;
+}
 
 // NOTE(Alexander): forward declare
 struct X64_Basic_Block;
@@ -379,6 +386,39 @@ struct X64_Encoding {
 
 typedef map(X64_Instruction_Index, X64_Encoding) X64_Instruction_Def_Table;
 
+
+union X64_Register_Index {
+    struct {
+        u8 register_id;
+        u8 operand_kind;
+    };
+    u16 packed;
+};
+
+X64_Register
+convert_register_to_specific_kind(X64_Register reg, X64_Operand_Kind kind) {
+    X64_Operand_Kind reg_kind = x64_register_operand_table[reg];
+    if (reg_kind == kind) {
+        return reg;
+    }
+    
+#define rindex(id, operand_kind) (((u16) id << 8) | (u16) X64Operand_##operand_kind)
+    
+    u16 index = (u16) x64_register_id_table[reg] << 8 | (u16) kind;
+    
+    switch (index) {
+#define X64_REGISTER(mnemonic, size, id, opreand_kind, ...) case rindex(id, opreand_kind): \
+return X64Register_##mnemonic;
+        DEF_X64_REGISTERS
+#undef X64_REGISTER
+        default: {
+            assert(0 && "no valid register for given operand");
+        } break;
+    }
+    
+    return reg;
+}
+
 void
 string_builder_push(String_Builder* sb, X64_Operand* operand, bool show_virtual_registers=false) {
     switch (operand->kind) {
@@ -387,7 +427,8 @@ string_builder_push(String_Builder* sb, X64_Operand* operand, bool show_virtual_
         case X64Operand_r32:
         case X64Operand_r64: {
             if (operand->is_allocated) {
-                string_builder_push_format(sb, "%", f_cstring(x64_register_name_table[operand->reg]));
+                X64_Register actual_reg = convert_register_to_specific_kind(operand->reg, operand->kind);
+                string_builder_push_format(sb, "%", f_cstring(x64_register_name_table[actual_reg]));
             } else {
                 if (show_virtual_registers) {
                     string_builder_push_format(sb, "r%", f_u32(operand->virtual_register));
@@ -401,7 +442,6 @@ string_builder_push(String_Builder* sb, X64_Operand* operand, bool show_virtual_
         case X64Operand_m16:
         case X64Operand_m32:
         case X64Operand_m64: {
-            
             switch (operand->kind) {
                 case X64Operand_m8:  string_builder_push(sb, "byte ptr ");  break;
                 case X64Operand_m16: string_builder_push(sb, "word ptr ");  break;
@@ -410,7 +450,16 @@ string_builder_push(String_Builder* sb, X64_Operand* operand, bool show_virtual_
             }
             
             if (operand->is_allocated) {
-                string_builder_push_format(sb, "[%", f_cstring(x64_register_name_table[operand->reg]));
+                X64_Operand_Kind reg_kind = X64Operand_None;
+                switch (operand->kind) {
+                    case X64Operand_m8: reg_kind = X64Operand_r8; break;
+                    case X64Operand_m16: reg_kind = X64Operand_r16; break;
+                    case X64Operand_m32: reg_kind = X64Operand_r32; break;
+                    case X64Operand_m64: reg_kind = X64Operand_r64; break;
+                }
+                
+                X64_Register actual_reg = convert_register_to_specific_kind(operand->reg, reg_kind);
+                string_builder_push_format(sb, "[%", f_cstring(x64_register_name_table[actual_reg]));
             } else {
                 string_builder_push_format(sb, "[r%", f_u32(operand->virtual_register));
             }
@@ -494,14 +543,16 @@ string_builder_push(String_Builder* sb,
                 
 #if BUILD_DEBUG
                 if (insn->comment) {
+                    const s32 comment_offset = 35;
+                    
                     // Find line length by going back to previous newline character
                     u32 line_length = 0;
                     u8* curr = sb->data + sb->curr_used;
-                    while (line_length++ < 30 && *curr-- != '\n');
+                    while (line_length++ < comment_offset && *curr-- != '\n');
                     
                     // Add spaces to make line length at least 30 characters long
-                    if (line_length < 30) {
-                        for (int i = line_length; i < 30; i++) string_builder_push(sb, " ");
+                    if (line_length < comment_offset) {
+                        for (int i = line_length; i < comment_offset; i++) string_builder_push(sb, " ");
                     }
                     
                     string_builder_push_format(sb, " // %", f_cstring(insn->comment));

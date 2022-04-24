@@ -1,13 +1,13 @@
 int
 main() {
-#if 0
+#if 1
     int x = 10;
     if (x == 10) {
         return 20 / x;
     } else {
         return x;
     }
-    return y;
+    return y; // expects: 2
     
 #elif 0
     int x = 10;
@@ -16,19 +16,19 @@ main() {
         y += 2;
     }
     
-    return y;
-    turn y;
+    return y; // expects: 20
     
-#elif 1
+#elif 0
     // Truncating integers
     s64 x = 140234230023;
     return (int) x; // expects: -1499690745
     
 #elif 0
     // Sign extends and wrapping integers
-    s8 x = -10;
-    x += 200;
+    s8 x = (s8) -10;
+    x += (s8) 200;
     
-    return (int) x; // expects: -66
+    int y = (int) x;
+    return y; // expects: -66
 #endif
 }

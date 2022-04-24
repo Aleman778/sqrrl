@@ -166,6 +166,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         
         // Generate X64 machine code
         X64_Builder x64_builder = {};
+        x64_builder.bc_register_live_lengths = bytecode_builder.live_lengths;
         x64_build_function(&x64_builder, main_block);
         
         // Print interference graph before register allocation
@@ -209,7 +210,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         assembler.size = asm_size;
         
         // TODO(Alexander): int3 breakpoint for debugging
-        push_u8(&assembler, 0xCC);
+        //push_u8(&assembler, 0xCC);
         
         x64_assemble_to_machine_code(&assembler,
                                      x64_instruction_definitions,
@@ -225,7 +226,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         
         asm_make_executable(asm_buffer, asm_size);
         asm_main* func = (asm_main*) asm_buffer;
-        int exit_code = func();
+        int exit_code = (int) func();
         pln("\n\nProgram exited with code: %", f_int(exit_code));
     }
     

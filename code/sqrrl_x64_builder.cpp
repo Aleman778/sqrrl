@@ -23,6 +23,8 @@ struct X64_Builder {
     
     u32 next_free_virtual_register;
     map(Bc_Register, u32)* allocated_virtual_registers;
+    Bc_Live_Length_Table* bc_register_live_lengths;
+    array(u32)* active_virtual_registers;
     
     Interference_Graph* interference_graph;
 };
@@ -78,7 +80,7 @@ operand.is_allocated = true; \
                             ALLOC_REG(insn->op2);});
 }
 
-void
+inline void
 x64_add_interference(X64_Builder* x64, u32 a, u32 b) {
     X64_Register_Node* node_a = &map_get(x64->interference_graph, a);
     X64_Register_Node* node_b = &map_get(x64->interference_graph, b);
@@ -97,11 +99,24 @@ x64_allocate_virtual_register(X64_Builder* x64, Bc_Register ident = {}) {
     if (ident.ident) {
         map_put(x64->allocated_virtual_registers, ident, result);
     }
+    pln("x64_allocate_virtual_register: r%", f_u32(result));
     
-    pln("map_put = %", f_u32(result));
-    X64_Register_Node node = {};
-    node.virtual_register = result;
-    map_put(x64->interference_graph, result, node);
+    {
+        X64_Register_Node node = {};
+        node.virtual_register = result;
+        map_put(x64->interference_graph, result, node);
+    }
+    
+    // Create interferences with all other active registers
+    X64_Register_Node* node = &map_get(x64->interference_graph, result);
+    for_array(x64->active_virtual_registers, other_vreg, other_index) {
+        X64_Register_Node* other_node = &map_get(x64->interference_graph, *other_vreg);
+        array_push(node->interference, other_node->virtual_register);
+        array_push(other_node->interference, node->virtual_register);
+        pln("interference % -> %", 
+            f_u32(node->virtual_register),
+            f_u32(other_node->virtual_register));
+    }
     
     return result;
 }
@@ -134,31 +149,6 @@ operand_is_unallocated_register(X64_Operand operand) {
 
 X64_Instruction*
 _x64_push_instruction(X64_Builder* x64, X64_Opcode opcode, cstring comment = 0) {
-    X64_Instruction* prev_insn = x64->curr_instruction;
-    if (prev_insn) {
-        // Connect interfering edges
-        u32 r0 = operand_is_unallocated_register(prev_insn->op0) ? prev_insn->op0.virtual_register: 0;
-        u32 r1 = operand_is_unallocated_register(prev_insn->op1) ? prev_insn->op1.virtual_register: 0;
-        u32 r2 = operand_is_unallocated_register(prev_insn->op2) ? prev_insn->op2.virtual_register: 0;
-        
-        X64_Register_Node* n0 = r0 ? &map_get(x64->interference_graph, r0) : 0;
-        X64_Register_Node* n1 = r1 ? &map_get(x64->interference_graph, r1) : 0;
-        X64_Register_Node* n2 = r2 ? &map_get(x64->interference_graph, r2) : 0;
-        
-        if (n0 && n1) {
-            array_push(n0->interference, n1->virtual_register);
-            array_push(n1->interference, n0->virtual_register);
-        }
-        if (n0 && n2) {
-            array_push(n0->interference, n2->virtual_register);
-            array_push(n2->interference, n0->virtual_register);
-        }
-        if (n1 && n2) {
-            array_push(n1->interference, n2->virtual_register);
-            array_push(n2->interference, n1->virtual_register);
-        }
-    }
-    
     assert(x64->curr_basic_block);
     x64->curr_basic_block->count++;
     
@@ -199,7 +189,7 @@ x64_push_basic_block(X64_Builder* x64, Bc_Register label) {
 }
 
 X64_Operand
-x64_build_immediate(X64_Builder* x64, Bc_Value value, Bc_Type type) {
+x64_build_immediate(X64_Builder* x64, Value_Data value, Bc_Type type) {
     X64_Operand result = {};
     
     switch (type.kind) {
@@ -265,23 +255,6 @@ x64_get_register_kind(Bc_Type_Kind type_kind) {
 }
 
 X64_Operand
-x64_build_register(X64_Builder* x64, Bc_Register ident, Bc_Type type) {
-    X64_Operand result = {};
-    
-    u32 reg = map_get(x64->allocated_virtual_registers, ident);
-    //pln("loaded reg(r%) = %", f_u32(ident.index), f_u32(reg));
-    if (reg) {
-        result.virtual_register = reg;
-    } else {
-        result.virtual_register = x64_allocate_virtual_register(x64, ident);
-    }
-    
-    result.kind = x64_get_register_kind(type.kind);
-    
-    return result;
-}
-
-X64_Operand
 x64_build_stack_offset(X64_Builder* x64, 
                        Bc_Type type, 
                        s64 stack_offset, 
@@ -291,7 +264,7 @@ x64_build_stack_offset(X64_Builder* x64,
         case BcTypeKind_s1:
         case BcTypeKind_s8:
         case BcTypeKind_u8: {
-            result.kind = X64Operand_m64;
+            result.kind = X64Operand_m8;
         } break;
         
         case BcTypeKind_s16:
@@ -353,7 +326,15 @@ x64_build_operand(X64_Builder* x64, Bc_Operand* operand) {
     
     switch (operand->kind) {
         case BcOperand_Register: {
-            result = x64_build_register(x64, operand->Register, operand->type);
+            u32 reg = map_get(x64->allocated_virtual_registers, operand->Register);
+            if (reg) {
+                pln("loaded virtual register (r%) = %", f_u32(operand->Register.index), f_u32(reg));
+                result.virtual_register = reg;
+            } else {
+                result.virtual_register = x64_allocate_virtual_register(x64, operand->Register);
+                array_push(x64->active_virtual_registers, result.virtual_register);
+            }
+            result.kind = x64_get_register_kind(operand->type.kind);
         } break;
         
         case BcOperand_Value: {
@@ -388,7 +369,7 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
                 
                 X64_Instruction* tmp_mov_insn = x64_push_instruction(x64, X64Opcode_mov);
                 tmp_mov_insn->op0 = temp_reg;
-                tmp_mov_insn->op1 = x64_build_operand(x64, &bc->src0);
+                tmp_mov_insn->op1 = source_operand;
                 
                 source_operand = temp_reg;
             }
@@ -542,7 +523,16 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
             jmp_insn->op0 = x64_build_jump_target(x64, jump_label);
         } break;
         
-        case Bytecode_truncate: break;
+        case Bytecode_truncate: {
+            if (bc->src0.kind == BcOperand_Value) {
+                X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
+                mov_insn->op0 = x64_build_operand(x64, &bc->dest);
+                mov_insn->op1 = x64_build_operand(x64, &bc->src0);
+            } else {
+                u32 src = map_get(x64->allocated_virtual_registers, bc->src0.Register);
+                map_put(x64->allocated_virtual_registers, bc->dest.Register, src);
+            }
+        } break;
         
         case Bytecode_sign_extend: {
             X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_movsx);
@@ -648,6 +638,27 @@ x64_analyse_function(X64_Builder* x64, Bc_Instruction* bc) {
     }
 }
 
+internal inline void
+x64_free_virtual_register(X64_Builder* x64, Bc_Operand* operand, u32 curr_bc_instruction) {
+    if (operand->kind == BcOperand_Register) {
+        u32 virtual_register = map_get(x64->allocated_virtual_registers, operand->Register);
+        u32 live_length = map_get(x64->bc_register_live_lengths, operand->Register);
+        if (live_length > 0) pln("trying to free bytecode register: % (len = %)", f_u32(operand->Register.index), f_u32(live_length));
+        if (live_length > 0 && live_length <= curr_bc_instruction) {
+            bool found = false;
+            for_array(x64->active_virtual_registers, it, it_index) {
+                if (*it == virtual_register) {
+                    found = true;
+                }
+            }
+            if (found) {
+                pln("free virtual register: r%", f_u32(virtual_register));
+                array_swap_remove(x64->active_virtual_registers, it_index);
+            }
+        }
+    }
+}
+
 void
 x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
     for_bc_basic_block(first_block, insn, insn_index, x64_analyse_function(x64, insn));
@@ -656,11 +667,20 @@ x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
     x64_push_prologue(x64);
     
     Bc_Basic_Block* curr_block = first_block;
-    umm curr_block_insn = 0;
+    u32 curr_bc_instruction = 0;
+    u32 curr_block_insn = 0;
     while (curr_block) {
         while (curr_block_insn < curr_block->count) {
-            x64_build_instruction_from_bytecode(x64, curr_block->first + curr_block_insn);
+            Bc_Instruction* insn = curr_block->first + curr_block_insn;
+            x64_build_instruction_from_bytecode(x64, insn);
+            
+            pln("\n\nInstruction: %", f_u32(curr_bc_instruction));
+            x64_free_virtual_register(x64, &insn->dest, curr_bc_instruction);
+            x64_free_virtual_register(x64, &insn->src0, curr_bc_instruction);
+            x64_free_virtual_register(x64, &insn->src1, curr_bc_instruction);
+            
             curr_block_insn++;
+            curr_bc_instruction++;
         }
         curr_block = curr_block->next;
         curr_block_insn = 0;

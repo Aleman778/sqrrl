@@ -1,6 +1,6 @@
 
 struct Bc_Interp_Scope {
-    map(u32, Bc_Value)* registers; // TODO(Alexander): u32 or Bc_Register
+    map(u32, Value_Data)* registers; // TODO(Alexander): u32 or Bc_Register
 };
 
 struct Bc_Interp {
@@ -15,13 +15,13 @@ struct Bc_Interp {
 };
 
 inline void
-bc_interp_store_register(Bc_Interp* interp, Bc_Register reg, Bc_Value value) {
+bc_interp_store_register(Bc_Interp* interp, Bc_Register reg, Value_Data value) {
     assert(array_count(interp->scopes) > 0);
     Bc_Interp_Scope* scope = &array_last(interp->scopes);
     map_put(scope->registers, reg.index, value);
 }
 
-inline Bc_Value
+inline Value_Data
 bc_interp_load_register(Bc_Interp* interp, Bc_Register reg) {
     assert(array_count(interp->scopes) > 0);
     Bc_Interp_Scope* scope = &array_last(interp->scopes);
@@ -62,14 +62,14 @@ bc_interp_alloc_register(Bc_Interp* interp, Bc_Register reg, Type* type, Value v
     
     void* data = arena_push_size(&interp->stack, type->cached_size, type->cached_align);
     
-    Bc_Value result;
+    Value_Data result;
     result.data = data; // TODO(Alexander): we should store stack offsets
     bc_interp_store_register(interp, reg, result);
     return data;
 }
 
 inline void
-bc_interp_store_value(Bc_Interp* interp, Bc_Type type, void* data, Bc_Value value) {
+bc_interp_store_value(Bc_Interp* interp, Bc_Type type, void* data, Value_Data value) {
     switch (type.kind) {
         case BcTypeKind_s1:   *((s8*) data) = (s8)  value.signed_int; break;
         case BcTypeKind_s8:   *((s8*) data) = (s8)  value.signed_int; break;
@@ -86,9 +86,9 @@ bc_interp_store_value(Bc_Interp* interp, Bc_Type type, void* data, Bc_Value valu
     }
 }
 
-inline Bc_Value
+inline Value_Data
 bc_interp_load_value(Bc_Interp* interp, Bc_Type type, void* data) {
-    Bc_Value result;
+    Value_Data result;
     switch (type.kind) {
         case BcTypeKind_s1:  result.signed_int   =  *((s8*) data); break;
         case BcTypeKind_s8:  result.signed_int   =  *((s8*) data); break;
@@ -107,9 +107,9 @@ bc_interp_load_value(Bc_Interp* interp, Bc_Type type, void* data) {
     return result;
 }
 
-inline Bc_Value
+inline Value_Data
 bc_interp_operand_value(Bc_Interp* interp, Bc_Operand* operand) {
-    Bc_Value result = {};
+    Value_Data result = {};
     
     switch (operand->kind) {
         case BcOperand_Register: {
@@ -153,8 +153,8 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             assert(bc->src0.kind != BcOperand_None);
             assert(bc->src1.kind == BcOperand_None);
             
-            Bc_Value dest = bc_interp_operand_value(interp, &bc->dest);
-            Bc_Value src = bc_interp_operand_value(interp, &bc->src0);
+            Value_Data dest = bc_interp_operand_value(interp, &bc->dest);
+            Value_Data src = bc_interp_operand_value(interp, &bc->src0);
             bc_interp_store_value(interp, bc->src0.type, dest.data, src);
         } break;
         
@@ -164,24 +164,24 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             assert(bc->src1.kind == BcOperand_Register);
             
             Type* type = bc_type_to_type(bc->src0.type);
-            Bc_Value src = bc_interp_operand_value(interp, &bc->src1);
-            Bc_Value value = bc_interp_load_value(interp, bc->src0.type, src.data);
+            Value_Data src = bc_interp_operand_value(interp, &bc->src1);
+            Value_Data value = bc_interp_load_value(interp, bc->src0.type, src.data);
             bc_interp_store_register(interp, bc->dest.Register, value);
         } break;
         
         case Bytecode_neg: {
-            Bc_Value first = bc_interp_operand_value(interp, &bc->src0);
-            Bc_Value result;
+            Value_Data first = bc_interp_operand_value(interp, &bc->src0);
+            Value_Data result;
             result.signed_int = -first.signed_int;
             bc_interp_store_register(interp, bc->dest.Register, result); \
         } break;
         
 #define BINARY_CASE(opcode, binary_operator) \
 case opcode: { \
-Bc_Value first = bc_interp_operand_value(interp, &bc->src0); \
-Bc_Value second = bc_interp_operand_value(interp, &bc->src1); \
+Value_Data first = bc_interp_operand_value(interp, &bc->src0); \
+Value_Data second = bc_interp_operand_value(interp, &bc->src1); \
         \
-Bc_Value result; \
+Value_Data result; \
 result.signed_int = first.signed_int binary_operator second.signed_int; \
         \
 bc_interp_store_register(interp, bc->dest.Register, result); \
@@ -202,10 +202,10 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
 #undef BINARY_CASE
         
         case Bytecode_branch: {
-            Bc_Value branch;
+            Value_Data branch;
             if (bc->dest.type.kind == BcTypeKind_s1) {
                 // Conditional branch
-                Bc_Value cond = bc_interp_operand_value(interp, &bc->dest);
+                Value_Data cond = bc_interp_operand_value(interp, &bc->dest);
                 Bc_Operand* src = (cond.signed_int > 0) ? &bc->src0 : &bc->src1;
                 branch = bc_interp_operand_value(interp, src);
             } else {
@@ -219,13 +219,13 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
         
         // TODO(Alexander): do we need this we should truncate when storing the value instead
         case Bytecode_truncate: {
-            Bc_Value result = bc_interp_operand_value(interp, &bc->src0);
+            Value_Data result = bc_interp_operand_value(interp, &bc->src0);
             bc_interp_store_register(interp, bc->dest.Register, result);
         } break;
         
         case Bytecode_sign_extend: {
-            Bc_Value value = bc_interp_operand_value(interp, &bc->src0);
-            Bc_Value result = value;
+            Value_Data value = bc_interp_operand_value(interp, &bc->src0);
+            Value_Data result = value;
             
             bool high_bit_set = (value.unsigned_int & 
                                  (1ll << (u64) bc_type_to_bitsize(bc->src0.type.kind))) > 0;
@@ -240,8 +240,8 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
         } break;
         
         case Bytecode_zero_extend: {
-            Bc_Value value = bc_interp_operand_value(interp, &bc->src0);
-            Bc_Value result = value;
+            Value_Data value = bc_interp_operand_value(interp, &bc->src0);
+            Value_Data result = value;
             
             u64 mask = U64_MAX << (u64) bc_type_to_bitsize(bc->src1.type.kind);
             result.unsigned_int = result.unsigned_int & ~mask;
@@ -274,7 +274,7 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
         } break;
         
         case Bytecode_ret: {
-            Bc_Value value = bc_interp_operand_value(interp, &bc->src0);
+            Value_Data value = bc_interp_operand_value(interp, &bc->src0);
             switch (bc->src0.type.kind) {
                 case BcTypeKind_s1:  value.unsigned_int = (u64) 1 & value.unsigned_int; break;
                 case BcTypeKind_s8:  value.signed_int = (s8) value.signed_int; break;

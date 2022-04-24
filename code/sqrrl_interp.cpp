@@ -8,25 +8,25 @@ interp_save_value(Interp* interp, Type* type, void* storage, Value value) {
 *((T*) storage) = (T) (V); \
 } break;
             switch (type->Primitive.kind) {
-                PCASE(int, value.signed_int);
-                PCASE(s8, value.signed_int);
-                PCASE(s16, value.signed_int);
-                PCASE(s32, value.signed_int);
-                PCASE(s64, value.signed_int);
-                PCASE(smm, value.signed_int);
-                PCASE(uint, value.unsigned_int);
-                PCASE(u8, value.unsigned_int);
-                PCASE(u16, value.unsigned_int);
-                PCASE(u32, value.unsigned_int);
-                PCASE(u64, value.unsigned_int);
-                PCASE(umm, value.unsigned_int);
-                PCASE(f32, value.floating);
-                PCASE(f64, value.floating);
+                PCASE(int, value.data.signed_int);
+                PCASE(s8, value.data.signed_int);
+                PCASE(s16, value.data.signed_int);
+                PCASE(s32, value.data.signed_int);
+                PCASE(s64, value.data.signed_int);
+                PCASE(smm, value.data.signed_int);
+                PCASE(uint, value.data.unsigned_int);
+                PCASE(u8, value.data.unsigned_int);
+                PCASE(u16, value.data.unsigned_int);
+                PCASE(u32, value.data.unsigned_int);
+                PCASE(u64, value.data.unsigned_int);
+                PCASE(umm, value.data.unsigned_int);
+                PCASE(f32, value.data.floating);
+                PCASE(f64, value.data.floating);
                 case PrimitiveTypeKind_char: {
-                    *((u8*) storage) = (u8) value.unsigned_int;
+                    *((u8*) storage) = (u8) value.data.unsigned_int;
                 } break;
-                PCASE(bool, value.boolean);
-                PCASE(b32, value.signed_int);
+                PCASE(bool, value.data.boolean);
+                PCASE(b32, value.data.signed_int);
                 default: {
                     assert(0 && "invalid primitive type");
                 } break;
@@ -37,19 +37,19 @@ interp_save_value(Interp* interp, Type* type, void* storage, Value value) {
         case TypeKind_Array: {
             // NOTE(Alexander): ugh little bit ugly hack to get this to work
             smm* data = (smm*) storage;
-            *data++ = value.array.count;
+            *data++ = value.data.array.count;
             void** elements = (void**) data;
-            *elements = value.array.elements;
+            *elements = value.data.array.elements;
         } break;
         
         case TypeKind_String: {
-            *((string*) storage) = value.str;
+            *((string*) storage) = value.data.str;
         } break;
         
         case TypeKind_Pointer:
         case TypeKind_Struct: 
         case TypeKind_Union: {
-            *((smm*) storage) = value.pointer;
+            *((smm*) storage) = value.data.pointer;
         } break;
         
         default: {
@@ -70,7 +70,7 @@ interp_load_value(Interp* interp, Type* type, void* data) {
             
 #define PCASE(T, V) case PrimitiveTypeKind_##T: { \
 value.type = Value_##V; \
-value.##V = *((T*) data); \
+value.data.##V = *((T*) data); \
 } break;
             
             switch (type->Primitive.kind) {
@@ -90,7 +90,7 @@ value.##V = *((T*) data); \
                 PCASE(f64, floating);
                 case PrimitiveTypeKind_char: {
                     value.type = Value_unsigned_int;
-                    value.unsigned_int = *((u8*) data);
+                    value.data.unsigned_int = *((u8*) data);
                 } break;
                 PCASE(bool, boolean);
                 PCASE(b32, signed_int);
@@ -104,25 +104,25 @@ value.##V = *((T*) data); \
         case TypeKind_Array: {
             if (type->Array.capacity <= 0) {
                 smm* mdata = (smm*) data;
-                value.array.count = *mdata++;
-                value.array.elements = *((void**) mdata);
+                value.data.array.count = *mdata++;
+                value.data.array.elements = *((void**) mdata);
                 value.type = Value_array;
             } else {
-                value.array.count = type->Array.capacity;
-                value.array.elements = data;
+                value.data.array.count = type->Array.capacity;
+                value.data.array.elements = data;
                 value.type = Value_array;
             }
         } break;
         
         case TypeKind_String: {
-            value.str = *((string*) data);
+            value.data.str = *((string*) data);
             value.type = Value_string;
         } break;
         
         case TypeKind_Pointer:
         case TypeKind_Struct:
         case TypeKind_Union: {
-            value.pointer = *((smm*) data);
+            value.data.pointer = *((smm*) data);
             value.type = Value_pointer;
         } break;
         
@@ -165,10 +165,10 @@ interp_expression(Interp* interp, Ast* ast) {
             switch (ast->Unary_Expr.op) {
                 case UnaryOp_Negate: {
                     if (is_integer(first_op.value)) {
-                        result.value.signed_int = -first_op.value.signed_int;
+                        result.value.data.signed_int = -first_op.value.data.signed_int;
                         result.value.type = Value_signed_int;
                     } else if(is_floating(first_op.value)) {
-                        result.value.floating = -first_op.value.floating;
+                        result.value.data.floating = -first_op.value.data.floating;
                         result.value.type = Value_floating;
                     } else {
                         interp_error(interp, string_lit("unary negate expects numeric type"));
@@ -177,7 +177,7 @@ interp_expression(Interp* interp, Ast* ast) {
                 
                 case UnaryOp_Not: {
                     if (is_integer(first_op.value)) {
-                        result.value.boolean = !value_to_bool(first_op.value);
+                        result.value.data.boolean = !value_to_bool(first_op.value);
                         result.value.type = Value_boolean;
                     } else {
                         interp_error(interp, string_lit("unary not expects integer type"));
@@ -193,7 +193,7 @@ interp_expression(Interp* interp, Ast* ast) {
                             
                             if (entity.data && entity.type) {
                                 result.value.type = Value_pointer;
-                                result.value.data = entity.data;
+                                result.value.data.data = entity.data;
                                 
                                 Type type = {};
                                 type.kind = TypeKind_Pointer;
@@ -217,7 +217,7 @@ interp_expression(Interp* interp, Ast* ast) {
                     
                     if (op.value.type == Value_pointer && op.type.kind == TypeKind_Pointer) {
                         Type* deref_type = op.type.Pointer;
-                        result = interp_load_value(interp, deref_type, op.value.data);
+                        result = interp_load_value(interp, deref_type, op.value.data.data);
                     } else {
                         interp_error(interp, string_lit("dereference operator expects identifier"));
                     }
@@ -242,11 +242,11 @@ interp_expression(Interp* interp, Ast* ast) {
             if (is_floating(first) || is_floating(second)) {
                 // NOTE(Alexander): Make sure both types are floating
                 if (is_integer(first)) {
-                    first.floating  = value_to_f64(first);
+                    first.data.floating  = value_to_f64(first);
                     first.type = Value_floating;
                     result.type = second_op.type;
                 } else if (is_integer(second)) {
-                    second.floating = value_to_f64(second);
+                    second.data.floating = value_to_f64(second);
                     second.type = Value_floating;
                     result.type = first_op.type;
                 } else if (is_floating(first) && is_floating(second)) {
@@ -260,7 +260,7 @@ interp_expression(Interp* interp, Ast* ast) {
                 result.value = first;
             } else if (is_integer(first) || is_integer(second)) {
                 // NOTE(Alexander): integer math
-                first.signed_int = value_integer_binary_operation(first, second, ast->Binary_Expr.op);
+                first.data.signed_int = value_integer_binary_operation(first, second, ast->Binary_Expr.op);
                 
                 result.value = first;
                 result.type = first_op.type;
@@ -296,7 +296,7 @@ interp_expression(Interp* interp, Ast* ast) {
             Interp_Value third_op = interp_expression(interp, ast->Ternary_Expr.third);
             
             if (is_integer(first_op.value)) {
-                if (first_op.value.boolean) {
+                if (first_op.value.data.boolean) {
                     result = second_op;
                 } else {
                     result = third_op;
@@ -333,7 +333,7 @@ interp_expression(Interp* interp, Ast* ast) {
                     // NOTE(Alexander): meta programming yeah, less typing more confusing!
 #define PCASE(T, V) case PrimitiveTypeKind_##T: { \
 result.value.type = Value_##V; \
-result.value.##V = (T) (value.##PVALUE); \
+result.value.data.##V = (T) (value.data.##PVALUE); \
 } break;
 #define PTYPECONV switch (type->Primitive.kind) { \
 PCASE(int, signed_int); \
@@ -352,7 +352,7 @@ PCASE(f32, floating); \
 PCASE(f64, floating); \
 case PrimitiveTypeKind_char: { \
 result.value.type = Value_unsigned_int; \
-result.value.unsigned_int = (u8) result.value.unsigned_int; \
+result.value.data.unsigned_int = (u8) result.value.data.unsigned_int; \
 } break; \
 PCASE(bool, boolean); \
 PCASE(b32, signed_int); \
@@ -407,7 +407,7 @@ assert(0 && "invalid primitive type"); \
                     
                     if (value.type == Value_array) {
                         result.value.type = Value_pointer;
-                        result.value.data = value.array.elements;
+                        result.value.data.data = value.data.array.elements;
                     } else if (value.type != Value_pointer) {
                         interp_error(interp, string_lit("cannot type cast non-pointer value to pointer"));
                     }
@@ -434,7 +434,7 @@ assert(0 && "invalid primitive type"); \
                 
                 Interp_Value index = interp_expression(interp, ast->Index_Expr.index);
                 if (is_integer(index.value)) {
-                    Array_Value array_value = array.value.array;
+                    Array_Value array_value = array.value.data.array;
                     
                     smm array_index = value_to_smm(index.value);
                     if (array_index < array_value.count) {
@@ -462,7 +462,7 @@ assert(0 && "invalid primitive type"); \
         case Ast_Struct_Expr:
         case Ast_Tuple_Expr: {
             result.value.type = Value_ast_node;
-            result.value.ast = ast;
+            result.value.data.ast = ast;
         } break;
     }
     
@@ -589,7 +589,7 @@ interp_field_expr(Interp* interp, Interp_Value var, string_id ident) {
             
             Type* field_type = map_get(type_table->ident_to_type, ident);
             if (field_type) {
-                void* data = var.value.data;
+                void* data = var.value.data.data;
                 smm offset = map_get(var.type.Struct_Or_Union.ident_to_offset, ident);
                 data = (u8*) data + offset;
                 result = interp_load_value(interp, field_type, data);
@@ -607,7 +607,7 @@ interp_field_expr(Interp* interp, Interp_Value var, string_id ident) {
         case TypeKind_Pointer: {
             if (var.value.type == Value_pointer && var.type.kind == TypeKind_Pointer) {
                 Type* deref_type = var.type.Pointer;
-                var = interp_load_value(interp, deref_type, var.value.data);
+                var = interp_load_value(interp, deref_type, var.value.data.data);
                 result = interp_field_expr(interp, var, ident);
                 
             } else {
@@ -654,7 +654,7 @@ interp_statement(Interp* interp, Ast* ast) {
                     Array_Value array = {};
                     
                     if (is_ast_node(expr.value)) {
-                        ast = expr.value.ast;
+                        ast = expr.value.data.ast;
                         if (ast && ast->kind == Ast_Array_Expr) {
                             Ast* elements = ast->Array_Expr.elements;
                             Type* elem_type = type->Array.type;
@@ -685,7 +685,7 @@ interp_statement(Interp* interp, Ast* ast) {
                     
                     Value value;
                     value.type = Value_array;
-                    value.array = array;
+                    value.data.array = array;
                     void* data = interp_push_value(interp, type, value);
                     interp_push_entity_to_current_scope(interp, ident, data, type);
                 } break;
@@ -701,10 +701,10 @@ interp_statement(Interp* interp, Ast* ast) {
                     
                     if (is_ast_node(expr.value)) {
                         assert(expr.value.type == Value_ast_node &&
-                               expr.value.ast->kind == Ast_Struct_Expr);
+                               expr.value.data.ast->kind == Ast_Struct_Expr);
                         
                         // Struct initialization
-                        Ast* fields = expr.value.ast->Struct_Expr.fields;
+                        Ast* fields = expr.value.data.ast->Struct_Expr.fields;
                         struct { string_id key; Value value; }* field_values = 0;
                         
                         // NOTE(Alexander): push elements onto the stack in the order defined by the type
@@ -744,7 +744,7 @@ interp_statement(Interp* interp, Ast* ast) {
                         }
                         
                     } else if (expr.value.type == Value_pointer) {
-                        copy_memory(base_address, expr.value.data, (umm) type->cached_size);
+                        copy_memory(base_address, expr.value.data.data, (umm) type->cached_size);
                     } else {
                         // TODO(Alexander): for now we will clear entire struct/union memory
                         // we will want the user to be able to disable this behaviour
@@ -753,7 +753,7 @@ interp_statement(Interp* interp, Ast* ast) {
                     
                     Value value;
                     value.type = Value_pointer;
-                    value.data = base_address;
+                    value.data.data = base_address;
                     void* data = interp_push_value(interp, type, value);
                     interp_push_entity_to_current_scope(interp, ident, data, type);
                 } break;
@@ -1130,10 +1130,10 @@ interp_type(Interp* interp, Ast* ast) {
             Value value;
             if (type->Primitive.signedness) {
                 value.type = Value_signed_int;
-                value.signed_int = 0;
+                value.data.signed_int = 0;
             } else {
                 value.type = Value_unsigned_int;
-                value.unsigned_int = 0;
+                value.data.unsigned_int = 0;
             }
             
             Ast* arguments = ast->Enum_Type.fields;
@@ -1166,7 +1166,7 @@ interp_type(Interp* interp, Ast* ast) {
                 // TODO(Alexander): NEED TO HANDLE THE TYPE TABLE HASH MAP MEMORY
                 map_put(result->Enum.values, ident, value);
                 
-                value.signed_int++;
+                value.data.signed_int++;
             }
         } break;
         
@@ -1229,7 +1229,7 @@ interp_intrinsic_pln(Interp* interp, array(Interp_Value)* var_args) {
         if (var_args) {
             String_Builder sb = {};
             
-            string format_string = format.value.str;
+            string format_string = format.value.data.str;
             int format_count = (int) format_string.count;
             u8* scan = (u8*) format_string.data;
             u8* scan_at_prev_percent = scan;
@@ -1271,7 +1271,7 @@ interp_intrinsic_pln(Interp* interp, array(Interp_Value)* var_args) {
                     if (var_arg->value.type == Value_string) {
                         value_data = &var_arg->value.data;
                     } else {
-                        value_data = var_arg->value.data;
+                        value_data = var_arg->value.data.data;
                     }
                     string_builder_push_format(&sb, "%", format_type, value_data);
                 } else {
@@ -1284,7 +1284,7 @@ interp_intrinsic_pln(Interp* interp, array(Interp_Value)* var_args) {
             printf("%.*s\n", (int) sb.curr_used, (char*) sb.data);
             string_builder_free(&sb);
         } else {
-            pln("%", f_string(format.value.str));
+            pln("%", f_string(format.value.data.str));
         }
     } else {
         interp_error(interp, string_format("expected `string` as first argument, found `%`", 
@@ -1402,8 +1402,8 @@ interp_check_type_match_of_value(Interp* interp, Type* type, Interp_Value interp
                 case PrimitiveTypeKind_s64:
                 case PrimitiveTypeKind_smm:
                 case PrimitiveTypeKind_b32: {
-                    if (type->Primitive.min_value.signed_int < value.signed_int && 
-                        type->Primitive.max_value.signed_int > value.signed_int) {
+                    if (type->Primitive.min_value.data.signed_int < value.data.signed_int && 
+                        type->Primitive.max_value.data.signed_int > value.data.signed_int) {
                         // TODO(Alexander): this is technically a warning!
                         interp_error(interp, string_format("expected type `%` cannot fit in value `%`", 
                                                            f_type(type), f_value(&value)));
@@ -1439,8 +1439,8 @@ interp_check_type_match_of_value(Interp* interp, Type* type, Interp_Value interp
                 case PrimitiveTypeKind_u32:
                 case PrimitiveTypeKind_u64:
                 case PrimitiveTypeKind_umm: {
-                    if (type->Primitive.min_value.unsigned_int < value.unsigned_int && 
-                        type->Primitive.max_value.unsigned_int > value.unsigned_int) {
+                    if (type->Primitive.min_value.data.unsigned_int < value.data.unsigned_int && 
+                        type->Primitive.max_value.data.unsigned_int > value.data.unsigned_int) {
                         // TODO(Alexander): this is technically a warning!
                         interp_error(interp, string_format("expected type `%` cannot fit in value `%`", 
                                                            f_type(type), f_value(&value)));

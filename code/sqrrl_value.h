@@ -124,27 +124,31 @@ enum Value_Type {
 
 // NOTE(Alexander): forward declare
 struct Ast;
+struct Bc_Basic_Block;
+
+union Value_Data {
+    bool boolean;
+    s64 signed_int;
+    u64 unsigned_int;
+    f64 floating;
+    smm pointer;
+    Array_Value array;
+    string str;
+    Ast* ast; // TODO(Alexander): does it make sense to store this here?
+    Bc_Basic_Block* basic_block; // TODO(Alexander): does it make sense to store this here?
+    void* data;
+};
 
 struct Value {
     Value_Type type;
-    union {
-        bool boolean;
-        s64 signed_int;
-        u64 unsigned_int;
-        f64 floating;
-        smm pointer;
-        Array_Value array;
-        string str;
-        Ast* ast;
-        void* data;
-    };
+    Value_Data data;
 };
 
 inline Value
 create_boolean_value(bool value) {
     Value result;
     result.type = Value_boolean;
-    result.boolean = (u64) value;
+    result.data.boolean = (u64) value;
     return result;
 }
 
@@ -152,7 +156,7 @@ inline Value
 create_signed_int_value(s64 value) {
     Value result;
     result.type = Value_signed_int;
-    result.signed_int = value;
+    result.data.signed_int = value;
     return result;
 }
 
@@ -160,7 +164,7 @@ inline Value
 create_unsigned_int_value(u64 value) {
     Value result;
     result.type = Value_unsigned_int;
-    result.unsigned_int = value;
+    result.data.unsigned_int = value;
     return result;
 }
 
@@ -168,7 +172,7 @@ inline Value
 create_floating_value(f64 value) {
     Value result;
     result.type = Value_floating;
-    result.floating = value;
+    result.data.floating = value;
     return result;
 }
 
@@ -176,7 +180,7 @@ inline Value
 create_pointer_value(smm value) {
     Value result;
     result.type = Value_pointer;
-    result.pointer = { value };
+    result.data.pointer = { value };
     return result;
 }
 
@@ -184,7 +188,7 @@ inline Value
 create_string_value(string value) {
     Value result;
     result.type = Value_string;
-    result.str = value;
+    result.data.str = value;
     return result;
 }
 
@@ -223,10 +227,10 @@ is_ast_node(Value value) {
 inline bool
 value_to_bool(Value value) {
     switch (value.type) {
-        case Value_boolean: return value.boolean;
-        case Value_unsigned_int: return value.unsigned_int != 0;
-        case Value_signed_int: return value.signed_int != 0;
-        case Value_pointer: return value.pointer != 0;
+        case Value_boolean: return value.data.boolean;
+        case Value_unsigned_int: return value.data.unsigned_int != 0;
+        case Value_signed_int: return value.data.signed_int != 0;
+        case Value_pointer: return value.data.pointer != 0;
         default: return false;
     }
 }
@@ -234,44 +238,44 @@ value_to_bool(Value value) {
 inline u64
 value_to_u64(Value value) {
     switch (value.type) {
-        case Value_boolean: return value.boolean == true ? 1 : 0;
-        case Value_signed_int: return (u64) value.signed_int;
-        case Value_floating: return (u64) value.floating;
-        case Value_pointer: return (u64) value.pointer;
-        default: return (u64) value.unsigned_int;
+        case Value_boolean: return value.data.boolean == true ? 1 : 0;
+        case Value_signed_int: return (u64) value.data.signed_int;
+        case Value_floating: return (u64) value.data.floating;
+        case Value_pointer: return (u64) value.data.pointer;
+        default: return (u64) value.data.unsigned_int;
     }
 }
 
 inline s64
 value_to_s64(Value value) {
     switch (value.type) {
-        case Value_boolean: return value.boolean == true ? 1 : 0;
-        case Value_signed_int: return value.signed_int;
-        case Value_floating: return (s64) value.floating;
-        case Value_pointer: return (s64) value.pointer;
-        default: return (u64) value.unsigned_int;
+        case Value_boolean: return value.data.boolean == true ? 1 : 0;
+        case Value_signed_int: return value.data.signed_int;
+        case Value_floating: return (s64) value.data.floating;
+        case Value_pointer: return (s64) value.data.pointer;
+        default: return (u64) value.data.unsigned_int;
     }
 }
 
 inline smm
 value_to_smm(Value value) {
     switch (value.type) {
-        case Value_boolean: return value.boolean == true ? 1 : 0;
-        case Value_signed_int: return (smm) value.signed_int;
-        case Value_floating: return (smm) value.floating;
-        case Value_pointer: return value.pointer;
-        default: return (smm) value.unsigned_int;
+        case Value_boolean: return value.data.boolean == true ? 1 : 0;
+        case Value_signed_int: return (smm) value.data.signed_int;
+        case Value_floating: return (smm) value.data.floating;
+        case Value_pointer: return value.data.pointer;
+        default: return (smm) value.data.unsigned_int;
     }
 }
 
 inline f64
 value_to_f64(Value value) {
     switch (value.type) {
-        case Value_boolean: return value.boolean == true ? 1.0 : 0.0;
-        case Value_signed_int: return (f64) value.signed_int;
-        case Value_unsigned_int: return (f64) value.unsigned_int;
-        case Value_pointer: return (f64) value.pointer;
-        default: return value.floating;
+        case Value_boolean: return value.data.boolean == true ? 1.0 : 0.0;
+        case Value_signed_int: return (f64) value.data.signed_int;
+        case Value_unsigned_int: return (f64) value.data.unsigned_int;
+        case Value_pointer: return (f64) value.data.pointer;
+        default: return value.data.floating;
     }
 }
 

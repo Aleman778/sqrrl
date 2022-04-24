@@ -1,13 +1,12 @@
 int
 main() {
-#if 1
+#if 0
     int x = 10;
     if (x == 10) {
-        return 20 / x;
+        return 20 / x; // expects: 2
     } else {
-        return x;
+        return x; // expects: not executed
     }
-    return y; // expects: 2
     
 #elif 0
     int x = 10;
@@ -17,6 +16,13 @@ main() {
     }
     
     return y; // expects: 20
+    
+#elif 1
+    int x = 0;
+    while (x < 25) {
+        x += 1;
+    }
+    return x; // expects: 25
     
 #elif 0
     // Truncating integers

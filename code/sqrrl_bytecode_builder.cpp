@@ -621,6 +621,7 @@ bc_build_statement(Bc_Builder* bc, Ast* node) {
         } break;
         
         case Ast_For_Stmt: {
+            // TODO(Alexander): we need to use the For_Stmt.label if specified
             bc_build_statement(bc, node->For_Stmt.init);
             
             // Condition
@@ -649,7 +650,29 @@ bc_build_statement(Bc_Builder* bc, Ast* node) {
         } break;
         
         case Ast_While_Stmt: {
-            unimplemented;
+            // TODO(Alexander): we need to use the While_Stmt.label if specified
+            // Condition
+            Bc_Register condition_label = bc_push_basic_block(bc)->label;
+            Bc_Operand cond = bc_build_compare_expression(bc, node->While_Stmt.cond);
+            Bc_Operand empty_reg_op = {};
+            empty_reg_op.kind = BcOperand_Register;
+            bc_push_instruction(bc, Bytecode_branch);
+            bc_push_operand(bc, cond);
+            bc_push_operand(bc, empty_reg_op);
+            bc_push_operand(bc, empty_reg_op);
+            Bc_Instruction* cond_insn = bc->curr_instruction;
+            cond_insn->src0.Register = bc_push_basic_block(bc)->label;
+            
+            // Update and block
+            bc_build_statement(bc, node->While_Stmt.block);
+            
+            // Next iteration
+            bc_push_instruction(bc, Bytecode_branch);
+            bc_push_operand(bc, empty_reg_op);
+            Bc_Instruction* next_it_insn = bc->curr_instruction;
+            next_it_insn->dest.Register = condition_label;
+            
+            cond_insn->src1.Register = bc_push_basic_block(bc)->label;
         } break;
         
         case Ast_Return_Stmt: {

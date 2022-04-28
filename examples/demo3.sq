@@ -24,7 +24,7 @@ main() {
     }
     return x; // expects: 25
     
-#elif 0
+#elif 0 // TODO: this breaks
     // Truncating integers
     s64 x = 140234230023;
     return (int) x; // expects: -1499690745
@@ -37,13 +37,19 @@ main() {
     int y = (int) x;
     return y; // expects: -66
     
-#else 1
+#elif 0
+    // Add operator
+    int x = 10;
+    int x = x + x;
+    return x; // true (1)
+    
+#elif 0
     // And operator
     bool x = true;
     bool x = x && true;
     return (int) x; // true (1)
     
-#elif 0
+#elif 1 // TODO: this breaks
     // Boolean expressions
     int count = 0;
     bool x = false;

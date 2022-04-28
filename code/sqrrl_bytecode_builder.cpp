@@ -577,7 +577,7 @@ bc_build_statement(Bc_Builder* bc, Ast* node) {
             dest.type.ptr_depth++;
             map_put(bc->ident_to_operand, ident, dest);
             
-            bc_push_instruction(bc, Bytecode_stack_alloc);
+            bc_push_instruction(bc, Bytecode_local);
             bc_push_operand(bc, dest);
             bc_push_operand(bc, alloc_type);
             // TODO(Alexander): we should maybe also push the allignment 

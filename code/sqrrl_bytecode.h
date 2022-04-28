@@ -2,7 +2,7 @@
 // BC(name, num_operands)
 #define DEF_BYTECODES \
 BC(noop, 0) \
-BC(stack_alloc, 2) \
+BC(local, 2) \
 BC(load, 2) \
 BC(store, 2) \
 BC(assign, 2) \

@@ -139,7 +139,7 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
         case Bytecode_noop:
         case Bytecode_label: break;
         
-        case Bytecode_stack_alloc: {
+        case Bytecode_local: {
             assert(bc->dest.kind == BcOperand_Register);
             assert(bc->src0.kind == BcOperand_Type);
             assert(bc->src1.kind == BcOperand_None);

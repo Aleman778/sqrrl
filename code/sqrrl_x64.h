@@ -300,6 +300,11 @@ operand_is_register(X64_Operand_Kind kind) {
             (kind >= X64Operand_m8 && kind <= X64Operand_m64));
 }
 
+inline bool
+operand_is_memory(X64_Operand_Kind kind) {
+    return (kind >= X64Operand_m8  && kind <= X64Operand_m64);
+}
+
 struct X64_Instruction {
     X64_Opcode opcode;
     union {

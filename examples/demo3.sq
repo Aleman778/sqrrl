@@ -17,7 +17,7 @@ main() {
     
     return y; // expects: 20
     
-#elif 1
+#elif 0
     int x = 0;
     while (x < 25) {
         x += 1;
@@ -36,5 +36,42 @@ main() {
     
     int y = (int) x;
     return y; // expects: -66
+    
+#else 1
+    // And operator
+    bool x = true;
+    bool x = x && true;
+    return (int) x; // true (1)
+    
+#elif 0
+    // Boolean expressions
+    int count = 0;
+    bool x = false;
+    
+    if (!x) {
+        count += 1; // Yes
+    }
+    
+    if (x && true) {
+        count += 1; // No
+    }
+    
+    if (x && false) {
+        count += 1; // No
+    }
+    
+    if (x || false) {
+        count += 1; // No
+    }
+    
+    if (x || true) {
+        count += 1; // Yes
+    }
+    
+    if ((x || true) && (count == 2)) {
+        count += 1; // Yes
+    }
+    
+    return count; // expects: 3
 #endif
 }

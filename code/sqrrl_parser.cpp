@@ -819,7 +819,7 @@ parse_unary_op(Parser* parser) {
     Token token = peek_token(parser);
     switch (token.type) {
         case Token_Sub:         return UnaryOp_Negate;
-        case Token_Logical_Not: return UnaryOp_Not;
+        case Token_Logical_Not: return UnaryOp_Logical_Not;
         case Token_Bit_Not:     return UnaryOp_Bitwise_Not;
         case Token_Bit_And:     return UnaryOp_Address_Of;
         case Token_Mul:         return UnaryOp_Dereference;

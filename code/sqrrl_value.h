@@ -3,7 +3,7 @@
 #define DEF_UNARY_OPS \
 UNOP(None,         ) \
 UNOP(Negate,      -) \
-UNOP(Not,         !) \
+UNOP(Logical_Not,         !) \
 UNOP(Bitwise_Not, ~) \
 UNOP(Address_Of,  &) \
 UNOP(Dereference, *) \
@@ -279,7 +279,8 @@ value_to_f64(Value value) {
     }
 }
 
-Value value_cast(Value value, Type* type);
+// TODO(Alexander): circular dependency for Primitive_Type_Kind
+//Value value_cast(Value value, Primitive_Type_Kind type_kind);
 
 inline s64 value_integer_binary_operation(Value first, Value second, Binary_Op op);
 inline Value value_floating_binary_operation(Value first, Value second, Binary_Op op);

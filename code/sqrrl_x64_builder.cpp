@@ -391,6 +391,12 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             insn->op1 = x64_build_stack_offset(x64, bc->src0.type, stack_offset);
         } break;
         
+        case Bytecode_assign: {
+            X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
+            insn->op0 = x64_build_operand(x64, &bc->dest);
+            insn->op1 = x64_build_operand(x64, &bc->src0);
+        } break;
+        
 #define BINARY_CASE(opcode) \
 Bc_Type type = bc->src0.type; \
         \
@@ -408,6 +414,14 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
         
         case Bytecode_sub: {
             BINARY_CASE(X64Opcode_sub);
+        } break;
+        
+        case Bytecode_land: {
+            BINARY_CASE(X64Opcode_and);
+        } break;
+        
+        case Bytecode_lor: {
+            BINARY_CASE(X64Opcode_or);
         } break;
         
         case Bytecode_mul: {
@@ -493,7 +507,7 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
         case Bytecode_branch: {
             
             X64_Opcode jmp_opcode = X64Opcode_jmp;
-            Bc_Register jump_label;
+            Bc_Register jump_label = {};
             
             Bc_Instruction* cmp = x64->curr_compare_insn;
             if (cmp) {
@@ -510,15 +524,27 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
                     case Bytecode_cmpge:  jmp_opcode = X64Opcode_jnge; break;
                     case Bytecode_cmpgt:  jmp_opcode = X64Opcode_jng;  break;
                 }
-                
+            } else if (bc->dest.type.kind == BcTypeKind_s1) {
+                X64_Instruction* test_insn = x64_push_instruction(x64, X64Opcode_test);
+                test_insn->op0 = x64_build_operand(x64, &bc->dest);
+                Value_Data true_value;
+                true_value.boolean = true;
+                test_insn->op1 = x64_build_immediate(x64, true_value, bc->dest.type);
+                jmp_opcode = X64Opcode_je;
+            }
+            
+            
+            if (bc->src0.kind != BcOperand_None && bc->src1.kind != BcOperand_None) {
                 // TODO(Alexander): for now we will assume that true_label is always following instruction
                 //Bc_Register true_label = bc->src0->Register;
                 jump_label = bc->src1.Register;
                 x64->curr_compare_insn = 0;
-            } else {
+            } else if (jmp_opcode == X64Opcode_jmp) {
+                // Unconditional jump
                 jump_label = bc->dest.Register;
             }
             
+            assert(jump_label.ident != Kw_invalid);
             X64_Instruction* jmp_insn = x64_push_instruction(x64, jmp_opcode);
             jmp_insn->op0 = x64_build_jump_target(x64, jump_label);
         } break;

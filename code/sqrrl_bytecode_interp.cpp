@@ -169,12 +169,25 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             bc_interp_store_register(interp, bc->dest.Register, value);
         } break;
         
+        case Bytecode_assign: {
+            Value_Data result = bc_interp_operand_value(interp, &bc->src0);
+            bc_interp_store_register(interp, bc->dest.Register, result); \
+        } break;
+        
         case Bytecode_neg: {
             Value_Data first = bc_interp_operand_value(interp, &bc->src0);
             Value_Data result;
             result.signed_int = -first.signed_int;
             bc_interp_store_register(interp, bc->dest.Register, result); \
         } break;
+        
+        case Bytecode_not: {
+            Value_Data first = bc_interp_operand_value(interp, &bc->src0);
+            Value_Data result;
+            result.boolean = !first.boolean;
+            bc_interp_store_register(interp, bc->dest.Register, result); \
+        } break;
+        
         
 #define BINARY_CASE(opcode, binary_operator) \
 case opcode: { \

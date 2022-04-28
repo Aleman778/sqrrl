@@ -175,7 +175,7 @@ interp_expression(Interp* interp, Ast* ast) {
                     }
                 } break;
                 
-                case UnaryOp_Not: {
+                case UnaryOp_Logical_Not: {
                     if (is_integer(first_op.value)) {
                         result.value.data.boolean = !value_to_bool(first_op.value);
                         result.value.type = Value_boolean;
@@ -733,7 +733,11 @@ interp_statement(Interp* interp, Ast* ast) {
                             for_map(field_values, field) {
                                 string_id field_ident = field->key;
                                 Type* field_type = map_get(type_table->ident_to_type, field_ident);
-                                Value field_value = value_cast(field->value, field_type);
+                                
+                                // TODO(Alexander): is this enough? should we e.g. handle nested structs?
+                                assert(field_type->kind == TypeKind_Primitive);
+                                
+                                Value field_value = value_cast(field->value, field_type->Primitive.kind);
                                 smm offset = map_get(type_table->ident_to_offset, field_ident);
                                 void* storage = (u8*) base_address + offset;
                                 interp_save_value(interp, field_type, storage, field_value);

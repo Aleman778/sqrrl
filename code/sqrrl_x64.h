@@ -2,6 +2,8 @@
 #define DEF_X64_OPCODES \
 X64_OPCODE(invalid, INVALID) \
 X64_OPCODE(noop, NOOP) \
+X64_OPCODE(and, AND) \
+X64_OPCODE(or, OR) \
 X64_OPCODE(add, ADD) \
 X64_OPCODE(sub, SUB) \
 X64_OPCODE(mul, MUL) \
@@ -16,6 +18,7 @@ X64_OPCODE(movzx, MOVZX) \
 X64_OPCODE(push, PUSH) \
 X64_OPCODE(pop, POP) \
 X64_OPCODE(cmp, CMP) \
+X64_OPCODE(test, TEST) \
 X64_OPCODE(jmp, JMP) \
 X64_OPCODE(ja, JA) \
 X64_OPCODE(jae, JAE) \
@@ -450,14 +453,7 @@ string_builder_push(String_Builder* sb, X64_Operand* operand, bool show_virtual_
             }
             
             if (operand->is_allocated) {
-                X64_Operand_Kind reg_kind = X64Operand_None;
-                switch (operand->kind) {
-                    case X64Operand_m8: reg_kind = X64Operand_r8; break;
-                    case X64Operand_m16: reg_kind = X64Operand_r16; break;
-                    case X64Operand_m32: reg_kind = X64Operand_r32; break;
-                    case X64Operand_m64: reg_kind = X64Operand_r64; break;
-                }
-                
+                X64_Operand_Kind reg_kind = X64Operand_r64;
                 X64_Register actual_reg = convert_register_to_specific_kind(operand->reg, reg_kind);
                 string_builder_push_format(sb, "[%", f_cstring(x64_register_name_table[actual_reg]));
             } else {

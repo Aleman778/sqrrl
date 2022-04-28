@@ -1,53 +1,44 @@
 
 Value
-value_cast(Value value, Type* type) {
+value_cast(Value value, Primitive_Type_Kind type_kind) {
     // TODO(Alexander): handle type errors here
     Value result = {};
     
-    switch (type->kind) {
-        case TypeKind_Primitive: {
-            switch (type->Primitive.kind) {
-                case PrimitiveTypeKind_int:
-                case PrimitiveTypeKind_s8:
-                case PrimitiveTypeKind_s16:
-                case PrimitiveTypeKind_s32:
-                case PrimitiveTypeKind_b32:
-                case PrimitiveTypeKind_s64:
-                case PrimitiveTypeKind_smm: {
-                    result.data.signed_int = value_to_s64(value);
-                    result.type = Value_signed_int;
-                } break;
-                
-                case PrimitiveTypeKind_uint:
-                case PrimitiveTypeKind_u8:
-                case PrimitiveTypeKind_u16:
-                case PrimitiveTypeKind_u32:
-                case PrimitiveTypeKind_u64:
-                case PrimitiveTypeKind_umm: {
-                    result.data.unsigned_int = value_to_u64(value);
-                    result.type = Value_unsigned_int;
-                } break;
-                
-                case PrimitiveTypeKind_f32:
-                case PrimitiveTypeKind_f64: {
-                    result.data.floating = value_to_f64(value);
-                    result.type = Value_floating;
-                } break;
-                
-                case PrimitiveTypeKind_bool: {
-                    result.data.boolean = value_to_bool(value);
-                    result.type = Value_boolean;
-                } break;
-                
-                default: {
-                    assert(0 && "invalid primitive type");
-                } break;
-                
-            } break;
-        }
+    switch (type_kind) {
+        case PrimitiveTypeKind_int:
+        case PrimitiveTypeKind_s8:
+        case PrimitiveTypeKind_s16:
+        case PrimitiveTypeKind_s32:
+        case PrimitiveTypeKind_b32:
+        case PrimitiveTypeKind_s64:
+        case PrimitiveTypeKind_smm: {
+            result.data.signed_int = value_to_s64(value);
+            result.type = Value_signed_int;
+        } break;
+        
+        case PrimitiveTypeKind_uint:
+        case PrimitiveTypeKind_u8:
+        case PrimitiveTypeKind_u16:
+        case PrimitiveTypeKind_u32:
+        case PrimitiveTypeKind_u64:
+        case PrimitiveTypeKind_umm: {
+            result.data.unsigned_int = value_to_u64(value);
+            result.type = Value_unsigned_int;
+        } break;
+        
+        case PrimitiveTypeKind_f32:
+        case PrimitiveTypeKind_f64: {
+            result.data.floating = value_to_f64(value);
+            result.type = Value_floating;
+        } break;
+        
+        case PrimitiveTypeKind_bool: {
+            result.data.boolean = value_to_bool(value);
+            result.type = Value_boolean;
+        } break;
         
         default: {
-            assert(0 && "not a value");
+            assert(0 && "invalid primitive type");
         } break;
     }
     

@@ -5,6 +5,7 @@ BC(noop, 0) \
 BC(stack_alloc, 2) \
 BC(load, 2) \
 BC(store, 2) \
+BC(assign, 2) \
 BC(neg, 2) \
 BC(not, 2) \
 BC(mul, 3) \
@@ -138,6 +139,31 @@ bc_type_to_value_type(Bc_Type_Kind kind) {
     }
     
     return Value_void;
+}
+
+Primitive_Type_Kind
+bc_type_to_primitive_type_kind(Bc_Type_Kind kind) {
+    switch (kind) {
+        case BcTypeKind_s1:  return PrimitiveTypeKind_bool;
+        case BcTypeKind_s8:  return PrimitiveTypeKind_s8;
+        case BcTypeKind_s16: return PrimitiveTypeKind_s16;
+        case BcTypeKind_s32: return PrimitiveTypeKind_s32;
+        case BcTypeKind_s64: return PrimitiveTypeKind_s64;
+        
+        case BcTypeKind_u8:  return PrimitiveTypeKind_u8;
+        case BcTypeKind_u16: return PrimitiveTypeKind_u16;
+        case BcTypeKind_u32: return PrimitiveTypeKind_u32;
+        case BcTypeKind_u64: return PrimitiveTypeKind_u64;
+        
+        case BcTypeKind_f32: return PrimitiveTypeKind_f32;
+        case BcTypeKind_f64: return PrimitiveTypeKind_f64;
+        
+        default: {
+            assert(0 && "invalid bytecode primitive type");
+        } break;
+    }
+    
+    return PrimitiveTypeKind_void;
 }
 
 inline bool

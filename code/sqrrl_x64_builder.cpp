@@ -65,7 +65,7 @@ x64_perform_register_allocation(X64_Builder* x64) {
     }
     
 #define ALLOC_REG(operand) \
-if (operand_is_register(operand.kind)) { \
+if (operand_is_register(operand.kind) || operand_is_memory(operand.kind)) { \
 if (!operand.is_allocated) { \
 X64_Register_Node* node = \
 &map_get(x64->interference_graph, operand.virtual_register); \
@@ -131,7 +131,8 @@ x64_allocate_specific_register(X64_Builder* x64, X64_Register physical_register)
 
 inline bool
 operand_is_unallocated_register(X64_Operand operand) {
-    return operand_is_register(operand.kind) && !operand.is_allocated;
+    return (operand_is_register(operand.kind) || 
+            operand_is_memory(operand.kind)) && !operand.is_allocated;
 }
 
 #if BUILD_DEBUG
@@ -263,28 +264,6 @@ x64_build_jump_target(X64_Builder* x64, Bc_Register label) {
     return result;
 }
 
-X64_Operand_Kind
-x64_get_register_kind(Bc_Type_Kind type_kind) {
-    switch (type_kind) {
-        case BcTypeKind_s1:
-        case BcTypeKind_s8:
-        case BcTypeKind_u8: return X64Operand_r8;
-        
-        case BcTypeKind_s16:
-        case BcTypeKind_u16: return X64Operand_r16;
-        
-        case BcTypeKind_s32:
-        case BcTypeKind_u32: return X64Operand_r32;
-        
-        case BcTypeKind_s64:
-        case BcTypeKind_u64: return X64Operand_r64;
-        
-        case BcTypeKind_f32:
-        case BcTypeKind_f64: return X64Operand_mm;
-    }
-    
-    return X64Operand_None;
-}
 
 X64_Operand
 x64_build_stack_offset(X64_Builder* x64, 
@@ -292,30 +271,7 @@ x64_build_stack_offset(X64_Builder* x64,
                        s64 stack_offset, 
                        X64_Register reg = X64Register_rbp) {
     X64_Operand result = {};
-    switch (type.kind) {
-        case BcTypeKind_s1:
-        case BcTypeKind_s8:
-        case BcTypeKind_u8: {
-            result.kind = X64Operand_m8;
-        } break;
-        
-        case BcTypeKind_s16:
-        case BcTypeKind_u16: {
-            result.kind = X64Operand_m16;
-        } break;
-        
-        case BcTypeKind_s32:
-        case BcTypeKind_u32: {
-            result.kind = X64Operand_m32;
-        } break;
-        
-        case BcTypeKind_s64:
-        case BcTypeKind_u64: {
-            result.kind = X64Operand_m64;
-        } break;
-        
-        // TODO(Alexander): floating point
-    }
+    result.kind = x64_get_memory_kind(type.kind);
     result.reg = reg;
     result.disp64 = stack_offset;
     result.is_allocated = true;
@@ -375,6 +331,7 @@ x64_build_operand(X64_Builder* x64, Bc_Operand* operand) {
     return result;
 }
 
+
 void
 x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
     switch (bc->opcode) {
@@ -397,9 +354,9 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
                 temp_reg.virtual_register = x64_allocate_virtual_register(x64);
                 temp_reg.kind = x64_get_register_kind(bc->dest.type.kind);
                 
-                //X64_Instruction* tmp_mov_insn = x64_push_instruction(x64, X64Opcode_mov);
-                //tmp_mov_insn->op0 = temp_reg;
-                //tmp_mov_insn->op1 = source_operand;
+                X64_Instruction* tmp_mov_insn = x64_push_instruction(x64, X64Opcode_mov);
+                tmp_mov_insn->op0 = temp_reg;
+                tmp_mov_insn->op1 = source_operand;
                 
                 source_operand = temp_reg;
             }
@@ -594,6 +551,7 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
                 mov_insn->op1 = x64_build_operand(x64, &bc->src0);
             } else {
                 X64_Operand src = map_get(x64->allocated_virtual_registers, bc->src0.Register);
+                src = x64_operand_type_cast(src, bc->src1.type.kind);
                 map_put(x64->allocated_virtual_registers, bc->dest.Register, src);
             }
         } break;

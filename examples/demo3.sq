@@ -24,9 +24,9 @@ main() {
     }
     return x; // expects: 25
     
-#elif 0 // TODO: this breaks
+#elif 1
     // Truncating integers
-    s64 x = 140234230023;
+    s64 x = (s64) 140234230023;
     return (int) x; // expects: -1499690745
     
 #elif 0
@@ -49,7 +49,7 @@ main() {
     bool x = x && true;
     return (int) x; // true (1)
     
-#elif 1 // TODO: this breaks
+#elif 0 // TODO: this breaks
     // Boolean expressions
     int count = 0;
     bool x = false;

@@ -24,7 +24,7 @@ main() {
     }
     return x; // expects: 25
     
-#elif 1
+#elif 0
     // Truncating integers
     s64 x = (s64) 140234230023;
     return (int) x; // expects: -1499690745
@@ -47,6 +47,12 @@ main() {
     // And operator
     bool x = true;
     bool x = x && true;
+    return (int) x; // true (1)
+    
+#elif 1
+    // Or operator
+    bool x = true;
+    bool x = x || false;
     return (int) x; // true (1)
     
 #elif 0 // TODO: this breaks

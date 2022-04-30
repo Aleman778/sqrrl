@@ -162,7 +162,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         Bc_Interp interp = {};
         interp.declarations = bytecode_builder.declarations;
         interp.curr_block = main_block;
-        bc_interp_function(&interp, Sym_main);
+        int interp_exit_code = (int) bc_interp_function(&interp, Sym_main).signed_int;
         
         // Generate X64 machine code
         X64_Builder x64_builder = {};
@@ -226,8 +226,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         
         asm_make_executable(asm_buffer, asm_size);
         asm_main* func = (asm_main*) asm_buffer;
-        int exit_code = (int) func();
-        pln("\n\nProgram exited with code: %", f_int(exit_code));
+        int jit_exit_code = (int) func();
+        pln("\n\nInterpreter exited with code: %", f_int(interp_exit_code));
+        pln("        JIT exited with code: %", f_int(jit_exit_code));
     }
     
 #endif

@@ -74,6 +74,46 @@ global const cstring x64_opcode_names[] = {
 #undef X64_OPCODE
 };
 
+inline X64_Opcode
+x64_opcode_invert_jump_condition(X64_Opcode opcode) {
+    switch (opcode) {
+        
+        case X64Opcode_ja: return X64Opcode_jna;
+        case X64Opcode_jna: return X64Opcode_ja;
+        
+        case X64Opcode_jae: return X64Opcode_jnae;
+        case X64Opcode_jnae: return X64Opcode_jae;
+        
+        case X64Opcode_jb: return X64Opcode_jnb;
+        case X64Opcode_jnb: return X64Opcode_jb;
+        
+        case X64Opcode_jbe: return X64Opcode_jnbe;
+        case X64Opcode_jnbe: return X64Opcode_jbe;
+        
+        case X64Opcode_jc: return X64Opcode_jnc;
+        case X64Opcode_jnc: return X64Opcode_jc;
+        
+        case X64Opcode_je: return X64Opcode_jne;
+        case X64Opcode_jne: return X64Opcode_je;
+        
+        case X64Opcode_jg: return X64Opcode_jng;
+        case X64Opcode_jng: return X64Opcode_jg;
+        
+        case X64Opcode_jge: return X64Opcode_jnge;
+        case X64Opcode_jnge: return X64Opcode_jge;
+        
+        case X64Opcode_jl: return X64Opcode_jnl;
+        case X64Opcode_jnl: return X64Opcode_jl;
+        
+        case X64Opcode_jle: return X64Opcode_jnle;
+        case X64Opcode_jnle: return X64Opcode_jle;
+        
+        default: assert(0 && "not invertable conditional jump opcode");
+    }
+    
+    return opcode;
+}
+
 
 #define DEF_X64_OPERANDS \
 X64_OP(None) \

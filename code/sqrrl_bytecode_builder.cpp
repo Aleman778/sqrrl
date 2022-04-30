@@ -298,6 +298,27 @@ bc_build_type_cast(Bc_Builder* bc, Bc_Operand* expr, Bc_Type dest_type) {
     return result;
 }
 
+inline Bc_Operand
+bc_build_stack_alloc(Bc_Builder* bc, Bc_Operand* value, Bc_Type alloc_type) {
+    Bc_Operand dest = bc_get_unique_register_operand(bc, value->type);
+    
+    Bc_Operand alloc_type_op = dest;
+    alloc_type_op.kind = BcOperand_Type;
+    alloc_type_op.type = alloc_type;
+    dest.type.ptr_depth++;
+    
+    bc_push_instruction(bc, Bytecode_stack_alloc);
+    bc_push_operand(bc, dest);
+    bc_push_operand(bc, alloc_type_op);
+    // TODO(Alexander): we should maybe also push the allignment 
+    
+    bc_push_instruction(bc, Bytecode_store);
+    bc_push_operand(bc, dest);
+    bc_push_operand(bc, *value);
+    
+    return dest;
+}
+
 Bc_Operand
 bc_build_expression(Bc_Builder* bc, Ast* node) {
     Bc_Operand result = {};
@@ -400,8 +421,7 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
             Bc_Operand first = bc_build_expression(bc, node->Binary_Expr.first);
             Bc_Operand second;
             
-            if ((node->Binary_Expr.op == BinaryOp_Logical_And || 
-                 node->Binary_Expr.op == BinaryOp_Logical_Or) && first.kind != BcOperand_Value) {
+            if (node->Binary_Expr.op == BinaryOp_Logical_And && first.kind != BcOperand_Value) {
                 
                 Bc_Type type = {};
                 type.kind = BcTypeKind_s1;
@@ -409,7 +429,7 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                 
                 // Branch
                 Bc_Operand empty_reg_op = {};
-                empty_reg_op.kind = BcOperand_Register;
+                empty_reg_op.kind = BcOperand_Basic_Block;
                 bc_push_instruction(bc, Bytecode_branch);
                 bc_push_operand(bc, cond);
                 bc_push_operand(bc, empty_reg_op);
@@ -418,16 +438,58 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                 
                 Bc_Operand temp_register = bc_get_unique_register_operand(bc, { BcTypeKind_s1, 0 });
                 
-                branch_insn->src0.Register = bc_push_basic_block(bc)->label;
+                branch_insn->src0.Basic_Block = bc_push_basic_block(bc);
                 
                 second = bc_build_expression(bc, node->Binary_Expr.second);
                 bc_push_instruction(bc, Bytecode_assign);
                 bc_push_operand(bc, temp_register);
                 bc_push_operand(bc, second);
                 
-                branch_insn->src1.Register = bc_push_basic_block(bc)->label;
+                branch_insn->src1.Basic_Block = bc_push_basic_block(bc);
                 
                 second = temp_register;
+                
+            } else if (node->Binary_Expr.op == BinaryOp_Logical_Or && first.kind != BcOperand_Value) {
+                
+                // Store the result in new local variable
+                Bc_Operand dest = bc_build_stack_alloc(bc, &first, first.type);
+                
+                Bc_Type type = {};
+                type.kind = BcTypeKind_s1;
+                Bc_Operand cond = bc_build_type_cast(bc, &first, type);
+                
+                // Branch
+                Bc_Operand empty_reg_op = {};
+                empty_reg_op.kind = BcOperand_Basic_Block;
+                bc_push_instruction(bc, Bytecode_branch);
+                bc_push_operand(bc, cond);
+                bc_push_operand(bc, empty_reg_op);
+                bc_push_operand(bc, empty_reg_op);
+                Bc_Instruction* branch_insn = bc->curr_instruction;
+                
+                branch_insn->src1.Basic_Block = bc_push_basic_block(bc);
+                
+                second = bc_build_expression(bc, node->Binary_Expr.second);
+                bc_push_instruction(bc, Bytecode_store);
+                bc_push_operand(bc, dest);
+                bc_push_operand(bc, second);
+                
+                branch_insn->src0.Basic_Block = bc_push_basic_block(bc);
+                
+                Bc_Operand temp_register = bc_get_unique_register_operand(bc, { BcTypeKind_s1, 0 });
+                
+                Bc_Operand type_op = {};
+                type_op.kind = BcOperand_Type;
+                type_op.type = type;
+                
+                bc_push_instruction(bc, Bytecode_load);
+                bc_push_operand(bc, temp_register);
+                bc_push_operand(bc, type_op);
+                bc_push_operand(bc, dest);
+                
+                result = temp_register;
+                break;
+                
             } else {
                 second = bc_build_expression(bc, node->Binary_Expr.second);
             }
@@ -567,25 +629,9 @@ bc_build_statement(Bc_Builder* bc, Ast* node) {
             
             string_id ident = ast_unwrap_ident(node->Assign_Stmt.ident);
             
-            Bc_Instruction insn = {};
             Bc_Type type = bc_build_type(bc, node->Assign_Stmt.type);
-            
-            Bc_Operand dest = bc_get_unique_register_operand(bc, type);
-            
-            Bc_Operand alloc_type = dest;
-            alloc_type.kind = BcOperand_Type;
-            dest.type.ptr_depth++;
+            Bc_Operand dest = bc_build_stack_alloc(bc, &source, type);
             map_put(bc->ident_to_operand, ident, dest);
-            
-            bc_push_instruction(bc, Bytecode_local);
-            bc_push_operand(bc, dest);
-            bc_push_operand(bc, alloc_type);
-            // TODO(Alexander): we should maybe also push the allignment 
-            
-            bc_push_instruction(bc, Bytecode_store);
-            bc_push_operand(bc, dest);
-            bc_push_operand(bc, source);
-            
         } break;
         
         case Ast_Expr_Stmt: {
@@ -616,15 +662,14 @@ bc_build_statement(Bc_Builder* bc, Ast* node) {
             
             // Branch
             Bc_Operand empty_reg_op = {};
-            empty_reg_op.kind = BcOperand_Register;
+            empty_reg_op.kind = BcOperand_Basic_Block;
             bc_push_instruction(bc, Bytecode_branch);
             bc_push_operand(bc, cond);
             bc_push_operand(bc, empty_reg_op);
             bc_push_operand(bc, empty_reg_op);
             Bc_Instruction* branch_insn = bc->curr_instruction;
             
-            
-            branch_insn->src0.Register = bc_push_basic_block(bc)->label;
+            branch_insn->src0.Basic_Block = bc_push_basic_block(bc);
             
             bc_build_statement(bc, node->If_Stmt.then_block);
             
@@ -639,7 +684,7 @@ bc_build_statement(Bc_Builder* bc, Ast* node) {
                 
             } else {
                 
-                branch_insn->src1.Register = bc_push_basic_block(bc)->label;
+                branch_insn->src1.Basic_Block = bc_push_basic_block(bc);
                 bc_build_statement(bc, node->If_Stmt.else_block);
                 
                 bc_push_instruction(bc, Bytecode_branch);

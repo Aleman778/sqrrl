@@ -12,6 +12,7 @@ struct Bc_Interp {
     
     Memory_Arena stack;
     smm base_pointer;
+    Value_Data return_value;
 };
 
 inline void
@@ -139,7 +140,7 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
         case Bytecode_noop:
         case Bytecode_label: break;
         
-        case Bytecode_local: {
+        case Bytecode_stack_alloc: {
             assert(bc->dest.kind == BcOperand_Register);
             assert(bc->src0.kind == BcOperand_Type);
             assert(bc->src1.kind == BcOperand_None);
@@ -204,8 +205,8 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
         BINARY_CASE(Bytecode_sub, -);
         BINARY_CASE(Bytecode_div, /);
         BINARY_CASE(Bytecode_mul, *);
-        BINARY_CASE(Bytecode_land, &&);
-        BINARY_CASE(Bytecode_lor, ||);
+        BINARY_CASE(Bytecode_and, &&);
+        BINARY_CASE(Bytecode_or, ||);
         BINARY_CASE(Bytecode_cmpeq, ==);
         BINARY_CASE(Bytecode_cmpneq, !=);
         BINARY_CASE(Bytecode_cmple, <=);
@@ -298,7 +299,7 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
                 case BcTypeKind_u32: value.unsigned_int = (u32) value.unsigned_int; break;
             }
             
-            pln("DEBUG: interpreter returned: %", f_s64(value.signed_int));
+            interp->return_value = value;
         } break;
         
         default: {
@@ -307,7 +308,7 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
     }
 }
 
-void
+Value_Data
 bc_interp_function(Bc_Interp* interp, string_id ident) {
     // Push scope
     Bc_Interp_Scope new_scope = {};
@@ -324,4 +325,5 @@ bc_interp_function(Bc_Interp* interp, string_id ident) {
     
     // Pop scope
     array_pop(interp->scopes);
+    return interp->return_value;
 }

@@ -57,28 +57,28 @@ main() {
     
 #elif 0 // TODO: this breaks
     // Boolean expressions
-    int count = 0;
+    int count = 2;
     bool x = false;
     
-    if (!x) {
-        count += 1; // Yes
-    }
+    //if (!x) {
+    //count += 1; // Yes
+    //}
     
-    if (x && true) {
-        count += 1; // No
-    }
+    //if (x && true) {
+    //count += 1; // No
+    //}
     
-    if (x && false) {
-        count += 1; // No
-    }
+    //if (x && false) {
+    //count += 1; // No
+    //}
     
-    if (x || false) {
-        count += 1; // No
-    }
+    //if (x || false) {
+    //count += 1; // No
+    //}
     
-    if (x || true) {
-        count += 1; // Yes
-    }
+    //if (x || true) {
+    //count += 1; // Yes
+    //}
     
     if ((x || true) && (count == 2)) {
         count += 1; // Yes

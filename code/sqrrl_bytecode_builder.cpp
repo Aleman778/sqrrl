@@ -86,6 +86,23 @@ bc_push_operand(Bc_Builder* bc, Bc_Operand operand) {
     }
 }
 
+inline Bc_Instruction*
+bc_push_branch(Bc_Builder* bc, Bc_Operand* cond) {
+    // Branch
+    Bc_Operand stub = {};
+    stub.kind = BcOperand_Basic_Block;
+    bc_push_instruction(bc, Bytecode_branch);
+    if (cond) {
+        bc_push_operand(bc, *cond);
+        bc_push_operand(bc, stub);
+        bc_push_operand(bc, stub);
+    } else {
+        bc_push_operand(bc, stub);
+    }
+    
+    return bc->curr_instruction;
+}
+
 inline Bc_Operand
 bc_get_unique_register_operand(Bc_Builder* bc, Bc_Type type) {
     Bc_Operand result;
@@ -422,65 +439,50 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
             Bc_Operand second;
             
             if (node->Binary_Expr.op == BinaryOp_Logical_And && first.kind != BcOperand_Value) {
-                
-                Bc_Type type = {};
-                type.kind = BcTypeKind_s1;
-                Bc_Operand cond = bc_build_type_cast(bc, &first, type);
-                
-                // Branch
-                Bc_Operand empty_reg_op = {};
-                empty_reg_op.kind = BcOperand_Basic_Block;
-                bc_push_instruction(bc, Bytecode_branch);
-                bc_push_operand(bc, cond);
-                bc_push_operand(bc, empty_reg_op);
-                bc_push_operand(bc, empty_reg_op);
-                Bc_Instruction* branch_insn = bc->curr_instruction;
-                
-                Bc_Operand temp_register = bc_get_unique_register_operand(bc, { BcTypeKind_s1, 0 });
-                
-                branch_insn->src0.Basic_Block = bc_push_basic_block(bc);
-                
-                second = bc_build_expression(bc, node->Binary_Expr.second);
-                bc_push_instruction(bc, Bytecode_assign);
-                bc_push_operand(bc, temp_register);
-                bc_push_operand(bc, second);
-                
-                branch_insn->src1.Basic_Block = bc_push_basic_block(bc);
-                
-                second = temp_register;
-                
-            } else if (node->Binary_Expr.op == BinaryOp_Logical_Or && first.kind != BcOperand_Value) {
-                
                 // Store the result in new local variable
                 Bc_Operand dest = bc_build_stack_alloc(bc, &first, first.type);
                 
                 Bc_Type type = {};
                 type.kind = BcTypeKind_s1;
-                Bc_Operand cond = bc_build_type_cast(bc, &first, type);
+                Bc_Operand cond = bc_build_type_cast(bc, &first, bc_type_s1);
+                Bc_Instruction* branch = bc_push_branch(bc, &cond);
                 
-                // Branch
-                Bc_Operand empty_reg_op = {};
-                empty_reg_op.kind = BcOperand_Basic_Block;
-                bc_push_instruction(bc, Bytecode_branch);
-                bc_push_operand(bc, cond);
-                bc_push_operand(bc, empty_reg_op);
-                bc_push_operand(bc, empty_reg_op);
-                Bc_Instruction* branch_insn = bc->curr_instruction;
+                Bc_Operand temp_register = bc_get_unique_register_operand(bc, bc_type_s1);
                 
-                branch_insn->src1.Basic_Block = bc_push_basic_block(bc);
+                branch->true_block.Basic_Block = bc_push_basic_block(bc);
                 
                 second = bc_build_expression(bc, node->Binary_Expr.second);
                 bc_push_instruction(bc, Bytecode_store);
                 bc_push_operand(bc, dest);
                 bc_push_operand(bc, second);
                 
-                branch_insn->src0.Basic_Block = bc_push_basic_block(bc);
+                branch->false_block.Basic_Block = bc_push_basic_block(bc);
                 
-                Bc_Operand temp_register = bc_get_unique_register_operand(bc, { BcTypeKind_s1, 0 });
+                second = dest;
+                
+            } else if (node->Binary_Expr.op == BinaryOp_Logical_Or && first.kind != BcOperand_Value) {
+                
+                // Store the result in new local variable
+                Bc_Operand dest = bc_build_stack_alloc(bc, &first, first.type);
+                
+                // Branch
+                Bc_Operand cond = bc_build_type_cast(bc, &first, bc_type_s1);
+                Bc_Instruction* branch = bc_push_branch(bc, &cond);
+                
+                branch->true_block.Basic_Block = bc_push_basic_block(bc);
+                
+                second = bc_build_expression(bc, node->Binary_Expr.second);
+                bc_push_instruction(bc, Bytecode_store);
+                bc_push_operand(bc, dest);
+                bc_push_operand(bc, second);
+                
+                branch->false_block.Basic_Block = bc_push_basic_block(bc);
+                
+                Bc_Operand temp_register = bc_get_unique_register_operand(bc, bc_type_s1);
                 
                 Bc_Operand type_op = {};
                 type_op.kind = BcOperand_Type;
-                type_op.type = type;
+                type_op.type = bc_type_s1;
                 
                 bc_push_instruction(bc, Bytecode_load);
                 bc_push_operand(bc, temp_register);
@@ -549,7 +551,7 @@ case BinaryOp_##name: bc_push_instruction(bc, Bytecode_##bc_mnemonic); break;
         } break;
         
         case Ast_Paren_Expr: {
-            bc_build_expression(bc, node->Paren_Expr.expr);
+            result = bc_build_expression(bc, node->Paren_Expr.expr);
         } break;
         
         case Ast_Index_Expr: {
@@ -597,25 +599,39 @@ bc_build_compare_expression(Bc_Builder* bc, Ast* node) {
         }
     }
     
+    Bc_Operand dest;
+    Bc_Type dest_type = {};
+    dest_type.kind = BcTypeKind_s1;
+    
     if (cmp_code == Bytecode_noop) {
         cmp_code = Bytecode_cmpneq;
         first = bc_build_expression(bc, node);
         second.type = first.type;
         second.kind = BcOperand_Value;
         second.Value.signed_int = 0;
+        
+        dest = bc_get_unique_register_operand(bc, dest_type);
+        
+        bc_push_instruction(bc, cmp_code);
+        bc_push_operand(bc, dest);
+        bc_push_operand(bc, first);
+        bc_push_operand(bc, second);
+        
     } else {
-        first = bc_build_expression(bc, node->Binary_Expr.first);
-        second = bc_build_expression(bc, node->Binary_Expr.second);
+        first = bc_build_expression(bc, node);
+        second.kind = BcOperand_Value;
+        second.Value.signed_int = 0;
+        second.type = first.type;
+        
+        dest = bc_get_unique_register_operand(bc, dest_type);
+        
+        bc_push_instruction(bc, Bytecode_cmpneq);
+        bc_push_operand(bc, dest);
+        bc_push_operand(bc, first);
+        bc_push_operand(bc, second);
+        
     }
     
-    Bc_Type dest_type = {};
-    dest_type.kind = BcTypeKind_s1;
-    Bc_Operand dest = bc_get_unique_register_operand(bc, dest_type);
-    
-    bc_push_instruction(bc, cmp_code);
-    bc_push_operand(bc, dest);
-    bc_push_operand(bc, first);
-    bc_push_operand(bc, second);
     
     return dest;
 }
@@ -659,41 +675,29 @@ bc_build_statement(Bc_Builder* bc, Ast* node) {
         
         case Ast_If_Stmt: {
             Bc_Operand cond = bc_build_compare_expression(bc, node->If_Stmt.cond);
+            Bc_Instruction* branch = bc_push_branch(bc, &cond);
             
-            // Branch
-            Bc_Operand empty_reg_op = {};
-            empty_reg_op.kind = BcOperand_Basic_Block;
-            bc_push_instruction(bc, Bytecode_branch);
-            bc_push_operand(bc, cond);
-            bc_push_operand(bc, empty_reg_op);
-            bc_push_operand(bc, empty_reg_op);
-            Bc_Instruction* branch_insn = bc->curr_instruction;
-            
-            branch_insn->src0.Basic_Block = bc_push_basic_block(bc);
+            branch->src0.Basic_Block = bc_push_basic_block(bc);
             
             bc_build_statement(bc, node->If_Stmt.then_block);
             
-            bc_push_instruction(bc, Bytecode_branch);
-            bc_push_operand(bc, empty_reg_op);
-            Bc_Instruction* exit_insn = bc->curr_instruction;
+            Bc_Instruction* exit = bc_push_branch(bc, 0);
             
             if (is_ast_none(node->If_Stmt.else_block)) {
                 Bc_Basic_Block* exit_block = bc_push_basic_block(bc);
-                branch_insn->src1.Register = exit_block->label;
-                exit_insn->dest.Register = exit_block->label;
+                branch->src1.Basic_Block = exit_block;
+                exit->dest.Basic_Block = exit_block;
                 
             } else {
                 
-                branch_insn->src1.Basic_Block = bc_push_basic_block(bc);
+                branch->src1.Basic_Block = bc_push_basic_block(bc);
                 bc_build_statement(bc, node->If_Stmt.else_block);
                 
-                bc_push_instruction(bc, Bytecode_branch);
-                bc_push_operand(bc, empty_reg_op);
-                Bc_Instruction* exit2_insn = bc->curr_instruction;
+                Bc_Instruction* exit2 = bc_push_branch(bc, 0);
                 
                 Bc_Basic_Block* exit_block = bc_push_basic_block(bc);
-                exit_insn->dest.Register = exit_block->label;
-                exit2_insn->dest.Register = exit_block->label;
+                exit->dest.Basic_Block = exit_block;
+                exit2->dest.Basic_Block = exit_block;
             }
             
         } break;
@@ -703,54 +707,38 @@ bc_build_statement(Bc_Builder* bc, Ast* node) {
             bc_build_statement(bc, node->For_Stmt.init);
             
             // Condition
-            Bc_Register condition_label = bc_push_basic_block(bc)->label;
+            Bc_Basic_Block* entry_block = bc_push_basic_block(bc);
             Bc_Operand cond = bc_build_compare_expression(bc, node->For_Stmt.cond);
-            Bc_Operand empty_reg_op = {};
-            empty_reg_op.kind = BcOperand_Register;
-            bc_push_instruction(bc, Bytecode_branch);
-            bc_push_operand(bc, cond);
-            bc_push_operand(bc, empty_reg_op);
-            bc_push_operand(bc, empty_reg_op);
-            Bc_Instruction* cond_insn = bc->curr_instruction;
-            cond_insn->src0.Register = bc_push_basic_block(bc)->label;
+            Bc_Instruction* branch = bc_push_branch(bc, &cond);
+            branch->true_block.Basic_Block = bc_push_basic_block(bc);
             
             // Update and block
             bc_build_statement(bc, node->For_Stmt.block);
             bc_build_expression(bc, node->For_Stmt.update);
             
             // Next iteration
-            bc_push_instruction(bc, Bytecode_branch);
-            bc_push_operand(bc, empty_reg_op);
-            Bc_Instruction* next_it_insn = bc->curr_instruction;
-            next_it_insn->dest.Register = condition_label;
+            Bc_Instruction* next_it = bc_push_branch(bc, 0);
+            next_it->dest.Basic_Block = entry_block;
             
-            cond_insn->src1.Register = bc_push_basic_block(bc)->label;
+            branch->false_block.Register = bc_push_basic_block(bc)->label;
         } break;
         
         case Ast_While_Stmt: {
             // TODO(Alexander): we need to use the While_Stmt.label if specified
             // Condition
-            Bc_Register condition_label = bc_push_basic_block(bc)->label;
+            Bc_Basic_Block* cond_block = bc_push_basic_block(bc);
             Bc_Operand cond = bc_build_compare_expression(bc, node->While_Stmt.cond);
-            Bc_Operand empty_reg_op = {};
-            empty_reg_op.kind = BcOperand_Register;
-            bc_push_instruction(bc, Bytecode_branch);
-            bc_push_operand(bc, cond);
-            bc_push_operand(bc, empty_reg_op);
-            bc_push_operand(bc, empty_reg_op);
-            Bc_Instruction* cond_insn = bc->curr_instruction;
-            cond_insn->src0.Register = bc_push_basic_block(bc)->label;
+            Bc_Instruction* branch = bc_push_branch(bc, &cond);
+            branch->src0.Register = bc_push_basic_block(bc)->label;
             
             // Update and block
             bc_build_statement(bc, node->While_Stmt.block);
             
             // Next iteration
-            bc_push_instruction(bc, Bytecode_branch);
-            bc_push_operand(bc, empty_reg_op);
-            Bc_Instruction* next_it_insn = bc->curr_instruction;
-            next_it_insn->dest.Register = condition_label;
+            Bc_Instruction* next_it = bc_push_branch(bc, 0);
+            next_it->op0.Basic_Block = cond_block;
             
-            cond_insn->src1.Register = bc_push_basic_block(bc)->label;
+            branch->src1.Register = bc_push_basic_block(bc)->label;
         } break;
         
         case Ast_Return_Stmt: {

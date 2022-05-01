@@ -53,6 +53,36 @@ X64_OPCODE(jpe, JPE) \
 X64_OPCODE(jpo, JPO) \
 X64_OPCODE(js, JS) \
 X64_OPCODE(jz, JZ) \
+X64_OPCODE(seta, SETA) \
+X64_OPCODE(setae, SETAE) \
+X64_OPCODE(setb, SETB) \
+X64_OPCODE(setbe, SETBE) \
+X64_OPCODE(setc, SETC) \
+X64_OPCODE(sete, SETE) \
+X64_OPCODE(setg, SETG) \
+X64_OPCODE(setge, SETGE) \
+X64_OPCODE(setl, SETL) \
+X64_OPCODE(setle, SETLE) \
+X64_OPCODE(setna, SETNA) \
+X64_OPCODE(setnae, SETNAE) \
+X64_OPCODE(setnb, SETNB) \
+X64_OPCODE(setnbe, SETNBE) \
+X64_OPCODE(setnc, SETNC) \
+X64_OPCODE(setne, SETNE) \
+X64_OPCODE(setng, SETNG) \
+X64_OPCODE(setnge, SETNGE) \
+X64_OPCODE(setnl, SETNL) \
+X64_OPCODE(setnle, SETNLE) \
+X64_OPCODE(setno, SETNO) \
+X64_OPCODE(setnp, SETNP) \
+X64_OPCODE(setns, SETNS) \
+X64_OPCODE(setnz, SETNZ) \
+X64_OPCODE(seto, SETO) \
+X64_OPCODE(setp, SETP) \
+X64_OPCODE(setpe, SETPE) \
+X64_OPCODE(setpo, SETPO) \
+X64_OPCODE(sets, SETS) \
+X64_OPCODE(setz, SETZ) \
 X64_OPCODE(ret, RET) \
 X64_OPCODE(label, LABEL)
 // NOTE(Alexander): label is not a real opcode

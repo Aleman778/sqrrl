@@ -63,6 +63,11 @@ global u32 bytecode_num_operands[] = {
 #undef BC
 };
 
+inline bool
+bc_opcode_is_conditional(Bc_Opcode opcode) {
+    return opcode >= Bytecode_cmpeq && opcode <= Bytecode_cmpgt;
+}
+
 enum Bc_Type_Kind {
     BcTypeKind_None,
     
@@ -174,6 +179,8 @@ struct Bc_Type {
     u32 ptr_depth;
 };
 
+global const Bc_Type bc_type_s1 = { BcTypeKind_s1, 0 };
+
 enum Bc_Operand_Kind {
     BcOperand_None,
     BcOperand_Register,
@@ -224,9 +231,28 @@ struct Bc_Operand {
 
 struct Bc_Instruction {
     Bc_Opcode opcode;
-    Bc_Operand dest;
-    Bc_Operand src0;
-    Bc_Operand src1;
+    union {
+        struct {
+            Bc_Operand op0;
+            Bc_Operand op1;
+            Bc_Operand op2;
+        };
+        struct {
+            Bc_Operand dest;
+            Bc_Operand src0;
+            Bc_Operand src1;
+        };
+        struct {
+            Bc_Operand cond;
+            Bc_Operand true_block;
+            Bc_Operand false_block;
+        };
+        struct {
+            Bc_Operand ret;
+            Bc_Operand unused0;
+            Bc_Operand unused1;
+        };
+    };
 };
 
 typedef map(Bc_Register, Value_Data) Bc_Label_To_Value_Table;
@@ -302,6 +328,11 @@ string_builder_push(String_Builder* sb, Bc_Operand* operand, bool show_type = tr
     switch (operand->kind) {
         case BcOperand_None: return false;
         
+        case BcOperand_Basic_Block: {
+            string_builder_push(sb, "%");
+            string_builder_push(sb, operand->Basic_Block->label);
+        } break;
+        
         case BcOperand_Register: {
             if (show_type && string_builder_push(sb, operand->type)) {
                 string_builder_push(sb, " ");
@@ -312,6 +343,7 @@ string_builder_push(String_Builder* sb, Bc_Operand* operand, bool show_type = tr
         
         case BcOperand_Value: {
             string_builder_push(sb, operand->Value, operand->type);
+            
         } break;
         
         case BcOperand_Type: {

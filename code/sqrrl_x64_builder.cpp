@@ -664,7 +664,7 @@ x64_analyse_function(X64_Builder* x64, Bc_Instruction* bc) {
             assert(type->cached_align > 0 && "bad align");
             
             s32 stack_offset = (s32) align_forward((umm) x64->curr_stack_offset, type->cached_align);
-            stack_offset += stack_offset + type->cached_size;
+            stack_offset += type->cached_size;
             // NOTE(Alexander): we use negative because stack grows downwards
             map_put(x64->stack_offsets, bc->dest.Register.index, -stack_offset);
             x64->curr_stack_offset = stack_offset;

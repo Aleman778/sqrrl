@@ -8,7 +8,7 @@ main() {
         return x; // expects: not executed
     }
     
-#elif 0
+#elif 0 // TODO: this fails
     int x = 10;
     int y = 0;
     for (int i = 0; i < x; i += 1) {
@@ -17,7 +17,7 @@ main() {
     
     return y; // expects: 20
     
-#elif 0
+#elif 0 // TODO: this fails
     int x = 0;
     while (x < 25) {
         x += 1;
@@ -41,19 +41,19 @@ main() {
     // Add operator
     int x = 10;
     int x = x + x;
-    return x; // true (1)
+    return x; // expects: 20
     
 #elif 0
     // And operator
     bool x = true;
     bool x = x && true;
-    return (int) x; // true (1)
+    return (int) x; // expects: true (1)
     
 #elif 1
     // Or operator
-    bool x = true;
-    bool x = x || false;
-    return (int) x; // true (1)
+    bool x = false;
+    bool x = x || true;
+    return (int) x; // expects: true (1)
     
 #elif 0 // TODO: this breaks
     // Boolean expressions

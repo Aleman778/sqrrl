@@ -624,8 +624,8 @@ bc_build_compare_expression(Bc_Builder* bc, Ast* node) {
         second.Value.signed_int = 0;
         second.type = first.type;
     } else {
-        first = bc_build_expression(bc, node);
-        second= bc_build_expression(bc, node);
+        first = bc_build_expression(bc, node->Binary_Expr.first);
+        second = bc_build_expression(bc, node->Binary_Expr.second);
     }
     
     dest = bc_get_unique_register_operand(bc, dest_type);

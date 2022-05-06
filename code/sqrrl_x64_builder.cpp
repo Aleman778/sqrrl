@@ -146,12 +146,48 @@ operand_is_unallocated_register(X64_Operand operand) {
 
 // NOTE(Alexander): forward declare
 X64_Operand x64_build_virtual_register(X64_Builder* x64, X64_Operand_Kind kind);
+X64_Basic_Block* x64_push_basic_block(X64_Builder* x64, Bc_Register label);
+
+
+#define x64_push_struct(x64, type, ...) \
+(type*) x64_push_size(x64, (umm) sizeof(type), (umm) alignof(type), __VA_ARGS__)
+
+
+// NOTE(Alexander): makes sure that when memory gets fragmented that we start a new block
+// TODO(Alexander): introduce allocators so we can reuse arena_push_size (mostly copypasta)
+void*
+x64_push_size(X64_Builder* x64, umm size, umm align, umm flags=0) {
+    Memory_Arena* arena = &x64->arena;
+    umm current = (umm) (arena->base + arena->curr_used);
+    umm offset = align_forward(current, align) - (umm) arena->base;
+    
+    if (offset + size > arena->size) {
+        if (arena->min_block_size == 0) {
+            arena->min_block_size = ARENA_DEFAULT_BLOCK_SIZE;
+        }
+        
+        arena->base = (u8*) calloc(1, arena->min_block_size);
+        arena->curr_used = 0;
+        arena->prev_used = 0;
+        arena->size = arena->min_block_size;
+        
+        // TODO(Alexander): should probably not use the same label
+        x64_push_basic_block(x64, x64->curr_basic_block->label);
+        
+        current = (umm) arena->base + arena->curr_used;
+        offset = align_forward(current, align) - (umm) arena->base;
+    } 
+    
+    void* result = arena->base + offset;
+    arena->prev_used = arena->curr_used;
+    arena->curr_used = offset + size;
+    return result;
+}
 
 
 X64_Instruction*
 _x64_push_instruction(X64_Builder* x64, X64_Opcode opcode, cstring comment = 0) {
     assert(x64->curr_basic_block);
-    x64->curr_basic_block->count++;
     
     if (x64->curr_instruction) {
         // NOTE(Alexander): Make sure we aren't reading and writing to memory at once
@@ -168,9 +204,9 @@ _x64_push_instruction(X64_Builder* x64, X64_Opcode opcode, cstring comment = 0) 
             
             // We push a new instruction and copy over the old one onto that
             X64_Instruction* mov_insn = insn;
-            insn = arena_push_struct(&x64->arena, X64_Instruction);
-            x64->instruction_count++;
+            insn = x64_push_struct(x64, X64_Instruction);
             x64->curr_basic_block->count++;
+            x64->instruction_count++;
             *insn = *mov_insn;
             insn->comment = 0;
             
@@ -182,8 +218,9 @@ _x64_push_instruction(X64_Builder* x64, X64_Opcode opcode, cstring comment = 0) 
         }
     }
     
-    X64_Instruction* insn = arena_push_struct(&x64->arena, X64_Instruction);
+    X64_Instruction* insn = x64_push_struct(x64, X64_Instruction);
     insn->opcode = opcode;
+    x64->curr_basic_block->count++;
     x64->curr_instruction = insn;
     x64->instruction_count++;
     
@@ -357,6 +394,37 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
                 
                 source_operand = temp_reg;
             }
+            
+            if (x64->curr_compare_insn && operand_is_register(source_operand.kind)) {
+                Bc_Instruction* cmp = x64->curr_compare_insn;
+                if (cmp->dest.kind == BcOperand_Register) {
+                    X64_Operand* cmp_dest =
+                        &map_get(x64->allocated_virtual_registers, cmp->dest.Register);
+                    if (cmp_dest && source_operand.virtual_register == cmp_dest->virtual_register) {
+                        
+                        X64_Instruction* cmp_insn = x64_push_instruction(x64, X64Opcode_cmp);
+                        cmp_insn->op0 = x64_build_operand(x64, &cmp->src0);
+                        cmp_insn->op1 = x64_build_operand(x64, &cmp->src1);
+                        
+                        // NOTE(Alexander): we use inverted condition and so we only jump when condition is false
+                        X64_Opcode set_opcode = X64Opcode_sete;
+                        switch (cmp->opcode) {
+                            case Bytecode_cmpeq:  set_opcode = X64Opcode_sete;  break;
+                            case Bytecode_cmpneq: set_opcode = X64Opcode_setne; break;
+                            case Bytecode_cmple:  set_opcode = X64Opcode_setle; break;
+                            case Bytecode_cmplt:  set_opcode = X64Opcode_setl;  break;
+                            case Bytecode_cmpge:  set_opcode = X64Opcode_setge; break;
+                            case Bytecode_cmpgt:  set_opcode = X64Opcode_setg;  break;
+                        }
+                        
+                        X64_Instruction* insn = x64_push_instruction(x64, set_opcode);
+                        insn->op0 = x64_build_stack_offset(x64, bc->src0.type, stack_offset);
+                        x64->curr_compare_insn = 0;
+                        return;
+                    }
+                }
+            }
+            
             
             X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
             insn->op0 = x64_build_stack_offset(x64, bc->src0.type, stack_offset);

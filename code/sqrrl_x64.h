@@ -701,7 +701,7 @@ string_builder_push(String_Builder* sb,
                 }
                 
 #if BUILD_DEBUG
-                if (insn->comment) {
+                if (insn->opcode != X64Opcode_invalid && insn->comment) {
                     const s32 comment_offset = 35;
                     
                     // Find line length by going back to previous newline character

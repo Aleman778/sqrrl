@@ -17,7 +17,7 @@ main() {
     
     return y; // expects: 20
     
-#elif 1
+#elif 0
     int x = 0;
     while (x < 25) {
         x += 1;
@@ -55,30 +55,36 @@ main() {
     bool x = x || true;
     return (int) x; // expects: true (1)
     
-#elif 0 // TODO: this breaks
+#elif 0
+    // Equals operator
+    int x = 10;
+    bool y = x == 10;
+    return (int) y; // expects: 1
+    
+#elif 1
     // Boolean expressions
-    int count = 2;
+    int count = 0;
     bool x = false;
     
-    //if (!x) {
-    //count += 1; // Yes
-    //}
+    if (!x) {
+        count += 1; // Yes
+    }
     
-    //if (x && true) {
-    //count += 1; // No
-    //}
+    if (x && true) {
+        count += 1; // No
+    }
     
-    //if (x && false) {
-    //count += 1; // No
-    //}
+    if (x && false) {
+        count += 1; // No
+    }
     
-    //if (x || false) {
-    //count += 1; // No
-    //}
+    if (x || false) {
+        count += 1; // No
+    }
     
-    //if (x || true) {
-    //count += 1; // Yes
-    //}
+    if (x || true) {
+        count += 1; // Yes
+    }
     
     if ((x || true) && (count == 2)) {
         count += 1; // Yes

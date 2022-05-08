@@ -83,6 +83,7 @@ X64_OPCODE(setpe, SETPE) \
 X64_OPCODE(setpo, SETPO) \
 X64_OPCODE(sets, SETS) \
 X64_OPCODE(setz, SETZ) \
+X64_OPCODE(call, CALL) \
 X64_OPCODE(ret, RET) \
 X64_OPCODE(label, LABEL)
 // NOTE(Alexander): label is not a real opcode
@@ -650,7 +651,9 @@ string_builder_push(String_Builder* sb, X64_Operand* operand, bool show_virtual_
         
         case X64Operand_jump_target: {
             string_builder_push_format(sb, "%", f_string(vars_load_string(operand->jump_target.ident)));
-            string_builder_push_format(sb, "%", f_u32(operand->jump_target.index));
+            if (operand->jump_target.index > 0) {
+                string_builder_push_format(sb, "%", f_u32(operand->jump_target.index));
+            }
         } break;
         
     }

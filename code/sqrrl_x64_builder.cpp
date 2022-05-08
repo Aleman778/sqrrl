@@ -675,9 +675,23 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
             unimplemented;
         } break;
         
+        case Bytecode_call: {
+            X64_Instruction* call_insn = x64_push_instruction(x64, X64Opcode_call);
+            call_insn->op0.kind = X64Operand_jump_target;
+            call_insn->op0.jump_target = bc->src0.Register;
+            
+            
+            // TODO(Alexander): support for other calling conventions
+            // Make sure we setup the result as RAX
+            X64_Operand dest = {};
+            dest.kind = x64_get_register_kind(bc->dest.type.kind);
+            dest.is_allocated = true;
+            dest.reg = X64Register_rax;
+            map_put(x64->allocated_virtual_registers, bc->dest.Register, dest);
+        } break;
+        
         case Bytecode_ret: {
             X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
-            // TODO(Alexander): should not always be r64
             X64_Operand_Kind operand_kind = x64_get_register_kind(bc->src0.type.kind);
             mov_insn->op0 = x64_build_physical_register(x64, X64Register_rax, operand_kind);
             mov_insn->op1 = x64_build_operand(x64, &bc->src0);

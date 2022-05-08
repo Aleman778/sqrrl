@@ -15,9 +15,15 @@ push_u8(X64_Assembler* assembler, u8 value) {
 }
 
 inline void
-modify_u8(X64_Assembler* assembler, umm index, u8 value) {
-    assert(assembler->curr_used > index);
-    assembler->bytes[index] = value;
+modify_u8(X64_Assembler* assembler, umm byte_index, u8 value) {
+    assert(assembler->curr_used > byte_index);
+    assembler->bytes[byte_index] = value;
+}
+
+inline void
+modify_u32(X64_Assembler* assembler, umm byte_index, u32 value) {
+    assert(assembler->curr_used > byte_index);
+    *((u32*) (assembler->bytes + byte_index)) = value;
 }
 
 
@@ -122,6 +128,13 @@ x64_assemble_instruction(X64_Assembler* assembler,
     }
 }
 
+struct X64_Asm_Jump_Target {
+    X64_Instruction* insn;
+    X64_Basic_Block* block;
+    X64_Operand_Kind rel_kind;
+    u32 insn_size;
+};
+
 void
 x64_assemble_to_machine_code(X64_Assembler* assembler, 
                              X64_Instruction_Def_Table* x64_instruction_definitions,
@@ -137,7 +150,7 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
         }
     }
     
-    map(umm, X64_Basic_Block*)* jump_targets = 0;
+    map(umm, X64_Asm_Jump_Target)* jump_targets = 0;
     
     // Assemble to machine code 
     X64_Basic_Block* curr_block = basic_block; 
@@ -158,22 +171,33 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
             index.op1 = (u8) insn->op1.kind;
             index.op2 = (u8) insn->op2.kind;
             
-            if (insn->opcode >= X64Opcode_jmp && insn->opcode <= X64Opcode_jz) {
+            if (insn->op0.kind == X64Operand_jump_target) {
                 
-                if (insn->op0.kind == X64Operand_jump_target) {
-                    // TODO(Alexander): jump targets are resolved later
-                    
-                    X64_Basic_Block* target = map_get(named_basic_blocks, insn->op0.jump_target);
-                    assert(target != 0);
-                    map_put(jump_targets, assembler->curr_used, target);
+                // TODO(Alexander): jump targets are resolved later
+                X64_Asm_Jump_Target asm_jump_target;
+                asm_jump_target.insn = insn;
+                asm_jump_target.block = map_get(named_basic_blocks, insn->op0.jump_target);
+                assert(asm_jump_target.block != 0);
+                
+                if (insn->opcode == X64Opcode_call) {
+                    index.op0 = (u8) X64Operand_rel32;
+                    asm_jump_target.rel_kind = X64Operand_rel32;
+                } else {
                     index.op0 = (u8) X64Operand_rel8;
+                    asm_jump_target.rel_kind = X64Operand_rel8;
                 }
                 
+                map_put(jump_targets, assembler->curr_used, asm_jump_target);
             }
             
+            umm prev_used = assembler->curr_used;
             X64_Encoding encoding = map_get(x64_instruction_definitions, index);
-            
             x64_assemble_instruction(assembler, insn, &encoding);
+            
+            if (insn->op0.kind == X64Operand_jump_target) {
+                X64_Asm_Jump_Target* asm_jump_target = &map_get(jump_targets, prev_used);
+                asm_jump_target->insn_size = (u32) (assembler->curr_used - prev_used);
+            }
         }
         
         curr_block->code.size = assembler->curr_used - curr_block->code.offset;
@@ -183,16 +207,21 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
     // Patch relative jump distances
     for_map(jump_targets, it) {
         umm source = it->key;
-        X64_Basic_Block* target = it->value;
+        X64_Asm_Jump_Target* asm_jump_target = &it->value;
         
-        const s32 jump_insn_size = 2;
-        s32 rel32 = (s32) target->code.offset - (s32) source - jump_insn_size;
+        s32 rel32 = (s32) asm_jump_target->block->code.offset - (s32) source - asm_jump_target->insn_size;
         
-        if (rel32 >= S8_MIN && rel32 <= S8_MAX) {
-            s8 rel8 = (s8) rel32;
-            modify_u8(assembler, source + 1, rel8);
+        if (asm_jump_target->rel_kind == X64Operand_rel8) {
+            if (rel32 >= S8_MIN && rel32 <= S8_MAX) {
+                s8 rel8 = (s8) rel32;
+                modify_u8(assembler, source + asm_jump_target->insn_size - 1, rel8);
+            } else {
+                assert(0 && "relative jump doesn't fit in rel8 value");
+            }
+        } else if (asm_jump_target->rel_kind == X64Operand_rel32) {
+            modify_u32(assembler, source + asm_jump_target->insn_size - 4, rel32);
         } else {
-            assert(0 && "relative jump doesn't fit in rel8 value");
+            assert(0 && "invalid jump target kind");
         }
     }
 }

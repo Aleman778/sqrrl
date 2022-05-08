@@ -138,19 +138,22 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     {
         // NOTE(Alexander): Interpret the bytecode
         Bc_Builder bytecode_builder = {};
-        Bc_Basic_Block* main_block = bc_build_from_ast(&bytecode_builder, &ast_file);
+        bc_build_from_ast(&bytecode_builder, &ast_file);
+        pln("Bytecode size: % bytes", f_umm(bytecode_builder.arena.curr_used)); // TODO(Alexander): only counts last memory block
         
         {
             String_Builder sb = {};
-            Bc_Basic_Block* curr_block = main_block;
-            while (curr_block) {
-                Bc_Instruction* curr_insn = curr_block->first;
-                for (int i = 0; i < curr_block->count; i++) {
-                    string_builder_push(&sb, curr_insn++);
-                    string_builder_push(&sb, "\n");
+            for_map (bytecode_builder.declarations, it) {
+                Bc_Basic_Block* curr_block = it->value.basic_block;
+                while (curr_block) {
+                    Bc_Instruction* curr_insn = curr_block->first;
+                    for (int i = 0; i < curr_block->count; i++) {
+                        string_builder_push(&sb, curr_insn++);
+                        string_builder_push(&sb, "\n");
+                    }
+                    
+                    curr_block = curr_block->next;
                 }
-                
-                curr_block = curr_block->next;
             }
             
             string str = string_builder_to_string_nocopy(&sb);
@@ -161,13 +164,25 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         // Interpret the bytecode
         Bc_Interp interp = {};
         interp.declarations = bytecode_builder.declarations;
-        interp.curr_block = main_block;
-        int interp_exit_code = (int) bc_interp_function(&interp, Sym_main).signed_int;
+        int interp_exit_code = (int) bc_interp_bytecode(&interp).signed_int;
         
         // Generate X64 machine code
         X64_Builder x64_builder = {};
         x64_builder.bc_register_live_lengths = bytecode_builder.live_lengths;
+        
+        // Make sure to compile entry point function first
+        Bc_Register entry_point_label = { Sym_main, 0 };
+        Bc_Basic_Block* main_block = map_get(bytecode_builder.declarations, entry_point_label).basic_block;
         x64_build_function(&x64_builder, main_block);
+        
+        for_map (bytecode_builder.declarations, it) {
+            if (it->key.ident == Sym_main || it->key.index != 0) {
+                continue;
+            }
+            pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
+            
+            x64_build_function(&x64_builder, it->value.basic_block);
+        }
         
         // Print interference graph before register allocation
         string interference_graph = x64_interference_graph_to_graphviz_dot(&x64_builder);
@@ -189,7 +204,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         // Print interference graph before register allocation
         interference_graph = x64_interference_graph_to_graphviz_dot(&x64_builder);
         pln("\nGraphviz interference graph (after):\n%", f_string(interference_graph));
-        
         
         {
             // Print the human readable x64 assembly code

@@ -1,14 +1,14 @@
 
 struct Bc_Interp_Scope {
     map(u32, Value_Data)* registers; // TODO(Alexander): u32 or Bc_Register
+    Bc_Basic_Block* curr_block;
+    umm curr_block_insn;
+    u32 return_register;
 };
 
 struct Bc_Interp {
     array(Bc_Interp_Scope)* scopes;
     Bc_Label_To_Value_Table* declarations;
-    
-    Bc_Basic_Block* curr_block;
-    umm curr_block_insn;
     
     Memory_Arena stack;
     smm base_pointer;
@@ -16,10 +16,10 @@ struct Bc_Interp {
 };
 
 inline void
-bc_interp_store_register(Bc_Interp* interp, Bc_Register reg, Value_Data value) {
+bc_interp_store_register(Bc_Interp* interp, u32 reg, Value_Data value) {
     assert(array_count(interp->scopes) > 0);
     Bc_Interp_Scope* scope = &array_last(interp->scopes);
-    map_put(scope->registers, reg.index, value);
+    map_put(scope->registers, reg, value);
 }
 
 inline Value_Data
@@ -65,7 +65,7 @@ bc_interp_alloc_register(Bc_Interp* interp, Bc_Register reg, Type* type, Value v
     
     Value_Data result;
     result.data = data; // TODO(Alexander): we should store stack offsets
-    bc_interp_store_register(interp, reg, result);
+    bc_interp_store_register(interp, reg.index, result);
     return data;
 }
 
@@ -134,6 +134,24 @@ bc_interp_operand_value(Bc_Interp* interp, Bc_Operand* operand) {
 }
 
 void
+bc_interp_function_call(Bc_Interp* interp, string_id ident, u32 return_register = 0) {
+    Bc_Register label = { ident, 0 };
+    Bc_Basic_Block* target_block = map_get(interp->declarations, label).basic_block;
+    assert(target_block && target_block->label.ident != Kw_invalid);
+    
+    if (array_count(interp->scopes)) {
+        Bc_Interp_Scope* scope = &array_last(interp->scopes);
+        scope->return_register = return_register;
+    }
+    
+    // Push new scope and with the arguments on it
+    Bc_Interp_Scope new_scope = {};
+    new_scope.curr_block = target_block;
+    new_scope.curr_block_insn = 0;
+    array_push(interp->scopes, new_scope);
+}
+
+void
 bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
     
     switch (bc->opcode) {
@@ -167,26 +185,26 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             Type* type = bc_type_to_type(bc->src0.type);
             Value_Data src = bc_interp_operand_value(interp, &bc->src1);
             Value_Data value = bc_interp_load_value(interp, bc->src0.type, src.data);
-            bc_interp_store_register(interp, bc->dest.Register, value);
+            bc_interp_store_register(interp, bc->dest.Register.index, value);
         } break;
         
         case Bytecode_assign: {
             Value_Data result = bc_interp_operand_value(interp, &bc->src0);
-            bc_interp_store_register(interp, bc->dest.Register, result); \
+            bc_interp_store_register(interp, bc->dest.Register.index, result); \
         } break;
         
         case Bytecode_neg: {
             Value_Data first = bc_interp_operand_value(interp, &bc->src0);
             Value_Data result;
             result.signed_int = -first.signed_int;
-            bc_interp_store_register(interp, bc->dest.Register, result); \
+            bc_interp_store_register(interp, bc->dest.Register.index, result); \
         } break;
         
         case Bytecode_not: {
             Value_Data first = bc_interp_operand_value(interp, &bc->src0);
             Value_Data result;
             result.boolean = !first.boolean;
-            bc_interp_store_register(interp, bc->dest.Register, result); \
+            bc_interp_store_register(interp, bc->dest.Register.index, result); \
         } break;
         
         
@@ -198,7 +216,7 @@ Value_Data second = bc_interp_operand_value(interp, &bc->src1); \
 Value_Data result; \
 result.signed_int = first.signed_int binary_operator second.signed_int; \
         \
-bc_interp_store_register(interp, bc->dest.Register, result); \
+bc_interp_store_register(interp, bc->dest.Register.index, result); \
 } break;
         
         BINARY_CASE(Bytecode_add, +);
@@ -227,14 +245,15 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
                 branch = bc_interp_operand_value(interp, &bc->dest);
             }
             
-            interp->curr_block = branch.basic_block;
-            interp->curr_block_insn = 0;
+            Bc_Interp_Scope* scope = &array_last(interp->scopes);
+            scope->curr_block = branch.basic_block;
+            scope->curr_block_insn = 0;
         } break;
         
         // TODO(Alexander): do we need this we should truncate when storing the value instead
         case Bytecode_truncate: {
             Value_Data result = bc_interp_operand_value(interp, &bc->src0);
-            bc_interp_store_register(interp, bc->dest.Register, result);
+            bc_interp_store_register(interp, bc->dest.Register.index, result);
         } break;
         
         case Bytecode_sign_extend: {
@@ -250,7 +269,7 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
                 result.unsigned_int = result.unsigned_int & ~mask;
             }
             
-            bc_interp_store_register(interp, bc->dest.Register, result);
+            bc_interp_store_register(interp, bc->dest.Register.index, result);
         } break;
         
         case Bytecode_zero_extend: {
@@ -260,7 +279,7 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
             u64 mask = U64_MAX << (u64) bc_type_to_bitsize(bc->src1.type.kind);
             result.unsigned_int = result.unsigned_int & ~mask;
             
-            bc_interp_store_register(interp, bc->dest.Register, result);
+            bc_interp_store_register(interp, bc->dest.Register.index, result);
         } break;
         
         case Bytecode_cast_fp_to_sint: {
@@ -287,6 +306,10 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
             unimplemented;
         } break;
         
+        case Bytecode_call: {
+            bc_interp_function_call(interp, bc->src0.Register.ident, bc->dest.Register.index);
+        } break;
+        
         case Bytecode_ret: {
             Value_Data value = bc_interp_operand_value(interp, &bc->src0);
             switch (bc->src0.type.kind) {
@@ -299,7 +322,20 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
                 case BcTypeKind_u32: value.unsigned_int = (u32) value.unsigned_int; break;
             }
             
-            interp->return_value = value;
+            // Pop scope
+            array_pop(interp->scopes);
+            
+            // Store value in specific return register, specified by the caller instruction
+            if (array_count(interp->scopes) == 0) {
+                interp->return_value = value;
+            } else  {
+                Bc_Interp_Scope* scope = &array_last(interp->scopes);
+                if (scope->return_register != 0) {
+                    bc_interp_store_register(interp, scope->return_register, value);
+                    scope->return_register = 0;
+                }
+                
+            }
         } break;
         
         default: {
@@ -309,21 +345,29 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
 }
 
 Value_Data
-bc_interp_function(Bc_Interp* interp, string_id ident) {
-    // Push scope
-    Bc_Interp_Scope new_scope = {};
-    array_push(interp->scopes, new_scope);
+bc_interp_bytecode(Bc_Interp* interp, string_id entry_point = Sym_main) {
+    bc_interp_function_call(interp, entry_point);
     
-    while (interp->curr_block) {
-        while (interp->curr_block_insn < interp->curr_block->count) {
-            Bc_Instruction* insn = interp->curr_block->first + interp->curr_block_insn++;
-            bc_interp_instruction(interp, insn);
+    for (;;) {
+        if (array_count(interp->scopes) == 0) {
+            break;
         }
-        interp->curr_block = interp->curr_block->next;
-        interp->curr_block_insn = 0;
+        
+        Bc_Interp_Scope* scope = &array_last(interp->scopes);
+        if (!scope->curr_block) {
+            array_pop(interp->scopes);
+            continue;
+        }
+        
+        if (scope->curr_block_insn >= scope->curr_block->count) {
+            scope->curr_block = scope->curr_block->next;
+            scope->curr_block_insn = 0;
+            continue;
+        }
+        
+        Bc_Instruction* insn = scope->curr_block->first + scope->curr_block_insn++;
+        bc_interp_instruction(interp, insn);
     }
     
-    // Pop scope
-    array_pop(interp->scopes);
     return interp->return_value;
 }

@@ -1,3 +1,13 @@
+
+
+int
+test_binary_expressions() {
+    
+    int x = 10;
+    x = x + 20;
+    return x;
+}
+
 int
 main() {
 #if 0
@@ -40,7 +50,7 @@ main() {
 #elif 0
     // Add operator
     int x = 10;
-    int x = x + x;
+    int x = x + 10;
     return x; // expects: 20
     
 #elif 0
@@ -62,6 +72,10 @@ main() {
     return (int) y; // expects: 1
     
 #elif 1
+    // Function call
+    return test_binary_expressions(); // expects: 30
+    
+#elif 0
     // Boolean expressions
     int count = 0;
     bool x = false;

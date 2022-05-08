@@ -146,7 +146,7 @@ bc_push_basic_block(Bc_Builder* bc) {
     
     Value_Data decl;
     decl.basic_block = block;
-    map_put(bc->declarations, block->label, decl);
+    //map_put(bc->declarations, block->label, decl);
     
     return block;
 }
@@ -510,39 +510,42 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                 second = bc_build_expression(bc, node->Binary_Expr.second);
             }
             
-            // TODO(Alexander): conform to largest, maybe this will be done in type stage instead
-            bc_conform_highest_type(&first, &second);
-            
-            
-            switch (binary_op) {
-#define BINOP(name, op, prec, assoc, is_comparator, bc_mnemonic) \
-case BinaryOp_##name: bc_push_instruction(bc, Bytecode_##bc_mnemonic); break;
-                DEF_BINARY_OPS
-#undef BINOP
-            }
-            
-            // Figure out the type of the result
-            Bc_Type result_type;
-            if (binary_is_comparator_table[node->Binary_Expr.op]) {
-                result_type = { BcTypeKind_s1, 0 };
+            if (node->Binary_Expr.op == BinaryOp_Assign) {
+                result = second;
             } else {
-                result_type = first.type;
+                // TODO(Alexander): conform to largest, maybe this will be done in type stage instead
+                bc_conform_highest_type(&first, &second);
+                
+                Bc_Opcode binary_opcode = Bytecode_noop;
+                switch (binary_op) {
+#define BINOP(name, op, prec, assoc, is_comparator, bc_mnemonic) \
+case BinaryOp_##name: binary_opcode = Bytecode_##bc_mnemonic; break;
+                    DEF_BINARY_OPS
+#undef BINOP
+                }
+                
+                // Figure out the type of the result
+                Bc_Type result_type;
+                if (binary_is_comparator_table[node->Binary_Expr.op]) {
+                    result_type = { BcTypeKind_s1, 0 };
+                } else {
+                    result_type = first.type;
+                }
+                
+                result = bc_get_unique_register_operand(bc, result_type);
+                bc_push_instruction(bc, binary_opcode);
+                bc_push_operand(bc, result);
+                bc_push_operand(bc, first);
+                bc_push_operand(bc, second);
             }
-            
-            Bc_Operand temp_register = bc_get_unique_register_operand(bc, result_type);
-            bc_push_operand(bc, temp_register);
-            bc_push_operand(bc, first);
-            bc_push_operand(bc, second);
             
             if (is_binary_assign(node->Binary_Expr.op)) {
                 string_id ident = ast_unwrap_ident(node->Binary_Expr.first);
                 Bc_Operand dest_register = map_get(bc->ident_to_operand, ident);
                 bc_push_instruction(bc, Bytecode_store);
                 bc_push_operand(bc, dest_register);
-                bc_push_operand(bc, temp_register);
+                bc_push_operand(bc, result);
                 
-            } else {
-                result = temp_register;
             }
         } break;
         
@@ -551,7 +554,28 @@ case BinaryOp_##name: bc_push_instruction(bc, Bytecode_##bc_mnemonic); break;
         } break;
         
         case Ast_Call_Expr: {
-            unimplemented;
+            string_id ident = ast_unwrap_ident(node->Call_Expr.ident);
+            Bc_Operand function = map_get(bc->ident_to_operand, ident);
+            assert(function.kind == BcOperand_Type);
+            Bc_Type return_type = function.type;
+            Bc_Operand temp_register = bc_get_unique_register_operand(bc, return_type);
+            Bc_Operand target_label = {};
+            target_label.kind = BcOperand_Register;
+            target_label.Register = { ident, 0 };
+            
+            Bc_Operand function_args = {};
+            function_args.kind = BcOperand_Argument_List;
+            for_compound(node->Call_Expr.args, arg) {
+                Bc_Operand bc_arg = bc_build_expression(bc, arg);
+                array_push(function_args.Argument_List, bc_arg);
+            }
+            
+            bc_push_instruction(bc, Bytecode_call);
+            bc_push_operand(bc, temp_register);
+            bc_push_operand(bc, target_label);
+            bc_push_operand(bc, function_args);
+            
+            result = temp_register;
         } break;
         
         case Ast_Field_Expr: {
@@ -759,22 +783,56 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* type, Ast* decl) {
         case Ast_Function_Type: {
             assert(decl->kind == Ast_Block_Stmt);
             
+            Bc_Register label = { ident, 0 };
             Bc_Basic_Block* block = bc_push_basic_block(bc);
-            block->label.ident = ident;
+            block->label = label;
             bc->curr_declaration = block;
             
             bc->curr_local_count = 1;
             
-            bc_build_statement(bc, decl);
+            // Allocate arguments
+            for_compound(type->Function_Type.arg_types, arg_node) {
+                //Bc_Operand dest = bc_build_stack_alloc(bc, &source, type);
+                //map_put(bc->ident_to_operand, ident, dest);
+            }
             
-            Bc_Register reg;
-            reg.ident = ident;
-            reg.index = 0;
+            bc_build_statement(bc, decl);
             
             Value_Data value;
             value.basic_block = block;
+            map_put(bc->declarations, label, value);
+        } break;
+    }
+}
+
+void
+bc_analyze_top_level_declaration(Bc_Builder* bc, Ast* ast) {
+    assert(ast->kind == Ast_Decl);
+    
+    Bc_Instruction result = {};
+    Ast* stmt = ast->Decl.stmt;
+    
+    switch (stmt->kind) {
+        case Ast_Decl_Stmt: {
+            string_id ident = ast_unwrap_ident(stmt->Decl_Stmt.ident);
+            Ast* type = stmt->Decl_Stmt.type;
             
-            map_put(bc->declarations, reg, value);
+            switch (type->kind) {
+                case Ast_Function_Type: {
+                    // TODO(Alexander): for now we store only the return type here first
+                    // this should be done at type checking/ inference stage
+                    Ast* return_type = type->Function_Type.return_type;
+                    Bc_Operand return_type_op = {};
+                    return_type_op.kind = BcOperand_Type;
+                    return_type_op.type = bc_build_type(bc, return_type);
+                    map_put(bc->ident_to_operand, ident, return_type_op);
+                } break;
+                
+            }
+        } break;
+        
+        case Ast_Assign_Stmt: {
+            unimplemented;
         } break;
     }
 }
@@ -801,22 +859,23 @@ bc_build_from_top_level_declaration(Bc_Builder* bc, Ast* ast) {
     }
 }
 
-Bc_Basic_Block*
+void
 bc_build_from_ast(Bc_Builder* bc, Ast_File* ast_file) {
     // NOTE(Alexander): we want to minimize this as far as possible
     // to be able to compile large programs.
     pln("sizeof(Bc_Instruction) = %", f_umm(sizeof(Bc_Instruction)));
     pln("sizeof(Bc_Operand) = %\n", f_umm(sizeof(Bc_Operand)));
     
-    
+    // TODO(Alexander): this will likely get replacecd with the type checker later on
+    // Analyse the ast first
     for_map(ast_file->decls, decl) {
-        bc_build_from_top_level_declaration(bc, decl->value);
+        bc_analyze_top_level_declaration(bc, decl->value);
     }
     
-    Bc_Register entry_point_label = { Sym_main, 0 };
-    Bc_Basic_Block* main_block = map_get(bc->declarations, entry_point_label).basic_block;
-    
-    pln("Bytecode size: % bytes", f_umm(bc->arena.curr_used));
-    
-    return main_block;
+    // Build bytecode for each declaration
+    for_map(ast_file->decls, decl) {
+        bc->curr_basic_block = 0;
+        bc->curr_instruction = 0;
+        bc_build_from_top_level_declaration(bc, decl->value);
+    }
 }

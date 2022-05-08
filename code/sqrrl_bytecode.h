@@ -186,6 +186,7 @@ enum Bc_Operand_Kind {
     BcOperand_Register,
     BcOperand_Value,
     BcOperand_Basic_Block,
+    BcOperand_Argument_List,
     BcOperand_Type
 };
 
@@ -226,6 +227,7 @@ struct Bc_Operand {
         Bc_Register Register;
         Value_Data Value;
         Bc_Basic_Block* Basic_Block;
+        array(Bc_Operand)* Argument_List;
     };
 };
 

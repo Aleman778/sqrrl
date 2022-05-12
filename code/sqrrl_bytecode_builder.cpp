@@ -791,9 +791,12 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* type, Ast* decl) {
             bc->curr_local_count = 1;
             
             // Allocate arguments
-            for_compound(type->Function_Type.arg_types, arg_node) {
-                //Bc_Operand dest = bc_build_stack_alloc(bc, &source, type);
-                //map_put(bc->ident_to_operand, ident, dest);
+            for_compound(type->Function_Type.arguments, it) {
+                string_id arg_ident = ast_unwrap_ident(it->Argument.ident);
+                Bc_Type arg_type = bc_build_type(bc, it->Argument.type);
+                Bc_Operand arg_dest = bc_get_unique_register_operand(bc, arg_type);
+                map_put(bc->ident_to_operand, arg_ident, arg_dest);
+                array_push(block->args, arg_dest.Register.index);
             }
             
             bc_build_statement(bc, decl);

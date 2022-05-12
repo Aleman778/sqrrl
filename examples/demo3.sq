@@ -2,10 +2,19 @@
 
 int
 test_binary_expressions() {
-    
     int x = 10;
     x = x + 20;
     return x;
+}
+
+int
+test_add(int x, int y) {
+    return x + y;
+}
+
+int
+test_many_parameters(int a, int b, int c, int d, int e, int f) {
+    return a + b + c + d + e + f;
 }
 
 int
@@ -71,9 +80,17 @@ main() {
     bool y = x == 10;
     return (int) y; // expects: 1
     
-#elif 1
+#elif 0
     // Function call
     return test_binary_expressions(); // expects: 30
+    
+#elif 0
+    // Function call with arguments
+    return test_add(10, 20); // expects: 30
+    
+#elif 1
+    // Function call with arguments
+    return test_many_parameters(10, 10, 10, 10, 10, 10); // expects: 60
     
 #elif 0
     // Boolean expressions

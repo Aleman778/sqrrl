@@ -41,6 +41,9 @@ x64_assemble_instruction(X64_Assembler* assembler,
         use_rex_prefix = true;
     }
     
+    u8 sib = 0;
+    bool use_sib = false;
+    
     u8 modrm = encoding->modrm_mod;
     s32 displacement = 0;
     s32 displacement_bytes = 0;
@@ -55,6 +58,12 @@ x64_assemble_instruction(X64_Assembler* assembler,
         }
         X64_Operand* modrm_rm = &insn->operands[encoding->modrm_rm];
         u8 rm = x64_register_id_table[modrm_rm->reg] % 8;
+        
+        // NOTE(Alexander): If RSP is used we are forced to use SIB
+        if (rm == 0b100) {
+            use_sib = true;
+            sib = (rm << 3) | rm;
+        }
         
         if (encoding->modrm_mod != ModRM_direct) {
             displacement = modrm_rm->disp32;
@@ -105,14 +114,20 @@ x64_assemble_instruction(X64_Assembler* assembler,
     // ModRM
     if (encoding->modrm_mod != ModRM_not_used) {
         push_u8(assembler, modrm);
-        
-        if (encoding->modrm_mod != ModRM_direct && displacement != 0) {
-            // TODO(Alexander): might now work for cross compiling
-            u8* disp_bytes = (u8*) &displacement;
-            for (s32 byte_index = 0; byte_index < displacement_bytes; byte_index++) {
-                // TODO(Alexander): little-endian
-                push_u8(assembler, disp_bytes[byte_index]);
-            }
+    }
+    
+    // SIB
+    if (use_sib) {
+        push_u8(assembler, sib);
+    }
+    
+    // Displacement
+    if (encoding->modrm_mod != ModRM_direct && displacement != 0) {
+        // TODO(Alexander): might now work for cross compiling
+        u8* disp_bytes = (u8*) &displacement;
+        for (s32 byte_index = 0; byte_index < displacement_bytes; byte_index++) {
+            // TODO(Alexander): little-endian
+            push_u8(assembler, disp_bytes[byte_index]);
         }
     }
     

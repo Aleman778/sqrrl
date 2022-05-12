@@ -119,6 +119,27 @@ bc_type_to_bitsize(Bc_Type_Kind kind) {
     return 0;
 }
 
+inline s32
+bc_type_to_size(Bc_Type_Kind kind) {
+    switch (kind) {
+        case BcTypeKind_s1: return 1;
+        case BcTypeKind_s8: return 1;
+        case BcTypeKind_s16: return 2;
+        case BcTypeKind_s32: return 4;
+        case BcTypeKind_s64: return 8;
+        
+        case BcTypeKind_u8: return 1;
+        case BcTypeKind_u16: return 2;
+        case BcTypeKind_u32: return 4;
+        case BcTypeKind_u64: return 8;
+        
+        case BcTypeKind_f32: return 4;
+        case BcTypeKind_f64: return 8;
+    }
+    
+    return 0;
+}
+
 Value_Type
 bc_type_to_value_type(Bc_Type_Kind kind) {
     switch (kind) {
@@ -203,6 +224,7 @@ struct Bc_Basic_Block {
     Bc_Instruction* first;
     umm count;
     Bc_Basic_Block* next;
+    array(u32)* args;
 };
 
 #define for_bc_basic_block(first_block, it, it_index, code) { \

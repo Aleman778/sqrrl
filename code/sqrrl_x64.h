@@ -625,9 +625,9 @@ string_builder_push(String_Builder* sb, X64_Operand* operand, bool show_virtual_
             }
             
             if (operand->disp64 > 0) {
-                string_builder_push_format(sb, " + %", f_u32(operand->disp64));
+                string_builder_push_format(sb, " + %", f_u64(operand->disp64));
             } else if (operand->disp64 < 0) {
-                string_builder_push_format(sb, " - %", f_u32(-operand->disp64));
+                string_builder_push_format(sb, " - %", f_u64(-operand->disp64));
             }
             
             string_builder_push(sb, "]");

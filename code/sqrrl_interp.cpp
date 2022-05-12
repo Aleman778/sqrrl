@@ -1077,7 +1077,7 @@ interp_type(Interp* interp, Ast* ast) {
             result->Function.is_variadic = false;
             
             // NOTE(Alexander): Loads in the function arguments
-            Ast* ast_arguments = ast->Function_Type.arg_types;
+            Ast* ast_arguments = ast->Function_Type.arguments;
             Type_Table* type_arguments = &result->Function.arguments;
             smm offset = 0;
             for_compound(ast_arguments, ast_argument) {

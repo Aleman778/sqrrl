@@ -127,7 +127,7 @@ AST(Infer_Type,        "infer", void*)          \
 AST(Function_Type,     "function", struct {     \
 Ast* ident;                                     \
 Ast* return_type;                               \
-Ast* arg_types;                                 \
+Ast* arguments;                                 \
 })                                              \
 AST(Struct_Type,       "struct", struct {       \
 Ast* ident;                                     \

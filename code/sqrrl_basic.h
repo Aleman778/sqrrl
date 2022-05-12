@@ -316,6 +316,7 @@ string string_format(cstring format...);
 
 // NOTE(Alexander): print formatted string with new line
 #define pln(format, ...) print_format(format##"\n", __VA_ARGS__)
+//#define pln(...)
 
 
 // TODO(Alexander): implement this later, we use stb_ds for now!
@@ -374,7 +375,13 @@ string string_format(cstring format...);
 int it_index = 0; \
 for (auto it = arr; \
 it_index < array_count(arr); \
-it_index++, it = arr + it_index)
+it_index++, it++)
+
+#define for_array_reverse(arr, it, it_index) \
+int it_index = 0; \
+for (auto it = &array_last(arr); \
+it_index >= arr; \
+it_index--, it--)
 
 // NOTE(Alexander): hash maps
 // Usage:

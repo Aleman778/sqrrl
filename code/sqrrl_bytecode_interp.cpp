@@ -308,6 +308,14 @@ bc_interp_store_register(interp, bc->dest.Register.index, result); \
         
         case Bytecode_call: {
             bc_interp_function_call(interp, bc->src0.Register.ident, bc->dest.Register.index);
+            
+            Bc_Interp_Scope* scope = &array_last(interp->scopes);
+            array(u32)* arg_registers = scope->curr_block->args;
+            for_array(bc->src1.Argument_List, arg, arg_index) {
+                Value_Data arg_data = bc_interp_operand_value(interp, arg);
+                bc_interp_store_register(interp, arg_registers[arg_index], arg_data);
+            }
+            
         } break;
         
         case Bytecode_ret: {
@@ -334,7 +342,6 @@ bc_interp_store_register(interp, bc->dest.Register.index, result); \
                     bc_interp_store_register(interp, scope->return_register, value);
                     scope->return_register = 0;
                 }
-                
             }
         } break;
         

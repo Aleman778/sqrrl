@@ -1114,7 +1114,7 @@ parse_type(Parser* parser, bool report_error) {
                     result->kind = Ast_Function_Type;
                     result->Function_Type.return_type = base;
                     result->Function_Type.ident = parse_identifier(parser);
-                    result->Function_Type.arg_types = parse_compound(parser,
+                    result->Function_Type.arguments = parse_compound(parser,
                                                                      Token_Open_Paren, Token_Close_Paren, Token_Comma,
                                                                      &parse_formal_function_argument);
                     return result;
@@ -1138,7 +1138,7 @@ parse_type(Parser* parser, bool report_error) {
                     
                     function->Function_Type.ident = parse_identifier(parser);
                     next_token_if_matched(parser, Token_Close_Paren);
-                    function->Function_Type.arg_types = parse_compound(parser,
+                    function->Function_Type.arguments = parse_compound(parser,
                                                                        Token_Open_Paren, Token_Close_Paren, Token_Comma,
                                                                        &parse_formal_function_argument);
                 }

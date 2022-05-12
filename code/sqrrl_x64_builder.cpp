@@ -365,7 +365,6 @@ x64_build_operand(X64_Builder* x64, Bc_Operand* operand) {
     return result;
 }
 
-
 void
 x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
     switch (bc->opcode) {
@@ -676,12 +675,50 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
         } break;
         
         case Bytecode_call: {
+            // TODO(Alexander): uses the x64 microsoft calling convention
+            // https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention
+            const X64_Register gpr_registers[] = {
+                X64Register_rcx, X64Register_rdx, X64Register_r8, X64Register_r9
+            };
+            
+            // Push registers in order
+            for (int arg_index = 0; arg_index < array_count(bc->src1.Argument_List); arg_index++) {
+                if (arg_index >= fixed_array_count(gpr_registers)) {
+                    break;
+                }
+                
+                Bc_Operand* arg = bc->src1.Argument_List + arg_index;
+                
+                X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
+                X64_Operand_Kind kind = x64_get_register_kind(arg->type.kind);
+                mov_insn->op0 = x64_build_physical_register(x64, gpr_registers[arg_index], kind);
+                mov_insn->op1 = x64_build_operand(x64, arg);
+                
+            }
+            
+            // Push onto stack in reverse order (right-to-left)
+            s32 stack_offset = x64->curr_stack_offset;
+            for (int arg_index = (int) array_count(bc->src1.Argument_List) - 1;
+                 arg_index >= fixed_array_count(gpr_registers) && arg_index >= 0; 
+                 arg_index--) {
+                
+                
+                Bc_Operand* arg = bc->src1.Argument_List + arg_index;
+                s32 size = bc_type_to_size(arg->type.kind);
+                stack_offset = (s32) align_forward(stack_offset, size);
+                
+                X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
+                X64_Operand_Kind kind = x64_get_memory_kind(arg->type.kind);
+                mov_insn->op0 = x64_build_stack_offset(x64, arg->type, stack_offset, X64Register_rsp);
+                mov_insn->op1 = x64_build_operand(x64, arg);
+                
+                stack_offset += size;
+            }
+            
             X64_Instruction* call_insn = x64_push_instruction(x64, X64Opcode_call);
             call_insn->op0.kind = X64Operand_jump_target;
             call_insn->op0.jump_target = bc->src0.Register;
             
-            
-            // TODO(Alexander): support for other calling conventions
             // Make sure we setup the result as RAX
             X64_Operand dest = {};
             dest.kind = x64_get_register_kind(bc->dest.type.kind);
@@ -782,10 +819,53 @@ x64_free_virtual_register(X64_Builder* x64, Bc_Operand* operand, u32 curr_bc_ins
 
 void
 x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
+    x64->curr_stack_offset = 0;
     for_bc_basic_block(first_block, insn, insn_index, x64_analyse_function(x64, insn));
     
     x64_push_basic_block(x64, first_block->label);
     x64_push_prologue(x64);
+    
+    
+    // TODO(Alexander): uses the x64 microsoft calling convention
+    // https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention
+    const X64_Register gpr_registers[] = {
+        X64Register_rcx, X64Register_rdx, X64Register_r8, X64Register_r9
+    };
+    
+    // TODO(Alexander): callee should save volatile registers
+    
+    // Push registers in order
+    for (int arg_index = 0; arg_index < array_count(first_block->args); arg_index++) {
+        if (arg_index >= fixed_array_count(gpr_registers)) {
+            break;
+        }
+        
+        u32 reg = first_block->args[arg_index];
+        
+        // TODO(Alexander): r32 is hardcoded for now, we need to store the argument types
+        X64_Operand arg = x64_build_physical_register(x64, gpr_registers[arg_index], X64Operand_r32);
+        Bc_Register reg_ident = { first_block->label.ident, reg };
+        map_put(x64->allocated_virtual_registers, reg_ident, arg);
+    }
+    
+    // Push onto stack in reverse order (right-to-left)
+    s32 stack_offset = 8*2; // push RSP + return address
+    for (int arg_index = (int) array_count(first_block->args) - 1;
+         arg_index >= fixed_array_count(gpr_registers) && arg_index >= 0;
+         arg_index--) {
+        u32 reg = first_block->args[arg_index];
+        
+        // TODO(Alexander): s32 is hardcoded for now, we need to store the argument types
+        Bc_Type type = { BcTypeKind_s32, 0 };
+        s32 size = bc_type_to_size(type.kind);
+        stack_offset = (s32) align_forward(stack_offset, bc_type_to_size(type.kind));
+        
+        X64_Operand arg = x64_build_stack_offset(x64, type, stack_offset);
+        Bc_Register reg_ident = { first_block->label.ident, reg };
+        map_put(x64->allocated_virtual_registers, reg_ident, arg);
+        
+        stack_offset += size;
+    }
     
     Bc_Basic_Block* curr_block = first_block;
     u32 curr_bc_instruction = 0;

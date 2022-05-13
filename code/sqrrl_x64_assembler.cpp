@@ -49,15 +49,25 @@ x64_assemble_instruction(X64_Assembler* assembler,
     s32 displacement_bytes = 0;
     if (encoding->modrm_mod != ModRM_not_used) {
         u8 reg = 0;
-        // TODO(Alexander): need to update REX prefix to support upper 8 regs
+        
         if (encoding->modrm_reg >= 0b00000111) {
             reg = encoding->modrm_reg >> 3;
         } else {
             X64_Operand* modrm_reg = &insn->operands[encoding->modrm_reg];
-            reg = x64_register_id_table[modrm_reg->reg] % 8;
+            reg = (u8) x64_register_id_table[modrm_reg->reg];
+            if (reg >= 8) {
+                use_rex_prefix = true;
+                rex_prefix |= 1 << 2; // Set REX.R
+            }
+            reg %= 8;
         }
         X64_Operand* modrm_rm = &insn->operands[encoding->modrm_rm];
-        u8 rm = x64_register_id_table[modrm_rm->reg] % 8;
+        u8 rm = (u8) x64_register_id_table[modrm_rm->reg];
+        if (rm >= 8) {
+            use_rex_prefix = true;
+            rex_prefix |= 1; // Set REX.B
+        }
+        rm %= 8;
         
         // NOTE(Alexander): If RSP is used we are forced to use SIB
         if (rm == 0b100) {
@@ -101,8 +111,12 @@ x64_assemble_instruction(X64_Assembler* assembler,
     u8 primary_opcode = encoding->primary_opcode;
     if (encoding->use_opcode_addend) {
         X64_Operand* addend_operand = &insn->operands[encoding->opcode_addend];
-        // TODO(Alexander): need to update REX prefix to support upper 8 regs
-        u8 addend = x64_register_id_table[addend_operand->reg] % 8;
+        u8 addend = (u8) x64_register_id_table[addend_operand->reg];
+        if (addend >= 8) {
+            // TODO(Alexander): what REX bit should this even set?
+            unimplemented;
+        }
+        addend %= 8;
         primary_opcode += addend;
     }
     push_u8(assembler, primary_opcode);

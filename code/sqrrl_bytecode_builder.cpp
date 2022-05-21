@@ -151,6 +151,8 @@ bc_push_basic_block(Bc_Builder* bc) {
     return block;
 }
 
+// TODO(Alexander): this is a temporary solution to get the types from the frontend
+// later on the type checker will do this for us
 Bc_Type
 bc_build_type(Bc_Builder* bc, Ast* type) {
     Bc_Type result = {};
@@ -165,27 +167,32 @@ bc_build_type(Bc_Builder* bc, Ast* type) {
                 // HACK(Alexander): this is a little bit hack of trying to convert between enums
                 
                 switch (ident) {
-                    case Kw_int:  result.kind = BcTypeKind_s32; break; // Arch dep?
-                    case Kw_s8:   result.kind = BcTypeKind_s8; break;
-                    case Kw_s16:  result.kind = BcTypeKind_s16; break;
-                    case Kw_s32:  result.kind = BcTypeKind_s32; break;
-                    case Kw_s64:  result.kind = BcTypeKind_s64; break;
-                    case Kw_smm:  result.kind = BcTypeKind_s64; break; // Arch dep.
-                    case Kw_uint: result.kind = BcTypeKind_u32; break; // Arch dep?
-                    case Kw_u8:   result.kind = BcTypeKind_u8; break;
-                    case Kw_u16:  result.kind = BcTypeKind_u16; break;
-                    case Kw_u32:  result.kind = BcTypeKind_u32; break;
-                    case Kw_u64:  result.kind = BcTypeKind_u64; break;
-                    case Kw_umm:  result.kind = BcTypeKind_u64; break; // Arch dep.
-                    case Kw_f32:  result.kind = BcTypeKind_f32; break;
-                    case Kw_f64:  result.kind = BcTypeKind_f64; break;
-                    case Kw_char: result.kind = BcTypeKind_u8; break;
-                    case Kw_bool: result.kind = BcTypeKind_s8; break;
-                    case Kw_b32:  result.kind = BcTypeKind_s32; break;
-                    case Kw_void: result.kind = BcTypeKind_None; break;
+                    case Kw_int:  result.kind = BcType_s32; break; // Arch dep?
+                    case Kw_s8:   result.kind = BcType_s8; break;
+                    case Kw_s16:  result.kind = BcType_s16; break;
+                    case Kw_s32:  result.kind = BcType_s32; break;
+                    case Kw_s64:  result.kind = BcType_s64; break;
+                    case Kw_smm:  result.kind = BcType_s64; break; // Arch dep.
+                    case Kw_uint: result.kind = BcType_u32; break; // Arch dep?
+                    case Kw_u8:   result.kind = BcType_u8; break;
+                    case Kw_u16:  result.kind = BcType_u16; break;
+                    case Kw_u32:  result.kind = BcType_u32; break;
+                    case Kw_u64:  result.kind = BcType_u64; break;
+                    case Kw_umm:  result.kind = BcType_u64; break; // Arch dep.
+                    case Kw_f32:  result.kind = BcType_f32; break;
+                    case Kw_f64:  result.kind = BcType_f64; break;
+                    case Kw_char: result.kind = BcType_u8; break;
+                    case Kw_bool: result.kind = BcType_s8; break;
+                    case Kw_b32:  result.kind = BcType_s32; break;
+                    case Kw_void: result.kind = BcType_None; break;
                     default: assert(0 && "invalid primitive type");
                 }
             }
+        } break;
+        
+        case Ast_Pointer_Type: {
+            result = bc_build_type(bc, type->Pointer_Type);
+            result.ptr_depth++;
         } break;
     }
     
@@ -197,30 +204,39 @@ bc_build_type(Bc_Builder* bc, Type* type) {
     Bc_Type result = {};
     
     switch (type->kind) {
-        case TypeKind_Primitive: {
+        case Type_Primitive: {
             Primitive_Type_Kind primitive_kind = type->Primitive.kind;
             
             switch (primitive_kind) {
-                case PrimitiveTypeKind_int:  result.kind = BcTypeKind_s32; break; // Arch dep?
-                case PrimitiveTypeKind_s8:   result.kind = BcTypeKind_s8; break;
-                case PrimitiveTypeKind_s16:  result.kind = BcTypeKind_s16; break;
-                case PrimitiveTypeKind_s32:  result.kind = BcTypeKind_s32; break;
-                case PrimitiveTypeKind_s64:  result.kind = BcTypeKind_s64; break;
-                case PrimitiveTypeKind_smm:  result.kind = BcTypeKind_s64; break; // Arch dep.
-                case PrimitiveTypeKind_uint: result.kind = BcTypeKind_u32; break; // Arch dep?
-                case PrimitiveTypeKind_u8:   result.kind = BcTypeKind_u8; break;
-                case PrimitiveTypeKind_u16:  result.kind = BcTypeKind_u16; break;
-                case PrimitiveTypeKind_u32:  result.kind = BcTypeKind_u32; break;
-                case PrimitiveTypeKind_u64:  result.kind = BcTypeKind_u64; break;
-                case PrimitiveTypeKind_umm:  result.kind = BcTypeKind_u64; break; // Arch dep.
-                case PrimitiveTypeKind_f32:  result.kind = BcTypeKind_f32; break;
-                case PrimitiveTypeKind_f64:  result.kind = BcTypeKind_f64; break;
-                case PrimitiveTypeKind_char: result.kind = BcTypeKind_u8; break;
-                case PrimitiveTypeKind_bool: result.kind = BcTypeKind_s8; break;
-                case PrimitiveTypeKind_b32:  result.kind = BcTypeKind_s32; break;
-                case PrimitiveTypeKind_void: result.kind = BcTypeKind_None; break;
+                case PrimitiveType_int:  result.kind = BcType_s32; break; // Arch dep?
+                case PrimitiveType_s8:   result.kind = BcType_s8; break;
+                case PrimitiveType_s16:  result.kind = BcType_s16; break;
+                case PrimitiveType_s32:  result.kind = BcType_s32; break;
+                case PrimitiveType_s64:  result.kind = BcType_s64; break;
+                case PrimitiveType_smm:  result.kind = BcType_s64; break; // Arch dep.
+                case PrimitiveType_uint: result.kind = BcType_u32; break; // Arch dep?
+                case PrimitiveType_u8:   result.kind = BcType_u8; break;
+                case PrimitiveType_u16:  result.kind = BcType_u16; break;
+                case PrimitiveType_u32:  result.kind = BcType_u32; break;
+                case PrimitiveType_u64:  result.kind = BcType_u64; break;
+                case PrimitiveType_umm:  result.kind = BcType_u64; break; // Arch dep.
+                case PrimitiveType_f32:  result.kind = BcType_f32; break;
+                case PrimitiveType_f64:  result.kind = BcType_f64; break;
+                case PrimitiveType_char: result.kind = BcType_u8; break;
+                case PrimitiveType_bool: result.kind = BcType_s8; break;
+                case PrimitiveType_b32:  result.kind = BcType_s32; break;
+                case PrimitiveType_void: result.kind = BcType_None; break;
                 default: assert(0 && "invalid primitive type");
             }
+        } break;
+        
+        case Type_Pointer: {
+            result = bc_build_type(bc, type->Pointer);
+            result.ptr_depth++;
+        } break;
+        
+        default: {
+            result.kind = BcType_Aggregate;
         } break;
     }
     
@@ -265,7 +281,7 @@ bc_build_type_cast(Bc_Builder* bc, Bc_Operand* expr, Bc_Type dest_type) {
             bool is_dest_fp = is_bc_type_floating(dest_type.kind);
             
             if (is_src_fp && is_dest_fp) {
-                if (dest_type.kind == BcTypeKind_f64)  {
+                if (dest_type.kind == BcType_f64)  {
                     opcode = Bytecode_fp_extend;
                 } else {
                     opcode = Bytecode_fp_truncate;
@@ -316,12 +332,12 @@ bc_build_type_cast(Bc_Builder* bc, Bc_Operand* expr, Bc_Type dest_type) {
 }
 
 inline Bc_Operand
-bc_build_stack_alloc(Bc_Builder* bc, Bc_Operand* value, Bc_Type alloc_type) {
-    Bc_Operand dest = bc_get_unique_register_operand(bc, value->type);
+bc_build_stack_alloc(Bc_Builder* bc, Bc_Type value_type) {
+    Bc_Operand dest = bc_get_unique_register_operand(bc, value_type);
     
     Bc_Operand alloc_type_op = dest;
     alloc_type_op.kind = BcOperand_Type;
-    alloc_type_op.type = alloc_type;
+    alloc_type_op.type = value_type;
     dest.type.ptr_depth++;
     
     bc_push_instruction(bc, Bytecode_stack_alloc);
@@ -329,11 +345,29 @@ bc_build_stack_alloc(Bc_Builder* bc, Bc_Operand* value, Bc_Type alloc_type) {
     bc_push_operand(bc, alloc_type_op);
     // TODO(Alexander): we should maybe also push the allignment 
     
-    bc_push_instruction(bc, Bytecode_store);
-    bc_push_operand(bc, dest);
-    bc_push_operand(bc, *value);
-    
     return dest;
+}
+
+inline Bc_Operand
+bc_build_load_value(Bc_Builder* bc, Bc_Operand variable) {
+    Bc_Operand result = variable;
+    
+    if (variable.type.ptr_depth > 0) {
+        Bc_Type value_type = variable.type;
+        value_type.ptr_depth--;
+        result = bc_get_unique_register_operand(bc, value_type);
+        Bc_Operand type_operand = {};
+        type_operand.kind = BcOperand_Type;
+        type_operand.type = value_type;
+        
+        bc_push_instruction(bc, Bytecode_load);
+        bc_push_operand(bc, result);
+        bc_push_operand(bc, type_operand);
+        bc_push_operand(bc, variable);
+        
+    }
+    
+    return result;
 }
 
 Bc_Operand
@@ -343,24 +377,6 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
     switch (node->kind) {
         case Ast_Ident: {
             result = map_get(bc->ident_to_operand, node->Ident);
-            
-            if (result.type.ptr_depth == 1) {
-                Bc_Operand variable = result;
-                
-                Bc_Type loaded_type = result.type;
-                loaded_type.ptr_depth--;
-                result = bc_get_unique_register_operand(bc, loaded_type);
-                Bc_Operand type_operand = {};
-                type_operand.kind = BcOperand_Type;
-                type_operand.type = loaded_type;
-                
-                bc_push_instruction(bc, Bytecode_load);
-                bc_push_operand(bc, result);
-                bc_push_operand(bc, type_operand);
-                bc_push_operand(bc, variable);
-                
-            }
-            
             assert(result.kind && "bug: failed to load operand from identifier");
         } break;
         
@@ -371,13 +387,12 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
         } break;
         
         case Ast_Unary_Expr: {
-            Bc_Operand first = bc_build_expression(bc, node->Unary_Expr.first);
-            
-            if (first.kind == BcOperand_Value) {
+            switch (node->Unary_Expr.op) {
                 
-                result = first;
-                switch (node->Unary_Expr.op) {
-                    case UnaryOp_Negate: {
+                case UnaryOp_Negate: {
+                    Bc_Operand first = bc_build_expression(bc, node->Unary_Expr.first);
+                    if (first.kind == BcOperand_Value) {
+                        result = first;
                         if (is_bc_type_sint(first.type.kind) || is_bc_type_uint(first.type.kind)) {
                             result.Value.signed_int = -first.Value.signed_int;
                         } else if (is_bc_type_floating(first.type.kind)) {
@@ -385,66 +400,116 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                         } else {
                             assert(0 && "invalid literal type for neg (-) unary");
                         }
-                    } break;
-                    
-                    case UnaryOp_Logical_Not: {
+                    } else {
+                        first = bc_build_load_value(bc, first);
+                        bc_push_instruction(bc, Bytecode_neg);
+                        result = bc_get_unique_register_operand(bc, first.type);
+                        bc_push_operand(bc, result);
+                        bc_push_operand(bc, first);
+                    }
+                } break;
+                
+                case UnaryOp_Logical_Not: {
+                    Bc_Operand first = bc_build_expression(bc, node->Unary_Expr.first);
+                    if (first.kind == BcOperand_Value) {
+                        result = first;
                         if (is_bc_type_sint(first.type.kind) || is_bc_type_uint(first.type.kind)) {
                             result.Value.signed_int = !first.Value.signed_int;
                         } else {
                             assert(0 && "invalid literal type for neg (!) unary");
                         }
-                    } break;
-                    // TODO(Alexander): more unary
-                    
-                    default: {
-                        assert(0 && "invalid unary");
-                    } break;
-                }
-            } else {
+                    } else {
+                        first = bc_build_load_value(bc, first);
+                        bc_push_instruction(bc, Bytecode_not);
+                        result = bc_get_unique_register_operand(bc, first.type);
+                        bc_push_operand(bc, result);
+                        bc_push_operand(bc, first);
+                    }
+                } break;
                 
-                switch (node->Unary_Expr.op) {
-                    case UnaryOp_Negate: {
-                        bc_push_instruction(bc, Bytecode_neg);
-                    } break;
-                    
-                    case UnaryOp_Logical_Not: {
-                        bc_push_instruction(bc, Bytecode_not);
-                    } break;
-                    
-                    case UnaryOp_Bitwise_Not: {
-                        bc_push_instruction(bc, Bytecode_not);
-                    } break;
-                    
-                    case UnaryOp_Address_Of: {
-                        bc_push_instruction(bc, Bytecode_not);
-                    } break;
-                    
-                    case UnaryOp_Dereference: {
-                        bc_push_instruction(bc, Bytecode_not);
-                    } break;
-                    
-                    default: assert(0 && "bug: not a valid unary op");
-                }
+                case UnaryOp_Bitwise_Not: {
+                    Bc_Operand first = bc_build_expression(bc, node->Unary_Expr.first);
+                    if (first.kind == BcOperand_Value) {
+                        result = first;
+                        if (is_bc_type_sint(first.type.kind) || is_bc_type_uint(first.type.kind)) {
+                            result.Value.signed_int = ~first.Value.signed_int;
+                        } else {
+                            assert(0 && "invalid literal type for bitwise not (~) unary");
+                        }
+                    } else {
+                        Bc_Operand second = first;
+                        second.kind = BcOperand_Value;
+                        second.Value.signed_int = -1;
+                        
+                        first = bc_build_load_value(bc, first);
+                        bc_push_instruction(bc, Bytecode_xor);
+                        result = bc_get_unique_register_operand(bc, first.type);
+                        bc_push_operand(bc, result);
+                        bc_push_operand(bc, first);
+                        bc_push_operand(bc, second);
+                    } 
+                } break;
                 
-                result = bc_get_unique_register_operand(bc, first.type);
+                case UnaryOp_Address_Of: {
+                    string_id ident = ast_unwrap_ident(node->Unary_Expr.first);
+                    result = map_get(bc->ident_to_operand, ident);
+                } break;
                 
-                bc_push_operand(bc, result);
-                bc_push_operand(bc, first);
+                case UnaryOp_Dereference: {
+                    string_id ident = ast_unwrap_ident(node->Unary_Expr.first);
+                    Bc_Operand first = map_get(bc->ident_to_operand, ident);
+                    Bc_Type deref_type = first.type;
+                    assert(deref_type.ptr_depth > 0);
+                    deref_type.ptr_depth--;
+                    
+                    Bc_Operand deref_type_op = {};
+                    deref_type_op.kind = BcOperand_Type;
+                    deref_type_op.type = deref_type;
+                    
+                    bc_push_instruction(bc, Bytecode_load);
+                    result = bc_get_unique_register_operand(bc, deref_type);
+                    bc_push_operand(bc, result);
+                    bc_push_operand(bc, deref_type_op);
+                    bc_push_operand(bc, first);
+                    //
+                    //deref_type.ptr_depth--;
+                    //deref_type_op.type = deref_type;
+                    //
+                    //bc_push_instruction(bc, Bytecode_load);
+                    //first = result;
+                    //result = bc_get_unique_register_operand(bc, deref_type);
+                    //bc_push_operand(bc, result);
+                    //bc_push_operand(bc, deref_type_op);
+                    //bc_push_operand(bc, first);
+                } break;
+                
+                default: {
+                    assert(0 && "bug: not a valid unary op");
+                } break;
             }
         } break;
         
         case Ast_Binary_Expr: {
             
             Binary_Op binary_op = node->Binary_Expr.op;
-            Bc_Operand first = bc_build_expression(bc, node->Binary_Expr.first);
+            Bc_Operand first_var = bc_build_expression(bc, node->Binary_Expr.first);
+            Bc_Operand first = first_var;
             Bc_Operand second;
+            
+            if (node->Binary_Expr.op != BinaryOp_Assign) {
+                // NOTE(Alexander): we don't need to load value if it's an assignment
+                first = bc_build_load_value(bc, first_var);
+            }
             
             if (node->Binary_Expr.op == BinaryOp_Logical_And && first.kind != BcOperand_Value) {
                 // Store the result in new local variable
-                Bc_Operand dest = bc_build_stack_alloc(bc, &first, first.type);
+                Bc_Operand dest = bc_build_stack_alloc(bc, first.type);
+                bc_push_instruction(bc, Bytecode_store);
+                bc_push_operand(bc, dest);
+                bc_push_operand(bc, first);
                 
                 Bc_Type type = {};
-                type.kind = BcTypeKind_s1;
+                type.kind = BcType_s1;
                 Bc_Operand cond = bc_build_type_cast(bc, &first, bc_type_s1);
                 Bc_Instruction* branch = bc_push_branch(bc, &cond);
                 
@@ -472,7 +537,10 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
             } else if (node->Binary_Expr.op == BinaryOp_Logical_Or && first.kind != BcOperand_Value) {
                 
                 // Store the result in new local variable
-                Bc_Operand dest = bc_build_stack_alloc(bc, &first, first.type);
+                Bc_Operand dest = bc_build_stack_alloc(bc, first.type);
+                bc_push_instruction(bc, Bytecode_store);
+                bc_push_operand(bc, dest);
+                bc_push_operand(bc, first);
                 
                 // Branch
                 Bc_Operand cond = bc_build_type_cast(bc, &first, bc_type_s1);
@@ -508,6 +576,7 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                 
             } else {
                 second = bc_build_expression(bc, node->Binary_Expr.second);
+                second = bc_build_load_value(bc, second);
             }
             
             if (node->Binary_Expr.op == BinaryOp_Assign) {
@@ -527,7 +596,7 @@ case BinaryOp_##name: binary_opcode = Bytecode_##bc_mnemonic; break;
                 // Figure out the type of the result
                 Bc_Type result_type;
                 if (binary_is_comparator_table[node->Binary_Expr.op]) {
-                    result_type = { BcTypeKind_s1, 0 };
+                    result_type = { BcType_s1, 0 };
                 } else {
                     result_type = first.type;
                 }
@@ -540,12 +609,10 @@ case BinaryOp_##name: binary_opcode = Bytecode_##bc_mnemonic; break;
             }
             
             if (is_binary_assign(node->Binary_Expr.op)) {
-                string_id ident = ast_unwrap_ident(node->Binary_Expr.first);
-                Bc_Operand dest_register = map_get(bc->ident_to_operand, ident);
+                Ast* assign = node->Binary_Expr.first;
                 bc_push_instruction(bc, Bytecode_store);
-                bc_push_operand(bc, dest_register);
+                bc_push_operand(bc, first_var);
                 bc_push_operand(bc, result);
-                
             }
         } break;
         
@@ -567,6 +634,7 @@ case BinaryOp_##name: binary_opcode = Bytecode_##bc_mnemonic; break;
             function_args.kind = BcOperand_Argument_List;
             for_compound(node->Call_Expr.args, arg) {
                 Bc_Operand bc_arg = bc_build_expression(bc, arg);
+                bc_arg = bc_build_load_value(bc, bc_arg);
                 array_push(function_args.Argument_List, bc_arg);
             }
             
@@ -639,7 +707,7 @@ bc_build_compare_expression(Bc_Builder* bc, Ast* node) {
     
     Bc_Operand dest;
     Bc_Type dest_type = {};
-    dest_type.kind = BcTypeKind_s1;
+    dest_type.kind = BcType_s1;
     
     if (cmp_code == Bytecode_noop) {
         cmp_code = Bytecode_cmpneq;
@@ -666,13 +734,15 @@ bc_build_statement(Bc_Builder* bc, Ast* node) {
     
     switch (node->kind) {
         case Ast_Assign_Stmt: {
-            Bc_Operand source = bc_build_expression(bc, node->Assign_Stmt.expr);
-            
-            string_id ident = ast_unwrap_ident(node->Assign_Stmt.ident);
-            
             Bc_Type type = bc_build_type(bc, node->Assign_Stmt.type);
-            Bc_Operand dest = bc_build_stack_alloc(bc, &source, type);
+            Bc_Operand dest = bc_build_stack_alloc(bc, type);
+            string_id ident = ast_unwrap_ident(node->Assign_Stmt.ident);
             map_put(bc->ident_to_operand, ident, dest);
+            
+            Bc_Operand source = bc_build_expression(bc, node->Assign_Stmt.expr);
+            bc_push_instruction(bc, Bytecode_store);
+            bc_push_operand(bc, dest);
+            bc_push_operand(bc, source);
         } break;
         
         case Ast_Expr_Stmt: {

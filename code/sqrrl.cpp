@@ -9,6 +9,7 @@
 #include "sqrrl_tokenizer.cpp"
 #include "sqrrl_preprocessor.cpp"
 #include "sqrrl_parser.cpp"
+#include "sqrrl_typer.cpp"
 #include "sqrrl_interp.cpp"
 #include "sqrrl_bytecode_builder.cpp"
 #include "sqrrl_bytecode_interp.cpp"
@@ -246,6 +247,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
 #endif
+    
     
     return 0;
 }

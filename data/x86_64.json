@@ -17560,7 +17560,7 @@
               "output": true
             },
             {
-              "type": "m",
+              "type": "m16",
               "input": true,
               "output": false
             }
@@ -17586,7 +17586,7 @@
               "output": true
             },
             {
-              "type": "m",
+              "type": "m32",
               "input": true,
               "output": false
             }
@@ -17610,7 +17610,7 @@
               "output": true
             },
             {
-              "type": "m",
+              "type": "m64",
               "input": true,
               "output": false
             }

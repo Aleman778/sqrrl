@@ -5,34 +5,34 @@ value_cast(Value value, Primitive_Type_Kind type_kind) {
     Value result = {};
     
     switch (type_kind) {
-        case PrimitiveTypeKind_int:
-        case PrimitiveTypeKind_s8:
-        case PrimitiveTypeKind_s16:
-        case PrimitiveTypeKind_s32:
-        case PrimitiveTypeKind_b32:
-        case PrimitiveTypeKind_s64:
-        case PrimitiveTypeKind_smm: {
+        case PrimitiveType_int:
+        case PrimitiveType_s8:
+        case PrimitiveType_s16:
+        case PrimitiveType_s32:
+        case PrimitiveType_b32:
+        case PrimitiveType_s64:
+        case PrimitiveType_smm: {
             result.data.signed_int = value_to_s64(value);
             result.type = Value_signed_int;
         } break;
         
-        case PrimitiveTypeKind_uint:
-        case PrimitiveTypeKind_u8:
-        case PrimitiveTypeKind_u16:
-        case PrimitiveTypeKind_u32:
-        case PrimitiveTypeKind_u64:
-        case PrimitiveTypeKind_umm: {
+        case PrimitiveType_uint:
+        case PrimitiveType_u8:
+        case PrimitiveType_u16:
+        case PrimitiveType_u32:
+        case PrimitiveType_u64:
+        case PrimitiveType_umm: {
             result.data.unsigned_int = value_to_u64(value);
             result.type = Value_unsigned_int;
         } break;
         
-        case PrimitiveTypeKind_f32:
-        case PrimitiveTypeKind_f64: {
+        case PrimitiveType_f32:
+        case PrimitiveType_f64: {
             result.data.floating = value_to_f64(value);
             result.type = Value_floating;
         } break;
         
-        case PrimitiveTypeKind_bool: {
+        case PrimitiveType_bool: {
             result.data.boolean = value_to_bool(value);
             result.type = Value_boolean;
         } break;

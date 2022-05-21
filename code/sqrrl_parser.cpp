@@ -238,7 +238,7 @@ parse_int(Parser* parser) {
     Token token = parser->current_token;
     assert(token.type == Token_Int);
     
-    Type* type = &global_primitive_types[PrimitiveTypeKind_int];
+    Type* type = &global_primitive_types[PrimitiveType_int];
     
     if (token.suffix_start != token.source.count) {
         string suffix = string_view(token.source.data + token.suffix_start, 
@@ -247,31 +247,31 @@ parse_int(Parser* parser) {
         string_id sym = vars_save_string(suffix);
         switch (sym) {
 #define PRIMITIVE(name, ...) \
-case Kw_##name: type = &global_primitive_types[PrimitiveTypeKind_##name]; break;
+case Kw_##name: type = &global_primitive_types[PrimitiveType_##name]; break;
             DEF_PRIMITIVE_TYPES
 #undef PRIMITIVE
             default: {
                 if (suffix.count == 1 && *suffix.data == 'f') {
-                    type = &global_primitive_types[PrimitiveTypeKind_f32];
+                    type = &global_primitive_types[PrimitiveType_f32];
                     
                 } else if (is_bitflag_set(token.c_int_type, CIntType_Unsigned)) {
-                    type = &global_primitive_types[PrimitiveTypeKind_f32];
+                    type = &global_primitive_types[PrimitiveType_f32];
                     if (is_bitflag_set(token.c_int_type, CIntType_Long_Long)) {
-                        type = &global_primitive_types[PrimitiveTypeKind_u64];
+                        type = &global_primitive_types[PrimitiveType_u64];
                         
                     } else if (is_bitflag_set(token.c_int_type, CIntType_Long)) {
-                        type = &global_primitive_types[PrimitiveTypeKind_u32];
+                        type = &global_primitive_types[PrimitiveType_u32];
                         
                     } else {
-                        type = &global_primitive_types[PrimitiveTypeKind_uint];
+                        type = &global_primitive_types[PrimitiveType_uint];
                     }
                     
                 } else {
                     if (is_bitflag_set(token.c_int_type, CIntType_Long_Long)) {
-                        type = &global_primitive_types[PrimitiveTypeKind_s64];
+                        type = &global_primitive_types[PrimitiveType_s64];
                         
                     } else if (is_bitflag_set(token.c_int_type, CIntType_Long)) {
-                        type = &global_primitive_types[PrimitiveTypeKind_s32];
+                        type = &global_primitive_types[PrimitiveType_s32];
                         
                     } else {
                         parse_error(parser, token, 
@@ -281,8 +281,8 @@ case Kw_##name: type = &global_primitive_types[PrimitiveTypeKind_##name]; break;
             } break;
         }
         
-        if (type->Primitive.kind == PrimitiveTypeKind_f32 &&
-            type->Primitive.kind == PrimitiveTypeKind_f64) {
+        if (type->Primitive.kind == PrimitiveType_f32 &&
+            type->Primitive.kind == PrimitiveType_f64) {
             
             parse_error(parser, token, 
                         string_format("expected integer literal suffix, found `%`", f_string(suffix)));
@@ -308,20 +308,20 @@ parse_float(Parser* parser) {
         return 0;
     }
     
-    Type* type = &global_primitive_types[PrimitiveTypeKind_f64];
+    Type* type = &global_primitive_types[PrimitiveType_f64];
     
     if (token.suffix_start != token.source.count) {
         string suffix = string_view(token.source.data + token.suffix_start, 
                                     token.source.data + token.source.count);
         
         if (suffix.count == 1 && *suffix.data == 'f') {
-            type = &global_primitive_types[PrimitiveTypeKind_f32];
+            type = &global_primitive_types[PrimitiveType_f32];
         } else {
             Var sym = vars_save_string(suffix);
             
             switch (sym) {
                 
-#define PRIMITIVE(symbol, ...) case Kw_##symbol: type = &global_primitive_types[PrimitiveTypeKind_##symbol]; break;
+#define PRIMITIVE(symbol, ...) case Kw_##symbol: type = &global_primitive_types[PrimitiveType_##symbol]; break;
                 DEF_PRIMITIVE_TYPES
 #undef PRIMITIVE
                 
@@ -332,8 +332,8 @@ parse_float(Parser* parser) {
             }
         }
         
-        if (type->Primitive.kind != PrimitiveTypeKind_f32 &&
-            type->Primitive.kind != PrimitiveTypeKind_f64) {
+        if (type->Primitive.kind != PrimitiveType_f32 &&
+            type->Primitive.kind != PrimitiveType_f64) {
             
             parse_error(parser, token, 
                         string_format("invalid float literal suffix `%`, expected primitive type", f_string(suffix)));
@@ -394,13 +394,13 @@ parse_atom(Parser* parser, bool report_error) {
                 case Kw_false: {
                     next_token(parser);
                     result = push_ast_value(parser, create_boolean_value(false),
-                                            &global_primitive_types[PrimitiveTypeKind_bool]);
+                                            &global_primitive_types[PrimitiveType_bool]);
                 } break;
                 
                 case Kw_true: {
                     next_token(parser);
                     result = push_ast_value(parser, create_boolean_value(true),
-                                            &global_primitive_types[PrimitiveTypeKind_bool]);
+                                            &global_primitive_types[PrimitiveType_bool]);
                 } break;
                 
                 case Kw_cast: {

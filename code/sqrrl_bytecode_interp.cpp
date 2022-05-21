@@ -39,18 +39,18 @@ bc_type_to_type(Bc_Type type) {
     Type* result = 0;
     
     switch (type.kind) {
-        case BcTypeKind_s1:  result = &global_primitive_types[PrimitiveTypeKind_s8]; break;
-        case BcTypeKind_s8:  result = &global_primitive_types[PrimitiveTypeKind_s8]; break;
-        case BcTypeKind_s16: result = &global_primitive_types[PrimitiveTypeKind_s16]; break;
-        case BcTypeKind_s32: result = &global_primitive_types[PrimitiveTypeKind_s32]; break;
-        case BcTypeKind_s64: result = &global_primitive_types[PrimitiveTypeKind_s64]; break;
-        case BcTypeKind_u8:  result = &global_primitive_types[PrimitiveTypeKind_u8]; break;
-        case BcTypeKind_u16: result = &global_primitive_types[PrimitiveTypeKind_u16]; break;
-        case BcTypeKind_u32: result = &global_primitive_types[PrimitiveTypeKind_u32]; break;
-        case BcTypeKind_u64: result = &global_primitive_types[PrimitiveTypeKind_u64]; break;
-        case BcTypeKind_f32: result = &global_primitive_types[PrimitiveTypeKind_f32]; break;
-        case BcTypeKind_f64: result = &global_primitive_types[PrimitiveTypeKind_f64]; break;
-        default: assert(0 && "invalid type"); break;
+        case BcType_s1:  result = &global_primitive_types[PrimitiveType_s8]; break;
+        case BcType_s8:  result = &global_primitive_types[PrimitiveType_s8]; break;
+        case BcType_s16: result = &global_primitive_types[PrimitiveType_s16]; break;
+        case BcType_s32: result = &global_primitive_types[PrimitiveType_s32]; break;
+        case BcType_s64: result = &global_primitive_types[PrimitiveType_s64]; break;
+        case BcType_u8:  result = &global_primitive_types[PrimitiveType_u8]; break;
+        case BcType_u16: result = &global_primitive_types[PrimitiveType_u16]; break;
+        case BcType_u32: result = &global_primitive_types[PrimitiveType_u32]; break;
+        case BcType_u64: result = &global_primitive_types[PrimitiveType_u64]; break;
+        case BcType_f32: result = &global_primitive_types[PrimitiveType_f32]; break;
+        case BcType_f64: result = &global_primitive_types[PrimitiveType_f64]; break;
+        default: assert(0 && "bug: provided type is not valid"); break;
     }
     
     return result;
@@ -72,17 +72,17 @@ bc_interp_alloc_register(Bc_Interp* interp, Bc_Register reg, Type* type, Value v
 inline void
 bc_interp_store_value(Bc_Interp* interp, Bc_Type type, void* data, Value_Data value) {
     switch (type.kind) {
-        case BcTypeKind_s1:   *((s8*) data) = (s8)  value.signed_int; break;
-        case BcTypeKind_s8:   *((s8*) data) = (s8)  value.signed_int; break;
-        case BcTypeKind_s16: *((s16*) data) = (s16) value.signed_int; break;
-        case BcTypeKind_s32: *((s32*) data) = (s32) value.signed_int; break;
-        case BcTypeKind_s64: *((s64*) data) = (s64) value.signed_int; break;
-        case BcTypeKind_u8:   *((u8*) data) = (u8)  value.unsigned_int; break;
-        case BcTypeKind_u16: *((u16*) data) = (u16) value.unsigned_int; break;
-        case BcTypeKind_u32: *((u32*) data) = (u32) value.unsigned_int; break;
-        case BcTypeKind_u64: *((u64*) data) = (u64) value.unsigned_int; break;
-        case BcTypeKind_f32: *((f32*) data) = (f32) value.floating; break;
-        case BcTypeKind_f64: *((f64*) data) = (f64) value.floating; break;
+        case BcType_s1:   *((s8*) data) = (s8)  value.signed_int; break;
+        case BcType_s8:   *((s8*) data) = (s8)  value.signed_int; break;
+        case BcType_s16: *((s16*) data) = (s16) value.signed_int; break;
+        case BcType_s32: *((s32*) data) = (s32) value.signed_int; break;
+        case BcType_s64: *((s64*) data) = (s64) value.signed_int; break;
+        case BcType_u8:   *((u8*) data) = (u8)  value.unsigned_int; break;
+        case BcType_u16: *((u16*) data) = (u16) value.unsigned_int; break;
+        case BcType_u32: *((u32*) data) = (u32) value.unsigned_int; break;
+        case BcType_u64: *((u64*) data) = (u64) value.unsigned_int; break;
+        case BcType_f32: *((f32*) data) = (f32) value.floating; break;
+        case BcType_f64: *((f64*) data) = (f64) value.floating; break;
         default: assert(0 && "invalid type"); break;
     }
 }
@@ -91,17 +91,17 @@ inline Value_Data
 bc_interp_load_value(Bc_Interp* interp, Bc_Type type, void* data) {
     Value_Data result;
     switch (type.kind) {
-        case BcTypeKind_s1:  result.signed_int   =  *((s8*) data); break;
-        case BcTypeKind_s8:  result.signed_int   =  *((s8*) data); break;
-        case BcTypeKind_s16: result.signed_int   = *((s16*) data); break;
-        case BcTypeKind_s32: result.signed_int   = *((s32*) data); break;
-        case BcTypeKind_s64: result.signed_int   = *((s64*) data); break;
-        case BcTypeKind_u8:  result.unsigned_int =  *((u8*) data); break;
-        case BcTypeKind_u16: result.unsigned_int = *((u16*) data); break;
-        case BcTypeKind_u32: result.unsigned_int = *((u32*) data); break;
-        case BcTypeKind_u64: result.unsigned_int = *((u64*) data); break;
-        case BcTypeKind_f32: result.floating     = *((f32*) data); break;
-        case BcTypeKind_f64: result.floating     = *((f64*) data); break;
+        case BcType_s1:  result.signed_int   =  *((s8*) data); break;
+        case BcType_s8:  result.signed_int   =  *((s8*) data); break;
+        case BcType_s16: result.signed_int   = *((s16*) data); break;
+        case BcType_s32: result.signed_int   = *((s32*) data); break;
+        case BcType_s64: result.signed_int   = *((s64*) data); break;
+        case BcType_u8:  result.unsigned_int =  *((u8*) data); break;
+        case BcType_u16: result.unsigned_int = *((u16*) data); break;
+        case BcType_u32: result.unsigned_int = *((u32*) data); break;
+        case BcType_u64: result.unsigned_int = *((u64*) data); break;
+        case BcType_f32: result.floating     = *((f32*) data); break;
+        case BcType_f64: result.floating     = *((f64*) data); break;
         default: result.signed_int = 0; break;
     }
     
@@ -186,6 +186,10 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             Value_Data src = bc_interp_operand_value(interp, &bc->src1);
             Value_Data value = bc_interp_load_value(interp, bc->src0.type, src.data);
             bc_interp_store_register(interp, bc->dest.Register.index, value);
+            
+            if (bc->src0.type.ptr_depth > 0) {
+                bc_interp_alloc_register(interp, bc->dest.Register, type);
+            }
         } break;
         
         case Bytecode_assign: {
@@ -235,7 +239,7 @@ bc_interp_store_register(interp, bc->dest.Register.index, result); \
         
         case Bytecode_branch: {
             Value_Data branch;
-            if (bc->dest.type.kind == BcTypeKind_s1) {
+            if (bc->dest.type.kind == BcType_s1) {
                 // Conditional branch
                 Value_Data cond = bc_interp_operand_value(interp, &bc->dest);
                 Bc_Operand* src = (cond.signed_int > 0) ? &bc->src0 : &bc->src1;
@@ -321,13 +325,13 @@ bc_interp_store_register(interp, bc->dest.Register.index, result); \
         case Bytecode_ret: {
             Value_Data value = bc_interp_operand_value(interp, &bc->src0);
             switch (bc->src0.type.kind) {
-                case BcTypeKind_s1:  value.unsigned_int = (u64) 1 & value.unsigned_int; break;
-                case BcTypeKind_s8:  value.signed_int = (s8) value.signed_int; break;
-                case BcTypeKind_s16: value.signed_int = (s16) value.signed_int; break;
-                case BcTypeKind_s32: value.signed_int = (s32) value.signed_int; break;
-                case BcTypeKind_u8:  value.unsigned_int = (u8) value.unsigned_int; break;
-                case BcTypeKind_u16: value.unsigned_int = (u16) value.unsigned_int; break;
-                case BcTypeKind_u32: value.unsigned_int = (u32) value.unsigned_int; break;
+                case BcType_s1:  value.unsigned_int = (u64) 1 & value.unsigned_int; break;
+                case BcType_s8:  value.signed_int = (s8) value.signed_int; break;
+                case BcType_s16: value.signed_int = (s16) value.signed_int; break;
+                case BcType_s32: value.signed_int = (s32) value.signed_int; break;
+                case BcType_u8:  value.unsigned_int = (u8) value.unsigned_int; break;
+                case BcType_u16: value.unsigned_int = (u16) value.unsigned_int; break;
+                case BcType_u32: value.unsigned_int = (u32) value.unsigned_int; break;
             }
             
             // Pop scope

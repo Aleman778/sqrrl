@@ -11,7 +11,7 @@
 #include "sqrrl_source.h"
 #include "sqrrl_tokenizer.h"
 #include "sqrrl_value.h"
-#include "sqrrl_types.h"
+#include "sqrrl_typer.h"
 #include "sqrrl_ast.h"
 #include "sqrrl_parser.h"
 #include "sqrrl_preprocessor.h"

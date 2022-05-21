@@ -1,4 +1,5 @@
 
+#if 0
 
 int
 test_binary_expressions() {
@@ -16,6 +17,8 @@ int
 test_many_parameters(int a, int b, int c, int d, int e, int f) {
     return a + b + c + d + e + f;
 }
+
+#endif
 
 int
 main() {
@@ -88,9 +91,16 @@ main() {
     // Function call with arguments
     return test_add(10, 20); // expects: 30
     
-#elif 1
+#elif 0
     // Function call with arguments
-    return test_many_parameters(10, 10, 10, 10, 10, 10); // expects: 60
+    return test_many_parameters(1, 2, 3, 4, 5, 6); // expects: 21
+    
+#elif 1
+    // Pointers
+    int x = 10;
+    int* p = &x;
+    *p += 1;
+    return x; // expects: 11
     
 #elif 0
     // Boolean expressions

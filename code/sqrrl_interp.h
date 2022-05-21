@@ -155,7 +155,7 @@ interp_entity_is_assigned(Interp* interp, Interp_Entity* entity, string_id ident
         if (entity->type) {
             
             // HACK(Alexander): maybe need to rethink what is legal to do here.
-            if (entity->type->kind == TypeKind_Enum) {
+            if (entity->type->kind == Type_Enum) {
                 return true;
             }
             

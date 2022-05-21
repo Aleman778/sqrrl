@@ -12,6 +12,7 @@ X64_OPCODE(idiv, IDIV) \
 X64_OPCODE(cwd, CWD) \
 X64_OPCODE_ALIAS(cwd, cwq, CWQ) \
 X64_OPCODE_ALIAS(cwd, cwo, CWO) \
+X64_OPCODE(lea, LEA) \
 X64_OPCODE(mov, MOV) \
 X64_OPCODE(movsx, MOVSX) \
 X64_OPCODE(movzx, MOVZX) \
@@ -381,23 +382,27 @@ operand_is_immediate(X64_Operand_Kind kind) {
 }
 
 X64_Operand_Kind
-x64_get_register_kind(Bc_Type_Kind type_kind) {
-    switch (type_kind) {
-        case BcTypeKind_s1:
-        case BcTypeKind_s8:
-        case BcTypeKind_u8: return X64Operand_r8;
+x64_get_register_kind(Bc_Type type) {
+    if (type.ptr_depth > 0) {
+        return X64Operand_r64;
+    }
+    
+    switch (type.kind) {
+        case BcType_s1:
+        case BcType_s8:
+        case BcType_u8: return X64Operand_r8;
         
-        case BcTypeKind_s16:
-        case BcTypeKind_u16: return X64Operand_r16;
+        case BcType_s16:
+        case BcType_u16: return X64Operand_r16;
         
-        case BcTypeKind_s32:
-        case BcTypeKind_u32: return X64Operand_r32;
+        case BcType_s32:
+        case BcType_u32: return X64Operand_r32;
         
-        case BcTypeKind_s64:
-        case BcTypeKind_u64: return X64Operand_r64;
+        case BcType_s64:
+        case BcType_u64: return X64Operand_r64;
         
-        case BcTypeKind_f32:
-        case BcTypeKind_f64: return X64Operand_mm;
+        case BcType_f32:
+        case BcType_f64: return X64Operand_mm;
         
         default: assert(0 && "invalid bytecode type kind");
     }
@@ -406,20 +411,24 @@ x64_get_register_kind(Bc_Type_Kind type_kind) {
 }
 
 X64_Operand_Kind
-x64_get_memory_kind(Bc_Type_Kind type_kind) {
-    switch (type_kind) {
-        case BcTypeKind_s1:
-        case BcTypeKind_s8:
-        case BcTypeKind_u8: return X64Operand_m8;
+x64_get_memory_kind(Bc_Type type) {
+    if (type.ptr_depth > 0) {
+        return X64Operand_m64;
+    }
+    
+    switch (type.kind) {
+        case BcType_s1:
+        case BcType_s8:
+        case BcType_u8: return X64Operand_m8;
         
-        case BcTypeKind_s16:
-        case BcTypeKind_u16: return X64Operand_m16;
+        case BcType_s16:
+        case BcType_u16: return X64Operand_m16;
         
-        case BcTypeKind_s32:
-        case BcTypeKind_u32: return X64Operand_m32;
+        case BcType_s32:
+        case BcType_u32: return X64Operand_m32;
         
-        case BcTypeKind_s64:
-        case BcTypeKind_u64: return X64Operand_m64;
+        case BcType_s64:
+        case BcType_u64: return X64Operand_m64;
         
         // TODO(Alexander): floating point
         default: assert(0 && "invalid bytecode type kind");
@@ -429,20 +438,24 @@ x64_get_memory_kind(Bc_Type_Kind type_kind) {
 }
 
 X64_Operand_Kind
-x64_get_immediate_kind(Bc_Type_Kind type_kind) {
-    switch (type_kind) {
-        case BcTypeKind_s1:
-        case BcTypeKind_s8:
-        case BcTypeKind_u8: return X64Operand_imm8;
+x64_get_immediate_kind(Bc_Type type) {
+    if (type.ptr_depth > 0) {
+        return X64Operand_imm64;
+    }
+    
+    switch (type.kind) {
+        case BcType_s1:
+        case BcType_s8:
+        case BcType_u8: return X64Operand_imm8;
         
-        case BcTypeKind_s16:
-        case BcTypeKind_u16: return X64Operand_imm16;
+        case BcType_s16:
+        case BcType_u16: return X64Operand_imm16;
         
-        case BcTypeKind_s32:
-        case BcTypeKind_u32: return X64Operand_imm32;
+        case BcType_s32:
+        case BcType_u32: return X64Operand_imm32;
         
-        case BcTypeKind_s64:
-        case BcTypeKind_u64: return X64Operand_imm64;
+        case BcType_s64:
+        case BcType_u64: return X64Operand_imm64;
         
         // TODO(Alexander): floating point
         default: assert(0 && "invalid bytecode type kind");
@@ -452,7 +465,7 @@ x64_get_immediate_kind(Bc_Type_Kind type_kind) {
 }
 
 X64_Operand
-x64_operand_type_cast(X64_Operand source, Bc_Type_Kind dest_type) {
+x64_operand_type_cast(X64_Operand source, Bc_Type dest_type) {
     if (operand_is_register(source.kind))  {
         source.kind = x64_get_register_kind(dest_type);
     } else if (operand_is_memory(source.kind)) {

@@ -903,6 +903,7 @@ interp_block(Interp* interp, Ast* ast) {
     return result;
 }
 
+// TODO(Alexander): deprecate this, moved to typer
 internal Type*
 interp_struct_or_union_type(Interp* interp, Ast* arguments, Type_Kind typekind) {
     Type* result = arena_push_struct(&interp->stack, Type);
@@ -1012,6 +1013,7 @@ interp_struct_or_union_type(Interp* interp, Ast* arguments, Type_Kind typekind) 
     return result;
 }
 
+// TODO(Alexander): depcreate this, moved to typer
 Type*
 interp_type(Interp* interp, Ast* ast) {
     assert(is_ast_type(ast));
@@ -1406,8 +1408,8 @@ interp_check_type_match_of_value(Interp* interp, Type* type, Interp_Value interp
                 case PrimitiveType_s64:
                 case PrimitiveType_smm:
                 case PrimitiveType_b32: {
-                    if (type->Primitive.min_value.data.signed_int < value.data.signed_int && 
-                        type->Primitive.max_value.data.signed_int > value.data.signed_int) {
+                    if (type->Primitive.min_value.signed_int < value.data.signed_int && 
+                        type->Primitive.max_value.signed_int > value.data.signed_int) {
                         // TODO(Alexander): this is technically a warning!
                         interp_error(interp, string_format("expected type `%` cannot fit in value `%`", 
                                                            f_type(type), f_value(&value)));
@@ -1443,8 +1445,8 @@ interp_check_type_match_of_value(Interp* interp, Type* type, Interp_Value interp
                 case PrimitiveType_u32:
                 case PrimitiveType_u64:
                 case PrimitiveType_umm: {
-                    if (type->Primitive.min_value.data.unsigned_int < value.data.unsigned_int && 
-                        type->Primitive.max_value.data.unsigned_int > value.data.unsigned_int) {
+                    if (type->Primitive.min_value.unsigned_int < value.data.unsigned_int && 
+                        type->Primitive.max_value.unsigned_int > value.data.unsigned_int) {
                         // TODO(Alexander): this is technically a warning!
                         interp_error(interp, string_format("expected type `%` cannot fit in value `%`", 
                                                            f_type(type), f_value(&value)));

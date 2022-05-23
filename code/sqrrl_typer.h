@@ -1,30 +1,37 @@
 
-// NOTE(Alexander): this has to be synched with the keywords in sqrrl_vars.h
-#define DEF_PRIMITIVE_TYPES \
-PRIMITIVE(int, 4, signed, INT_MAX, INT_MIN) \
-PRIMITIVE(s8, 1, signed, S8_MAX, S8_MIN) \
-PRIMITIVE(s16, 2, signed, S16_MAX, S16_MIN) \
-PRIMITIVE(s32, 4, signed, S32_MAX, S32_MIN) \
-PRIMITIVE(s64, 8, signed, S64_MAX, S64_MIN) \
-PRIMITIVE(smm, 8, signed, SMM_MAX, SMM_MIN) \
-PRIMITIVE(uint, 4, unsigned, UINT_MAX, 0) \
-PRIMITIVE(u8, 1, unsigned, U8_MAX, 0) \
-PRIMITIVE(u16, 2, unsigned, U16_MAX, 0) \
-PRIMITIVE(u32, 4, unsigned, U32_MAX, 0) \
-PRIMITIVE(u64, 8, unsigned, U64_MAX, 0) \
-PRIMITIVE(umm, 8, unsigned, SMM_MAX, 0) \
-PRIMITIVE(f32, 4, signed, 0, 0) \
-PRIMITIVE(f64, 8, signed, 0, 0) \
-PRIMITIVE(char, 1, unsigned, CHAR_MAX, CHAR_MIN) \
-PRIMITIVE(bool, 1, signed, BOOL_MAX, BOOL_MIN) \
-PRIMITIVE(b32, 1, signed, S32_MAX, S32_MIN) \
-PRIMITIVE(void, 0, unsigned, 0, 0)
 
+// PRIMITIVE(symbol, archetype, size, signedness, max_val, min_val
+#define DEF_PRIMITIVE_TYPES \
+PRIMITIVE(int,  Primitive_Int,   4, signed,   INT_MAX, INT_MIN) \
+PRIMITIVE(s8,   Primitive_Int,   1, signed,   S8_MAX, S8_MIN) \
+PRIMITIVE(s16,  Primitive_Int,   2, signed,   S16_MAX, S16_MIN) \
+PRIMITIVE(s32,  Primitive_Int,   4, signed,   S32_MAX, S32_MIN) \
+PRIMITIVE(s64,  Primitive_Int,   8, signed,   S64_MAX, S64_MIN) \
+PRIMITIVE(smm,  Primitive_Int,   8, signed,   SMM_MAX, SMM_MIN) \
+PRIMITIVE(uint, Primitive_Int,   4, unsigned, UINT_MAX, 0) \
+PRIMITIVE(u8,   Primitive_Int,   1, unsigned, U8_MAX, 0) \
+PRIMITIVE(u16,  Primitive_Int,   2, unsigned, U16_MAX, 0) \
+PRIMITIVE(u32,  Primitive_Int,   4, unsigned, U32_MAX, 0) \
+PRIMITIVE(u64,  Primitive_Int,   8, unsigned, U64_MAX, 0) \
+PRIMITIVE(umm,  Primitive_Int,   8, unsigned, SMM_MAX, 0) \
+PRIMITIVE(f32,  Primitive_Float, 4, signed,   0, 0) \
+PRIMITIVE(f64,  Primitive_Float, 8, signed,   0, 0) \
+PRIMITIVE(char, Primitive_Int,   1, unsigned, CHAR_MAX, CHAR_MIN) \
+PRIMITIVE(bool, Primitive_Int,   1, signed,   BOOL_MAX, BOOL_MIN) \
+PRIMITIVE(b32,  Primitive_Int,   1, signed,   S32_MAX, S32_MIN) \
+PRIMITIVE(void, Primitive_None,  0, unsigned, 0, 0)
+// NOTE(Alexander): this has to be synched with the keywords in sqrrl_vars.h
 
 enum Primitive_Type_Kind {
 #define PRIMITIVE(symbol, ...) PrimitiveType_##symbol,
     DEF_PRIMITIVE_TYPES
 #undef PRIMITIVE
+};
+
+enum Primitive_Archetype {
+    Primitive_None,
+    Primitive_Int,
+    Primitive_Float,
 };
 
 enum Type_Kind {
@@ -59,10 +66,11 @@ struct Type {
     union {
         struct {
             Primitive_Type_Kind kind;
+            Primitive_Archetype archetype;
             s32 size;
             b32 signedness;
-            Value max_value;
-            Value min_value;
+            Value_Data max_value;
+            Value_Data min_value;
         } Primitive;
         
         struct {
@@ -104,10 +112,10 @@ global Type global_unresolved_type = { Type_Unresolved };
 global Type global_primitive_types[] = {
 #define S_signed true
 #define S_unsigned false
-#define VAL(signedness, val) create_##signedness##_int_value(val)
-#define PRIMITIVE(symbol, size, sign, max, min) { \
+#define VAL(signedness, val) create_##signedness##_int_value(val).data
+#define PRIMITIVE(symbol, archetype, size, sign, max, min) { \
 Type_Primitive, { \
-PrimitiveType_##symbol, size, S_##sign, VAL(sign, max), VAL(sign, min)  \
+PrimitiveType_##symbol, archetype, size, S_##sign, VAL(sign, max), VAL(sign, min)  \
 }, \
 string_lit(#symbol), \
 size, size \

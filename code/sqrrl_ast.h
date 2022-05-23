@@ -11,10 +11,12 @@ AST(Ident,             "identifier", string_id) \
 AST(Ident_String,      "identifier", struct {   \
 string_id ident;                                \
 string contents;                                \
+Type* type;                                     \
 })                                              \
 AST(Decl, "top level declaration", struct {     \
 Ast* ident;                                     \
 Ast* stmt;                                      \
+Type* type;                                     \
 Ast_Decl_Modifier mods;                         \
 })                                              \
 AST(Argument,          "argument", struct {     \
@@ -29,29 +31,35 @@ Ast* next;                                      \
 AST_GROUP(Expr_Begin,  "expression")            \
 AST(Unary_Expr,        "unary", struct {        \
 Ast* first;                                     \
+Type* type;                                     \
 Unary_Op op;                                    \
 })                                              \
 AST(Binary_Expr,       "binary", struct {       \
 Ast* first;                                     \
 Ast* second;                                    \
+Type* type;                                     \
 Binary_Op op;                                   \
 })                                              \
 AST(Ternary_Expr,      "ternary", struct {      \
 Ast* first;                                     \
 Ast* second;                                    \
 Ast* third;                                     \
+Type* type;                                     \
 })                                              \
 AST(Call_Expr,         "call", struct {         \
 Ast* ident;                                     \
 Ast* args;                                      \
+Type* return_type;                              \
 })                                              \
 AST(Field_Expr,        "field", struct {        \
 Ast* var;                                       \
 Ast* field;                                     \
+Type* type;                                     \
 })                                              \
 AST(Cast_Expr,         "cast", struct {         \
 Ast* type;                                      \
 Ast* expr;                                      \
+Type* actual_type;                              \
 })                                              \
 AST(Paren_Expr,        "parentheses", struct {  \
 Ast* expr;                                      \
@@ -336,7 +344,11 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
         case Ast_Value: {
             string_builder_push(sb, " ");
             string_builder_push(sb, &node->Value.value);
-            string_builder_push(sb, node->Value.type);
+            
+            if (node->Value.type) {
+                string_builder_push(sb, "_");
+                string_builder_push(sb, node->Value.type);
+            }
         } break;
         
         case Ast_Ident: {

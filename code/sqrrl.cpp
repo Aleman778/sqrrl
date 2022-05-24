@@ -40,7 +40,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     if (argc > 1) {
         filepath = string_lit(argv[1]);
     } else {
-        filepath = string_lit("examples/demo3.sq");
+        filepath = string_lit("examples/demo4.sq");
         //filepath = string_lit("tests/literals.sq");
     }
 #else
@@ -107,6 +107,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
 #if BUILD_MAX_DEBUG
     // NOTE(Alexander): Print the AST
+    pln("AST before types:");
     for_map(ast_file.decls, decl) {
         print_ast(decl->value, &tokenizer);
     }
@@ -117,9 +118,26 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         return 1;
     }
     
-#if 0
+#if 1
+    // Typecheck the AST
+    if (type_check_ast_file(&ast_file) != 0) {
+        pln("\nErrors found during type checking, exiting...\n");
+        return 1;
+    }
+    
+    
+#if BUILD_MAX_DEBUG
+    // NOTE(Alexander): Print the AST
+    pln("AST after types:");
+    for_map(ast_file.decls, decl) {
+        print_ast(decl->value, &tokenizer);
+    }
+#endif
+#endif
+    
+#if 1
     {
-        // NOTE(Alexander): Interpret the AST
+        // Interpret the AST
         Interp interp = {};
         interp_register_primitive_types(&interp);
         DEBUG_interp_register_intrinsics(&interp);
@@ -127,7 +145,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         Interp_Value result = interp_function_call(&interp, Sym_main, 0);
         if (result.modifier == InterpValueMod_Return) {
             if (is_integer(result.value)) {
-                pln("Interpreter exited with code %", f_int((int) result.value.signed_int));
+                pln("Interpreter exited with code %", f_int((int) result.value.data.signed_int));
             } else {
                 pln("Interpreter exited with code 0");
             }
@@ -135,9 +153,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
 #endif
     
-#if 1
+#if 0
     {
-        // NOTE(Alexander): Interpret the bytecode
+        // Build bytecode representation of the AST
         Bc_Builder bytecode_builder = {};
         bc_build_from_ast(&bytecode_builder, &ast_file);
         pln("Bytecode size: % bytes", f_umm(bytecode_builder.arena.curr_used)); // TODO(Alexander): only counts last memory block

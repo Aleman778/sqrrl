@@ -1,0 +1,9 @@
+
+
+
+int 
+main() {
+    s32 x = 20;
+    s8 y = 300;
+    return x + y;
+}

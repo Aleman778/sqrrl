@@ -1379,6 +1379,7 @@ interp_ast_declarations(Interp* interp, Ast_Decl_Table* decls) {
     }
 }
 
+// TODO(Alexander): deprecated: replaced by type_check_value in sqrrl_typer.cpp
 bool
 interp_check_type_match_of_value(Interp* interp, Type* type, Interp_Value interp_value) {
     Value value = interp_value.value;

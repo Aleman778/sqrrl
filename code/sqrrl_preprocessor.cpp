@@ -61,7 +61,7 @@ preprocess_parse_and_eval_constant_expression(Preprocessor* preprocessor, Tokeni
     Interp interp = {};
     Interp_Value result = interp_expression(&interp, expr);
     
-#if BUILD_MAX_DEBUG
+#if 0
     pln("#if");
     print_ast(expr, t);
     print_format("= ");

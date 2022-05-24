@@ -112,22 +112,151 @@ type_infer_by_value(Value value) {
     return 0;
 }
 
+bool
+type_check_value(Type_Context* tcx, Type* type, Value value) {
+    bool result = true;
+    
+    switch (value.type) {
+        case Value_void: {
+            result = type->kind == Type_Void;
+        } break;
+        
+        case Value_boolean: {
+            result = (type->kind == Type_Primitive &&
+                      (type->Primitive.kind == PrimitiveType_bool || 
+                       type->Primitive.kind == PrimitiveType_b32));
+        } break;
+        
+        case Value_signed_int: {
+            result = type->kind == Type_Primitive;
+            if (!result) break;
+            
+            switch (type->Primitive.kind) {
+                case PrimitiveType_int:
+                case PrimitiveType_s8:
+                case PrimitiveType_s16:
+                case PrimitiveType_s32:
+                case PrimitiveType_s64:
+                case PrimitiveType_smm:
+                case PrimitiveType_b32: {
+                    if (value.data.signed_int < type->Primitive.min_value.signed_int ||
+                        value.data.signed_int > type->Primitive.max_value.signed_int) {
+                        
+                        type_warning(tcx, string_format("expected type `%` cannot fit in value `%`", 
+                                                        f_type(type), f_value(&value)));
+                    }
+                    
+                } break;
+                
+                
+                case PrimitiveType_uint:
+                case PrimitiveType_u8:
+                case PrimitiveType_u16:
+                case PrimitiveType_u32:
+                case PrimitiveType_u64:
+                case PrimitiveType_umm: {
+                    if (value.data.signed_int < 0) {
+                        type_warning(tcx, string_format("expected type `%` signed/ unsigned mismatch with `%`", 
+                                                        f_type(type), f_value(&value)));
+                        
+                    } else if (value.data.unsigned_int > type->Primitive.max_value.unsigned_int) {
+                        
+                        type_warning(tcx, string_format("expected type `%` cannot fit in value `%`", 
+                                                        f_type(type), f_value(&value)));
+                    }
+                    
+                } break;
+            }
+            
+        } break;
+        
+        case Value_unsigned_int: {
+            result = type->kind == Type_Primitive;
+            if (!result) break;
+            
+            switch (type->Primitive.kind) {
+                case PrimitiveType_uint:
+                case PrimitiveType_u8:
+                case PrimitiveType_u16:
+                case PrimitiveType_u32:
+                case PrimitiveType_u64:
+                case PrimitiveType_umm: {
+                    if (value.data.unsigned_int < type->Primitive.min_value.unsigned_int ||
+                        value.data.unsigned_int > type->Primitive.max_value.unsigned_int) {
+                        type_warning(tcx, string_format("expected type `%` cannot fit in value `%`", 
+                                                        f_type(type), f_value(&value)));
+                    }
+                    
+                } break;
+                
+                case PrimitiveType_int:
+                case PrimitiveType_s8:
+                case PrimitiveType_s16:
+                case PrimitiveType_s32:
+                case PrimitiveType_s64:
+                case PrimitiveType_smm:
+                case PrimitiveType_b32: {
+                    if (value.data.unsigned_int > (u64) type->Primitive.max_value.signed_int) {
+                        type_warning(tcx, string_format("expected type `%` cannot fit in value `%`", 
+                                                        f_type(type), f_value(&value)));
+                    }
+                } break;
+            }
+            
+        } break;
+        
+        case Value_floating: {
+            result = (type->kind == Type_Primitive &&
+                      (type->Primitive.kind == PrimitiveType_f32 || 
+                       type->Primitive.kind == PrimitiveType_f64));
+        } break;
+        
+        case Value_pointer:
+        case Value_array: {
+            // TODO(Alexander): do we need more stricter type checking of each value?
+            result = type->kind == Type_Array;
+        } break;
+        
+        case Value_string: {
+            result = type->kind == Type_String;
+        } break;
+        
+        case Value_ast_node: {
+            compiler_bug("It shouldn't be possible to use ast node as a type");
+        } break;
+    }
+    
+    if (!result) {
+        type_error(tcx, string_format("expected type `%` is not compatible with `%`", 
+                                      f_type(type), f_value(&value)));
+    }
+    
+    return result;
+}
+
 
 Type*
-type_infer_by_expression(Type_Context* tcx, Ast* expr) {
+type_infer_by_expression(Type_Context* tcx, Ast* expr, Type* parent_type = 0) {
     Type* result = 0;
     
     switch (expr->kind) {
         case Ast_Value: {
-            result = expr->Value.type;
-            if (!result) {
-                result = type_infer_by_value(expr->Value.value);
+            
+            if (parent_type) {
+                result = parent_type;
+            } else {
+                
+                result = expr->Value.type;
+                if (!result) {
+                    result = type_infer_by_value(expr->Value.value);
+                }
             }
+            
+            type_check_value(tcx, result, expr->Value.value);
             expr->Value.type = result;
         } break;
         
         case Ast_Ident: {
-            
             // TODO(Alexander): we need to remember local variables
             Type* type = map_get(tcx->locals, expr->Ident);
             if (!type) {
@@ -199,7 +328,7 @@ type_infer_by_expression(Type_Context* tcx, Ast* expr) {
         } break;
     }
     
-    return result;;
+    return result;
 }
 
 // NOTE(Alexander): forward declare
@@ -328,7 +457,8 @@ create_type_from_ast(Type_Context* tcx, Ast* ast) {
                 } else if (ident == Kw_infer) {
                     unimplemented;
                 } else {
-                    int index = Kw_int + ident;
+                    int index = ident - Kw_int;
+                    assert(index >= 0 && index < fixed_array_count(global_primitive_types));
                     result = &global_primitive_types[index];
                 }
             } else {
@@ -523,9 +653,8 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
     switch (stmt->kind) {
         
         case Ast_Assign_Stmt: {
-            
             Type* expected_type = create_type_from_ast(tcx, stmt->Assign_Stmt.type);
-            Type* found_type = create_type_from_ast(tcx, stmt->Assign_Stmt.expr);
+            Type* found_type = type_infer_by_expression(tcx, stmt->Assign_Stmt.expr, expected_type);
             type_check_assignment(tcx, expected_type, found_type);
             
             string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
@@ -533,8 +662,17 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
             
         } break;
         
+        
+        case Ast_Block_Stmt: {
+            // TODO(Alexander): create a new scope
+            Ast* stmts = stmt->Block_Stmt.stmts;
+            for_compound(stmts, it) {
+                type_check_statement(tcx, it);
+            }
+        } break;
+        
         case Ast_Expr_Stmt: {
-            
+            Type* infer = type_infer_by_expression(tcx, stmt->Expr_Stmt);
         } break;
     }
 }
@@ -545,10 +683,25 @@ type_check_declaration(Type_Context* tcx, Ast* decl) {
     Ast* decl_stmt = decl->Decl.stmt;
     if (decl_stmt->kind == Ast_Decl_Stmt) {
         Type* type = create_type_from_ast(tcx, decl_stmt->Decl_Stmt.type);
-        type_check_declaration(tcx, decl_stmt->Decl_Stmt.decl);
+        type_check_statement(tcx, decl_stmt->Decl_Stmt.decl);
+        decl_stmt->Decl_Stmt.actual_type = type;
     } else {
         unimplemented;
     }
+}
+
+s32
+type_check_ast_file(Ast_File* ast_file) {
+    Type_Context tcx = {};
+    Memory_Arena type_arena = {};
+    tcx.arena = &type_arena;
+    tcx.decls = ast_file->decls;
+    
+    for_map(tcx.decls, decl) {
+        type_check_declaration(&tcx, decl->value);
+    }
+    
+    return tcx.error_count;
 }
 
 #if 0

@@ -99,6 +99,7 @@ AST(Decl_Stmt,         "declaration", struct {  \
 Ast* ident;                                     \
 Ast* type;                                      \
 Ast* decl;                                      \
+Type* actual_type;                              \
 })                                              \
 AST(If_Stmt,           "if", struct {           \
 Ast* cond;                                      \
@@ -358,12 +359,18 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
         case Ast_Unary_Expr: {
             assert_enum(UnaryOp, node->Unary_Expr.op);
             string_builder_push_format(sb, "(%)", f_cstring(unary_op_strings[node->Unary_Expr.op]));
+            if (node->Unary_Expr.type) {
+                string_builder_push_format(sb, " [%]", f_type(node->Unary_Expr.type));
+            }
             string_builder_push(sb, node->Unary_Expr.first, tokenizer, spacing);
         } break;
         
         case Ast_Binary_Expr: {
             assert_enum(BinaryOp, node->Binary_Expr.op);
             string_builder_push_format(sb, "(%)", f_cstring(binary_op_strings[node->Binary_Expr.op]));
+            if (node->Binary_Expr.type) {
+                string_builder_push_format(sb, " [%]", f_type(node->Binary_Expr.type));
+            }
             string_builder_push(sb, node->Binary_Expr.first, tokenizer, spacing);
             string_builder_push(sb, node->Binary_Expr.second, tokenizer, spacing);
         } break;
@@ -392,6 +399,12 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
             for_compound(node, child_node) {
                 string_builder_push(sb, child_node, tokenizer, spacing);
             }
+        } break;
+        
+        case Ast_Decl_Stmt: {
+            string_builder_push(sb, node->Decl_Stmt.ident, tokenizer, spacing);
+            string_builder_push(sb, node->Decl_Stmt.type, tokenizer, spacing);
+            string_builder_push(sb, node->Decl_Stmt.decl, tokenizer, spacing);
         } break;
         
         default: {

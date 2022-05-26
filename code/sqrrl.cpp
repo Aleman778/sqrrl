@@ -134,7 +134,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
 #endif
 #endif
-    
 #if 1
     {
         // Interpret the AST

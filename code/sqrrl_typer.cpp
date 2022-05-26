@@ -234,6 +234,99 @@ type_check_value(Type_Context* tcx, Type* type, Value value) {
     return result;
 }
 
+// TODO(Alexander): this is a compile opt technique, this belongs in different file
+Value
+constant_folding_of_expressions(Ast* ast) {
+    assert(is_ast_expr(ast) || ast->kind == Ast_Value || ast->kind == Ast_Ident || ast->kind == Ast_None);
+    Value result = {};
+    
+    switch (ast->kind) {
+        // TODO(alexander): do we want values to be expressions?
+        case Ast_Value: {
+            result = ast->Value.value;
+        } break;
+        
+        case Ast_Unary_Expr: {
+            Value first = constant_folding_of_expressions(ast->Unary_Expr.first);
+            switch (ast->Unary_Expr.op) {
+                case UnaryOp_Negate: {
+                    if (is_integer(first)) {
+                        result.data.signed_int = -first.data.signed_int;
+                        result.type = Value_signed_int;
+                    } else if(is_floating(first)) {
+                        result.data.floating = -first.data.floating;
+                        result.type = Value_floating;
+                    }
+                } break;
+                
+                case UnaryOp_Logical_Not: {
+                    if (is_integer(first)) {
+                        result.data.boolean = !value_to_bool(first);
+                        result.type = Value_boolean;
+                    }
+                } break;
+            }
+        } break;
+        
+        case Ast_Binary_Expr: {
+            
+            if (is_binary_assign(ast->Binary_Expr.op)) {
+                // NOTE(Alexander): we cannot constant fold lhs of an assignemnt operator
+                constant_folding_of_expressions(ast->Binary_Expr.second);
+            } else {
+                Value first = constant_folding_of_expressions(ast->Binary_Expr.first);
+                Value second = constant_folding_of_expressions(ast->Binary_Expr.second);
+                
+                // NOTE(Alexander): Type rules
+                // int + int;
+                // float + int -> float + float;
+                // int + float -> float + float;
+                // float -x-> int (is a no no, it has to be an explicit cast)
+                
+                if (is_floating(first) || is_floating(second)) {
+                    // NOTE(Alexander): Make sure both types are floating
+                    if (is_integer(first)) {
+                        first.data.floating  = value_to_f64(first);
+                        first.type = Value_floating;
+                    } else if (is_integer(second)) {
+                        second.data.floating = value_to_f64(second);
+                        second.type = Value_floating;
+                    }
+                    
+                    first = value_floating_binary_operation(first, second, ast->Binary_Expr.op);
+                    result = first;
+                    
+                } else if (is_integer(first) || is_integer(second)) {
+                    // NOTE(Alexander): integer math
+                    first.data.signed_int = value_integer_binary_operation(first, second, ast->Binary_Expr.op);
+                    result = first;
+                }
+            }
+        } break;
+        
+        case Ast_Ternary_Expr: {
+            Value first = constant_folding_of_expressions(ast->Ternary_Expr.first);
+            Value second = constant_folding_of_expressions(ast->Ternary_Expr.second);
+            Value third = constant_folding_of_expressions(ast->Ternary_Expr.third);
+            
+            if (is_integer(first)) {
+                if (first.data.boolean) {
+                    result = second;
+                } else {
+                    result = third;
+                }
+            }
+        } break;
+    }
+    
+    if (result.type != Value_void) {
+        ast->kind = Ast_Value;
+        ast->Value.value = result;
+        ast->Value.type = 0;
+    }
+    
+    return result;
+}
 
 Type*
 type_infer_by_expression(Type_Context* tcx, Ast* expr, Type* parent_type = 0) {
@@ -653,6 +746,9 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
     switch (stmt->kind) {
         
         case Ast_Assign_Stmt: {
+            // Get rid of unnecessary stuff
+            constant_folding_of_expressions(stmt->Assign_Stmt.expr);
+            
             Type* expected_type = create_type_from_ast(tcx, stmt->Assign_Stmt.type);
             Type* found_type = type_infer_by_expression(tcx, stmt->Assign_Stmt.expr, expected_type);
             type_check_assignment(tcx, expected_type, found_type);

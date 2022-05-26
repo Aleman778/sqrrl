@@ -4,6 +4,6 @@
 int 
 main() {
     s32 x = 20;
-    s8 y = 300;
+    s8 y = -138;
     return x + y;
 }

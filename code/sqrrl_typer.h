@@ -181,6 +181,8 @@ type_equals(Type* a, Type* b) {
 
 void
 string_builder_push(String_Builder* sb, Type* type) {
+    if (!type) return;
+    
     switch (type->kind) {
         case Type_Void: {
             string_builder_push(sb, "void");
@@ -236,4 +238,14 @@ string_builder_push(String_Builder* sb, Type* type) {
             string_builder_push(sb, "invalid");
         }break;
     }
+}
+
+void
+print_type(Type* type) {
+    String_Builder sb = {};
+    string_builder_alloc(&sb, 20);
+    string_builder_push(&sb, type);
+    string result = string_builder_to_string_nocopy(&sb);
+    pln("%", f_string(result));
+    string_builder_free(&sb);
 }

@@ -48,8 +48,8 @@ parse_identifier(Parser* parser, bool report_error) {
         result = push_ast_node(parser);
         result->kind = Ast_Ident;
         result->Ident = vars_save_string(token.source);
-        // TODO(Alexander): debuggin code
-        result->Ident_String.contents = vars_load_string(result->Ident);
+        // NOTE(Alexander): for easier debugging of code
+        result->Ident_Data.contents = vars_load_string(result->Ident);
     } else if (report_error) {
         parse_error_unexpected_token(parser, Token_Ident, token);
     }

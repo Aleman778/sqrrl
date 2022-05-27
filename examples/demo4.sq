@@ -1,9 +1,9 @@
 
-
-
 int 
 main() {
     s32 x = 20;
-    s8 y = -138;
-    return x + y;
+    s8 y = -130 + 30 + w;
+    return y + x;
 }
+
+int w = 10;

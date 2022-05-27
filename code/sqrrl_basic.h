@@ -365,6 +365,7 @@ string string_format(cstring format...);
 #define array_last(a) arrlast(a)
 #define array_insert(a, x, p) arrins(a, p, x)
 #define array_remove(a, p) arrdel(a, p)
+#define array_remove_n(a, p, n) arrdeln(a, p, n)
 #define array_swap_remove(a, p) arrdelswap(a, p)
 #define array_set_capacity(a, c) arrsetcap(a, c)
 #define array_get_capacity(a) arrcap(a)

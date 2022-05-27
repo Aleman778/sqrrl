@@ -63,9 +63,10 @@ test_type_rules() {
 
 
 struct Type_Context {
-    Memory_Arena* arena;
+    Memory_Arena* type_arena;
     map(string_id, Type*)* locals;
-    Ast_Decl_Table* decls;
+    map(string_id, Type*)* globals;
+    b32 block_depth;
     s32 error_count;
     s32 warning_count;
 };
@@ -91,7 +92,7 @@ type_warning(Type_Context* tcx, string message) {
 
 
 Type*
-type_infer_by_value(Value value) {
+type_infer_value(Value value) {
     switch (value.type) {
         case Value_void: return &global_void_type;
         case Value_boolean: return &global_primitive_types[PrimitiveType_bool];
@@ -277,29 +278,32 @@ constant_folding_of_expressions(Ast* ast) {
                 Value first = constant_folding_of_expressions(ast->Binary_Expr.first);
                 Value second = constant_folding_of_expressions(ast->Binary_Expr.second);
                 
-                // NOTE(Alexander): Type rules
-                // int + int;
-                // float + int -> float + float;
-                // int + float -> float + float;
-                // float -x-> int (is a no no, it has to be an explicit cast)
-                
-                if (is_floating(first) || is_floating(second)) {
-                    // NOTE(Alexander): Make sure both types are floating
-                    if (is_integer(first)) {
-                        first.data.floating  = value_to_f64(first);
-                        first.type = Value_floating;
-                    } else if (is_integer(second)) {
-                        second.data.floating = value_to_f64(second);
-                        second.type = Value_floating;
+                if (!is_void(first) && !is_void(second)) {
+                    
+                    // NOTE(Alexander): Type rules
+                    // int + int;
+                    // float + int -> float + float;
+                    // int + float -> float + float;
+                    // float -x-> int (is a no no, it has to be an explicit cast)
+                    
+                    if (is_floating(first) || is_floating(second)) {
+                        // NOTE(Alexander): Make sure both types are floating
+                        if (is_integer(first)) {
+                            first.data.floating  = value_to_f64(first);
+                            first.type = Value_floating;
+                        } else if (is_integer(second)) {
+                            second.data.floating = value_to_f64(second);
+                            second.type = Value_floating;
+                        }
+                        
+                        first = value_floating_binary_operation(first, second, ast->Binary_Expr.op);
+                        result = first;
+                        
+                    } else if (is_integer(first) || is_integer(second)) {
+                        // NOTE(Alexander): integer math
+                        first.data.signed_int = value_integer_binary_operation(first, second, ast->Binary_Expr.op);
+                        result = first;
                     }
-                    
-                    first = value_floating_binary_operation(first, second, ast->Binary_Expr.op);
-                    result = first;
-                    
-                } else if (is_integer(first) || is_integer(second)) {
-                    // NOTE(Alexander): integer math
-                    first.data.signed_int = value_integer_binary_operation(first, second, ast->Binary_Expr.op);
-                    result = first;
                 }
             }
         } break;
@@ -329,7 +333,7 @@ constant_folding_of_expressions(Ast* ast) {
 }
 
 Type*
-type_infer_by_expression(Type_Context* tcx, Ast* expr, Type* parent_type = 0) {
+type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool report_error) {
     Type* result = 0;
     
     switch (expr->kind) {
@@ -341,7 +345,7 @@ type_infer_by_expression(Type_Context* tcx, Ast* expr, Type* parent_type = 0) {
                 
                 result = expr->Value.type;
                 if (!result) {
-                    result = type_infer_by_value(expr->Value.value);
+                    result = type_infer_value(expr->Value.value);
                 }
             }
             
@@ -350,58 +354,87 @@ type_infer_by_expression(Type_Context* tcx, Ast* expr, Type* parent_type = 0) {
         } break;
         
         case Ast_Ident: {
-            // TODO(Alexander): we need to remember local variables
-            Type* type = map_get(tcx->locals, expr->Ident);
-            if (!type) {
-                type_error(tcx, string_format("`%` is an undeclared identifier", 
-                                              f_string(vars_load_string(expr->Ident))));
+            
+            string_id ident = ast_unwrap_ident(expr);
+            Type* type = map_get(tcx->locals, ident);
+            //pln("%: %", f_string(vars_load_string(ident)), f_type(type));
+            if (type) {
+                result = type;
+            } else {
+                type = map_get(tcx->globals, ident);
+                
+                if (type) {
+                    result = type;
+                    
+                } else if (report_error) {
+                    type_error(tcx, string_format("`%` is an undeclared identifier", 
+                                                  f_string(vars_load_string(expr->Ident))));
+                }
             }
-            expr->Ident_String.type = type;
+            expr->Ident_Data.type = result;
         } break;
         
         case Ast_Unary_Expr: {
-            Type* type = type_infer_by_expression(tcx, expr->Unary_Expr.first);
-            if (!type) return 0;
+            Type* type = type_infer_expression(tcx, expr->Unary_Expr.first, parent_type, report_error);
             
-            switch (expr->Unary_Expr.op) {
-                case UnaryOp_Dereference: {
-                    if (type->kind == Type_Pointer) {
-                        result = type->Pointer;
-                    } else {
-                        type_error(tcx, string_format("cannot dereference type `%`", f_type(type)));
-                    }
-                } break;
+            if (type) {
+                switch (expr->Unary_Expr.op) {
+                    case UnaryOp_Dereference: {
+                        if (type->kind == Type_Pointer) {
+                            result = type->Pointer;
+                        } else {
+                            if (report_error) {
+                                type_error(tcx, string_format("cannot dereference type `%`", f_type(type)));
+                            }
+                        }
+                    } break;
+                    
+                    case UnaryOp_Address_Of: {
+                        result = arena_push_struct(tcx->type_arena, Type);
+                        result->kind = Type_Pointer;
+                        result->Pointer = type;
+                    } break;
+                    
+                    default: {
+                        result = type;
+                    } break;
+                }
                 
-                case UnaryOp_Address_Of: {
-                    result = arena_push_struct(tcx->arena, Type);
-                    result->kind = Type_Pointer;
-                    result->Pointer = type;
-                } break;
-                
-                default: {
-                    result = type;
-                } break;
+                expr->Unary_Expr.type = result;
             }
-            
-            expr->Unary_Expr.type = result;
         } break;
         
         case Ast_Binary_Expr: {
-            Type* first_type = type_infer_by_expression(tcx, expr->Binary_Expr.first);
-            Type* second_type = type_infer_by_expression(tcx, expr->Binary_Expr.second);
-            if (!first_type || !second_type) return 0;
+            Type* first_type = type_infer_expression(tcx, 
+                                                     expr->Binary_Expr.first, 
+                                                     parent_type,
+                                                     report_error);
+            Type* second_type = type_infer_expression(tcx, 
+                                                      expr->Binary_Expr.second, 
+                                                      parent_type,
+                                                      report_error);
             
-            if (binary_is_comparator_table[expr->Binary_Expr.op]) {
-                result = &global_primitive_types[PrimitiveType_bool];
-            } else {
-                result = first_type;
+            if (first_type && second_type) {
+                if (binary_is_comparator_table[expr->Binary_Expr.op]) {
+                    result = &global_primitive_types[PrimitiveType_bool];
+                } else {
+                    result = first_type;
+                }
+                
+                expr->Binary_Expr.type = result;
             }
-            
-            expr->Binary_Expr.type = result;
         } break;
         
         case Ast_Call_Expr: {
-            
+            Type* function_type = type_infer_expression(tcx, 
+                                                        expr->Binary_Expr.first, 
+                                                        parent_type,
+                                                        report_error);
+            if (function_type) {
+                
+                
+                
+            }
         } break;
         
         case Ast_Field_Expr: {
@@ -425,11 +458,14 @@ type_infer_by_expression(Type_Context* tcx, Ast* expr, Type* parent_type = 0) {
 }
 
 // NOTE(Alexander): forward declare
-Type* create_type_from_ast(Type_Context* tcx, Ast* ast);
+Type* create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error);
 
 internal Type*
-create_struct_or_union_type_from_ast(Type_Context* tcx, Ast* arguments, Type_Kind typekind) {
-    Type* result = arena_push_struct(tcx->arena, Type);
+create_struct_or_union_type_from_ast(Type_Context* tcx, 
+                                     Ast* arguments, 
+                                     Type_Kind typekind, 
+                                     bool report_error) {
+    Type* result = arena_push_struct(tcx->type_arena, Type);
     result->kind = typekind;
     Type_Table* fields = &result->Struct_Or_Union;
     
@@ -451,7 +487,7 @@ create_struct_or_union_type_from_ast(Type_Context* tcx, Ast* arguments, Type_Kin
         }
         
         Ast* ast_type = argument->Argument.type;
-        Type* type = create_type_from_ast(tcx, ast_type);
+        Type* type = create_type_from_ast(tcx, ast_type, report_error);
         
         switch (argument->Argument.ident->kind) {
             case Ast_Compound: {
@@ -537,7 +573,7 @@ create_struct_or_union_type_from_ast(Type_Context* tcx, Ast* arguments, Type_Kin
 }
 
 Type*
-create_type_from_ast(Type_Context* tcx, Ast* ast) {
+create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
     assert(is_ast_type(ast));
     
     Type* result = 0;
@@ -561,9 +597,8 @@ create_type_from_ast(Type_Context* tcx, Ast* ast) {
         } break;
         
         case Ast_Array_Type: {
-            Type* elem_type = create_type_from_ast(tcx, ast->Array_Type.elem_type);
-            // TODO(Alexander): do we wan't to store types on stack?
-            result = arena_push_struct(tcx->arena, Type);
+            Type* elem_type = create_type_from_ast(tcx, ast->Array_Type.elem_type, report_error);
+            result = arena_push_struct(tcx->type_arena, Type);
             result->kind = Type_Array;
             result->Array.type = elem_type;
             // TODO(Alexander): what is the shape, expression, I assume right now it's an integer?
@@ -588,9 +623,11 @@ create_type_from_ast(Type_Context* tcx, Ast* ast) {
         } break;
         
         case Ast_Pointer_Type: {
-            result = arena_push_struct(tcx->arena, Type);
+            // TODO(Alexander): do we really want to store a new type declaration
+            // for each time we use a pointer?!???
+            result = arena_push_struct(tcx->type_arena, Type);
             result->kind = Type_Pointer;
-            result->Pointer = create_type_from_ast(tcx, ast->Pointer_Type);
+            result->Pointer = create_type_from_ast(tcx, ast->Pointer_Type, report_error);
             result->cached_size = sizeof(smm);
             result->cached_align = alignof(smm);
         } break;
@@ -606,7 +643,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast) {
         } break;
         
         case Ast_Function_Type: {
-            result = arena_push_struct(tcx->arena, Type);
+            result = arena_push_struct(tcx->type_arena, Type);
             result->kind = Type_Function;
             result->Function.is_variadic = false;
             
@@ -620,7 +657,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast) {
                     break;
                 }
                 
-                Type* type = create_type_from_ast(tcx, ast_argument->Argument.type);
+                Type* type = create_type_from_ast(tcx, ast_argument->Argument.type, report_error);
                 string_id ident = ast_argument->Argument.ident->Ident;
                 array_push(type_arguments->idents, ident);
                 map_put(type_arguments->ident_to_type, ident, type);
@@ -633,7 +670,9 @@ create_type_from_ast(Type_Context* tcx, Ast* ast) {
                 map_put(type_arguments->ident_to_offset, ident, offset);
             }
             
-            result->Function.return_value = create_type_from_ast(tcx, ast->Function_Type.return_type);
+            result->Function.return_value = create_type_from_ast(tcx, 
+                                                                 ast->Function_Type.return_type,
+                                                                 report_error);
             assert(ast->Function_Type.ident && ast->Function_Type.ident->kind == Ast_Ident);
             result->Function.ident = ast->Function_Type.ident->Ident;
             result->cached_size = sizeof(smm);
@@ -641,20 +680,26 @@ create_type_from_ast(Type_Context* tcx, Ast* ast) {
         } break;
         
         case Ast_Struct_Type: {
-            result = create_struct_or_union_type_from_ast(tcx, ast->Struct_Type.fields, Type_Struct);
+            result = create_struct_or_union_type_from_ast(tcx, 
+                                                          ast->Struct_Type.fields, 
+                                                          Type_Struct, 
+                                                          report_error);
         } break;
         
         case Ast_Union_Type: {
-            result = create_struct_or_union_type_from_ast(tcx, ast->Union_Type.fields, Type_Union);
+            result = create_struct_or_union_type_from_ast(tcx, 
+                                                          ast->Union_Type.fields,
+                                                          Type_Union, 
+                                                          report_error);
         } break;
         
         case Ast_Enum_Type: {
-            result = arena_push_struct(tcx->arena, Type);
+            result = arena_push_struct(tcx->type_arena, Type);
             result->kind = Type_Enum;
             
             Type* type;
             if (ast->Enum_Type.elem_type && ast->Enum_Type.elem_type->kind != Ast_None) {
-                type = create_type_from_ast(tcx, ast->Enum_Type.elem_type);
+                type = create_type_from_ast(tcx, ast->Enum_Type.elem_type, report_error);
                 if (type->kind != Type_Primitive) {
                     type_error(tcx, string_lit("enums can only be defined as primitive types"));
                     break;
@@ -711,7 +756,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast) {
         } break;
         
         case Ast_Typedef: {
-            result = create_type_from_ast(tcx, ast->Typedef.type);
+            result = create_type_from_ast(tcx, ast->Typedef.type, report_error);
         } break;
     }
     
@@ -740,8 +785,9 @@ type_check_assignment(Type_Context* tcx, Type* a, Type* b) {
     return true;
 }
 
-void
-type_check_statement(Type_Context* tcx, Ast* stmt) {
+Type*
+type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
+    Type* result = 0;
     
     switch (stmt->kind) {
         
@@ -749,12 +795,24 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
             // Get rid of unnecessary stuff
             constant_folding_of_expressions(stmt->Assign_Stmt.expr);
             
-            Type* expected_type = create_type_from_ast(tcx, stmt->Assign_Stmt.type);
-            Type* found_type = type_infer_by_expression(tcx, stmt->Assign_Stmt.expr, expected_type);
-            type_check_assignment(tcx, expected_type, found_type);
+            Type* expected_type = create_type_from_ast(tcx, stmt->Assign_Stmt.type, report_error);
+            Type* found_type = type_infer_expression(tcx, 
+                                                     stmt->Assign_Stmt.expr, 
+                                                     expected_type,
+                                                     report_error);
             
-            string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
-            map_put(tcx->locals, ident, expected_type);
+            if (found_type) {
+                result = found_type;
+                type_check_assignment(tcx, expected_type, found_type);
+                
+                string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
+                
+                if (tcx->block_depth > 0) {
+                    map_put(tcx->locals, ident, expected_type);
+                } else {
+                    map_put(tcx->globals, ident, expected_type);
+                }
+            }
             
         } break;
         
@@ -762,39 +820,110 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
         case Ast_Block_Stmt: {
             // TODO(Alexander): create a new scope
             Ast* stmts = stmt->Block_Stmt.stmts;
+            tcx->block_depth++;
             for_compound(stmts, it) {
-                type_check_statement(tcx, it);
+                result = type_infer_statement(tcx, it, report_error);
+                if (!result) {
+                    break;
+                }
             }
+            tcx->block_depth--;
         } break;
         
         case Ast_Expr_Stmt: {
-            Type* infer = type_infer_by_expression(tcx, stmt->Expr_Stmt);
+            type_infer_expression(tcx, stmt->Expr_Stmt, 0, report_error);
+        } break;
+        
+        
+        case Ast_Return_Stmt: {
+            Type* type = type_infer_expression(tcx, stmt->Return_Stmt.expr, 0, report_error);
+            
         } break;
     }
+    
+    return result;
 }
 
-void
-type_check_declaration(Type_Context* tcx, Ast* decl) {
-    string_id ident = ast_unwrap_ident(decl->Decl.ident);
-    Ast* decl_stmt = decl->Decl.stmt;
-    if (decl_stmt->kind == Ast_Decl_Stmt) {
-        Type* type = create_type_from_ast(tcx, decl_stmt->Decl_Stmt.type);
-        type_check_statement(tcx, decl_stmt->Decl_Stmt.decl);
-        decl_stmt->Decl_Stmt.actual_type = type;
+bool
+type_check_ast(Type_Context* tcx, Ast* ast, bool report_error) {
+    bool result = true;
+    
+    if (ast->kind == Ast_Decl_Stmt) {
+        Type* type = create_type_from_ast(tcx, ast->Decl_Stmt.type, report_error);
+        if (type) {
+            ast->Decl_Stmt.actual_type = type;
+        } else {
+            result = false;
+        }
+        
+    } else if (is_ast_stmt(ast)) {
+        Type* type = type_infer_statement(tcx, ast, report_error);
+        if (type) {
+            // Check the types
+        } else {
+            // NOTE(Alexander): we are missing type info somewhere fail and retry later
+            result = false;
+        }
     } else {
-        unimplemented;
+        assert(0 && "illegal type: expected Decl_Stmt or any X_Type node");
     }
+    
+    map_free(tcx->locals);
+    tcx->block_depth = 0;
+    
+    return result;
 }
 
 s32
 type_check_ast_file(Ast_File* ast_file) {
     Type_Context tcx = {};
-    Memory_Arena type_arena = {};
-    tcx.arena = &type_arena;
-    tcx.decls = ast_file->decls;
+    array(Ast*)* queue = 0;
     
-    for_map(tcx.decls, decl) {
-        type_check_declaration(&tcx, decl->value);
+    // NOTE(Alexander): store the actual type declarations globally
+    Memory_Arena global_type_arena = {};
+    tcx.type_arena = &global_type_arena;
+    
+    for_map(ast_file->decls, it) {
+        string_id ident = it->key;
+        Ast* decl = it->value;
+        Ast* decl_stmt = decl->Decl.stmt;
+        array_push(queue, decl_stmt);
+    }
+    
+    {
+        // NOTE(Alexander): makes sure we push the actual declarations after type declarations
+        smm queue_count = array_count(queue);
+        for (smm queue_index = 0; queue_index < queue_count; queue_index++) {
+            Ast* ast = queue[queue_index];
+            if (ast->kind == Ast_Decl_Stmt) {
+                array_push(queue, ast->Decl_Stmt.decl);
+            }
+            
+        }
+    }
+    
+    // NOTE(Alexander): exit condition: assumes that when all items in queue failed then 
+    // we can nolonger process any further and have to report errors and exit.
+    smm last_queue_count = 0;
+    while (last_queue_count != array_count(queue)) {
+        smm queue_count = array_count(queue);
+        for (smm queue_index = 0; queue_index < queue_count; queue_index++) {
+            Ast* ast = queue[queue_index];
+            
+            if (!type_check_ast(&tcx, ast, false)) {
+                // Failed, retry later
+                array_push(queue, ast);
+            }
+        }
+        
+        // Remove processed nodes in queue
+        array_remove_n(queue, 0, queue_count);
+        last_queue_count = queue_count;
+    }
+    
+    // NOTE(Alexander): anything left in the queue we report errors for
+    for_array (queue, ast, _) {
+        type_check_ast(&tcx, *ast, true);
     }
     
     return tcx.error_count;
@@ -843,8 +972,8 @@ if (first->kind == Type_Primitive && second->kind == Type_Primitive) {
 
 bool
 typer_check_binary_expression(Ast* first, Ast* second) {
-    Type* first_type = typer_infer_by_expression(first);
-    Type* second_type = typer_infer_by_expression(second);
+    Type* first_type = typer_infer_expression(first);
+    Type* second_type = typer_infer_expression(second);
     
     if (first_type->kind != second_type->kind) {
         return false;

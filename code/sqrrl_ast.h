@@ -8,7 +8,7 @@ Value value;                                    \
 Type* type;                                     \
 })                                              \
 AST(Ident,             "identifier", string_id) \
-AST(Ident_String,      "identifier", struct {   \
+AST(Ident_Data,      "identifier", struct {   \
 string_id ident;                                \
 string contents;                                \
 Type* type;                                     \
@@ -16,7 +16,6 @@ Type* type;                                     \
 AST(Decl, "top level declaration", struct {     \
 Ast* ident;                                     \
 Ast* stmt;                                      \
-Type* type;                                     \
 Ast_Decl_Modifier mods;                         \
 })                                              \
 AST(Argument,          "argument", struct {     \
@@ -99,7 +98,7 @@ AST(Decl_Stmt,         "declaration", struct {  \
 Ast* ident;                                     \
 Ast* type;                                      \
 Ast* decl;                                      \
-Type* actual_type;                              \
+Type* actual_type;                                     \
 })                                              \
 AST(If_Stmt,           "if", struct {           \
 Ast* cond;                                      \
@@ -347,13 +346,15 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
             string_builder_push(sb, &node->Value.value);
             
             if (node->Value.type) {
-                string_builder_push(sb, "_");
-                string_builder_push(sb, node->Value.type);
+                string_builder_push_format(sb, " [%]", f_type(node->Value.type));
             }
         } break;
         
         case Ast_Ident: {
             string_builder_push_format(sb, " `%`", f_string(vars_load_string(node->Ident)));
+            if (node->Ident_Data.type) {
+                string_builder_push_format(sb, " [%]", f_type(node->Ident_Data.type));
+            }
         } break;
         
         case Ast_Unary_Expr: {
@@ -402,6 +403,9 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
         } break;
         
         case Ast_Decl_Stmt: {
+            if (node->Decl_Stmt.actual_type) {
+                string_builder_push_format(sb, " [%]", f_type(node->Decl_Stmt.actual_type));
+            }
             string_builder_push(sb, node->Decl_Stmt.ident, tokenizer, spacing);
             string_builder_push(sb, node->Decl_Stmt.type, tokenizer, spacing);
             string_builder_push(sb, node->Decl_Stmt.decl, tokenizer, spacing);

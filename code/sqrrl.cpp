@@ -265,6 +265,5 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
 #endif
     
-    
     return 0;
 }

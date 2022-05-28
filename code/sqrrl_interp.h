@@ -206,8 +206,6 @@ Interp_Value interp_function_call(Interp* interp, string_id ident, Ast* args);
 Interp_Value interp_statement(Interp* interp, Ast* ast);
 Interp_Value interp_block(Interp* interp, Ast* ast);
 
-Type* interp_type(Interp* interp, Ast* ast);
-
 void interp_declaration_statement(Interp* interp, Ast* ast);
 
 void interp_ast_declarations(Interp* interp, Named_Ast* decls);

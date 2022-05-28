@@ -382,7 +382,7 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
         
         case Ast_Value: {
             result.kind = BcOperand_Value;
-            result.type = bc_build_type(bc, node->Value.type);
+            result.type = bc_build_type(bc, node->type);
             result.Value = node->Value.value.data;
         } break;
         

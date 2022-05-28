@@ -5,13 +5,11 @@ AST_GROUP(None,        "none")                  \
 AST(Abi,               "abi", string)           \
 AST(Value,             "value", struct {        \
 Value value;                                    \
-Type* type;                                     \
 })                                              \
 AST(Ident,             "identifier", string_id) \
-AST(Ident_Data,      "identifier", struct {   \
+AST(Ident_Data,      "identifier", struct {     \
 string_id ident;                                \
 string contents;                                \
-Type* type;                                     \
 })                                              \
 AST(Decl, "top level declaration", struct {     \
 Ast* ident;                                     \
@@ -30,35 +28,30 @@ Ast* next;                                      \
 AST_GROUP(Expr_Begin,  "expression")            \
 AST(Unary_Expr,        "unary", struct {        \
 Ast* first;                                     \
-Type* type;                                     \
 Unary_Op op;                                    \
 })                                              \
 AST(Binary_Expr,       "binary", struct {       \
 Ast* first;                                     \
 Ast* second;                                    \
-Type* type;                                     \
 Binary_Op op;                                   \
 })                                              \
 AST(Ternary_Expr,      "ternary", struct {      \
 Ast* first;                                     \
 Ast* second;                                    \
 Ast* third;                                     \
-Type* type;                                     \
 })                                              \
 AST(Call_Expr,         "call", struct {         \
 Ast* ident;                                     \
 Ast* args;                                      \
-Type* return_type;                              \
+Type* function_type;                            \
 })                                              \
 AST(Field_Expr,        "field", struct {        \
 Ast* var;                                       \
 Ast* field;                                     \
-Type* type;                                     \
 })                                              \
 AST(Cast_Expr,         "cast", struct {         \
 Ast* type;                                      \
 Ast* expr;                                      \
-Type* actual_type;                              \
 })                                              \
 AST(Paren_Expr,        "parentheses", struct {  \
 Ast* expr;                                      \
@@ -98,7 +91,6 @@ AST(Decl_Stmt,         "declaration", struct {  \
 Ast* ident;                                     \
 Ast* type;                                      \
 Ast* decl;                                      \
-Type* actual_type;                                     \
 })                                              \
 AST(If_Stmt,           "if", struct {           \
 Ast* cond;                                      \
@@ -277,6 +269,7 @@ struct Ast {
 #undef AST
         Ast* children[5];
     };
+    Type* type;
     Span span;
 };
 
@@ -333,6 +326,10 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
     for (u32 s = 0; s < spacing; s++) string_builder_push(sb, " ");
     string_builder_push_format(sb, "(%", f_cstring(ast_struct_strings[node->kind]));
     
+    if (node->type) {
+        string_builder_push_format(sb, " [%]", f_type(node->type));
+    }
+    
     spacing += 2;
     
     // some special cases
@@ -345,35 +342,28 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
             string_builder_push(sb, " ");
             string_builder_push(sb, &node->Value.value);
             
-            if (node->Value.type) {
-                string_builder_push_format(sb, " [%]", f_type(node->Value.type));
-            }
         } break;
         
         case Ast_Ident: {
             string_builder_push_format(sb, " `%`", f_string(vars_load_string(node->Ident)));
-            if (node->Ident_Data.type) {
-                string_builder_push_format(sb, " [%]", f_type(node->Ident_Data.type));
-            }
         } break;
         
         case Ast_Unary_Expr: {
             assert_enum(UnaryOp, node->Unary_Expr.op);
-            string_builder_push_format(sb, "(%)", f_cstring(unary_op_strings[node->Unary_Expr.op]));
-            if (node->Unary_Expr.type) {
-                string_builder_push_format(sb, " [%]", f_type(node->Unary_Expr.type));
-            }
+            string_builder_push_format(sb, " (%)", f_cstring(unary_op_strings[node->Unary_Expr.op]));
             string_builder_push(sb, node->Unary_Expr.first, tokenizer, spacing);
         } break;
         
         case Ast_Binary_Expr: {
             assert_enum(BinaryOp, node->Binary_Expr.op);
-            string_builder_push_format(sb, "(%)", f_cstring(binary_op_strings[node->Binary_Expr.op]));
-            if (node->Binary_Expr.type) {
-                string_builder_push_format(sb, " [%]", f_type(node->Binary_Expr.type));
-            }
+            string_builder_push_format(sb, " (%)", f_cstring(binary_op_strings[node->Binary_Expr.op]));
             string_builder_push(sb, node->Binary_Expr.first, tokenizer, spacing);
             string_builder_push(sb, node->Binary_Expr.second, tokenizer, spacing);
+        } break;
+        
+        case Ast_Call_Expr: {
+            string_builder_push(sb, node->Call_Expr.ident, tokenizer, spacing);
+            string_builder_push(sb, node->Call_Expr.args, tokenizer, spacing);
         } break;
         
         case Ast_Decl: {
@@ -400,15 +390,6 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
             for_compound(node, child_node) {
                 string_builder_push(sb, child_node, tokenizer, spacing);
             }
-        } break;
-        
-        case Ast_Decl_Stmt: {
-            if (node->Decl_Stmt.actual_type) {
-                string_builder_push_format(sb, " [%]", f_type(node->Decl_Stmt.actual_type));
-            }
-            string_builder_push(sb, node->Decl_Stmt.ident, tokenizer, spacing);
-            string_builder_push(sb, node->Decl_Stmt.type, tokenizer, spacing);
-            string_builder_push(sb, node->Decl_Stmt.decl, tokenizer, spacing);
         } break;
         
         default: {

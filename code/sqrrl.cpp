@@ -138,7 +138,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     {
         // Interpret the AST
         Interp interp = {};
-        interp_register_primitive_types(&interp);
         DEBUG_interp_register_intrinsics(&interp);
         interp_ast_declarations(&interp, ast_file.decls);
         Interp_Value result = interp_function_call(&interp, Sym_main, 0);

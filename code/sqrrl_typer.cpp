@@ -326,12 +326,13 @@ constant_folding_of_expressions(Ast* ast) {
     if (result.type != Value_void) {
         ast->kind = Ast_Value;
         ast->Value.value = result;
-        ast->Value.type = 0;
+        ast->type = 0;
     }
     
     return result;
 }
 
+// NOTE(Alexander): parent_type is used to coerce a non-typed literal to a specific type
 Type*
 type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool report_error) {
     Type* result = 0;
@@ -343,14 +344,14 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 result = parent_type;
             } else {
                 
-                result = expr->Value.type;
+                result = expr->type;
                 if (!result) {
                     result = type_infer_value(expr->Value.value);
                 }
             }
             
             type_check_value(tcx, result, expr->Value.value);
-            expr->Value.type = result;
+            expr->type = result;
         } break;
         
         case Ast_Ident: {
@@ -371,7 +372,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                                                   f_string(vars_load_string(expr->Ident))));
                 }
             }
-            expr->Ident_Data.type = result;
+            expr->type = result;
         } break;
         
         case Ast_Unary_Expr: {
@@ -400,7 +401,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     } break;
                 }
                 
-                expr->Unary_Expr.type = result;
+                expr->type = result;
             }
         } break;
         
@@ -421,20 +422,57 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     result = first_type;
                 }
                 
-                expr->Binary_Expr.type = result;
+                expr->type = result;
             }
         } break;
         
         case Ast_Call_Expr: {
             Type* function_type = type_infer_expression(tcx, 
-                                                        expr->Binary_Expr.first, 
+                                                        expr->Call_Expr.ident,
                                                         parent_type,
                                                         report_error);
-            if (function_type) {
+            
+            if (function_type && function_type->kind == Type_Function) {
+                expr->Call_Expr.function_type = function_type;
+                expr->type = function_type->Function.return_value;
+                result = function_type->Function.return_value;
                 
-                
-                
+                // Arguments
+                // TODO(Alexander): nice to have: support for keyworded args, default args
+                Ast* actual_args = expr->Call_Expr.args;
+                Type_Table* formal_args = &function_type->Function.arguments;
+                s32 arg_index = 0;
+                for_compound(actual_args, actual_arg) {
+                    if (arg_index >= array_count(formal_args->idents)) {
+                        break;
+                    }
+                    
+                    string_id ident = formal_args->idents[arg_index];
+                    Type* formal_type = map_get(formal_args->ident_to_type, ident);
+                    
+                    constant_folding_of_expressions(actual_arg->Argument.assign);
+                    Type* actual_type = type_infer_expression(tcx, 
+                                                              actual_arg->Argument.assign, 
+                                                              formal_type, 
+                                                              report_error);
+                    if (actual_type) {
+                        actual_arg->type = actual_type;
+                    } else {
+                        result = 0;
+                        break;
+                    }
+                    
+                    arg_index++;
+                }
             }
+        } break;
+        
+        case Ast_Paren_Expr: {
+            result = type_infer_expression(tcx, expr->Paren_Expr.expr, parent_type, report_error);
+        } break;
+        
+        case Ast_Index_Expr: {
+            
         } break;
         
         case Ast_Field_Expr: {
@@ -802,6 +840,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                                                      report_error);
             
             if (found_type) {
+                stmt->type = found_type;
                 result = found_type;
                 type_check_assignment(tcx, expected_type, found_type);
                 
@@ -814,6 +853,10 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                 }
             }
             
+        } break;
+        
+        case Ast_Expr_Stmt: {
+            type_infer_expression(tcx, stmt->Expr_Stmt, 0, report_error);
         } break;
         
         
@@ -830,10 +873,29 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
             tcx->block_depth--;
         } break;
         
-        case Ast_Expr_Stmt: {
-            type_infer_expression(tcx, stmt->Expr_Stmt, 0, report_error);
+        case Ast_Decl_Stmt: {
+            string_id ident = ast_unwrap_ident(stmt->Decl_Stmt.ident);
+            Type* expected_type = create_type_from_ast(tcx, stmt->Decl_Stmt.type, report_error);
+            Type* found_type = type_infer_statement(tcx, stmt->Decl_Stmt.decl, report_error);
+            
+            if (expected_type && found_type) {
+                result = expected_type;
+                stmt->type = result;
+                map_put(tcx->locals, ident, result);
+            }
         } break;
         
+        case Ast_If_Stmt: {
+            
+        } break;
+        
+        case Ast_For_Stmt: {
+            
+        } break;
+        
+        case Ast_While_Stmt: {
+            
+        } break;
         
         case Ast_Return_Stmt: {
             Type* type = type_infer_expression(tcx, stmt->Return_Stmt.expr, 0, report_error);
@@ -849,9 +911,11 @@ type_check_ast(Type_Context* tcx, Ast* ast, bool report_error) {
     bool result = true;
     
     if (ast->kind == Ast_Decl_Stmt) {
+        string_id ident = ast_unwrap_ident(ast->Decl_Stmt.ident);
         Type* type = create_type_from_ast(tcx, ast->Decl_Stmt.type, report_error);
         if (type) {
-            ast->Decl_Stmt.actual_type = type;
+            ast->type = type;
+            map_put(tcx->globals, ident, type);
         } else {
             result = false;
         }

@@ -562,7 +562,7 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
                 lhs_expr->Call_Expr.ident = rhs_expr;
                 lhs_expr->Call_Expr.args = parse_compound(parser, 
                                                           Token_Open_Paren, Token_Close_Paren, Token_Comma, 
-                                                          &parse_actual_argument);
+                                                          &parse_actual_function_argument);
                 update_span(parser, lhs_expr);
             } continue;
             
@@ -943,11 +943,16 @@ Ast*
 parse_actual_function_argument(Parser* parser) {
     Ast* result = push_ast_node(parser);
     result->kind = Ast_Argument;
-    result->Argument.ident = parse_identifier(parser);
-    if (next_token_if_matched(parser, Token_Assign, false)) {
-        result->Argument.assign = parse_expression(parser);
+    
+    result->Argument.ident = parse_identifier(parser, false);
+    if (result->Argument.ident->kind) {
+        if (next_token_if_matched(parser, Token_Assign, false)) {
+            result->Argument.assign = parse_expression(parser);
+        } else {
+            result->Argument.assign = push_ast_node(parser);
+        }
     } else {
-        result->Argument.assign = push_ast_node(parser);
+        result->Argument.assign = parse_expression(parser);
     }
     return result;
 }

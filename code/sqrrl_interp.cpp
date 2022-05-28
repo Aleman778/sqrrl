@@ -148,7 +148,7 @@ interp_expression(Interp* interp, Ast* ast) {
         // TODO(alexander): do we want values to be expressions?
         case Ast_Value: {
             result.value = ast->Value.value;
-            result.type = *ast->Value.type;
+            result.type = *ast->type;
         } break;
         
         // TODO(alexander): do we want identifiers to be expressions?
@@ -324,7 +324,7 @@ interp_expression(Interp* interp, Ast* ast) {
         } break;
         
         case Ast_Cast_Expr: {
-            Type* type = interp_type(interp, ast->Cast_Expr.type);
+            Type* type = ast->type;
             Interp_Value expr = interp_expression(interp, ast->Cast_Expr.expr);
             Value value = expr.value;
             
@@ -518,8 +518,8 @@ interp_function_call(Interp* interp, string_id ident, Ast* args) {
             
             // Store the old base pointer on the stack and set the base pointer
             // to point at the top of the stack, then push the new scope
-            smm new_base = interp->stack.curr_used;
             smm* old_base = (smm*) arena_push_size(&interp->stack, sizeof(smm));
+            smm new_base = interp->stack.curr_used - sizeof(smm);
             *old_base = interp->base_pointer;
             interp->base_pointer = new_base;
             array_push(interp->scopes, new_scope);
@@ -636,7 +636,7 @@ interp_statement(Interp* interp, Ast* ast) {
             Interp_Value expr = interp_expression(interp, ast->Assign_Stmt.expr);
             
             // TODO(Alexander): check expr.type and type
-            Type* type = interp_type(interp, ast->Assign_Stmt.type);
+            Type* type = ast->type;
             string_id ident = ast->Assign_Stmt.ident->Ident;
             
             {
@@ -903,295 +903,6 @@ interp_block(Interp* interp, Ast* ast) {
     return result;
 }
 
-// TODO(Alexander): deprecate this, moved to typer
-internal Type*
-interp_struct_or_union_type(Interp* interp, Ast* arguments, Type_Kind typekind) {
-    Type* result = arena_push_struct(&interp->stack, Type);
-    result->kind = typekind;
-    Type_Table* fields = &result->Struct_Or_Union;
-    
-    smm offset = 0;
-    smm size = 0;
-    smm align = 0;
-    
-    for_compound(arguments, argument) {
-        assert(argument->kind == Ast_Argument);
-        
-        if (!argument->Argument.type) {
-            break;
-        }
-        
-        // NOTE(Alexander): for unions we reset the size and alignment for each entry
-        if (typekind == Type_Union) {
-            size = 0;
-            align = 0;
-        }
-        
-        Ast* ast_type = argument->Argument.type;
-        Type* type = interp_type(interp, ast_type);
-        
-        switch (argument->Argument.ident->kind) {
-            case Ast_Compound: {
-                unimplemented;
-                for_compound(argument->Argument.ident, ast_ident) {
-                    assert(ast_ident->kind == Ast_Ident);
-                    string_id ident = ast_ident->Ident;
-                    
-                    // TODO(Alexander): NEED TO HANDLE THE TYPE TABLE HASH MAP MEMORY
-                    map_put(fields->ident_to_type, ident, type);
-                    map_put(fields->ident_to_offset, ident, offset);
-                    offset += type->cached_size;
-                    array_push(fields->idents, ident);
-                    fields->count++;
-                }
-            } break;
-            
-            case Ast_None: {
-                if (type->kind == Type_Struct) {
-                    // NOTE(Alexander): anonymous type, pull out the identifiers from struct
-                    if(ast_type->Struct_Type.ident->kind == Ast_None) {
-                        if (type->Struct_Or_Union.count > 0) {
-                            for_map(type->Struct_Or_Union.ident_to_type, other) {
-                                // TODO(Alexander): check collisions!! we don't want two vars with same identifier
-                                map_put(fields->ident_to_type, other->key, other->value);
-                                array_push(fields->idents, other->key);
-                                fields->count++;
-                            }
-                            
-                            for_map(type->Struct_Or_Union.ident_to_offset, other) {
-                                map_put(fields->ident_to_offset, other->key, other->value);
-                            }
-                        }
-                        
-                        if (type->cached_size > size) {
-                            size = type->cached_size;
-                            result->cached_size = (s32) size;
-                        }
-                        
-                        if (type->cached_align > align) {
-                            align = type->cached_align;
-                            result->cached_align = (s32) align;
-                        }
-                    } else {
-                        interp_error(interp, string_lit("only anonymous structs can be declared inside a type"));
-                    }
-                } else if (type->kind == Type_Union) {
-                    assert(0 && "unimplemented :(");
-                } else {
-                    interp_error(interp, string_lit("expected identifier or struct"));
-                }
-            } break;
-            
-            case Ast_Ident: {
-                assert(argument->Argument.ident->kind == Ast_Ident);
-                string_id ident = argument->Argument.ident->Ident;
-                
-                // TODO(Alexander): NEED TO HANDLE THE TYPE TABLE HASH MAP MEMORY
-                map_put(fields->ident_to_type, ident, type);
-                map_put(fields->ident_to_offset, ident, offset);
-                
-                offset = align_forward(size, type->cached_align);
-                offset += type->cached_size;
-                array_push(fields->idents, ident);
-                fields->count++;
-                
-                size = offset;
-                result->cached_size = (s32) size;
-                
-                if (type->cached_align > align) {
-                    align = type->cached_align;
-                    result->cached_align = (s32) align;
-                }
-            } break;
-            
-            default: {
-                assert(0 && "expected identifier, this is likely a parsing bug");
-            }
-        }
-    }
-    
-    return result;
-}
-
-// TODO(Alexander): depcreate this, moved to typer
-Type*
-interp_type(Interp* interp, Ast* ast) {
-    assert(is_ast_type(ast));
-    // TODO(Alexander): right now we store types on the stack, maybe use separate storage?
-    // since this will likely get used elsewhere in the system.
-    
-    Type* result = 0;
-    switch (ast->kind) {
-        case Ast_Named_Type: {
-            string_id ident = ast->Named_Type->Ident;
-            if (ident == Kw_string) {
-                return &global_string_type;
-            } else {
-                Interp_Entity entity = interp_load_entity_from_current_scope(interp, ident);
-                if (entity.is_valid && entity.type) {
-                    result = entity.type;
-                } else {
-                    interp_unresolved_identifier_error(interp, ident);
-                }
-            }
-        } break;
-        
-        case Ast_Array_Type: {
-            Type* elem_type = interp_type(interp, ast->Array_Type.elem_type);
-            // TODO(Alexander): do we wan't to store types on stack?
-            result = arena_push_struct(&interp->stack, Type);
-            result->kind = Type_Array;
-            result->Array.type = elem_type;
-            // TODO(Alexander): what is the shape, expression, I assume right now it's an integer?
-            Interp_Value capacity = interp_expression(interp, ast->Array_Type.shape); 
-            result->Array.capacity = 0;
-            if (is_integer(capacity.value)) {
-                result->Array.capacity= value_to_smm(capacity.value);
-            } else if (!is_void(capacity.value)) {
-                interp_error(interp, string_lit("expected integer value"));
-            }
-            result->cached_size = sizeof(smm)*2;
-            result->cached_align = alignof(smm);
-        } break;
-        
-        
-        case Ast_Pointer_Type: {
-            result = arena_push_struct(&interp->stack, Type);
-            result->kind = Type_Pointer;
-            result->Pointer = interp_type(interp, ast->Pointer_Type);
-            result->cached_size = sizeof(smm);
-            result->cached_align = alignof(smm);
-        } break;
-        
-        case Ast_Tuple_Type: {
-            // TODO(Alexander): implement this
-            assert(0 && "unimplemented");
-        } break;
-        
-        case Ast_Infer_Type: {
-            // TODO(Alexander): implement this
-            assert(0 && "unimplemented");
-        } break;
-        
-        case Ast_Function_Type: {
-            result = arena_push_struct(&interp->stack, Type);
-            result->kind = Type_Function;
-            result->Function.is_variadic = false;
-            
-            // NOTE(Alexander): Loads in the function arguments
-            Ast* ast_arguments = ast->Function_Type.arguments;
-            Type_Table* type_arguments = &result->Function.arguments;
-            smm offset = 0;
-            for_compound(ast_arguments, ast_argument) {
-                assert(ast_argument->kind == Ast_Argument);
-                if (!ast_argument->Argument.type) {
-                    break;
-                }
-                
-                Type* type = interp_type(interp, ast_argument->Argument.type);
-                string_id ident = ast_argument->Argument.ident->Ident;
-                array_push(type_arguments->idents, ident);
-                map_put(type_arguments->ident_to_type, ident, type);
-                map_put(type_arguments->ident_to_offset, ident, offset);
-                type_arguments->count++;
-                
-                offset = align_forward(offset, type->cached_align);
-                offset += type->cached_size;
-                
-                map_put(type_arguments->ident_to_offset, ident, offset);
-            }
-            
-            result->Function.return_value = interp_type(interp, ast->Function_Type.return_type);
-            assert(ast->Function_Type.ident && ast->Function_Type.ident->kind == Ast_Ident);
-            result->Function.ident = ast->Function_Type.ident->Ident;
-            result->cached_size = sizeof(smm);
-            result->cached_align = alignof(smm);
-        } break;
-        
-        case Ast_Struct_Type: {
-            result = interp_struct_or_union_type(interp, ast->Struct_Type.fields, Type_Struct);
-        } break;
-        
-        case Ast_Union_Type: {
-            result = interp_struct_or_union_type(interp, ast->Union_Type.fields, Type_Union);
-        } break;
-        
-        case Ast_Enum_Type: {
-            result = arena_push_struct(&interp->stack, Type);
-            result->kind = Type_Enum;
-            
-            Type* type;
-            if (ast->Enum_Type.elem_type && ast->Enum_Type.elem_type->kind != Ast_None) {
-                type = interp_type(interp, ast->Enum_Type.elem_type);
-                if (type->kind != Type_Primitive) {
-                    interp_error(interp, string_lit("enums can only be defined as primitive types"));
-                    break;
-                }
-            } else {
-                type = &global_primitive_types[PrimitiveType_s64];
-            }
-            
-            result->Enum.type = type;
-            
-            Value value;
-            if (type->Primitive.signedness) {
-                value.type = Value_signed_int;
-                value.data.signed_int = 0;
-            } else {
-                value.type = Value_unsigned_int;
-                value.data.unsigned_int = 0;
-            }
-            
-            Ast* arguments = ast->Enum_Type.fields;
-            while (arguments && arguments->kind == Ast_Compound) {
-                Ast* argument = arguments->Compound.node;
-                arguments = arguments->Compound.next;
-                if (argument->kind == Ast_None) {
-                    continue;
-                }
-                
-                assert(!argument->Argument.type && "enums fields don't have different types, parsing bug");
-                
-                if (argument->Argument.assign && argument->Argument.assign->kind != Ast_None) {
-                    value = interp_expression(interp, argument->Argument.assign).value;
-                    if (!is_integer(value)) {
-                        // TODO(Alexander): show the value in the message
-                        interp_error(interp, string_lit("enums only support integer values"));
-                        break;
-                    }
-                    
-                    if (type->Primitive.signedness) {
-                        value.type = Value_signed_int;
-                    } else {
-                        value.type = Value_unsigned_int;
-                    }
-                }
-                
-                string_id ident = argument->Argument.ident->Ident;
-                
-                // TODO(Alexander): NEED TO HANDLE THE TYPE TABLE HASH MAP MEMORY
-                map_put(result->Enum.values, ident, value);
-                
-                value.data.signed_int++;
-            }
-        } break;
-        
-        case Ast_Typedef: {
-            result = interp_type(interp, ast->Typedef.type);
-        } break;
-    }
-    
-    return result;
-}
-
-void
-interp_register_primitive_types(Interp* interp) {
-    for (int i = 0; i < fixed_array_count(global_primitive_types); i++) {
-        Type* type = &global_primitive_types[i];
-        string_id ident = (string_id) (Kw_int + type->Primitive.kind);
-        interp_push_entity_to_current_scope(interp, ident, 0, type);
-    }
-}
 
 internal Format_Type
 convert_type_to_format_type(Type* type) {
@@ -1338,7 +1049,7 @@ void
 interp_declaration_statement(Interp* interp, Ast* ast) {
     assert(ast->kind == Ast_Decl_Stmt);
     
-    Type* type = interp_type(interp, ast->Decl_Stmt.type);
+    Type* type = ast->type;
     if (type->kind == Type_Function) {
         type->Function.block = ast->Decl_Stmt.decl;
     }

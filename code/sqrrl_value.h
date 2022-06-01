@@ -119,7 +119,10 @@ enum Value_Type {
     Value_pointer,
     Value_array,
     Value_string,
+    
+    // TODO(Alexander): these don't really belong here, should be moved.
     Value_ast_node,
+    Value_basic_block,
 };
 
 // NOTE(Alexander): forward declare

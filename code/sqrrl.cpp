@@ -40,7 +40,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     if (argc > 1) {
         filepath = string_lit(argv[1]);
     } else {
-        filepath = string_lit("examples/demo4.sq");
+        //filepath = string_lit("examples/demo4.sq");
+        filepath = string_lit("examples/primes.sq");
         //filepath = string_lit("tests/literals.sq");
     }
 #else
@@ -138,7 +139,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     {
         // Interpret the AST
         Interp interp = {};
-        DEBUG_interp_register_intrinsics(&interp);
         interp_ast_declarations(&interp, ast_file.decls);
         Interp_Value result = interp_function_call(&interp, Sym_main, 0);
         if (result.modifier == InterpValueMod_Return) {
@@ -151,7 +151,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
 #endif
     
-#if 0
+#if 1
     {
         // Build bytecode representation of the AST
         Bc_Builder bytecode_builder = {};
@@ -161,15 +161,21 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         {
             String_Builder sb = {};
             for_map (bytecode_builder.declarations, it) {
-                Bc_Basic_Block* curr_block = it->value.basic_block;
-                while (curr_block) {
-                    Bc_Instruction* curr_insn = curr_block->first;
-                    for (int i = 0; i < curr_block->count; i++) {
-                        string_builder_push(&sb, curr_insn++);
-                        string_builder_push(&sb, "\n");
+                if (it->value.type == Value_basic_block) {
+                    Bc_Basic_Block* curr_block = it->value.data.basic_block;
+                    while (curr_block) {
+                        Bc_Instruction* curr_insn = curr_block->first;
+                        for (int i = 0; i < curr_block->count; i++) {
+                            string_builder_push(&sb, curr_insn++);
+                            string_builder_push(&sb, "\n");
+                        }
+                        
+                        curr_block = curr_block->next;
                     }
-                    
-                    curr_block = curr_block->next;
+                } else {
+                    string_builder_push_format(&sb, "% = memory_alloc %\n\n",
+                                               f_string(vars_load_string(it->key.ident)),
+                                               f_value(&it->value));
                 }
             }
             
@@ -189,16 +195,27 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         
         // Make sure to compile entry point function first
         Bc_Register entry_point_label = { Sym_main, 0 };
-        Bc_Basic_Block* main_block = map_get(bytecode_builder.declarations, entry_point_label).basic_block;
+        Value main_decl = map_get(bytecode_builder.declarations, entry_point_label);
+        assert(main_decl.type == Value_basic_block);
+        
+        Bc_Basic_Block* main_block = main_decl.data.basic_block;
         x64_build_function(&x64_builder, main_block);
+        pln("compiling function `%`", f_string(vars_load_string(Sym_main)));
         
         for_map (bytecode_builder.declarations, it) {
             if (it->key.ident == Sym_main || it->key.index != 0) {
                 continue;
             }
+            
             pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
             
-            x64_build_function(&x64_builder, it->value.basic_block);
+            if (it->value.type == Value_basic_block) {
+                Bc_Basic_Block* function_block = it->value.data.basic_block;
+                x64_build_function(&x64_builder, function_block);
+            } else {
+                // TODO(Alexander): we need to store the actual value type in the declarations
+                x64_build_data_storage(&x64_builder, it->key, it->value.data, &global_primitive_types[PrimitiveType_int]);
+            }
         }
         
         // Print interference graph before register allocation

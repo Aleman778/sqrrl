@@ -4,12 +4,14 @@ main() {
     s32 x = 20;
     s8 y = -130 + 30 + w;
     
-    return y + x + test(10);
+    
+    return y + x;// + test(10);
 }
 
 int
 test(int x) {
     return 30 + x;
 }
+
 
 int w = 10;

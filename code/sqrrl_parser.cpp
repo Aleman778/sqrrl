@@ -384,7 +384,7 @@ parse_float(Parser* parser) {
 
 Ast*
 parse_atom(Parser* parser, bool report_error) {
-    Ast* result = {};
+    Ast* result = 0;
     Token token = peek_token(parser);
     
     switch (token.type) {
@@ -492,6 +492,10 @@ parse_atom(Parser* parser, bool report_error) {
                                                          Token_Close_Brace, 
                                                          Token_Comma, 
                                                          &parse_actual_argument);
+        } break;
+        
+        case Token_Semi: {
+            return result;
         } break;
         
         default: {
@@ -723,7 +727,7 @@ parse_statement(Parser* parser, bool report_error) {
                 // TODO(alexander): should probably not be statement, move out variable decl
                 result->For_Stmt.init = parse_statement(parser, false);
                 next_token_if_matched(parser, Token_Semi);
-                result->For_Stmt.cond = parse_statement(parser, false);
+                result->For_Stmt.cond = parse_expression(parser, false);
                 next_token_if_matched(parser, Token_Semi);
                 result->For_Stmt.update = parse_expression(parser, false);
                 next_token_if_matched(parser, Token_Close_Paren, opened_paren);
@@ -904,7 +908,8 @@ parse_actual_struct_or_union_argument(Parser* parser) {
         if (next_token_if_matched(parser, Token_Colon, false)) {
             result->Argument.assign = parse_expression(parser);
         } else {
-            result->Argument.assign = push_ast_node(parser);
+            result->Argument.assign = result->Argument.ident;
+            result->Argument.ident = result->Argument.ident;
         }
     } else {
         result->Argument.assign = parse_expression(parser);
@@ -944,16 +949,18 @@ parse_actual_function_argument(Parser* parser) {
     Ast* result = push_ast_node(parser);
     result->kind = Ast_Argument;
     
-    result->Argument.ident = parse_identifier(parser, false);
-    if (result->Argument.ident->kind) {
-        if (next_token_if_matched(parser, Token_Assign, false)) {
-            result->Argument.assign = parse_expression(parser);
-        } else {
-            result->Argument.assign = push_ast_node(parser);
-        }
-    } else {
-        result->Argument.assign = parse_expression(parser);
-    }
+    // TODO(Alexander): we don't support variable args yet! Also this way is broken anyways.
+    //result->Argument.ident = parse_identifier(parser, false);
+    //if (result->Argument.ident->kind) {
+    //if (next_token_if_matched(parser, Token_Assign, false)) {
+    //result->Argument.assign = parse_expression(parser);
+    //} else {
+    //result->Argument.assign = result->Argument.ident;
+    //result->Argument.ident = push_ast_node(parser);
+    //}
+    //} else {
+    result->Argument.assign = parse_expression(parser);
+    //}
     return result;
 }
 

@@ -306,6 +306,34 @@ parse_x86_64_definitions() {
         curr_insn = curr_insn->next;
     }
     
+    {
+        X64_Instruction_Index index = {};
+        
+        X64_Encoding encoding = {};
+        encoding.is_valid = true;
+        encoding.imm_op = 0;
+        
+        index.opcode = X64Opcode_db;
+        index.op0 = X64Operand_imm8;
+        encoding.imm_size = 1;
+        map_put(result, index, encoding);
+        
+        index.opcode = X64Opcode_dw;
+        index.op0 = X64Operand_imm16;
+        encoding.imm_size = 2;
+        map_put(result, index, encoding);
+        
+        index.opcode = X64Opcode_dd;
+        index.op0 = X64Operand_imm32;
+        encoding.imm_size = 4;
+        map_put(result, index, encoding);
+        
+        index.opcode = X64Opcode_dq;
+        index.op0 = X64Operand_imm64;
+        encoding.imm_size = 8;
+        map_put(result, index, encoding);
+    }
+    
     pln("sqrrl_x64_insn_def.cpp: number of encodings built: %", f_umm(map_count(result)));
     pln("sqrrl_x64_insn_def.cpp: size of x86_64 encoding data: %", f_umm(map_count(result)*sizeof(X64_Encoding)));
     

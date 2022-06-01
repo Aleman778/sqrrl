@@ -86,7 +86,11 @@ X64_OPCODE(sets, SETS) \
 X64_OPCODE(setz, SETZ) \
 X64_OPCODE(call, CALL) \
 X64_OPCODE(ret, RET) \
-X64_OPCODE(label, LABEL)
+X64_OPCODE(label, LABEL) \
+X64_OPCODE(db, DB) \
+X64_OPCODE(dw, DW) \
+X64_OPCODE(dd, DD) \
+X64_OPCODE(dq, DQ)
 // NOTE(Alexander): label is not a real opcode
 
 enum X64_Opcode {
@@ -673,6 +677,63 @@ string_builder_push(String_Builder* sb, X64_Operand* operand, bool show_virtual_
 }
 
 void
+string_builder_push(String_Builder* sb, X64_Instruction* insn, bool show_virtual_registers=false) {
+    if (insn->opcode == X64Opcode_label) {
+        X64_Basic_Block* block = insn->op0.basic_block;
+        if (block->label.ident) {
+            if (block->label.index > 0) {
+                string_builder_push_format(sb, "%", 
+                                           f_string(vars_load_string(block->label.ident)));
+                string_builder_push_format(sb, "%:", f_u32(block->label.index));
+            } else {
+                string_builder_push_format(sb, "%:",
+                                           f_string(vars_load_string(block->label.ident)));
+            }
+        } else {
+            string_builder_push_format(sb, "%:", f_u32(block->label.index));
+        }
+    } else {
+        
+        cstring mnemonic = x64_opcode_names[insn->opcode];
+        
+        string_builder_push_format(sb, "    %", f_cstring(mnemonic));
+        if (insn->op0.kind) {
+            string_builder_push(sb, " ");
+            string_builder_push(sb, &insn->op0, show_virtual_registers);
+        }
+        
+        if (insn->op1.kind) {
+            string_builder_push(sb, ", ");
+            string_builder_push(sb, &insn->op1, show_virtual_registers);
+        }
+        
+        if (insn->op2.kind) {
+            string_builder_push(sb, ", ");
+            string_builder_push(sb, &insn->op2, show_virtual_registers);
+        }
+        
+#if BUILD_DEBUG
+        if (insn->opcode != X64Opcode_invalid && insn->comment) {
+            const s32 comment_offset = 35;
+            
+            // Find line length by going back to previous newline character
+            u32 line_length = 0;
+            u8* curr = sb->data + sb->curr_used;
+            while (line_length++ < comment_offset && *curr-- != '\n');
+            
+            // Add spaces to make line length at least 30 characters long
+            if (line_length < comment_offset) {
+                for (int i = line_length; i < comment_offset; i++) string_builder_push(sb, " ");
+            }
+            
+            string_builder_push_format(sb, " // %", f_cstring(insn->comment));
+        }
+#endif
+    }
+    
+}
+
+void
 string_builder_push(String_Builder* sb, 
                     X64_Basic_Block* first_block,
                     bool show_virtual_registers=false) {
@@ -681,62 +742,11 @@ string_builder_push(String_Builder* sb,
     while (curr_block) {
         for (umm insn_index = 0; insn_index < curr_block->count; insn_index++) {
             X64_Instruction* insn = curr_block->first + insn_index;
-            
-            if (insn->opcode == X64Opcode_label) {
-                X64_Basic_Block* block = insn->op0.basic_block;
-                if (block->label.ident) {
-                    if (block->label.index > 0) {
-                        string_builder_push_format(sb, "%", 
-                                                   f_string(vars_load_string(block->label.ident)));
-                        string_builder_push_format(sb, "%:\n", f_u32(block->label.index));
-                    } else {
-                        string_builder_push_format(sb, "%:\n",
-                                                   f_string(vars_load_string(block->label.ident)));
-                    }
-                } else {
-                    string_builder_push_format(sb, "%:\n", f_u32(block->label.index));
-                }
-            } else {
-                
-                cstring mnemonic = x64_opcode_names[insn->opcode];
-                
-                string_builder_push_format(sb, "    %", f_cstring(mnemonic));
-                if (insn->op0.kind) {
-                    string_builder_push(sb, " ");
-                    string_builder_push(sb, &insn->op0, show_virtual_registers);
-                }
-                
-                if (insn->op1.kind) {
-                    string_builder_push(sb, ", ");
-                    string_builder_push(sb, &insn->op1, show_virtual_registers);
-                }
-                
-                if (insn->op2.kind) {
-                    string_builder_push(sb, ", ");
-                    string_builder_push(sb, &insn->op2, show_virtual_registers);
-                }
-                
-#if BUILD_DEBUG
-                if (insn->opcode != X64Opcode_invalid && insn->comment) {
-                    const s32 comment_offset = 35;
-                    
-                    // Find line length by going back to previous newline character
-                    u32 line_length = 0;
-                    u8* curr = sb->data + sb->curr_used;
-                    while (line_length++ < comment_offset && *curr-- != '\n');
-                    
-                    // Add spaces to make line length at least 30 characters long
-                    if (line_length < comment_offset) {
-                        for (int i = line_length; i < comment_offset; i++) string_builder_push(sb, " ");
-                    }
-                    
-                    string_builder_push_format(sb, " // %", f_cstring(insn->comment));
-                }
-#endif
-                
-                string_builder_push(sb, "\n");
-            }
+            string_builder_push(sb, insn, show_virtual_registers);
+            string_builder_push(sb, "\n");
         }
+        
+        string_builder_push(sb, "\n");
         curr_block = curr_block->next;
     }
 }

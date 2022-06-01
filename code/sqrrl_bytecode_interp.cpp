@@ -30,7 +30,7 @@ bc_interp_load_register(Bc_Interp* interp, Bc_Register reg) {
     if (index != -1) {
         return scope->registers[index].value;
     } else {
-        return map_get(interp->declarations, reg);
+        return map_get(interp->declarations, reg).data;
     }
 }
 
@@ -136,7 +136,10 @@ bc_interp_operand_value(Bc_Interp* interp, Bc_Operand* operand) {
 void
 bc_interp_function_call(Bc_Interp* interp, string_id ident, u32 return_register = 0) {
     Bc_Register label = { ident, 0 };
-    Bc_Basic_Block* target_block = map_get(interp->declarations, label).basic_block;
+    Value decl_value = map_get(interp->declarations, label);
+    assert(decl_value.type == Value_basic_block);
+    
+    Bc_Basic_Block* target_block = decl_value.data.basic_block;
     assert(target_block && target_block->label.ident != Kw_invalid);
     
     if (array_count(interp->scopes)) {

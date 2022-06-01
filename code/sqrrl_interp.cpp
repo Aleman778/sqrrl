@@ -309,8 +309,8 @@ interp_expression(Interp* interp, Ast* ast) {
         } break;
         
         case Ast_Call_Expr: {
-            string_id ident = ast->Call_Expr.ident->Ident;
-            result = interp_function_call(interp, ident, ast->Call_Expr.args);
+            string_id ident = ast_unwrap_ident(ast->Call_Expr.ident);
+            result = interp_function_call(interp, ident, ast->Call_Expr.args, ast->Call_Expr.function_type);
             result.modifier = InterpValueMod_None; // NOTE(Alexander): avoids returing multiple times
         } break;
         
@@ -470,14 +470,18 @@ assert(0 && "invalid primitive type"); \
 }
 
 Interp_Value
-interp_function_call(Interp* interp, string_id ident, Ast* args) {
+interp_function_call(Interp* interp, string_id ident, Ast* args, Type* function_type) {
     Interp_Value result = create_interp_value(interp);
+    Type* type = function_type;
     
-    Interp_Entity decl = interp_load_entity_from_current_scope(interp, ident);
-    if (decl.type) {
-        
-        if (decl.type->kind == Type_Function) {
-            Type_Table* formal_arguments = &decl.type->Function.arguments;
+    if (!type) {
+        // Try to find local registered type using identifier provided
+        type = interp_load_entity_from_current_scope(interp, ident).type;
+    }
+    
+    if (type) {
+        if (type->kind == Type_Function) {
+            Type_Table* formal_arguments = &type->Function.arguments;
             
             // First evaluate and push the arguments on the new scope
             // NOTE: arguments are pushed on the callers stack space
@@ -488,27 +492,22 @@ interp_function_call(Interp* interp, string_id ident, Ast* args) {
             Interp_Scope new_scope = {};
             int arg_index = 0;
             if (args) { 
-                for_compound(args, expr) {
+                for_compound(args, arg_ast) {
+                    Ast* expr = arg_ast->Argument.assign;
                     Interp_Value arg = interp_expression(interp, expr);
                     
                     // Only interpret as many args as formally declared
                     if (arg_index < formal_arguments->count) {
                         // TODO(Alexander): assign binary expressions needs to be handled here
                         string_id arg_ident = formal_arguments->idents[arg_index];
-                        Type* formal_type = map_get(decl.type->Function.arguments.ident_to_type, arg_ident);
-                        
-                        // NOTE(Alexander): Check that the type provided as argument matches the formal
-                        // type from the function declaration
-                        if (!interp_check_type_match_of_value(interp, formal_type, arg)) {
-                            return result;
-                        }
+                        Type* formal_type = map_get(type->Function.arguments.ident_to_type, arg_ident);
                         
                         // NOTE(Alexander): we need to allocate it in order to pass it to the function
                         // Currently we only pass variables to functions through references
                         arg.data = interp_push_value(interp, formal_type, arg.value);
                         interp_push_entity_to_scope(&new_scope, arg_ident, arg.data, formal_type);
                         
-                    } else if (decl.type->Function.is_variadic) {
+                    } else if (type->Function.is_variadic) {
                         array_push(variadic_arguments, arg);
                     }
                     
@@ -526,7 +525,7 @@ interp_function_call(Interp* interp, string_id ident, Ast* args) {
             
             // NOTE(Alexander): secondly push the evaluated arguments on stack
             if (args) {
-                if (arg_index != formal_arguments->count && !decl.type->Function.is_variadic) {
+                if (arg_index != formal_arguments->count && !type->Function.is_variadic) {
                     
                     // NOTE(Alexander): it is allowed to have more arguments only if the function is variadic
                     interp_error(interp, string_format("function `%` did not take % arguments, expected % arguments", 
@@ -541,7 +540,7 @@ interp_function_call(Interp* interp, string_id ident, Ast* args) {
                                                    f_int(formal_arguments->count)));
             }
             
-            Ast* block = decl.type->Function.block;
+            Ast* block = type->Function.block;
             if (block) {
                 result = interp_statement(interp, block);
                 // TODO(alexander): only write to result if it is an actual return value!
@@ -550,8 +549,8 @@ interp_function_call(Interp* interp, string_id ident, Ast* args) {
                 // TODO(Alexander): this is not supposed to ever be the case, maybe assert instead!
                 // NOTE(Alexander): what about FFI?
                 
-                if (decl.type->Function.intrinsic) {
-                    result.value = decl.type->Function.intrinsic(interp, variadic_arguments);
+                if (type->Function.intrinsic) {
+                    result.value = type->Function.intrinsic(interp, variadic_arguments);
                     
                 } else {
                     interp_error(interp, string_format("`%` function has no definition and is no intrinsic", f_string(vars_load_string(ident))));
@@ -807,7 +806,7 @@ interp_statement(Interp* interp, Ast* ast) {
         
         case Ast_For_Stmt: {
             interp_statement(interp, ast->For_Stmt.init);
-            Interp_Value condition = interp_statement(interp, ast->For_Stmt.cond);
+            Interp_Value condition = interp_expression(interp, ast->For_Stmt.cond);
             if (condition.value.type == Value_void || is_integer(condition.value)) {
                 // NOTE(Alexander): type check on condition
                 while (condition.value.type == Value_void || value_to_bool(condition.value)) {
@@ -820,7 +819,7 @@ interp_statement(Interp* interp, Ast* ast) {
                     }
                     
                     interp_expression(interp, ast->For_Stmt.update);
-                    condition = interp_statement(interp, ast->For_Stmt.cond);
+                    condition = interp_expression(interp, ast->For_Stmt.cond);
                     if (condition.value.type != Value_void && !is_integer(condition.value)) {
                         interp_error(interp, string_lit("type error: expected boolean condition"));
                         break;
@@ -990,7 +989,12 @@ interp_intrinsic_pln(Interp* interp, array(Interp_Value)* var_args) {
                     } else {
                         value_data = var_arg->value.data.data;
                     }
-                    string_builder_push_format(&sb, "%", format_type, value_data);
+                    
+                    if (format_type == FormatType_None) {
+                        string_builder_push(&sb, "%");
+                    } else {
+                        string_builder_push_format(&sb, "%", format_type, value_data);
+                    }
                 } else {
                     count_until_percent++;
                 }
@@ -1009,40 +1013,6 @@ interp_intrinsic_pln(Interp* interp, array(Interp_Value)* var_args) {
     }
     
     return {};
-}
-
-internal inline void
-type_table_push_type(Type_Table* table, string_id ident, Type* type, smm offset) {
-    map_put(table->ident_to_type, ident, type);
-    map_put(table->ident_to_offset, ident, 0);
-    array_push(table->idents, ident);
-    table->count++;
-}
-
-
-void
-DEBUG_interp_register_intrinsics(Interp* interp) {
-    // TODO(Alexander): these are kind of temporary, since we don't really have
-    // the ability to create these functions yet, need FFI!
-    // We will still have intrinsics but these intrinsics are just for debugging
-    
-    {
-        // pln(string format...)
-        // TODO(Alexander): do we wan't to store types on stack?
-        Type* type = arena_push_struct(&interp->stack, Type);
-        type->kind = Type_Function;
-        type->Function.is_variadic = true;
-        type->Function.arguments = {};
-        
-        string_id arg0_ident = vars_save_cstring("format");
-        type_table_push_type(&type->Function.arguments, arg0_ident, &global_string_type, 0);
-        
-        string_id ident = vars_save_cstring("pln");
-        type->Function.block = 0;
-        type->Function.intrinsic = &interp_intrinsic_pln;
-        type->Function.ident = ident;
-        interp_push_entity_to_current_scope(interp, ident, 0, type);
-    }
 }
 
 void
@@ -1088,127 +1058,4 @@ interp_ast_declarations(Interp* interp, Ast_Decl_Table* decls) {
             }
         }
     }
-}
-
-// TODO(Alexander): deprecated: replaced by type_check_value in sqrrl_typer.cpp
-bool
-interp_check_type_match_of_value(Interp* interp, Type* type, Interp_Value interp_value) {
-    Value value = interp_value.value;
-    
-    bool result = true;
-    
-    switch (value.type) {
-        case Value_void: {
-            result = type->kind == Type_Void;
-        } break;
-        
-        case Value_boolean: {
-            result = (type->kind == Type_Primitive &&
-                      (type->Primitive.kind == PrimitiveType_bool || 
-                       type->Primitive.kind == PrimitiveType_b32));
-        } break;
-        
-        case Value_signed_int: {
-            result = type->kind == Type_Primitive;
-            if (!result) break;
-            
-            switch (type->Primitive.kind) {
-                case PrimitiveType_int:
-                case PrimitiveType_s8:
-                case PrimitiveType_s16:
-                case PrimitiveType_s32:
-                case PrimitiveType_s64:
-                case PrimitiveType_smm:
-                case PrimitiveType_b32: {
-                    if (type->Primitive.min_value.signed_int < value.data.signed_int && 
-                        type->Primitive.max_value.signed_int > value.data.signed_int) {
-                        // TODO(Alexander): this is technically a warning!
-                        interp_error(interp, string_format("expected type `%` cannot fit in value `%`", 
-                                                           f_type(type), f_value(&value)));
-                        
-                        result = false;
-                    }
-                    
-                } break;
-                
-                
-                case PrimitiveType_uint:
-                case PrimitiveType_u8:
-                case PrimitiveType_u16:
-                case PrimitiveType_u32:
-                case PrimitiveType_u64:
-                case PrimitiveType_umm: {
-                    // TODO(Alexander): this is technically a warning!
-                    interp_error(interp, string_format("expected type `%` signed/ unsigned mismatch with `%`", 
-                                                       f_type(type), f_value(&value)));
-                } break;
-            }
-            
-        } break;
-        
-        case Value_unsigned_int: {
-            result = type->kind == Type_Primitive;
-            if (!result) break;
-            
-            switch (type->Primitive.kind) {
-                case PrimitiveType_uint:
-                case PrimitiveType_u8:
-                case PrimitiveType_u16:
-                case PrimitiveType_u32:
-                case PrimitiveType_u64:
-                case PrimitiveType_umm: {
-                    if (type->Primitive.min_value.unsigned_int < value.data.unsigned_int && 
-                        type->Primitive.max_value.unsigned_int > value.data.unsigned_int) {
-                        // TODO(Alexander): this is technically a warning!
-                        interp_error(interp, string_format("expected type `%` cannot fit in value `%`", 
-                                                           f_type(type), f_value(&value)));
-                        
-                        result = false;
-                    }
-                    
-                } break;
-                
-                case PrimitiveType_int:
-                case PrimitiveType_s8:
-                case PrimitiveType_s16:
-                case PrimitiveType_s32:
-                case PrimitiveType_s64:
-                case PrimitiveType_smm:
-                case PrimitiveType_b32: {
-                    // TODO(Alexander): this is technically a warning!
-                    interp_error(interp, string_format("expected type `%` signed/ unsigned mismatch with `%`", 
-                                                       f_type(type), f_value(&value)));
-                } break;
-            }
-            
-        } break;
-        
-        case Value_floating: {
-            // TODO(Alexander): can we also track the precision and report error on mismatch?
-            result = (type->kind == Type_Primitive &&
-                      (type->Primitive.kind == PrimitiveType_f32 || 
-                       type->Primitive.kind == PrimitiveType_f64));
-        } break;
-        
-        case Value_pointer:
-        case Value_array: {
-            // NOTE(Alexander): pointer and array values always assumes that it provides a valid type
-            result = type_equals(type, &interp_value.type);
-        } break;
-        
-        case Value_string: {
-            result = type->kind == Type_String;
-        } break;
-        
-        case Value_ast_node: {
-            compiler_bug("It shouldn't be possible to use ast node as a type");
-        } break;
-    }
-    
-    if (!result) {
-        interp_error(interp, string_format("expected type `%` is not compatible with `%`", 
-                                           f_type(type), f_value(&value)));
-    }
-    
-    return result;
 }

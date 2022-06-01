@@ -22,6 +22,8 @@ struct Interp {
     array(Interp_Scope)* scopes;
     map(string_id, Interp_Entity)* globals;
     
+    map(string_id, Type*) global_types;
+    
     Memory_Arena stack;
     smm base_pointer;
     
@@ -202,7 +204,7 @@ interp_load_value(Interp* interp, string_id ident) {
 
 Interp_Value interp_expression(Interp* interp, Ast* ast);
 Interp_Value interp_field_expr(Interp* interp, Interp_Value var, string_id ident);
-Interp_Value interp_function_call(Interp* interp, string_id ident, Ast* args);
+Interp_Value interp_function_call(Interp* interp, string_id ident, Ast* args, Type* function_type=0);
 Interp_Value interp_statement(Interp* interp, Ast* ast);
 Interp_Value interp_block(Interp* interp, Ast* ast);
 
@@ -210,4 +212,4 @@ void interp_declaration_statement(Interp* interp, Ast* ast);
 
 void interp_ast_declarations(Interp* interp, Named_Ast* decls);
 
-bool interp_check_type_match_of_value(Interp* interp, Type* type, Interp_Value interp_value);
+Value interp_intrinsic_pln(Interp* interp, array(Interp_Value)* var_args);

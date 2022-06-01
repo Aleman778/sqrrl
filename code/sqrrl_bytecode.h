@@ -3,6 +3,7 @@
 #define DEF_BYTECODES \
 BC(noop, 0) \
 BC(stack_alloc, 2) \
+BC(memory_alloc, 1) \
 BC(load, 2) \
 BC(store, 2) \
 BC(assign, 2) \
@@ -41,7 +42,6 @@ BC(cast_sint_to_fp, 3) \
 BC(cast_uint_to_fp, 3) \
 BC(fp_extend, 3) \
 BC(fp_truncate, 3) \
-BC(param, 1) \
 BC(call, 1) \
 BC(ret, 1)
 
@@ -279,7 +279,7 @@ struct Bc_Instruction {
     };
 };
 
-typedef map(Bc_Register, Value_Data) Bc_Label_To_Value_Table;
+typedef map(Bc_Register, Value) Bc_Label_To_Value_Table;
 
 bool
 string_builder_push(String_Builder* sb, Bc_Type type) {
@@ -372,6 +372,17 @@ string_builder_push(String_Builder* sb, Bc_Operand* operand, bool show_type = tr
         
         case BcOperand_Type: {
             if (show_type) string_builder_push(sb, operand->type);
+        } break;
+        
+        case BcOperand_Argument_List: {
+            string_builder_push(sb, "[");
+            for_array_v(operand->Argument_List, arg, arg_index) {
+                string_builder_push(sb, &arg);
+                if (arg_index < array_count(operand->Argument_List) - 1) {
+                    string_builder_push(sb, ", ");
+                }
+            }
+            string_builder_push(sb, "]");
         } break;
     }
     

@@ -32,7 +32,13 @@ x64_assemble_instruction(X64_Assembler* assembler,
                          X64_Instruction* insn, 
                          X64_Encoding* encoding) {
     
-    assert(encoding->is_valid && "illegal instruction");
+    if (!encoding->is_valid) {
+        String_Builder sb = {};
+        string_builder_push(&sb, insn);
+        string text = string_builder_to_string_nocopy(&sb);
+        pln("\n\nIllegal instruction found:\n  %", f_string(text));
+        string_builder_free(&sb);
+    }
     
     u8 rex_prefix = 0b01000000;
     bool use_rex_prefix = encoding->use_rex_prefix;

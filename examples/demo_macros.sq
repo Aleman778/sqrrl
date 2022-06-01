@@ -1,4 +1,4 @@
-#include "c_header.h"
+//#include "c_header.h"
 
 #define TEST 10
 
@@ -21,7 +21,6 @@ main() {
     pln(make_string(hello_world));
     
     
-    MessageBox(0, "Hello world from Sqrrl!", "Description", 0);
+    //MessageBox(0, "Hello world from Sqrrl!", "Description", 0);
 }
-
 

@@ -244,16 +244,42 @@ bc_build_type(Bc_Builder* bc, Type* type) {
 }
 
 void
-bc_conform_highest_type(Bc_Operand* first, Bc_Operand* second) {
+bc_conform_highest_type(Bc_Builder* bc, Bc_Operand* first, Bc_Operand* second) {
     if (first->type.kind != second->type.kind) {
         s32 first_bitsize = bc_type_to_bitsize(first->type.kind);
         s32 second_bitsize = bc_type_to_bitsize(second->type.kind);
         
-        if (first_bitsize > second_bitsize) {
-            second->type = first->type;
-        } else {
-            first->type = second->type;
+        // If they are the same size then we are done
+        if (first_bitsize == second_bitsize) {
+            return;
         }
+        
+        Bc_Operand* smaller = first;
+        Bc_Operand* larger = second;
+        if (first_bitsize > second_bitsize) {
+            larger = first;
+            smaller = second;
+        }
+        
+        // Values don't need to be casted
+        if (smaller->kind == BcOperand_Value) {
+            smaller->type = larger->type;
+            return;
+        }
+        
+        bc_push_instruction(bc, is_bc_type_uint(larger->type.kind) ?
+                            Bytecode_zero_extend : Bytecode_sign_extend);
+        
+        Bc_Operand new_operand = bc_get_unique_register_operand(bc, larger->type);
+        bc_push_operand(bc, new_operand);
+        bc_push_operand(bc, *smaller);
+        
+        Bc_Operand type_operand = {};
+        type_operand.kind = BcOperand_Type;
+        type_operand.type = larger->type;
+        bc_push_operand(bc, type_operand);
+        
+        *smaller = new_operand;
     }
 }
 
@@ -377,6 +403,31 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
     switch (node->kind) {
         case Ast_Ident: {
             result = map_get(bc->ident_to_operand, node->Ident);
+            if (!result.kind) {
+                Bc_Register reg = {};
+                reg.ident = node->Ident;
+                Value value = map_get(bc->declarations, reg);
+                if (value.type != Value_void) {
+                    Bc_Operand type_operand = {};
+                    type_operand.kind = BcOperand_Type;
+                    type_operand.type = bc_build_type(bc, node->type);
+                    
+                    Bc_Operand variable = {};
+                    variable.kind = BcOperand_Register;
+                    variable.Register = reg;
+                    variable.type = type_operand.type;
+                    variable.type.ptr_depth++;
+                    
+                    result = bc_get_unique_register_operand(bc, type_operand.type);
+                    
+                    bc_push_instruction(bc, Bytecode_load);
+                    bc_push_operand(bc, result);
+                    bc_push_operand(bc, type_operand);
+                    bc_push_operand(bc, variable);
+                }
+            }
+            
+            
             assert(result.kind && "bug: failed to load operand from identifier");
         } break;
         
@@ -583,7 +634,7 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                 result = second;
             } else {
                 // TODO(Alexander): conform to largest, maybe this will be done in type stage instead
-                bc_conform_highest_type(&first, &second);
+                bc_conform_highest_type(bc, &first, &second);
                 
                 Bc_Opcode binary_opcode = Bytecode_noop;
                 switch (binary_op) {
@@ -633,7 +684,8 @@ case BinaryOp_##name: binary_opcode = Bytecode_##bc_mnemonic; break;
             Bc_Operand function_args = {};
             function_args.kind = BcOperand_Argument_List;
             for_compound(node->Call_Expr.args, arg) {
-                Bc_Operand bc_arg = bc_build_expression(bc, arg);
+                Ast* arg_expr = arg->Argument.assign;
+                Bc_Operand bc_arg = bc_build_expression(bc, arg_expr);
                 bc_arg = bc_build_load_value(bc, bc_arg);
                 array_push(function_args.Argument_List, bc_arg);
             }
@@ -734,12 +786,14 @@ bc_build_statement(Bc_Builder* bc, Ast* node) {
     
     switch (node->kind) {
         case Ast_Assign_Stmt: {
-            Bc_Type type = bc_build_type(bc, node->Assign_Stmt.type);
+            Bc_Type type = bc_build_type(bc, node->type);
             Bc_Operand dest = bc_build_stack_alloc(bc, type);
             string_id ident = ast_unwrap_ident(node->Assign_Stmt.ident);
             map_put(bc->ident_to_operand, ident, dest);
             
             Bc_Operand source = bc_build_expression(bc, node->Assign_Stmt.expr);
+            source = bc_build_type_cast(bc, &source, type);
+            
             bc_push_instruction(bc, Bytecode_store);
             bc_push_operand(bc, dest);
             bc_push_operand(bc, source);
@@ -871,8 +925,9 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* type, Ast* decl) {
             
             bc_build_statement(bc, decl);
             
-            Value_Data value;
-            value.basic_block = block;
+            Value value;
+            value.type = Value_basic_block;
+            value.data.basic_block = block;
             map_put(bc->declarations, label, value);
         } break;
     }
@@ -884,10 +939,10 @@ bc_analyze_top_level_declaration(Bc_Builder* bc, Ast* ast) {
     
     Bc_Instruction result = {};
     Ast* stmt = ast->Decl.stmt;
+    string_id ident = ast_unwrap_ident(ast->Decl.ident);
     
     switch (stmt->kind) {
         case Ast_Decl_Stmt: {
-            string_id ident = ast_unwrap_ident(stmt->Decl_Stmt.ident);
             Ast* type = stmt->Decl_Stmt.type;
             
             switch (type->kind) {
@@ -900,12 +955,36 @@ bc_analyze_top_level_declaration(Bc_Builder* bc, Ast* ast) {
                     return_type_op.type = bc_build_type(bc, return_type);
                     map_put(bc->ident_to_operand, ident, return_type_op);
                 } break;
-                
             }
         } break;
         
         case Ast_Assign_Stmt: {
-            unimplemented;
+            bc_push_instruction(bc, Bytecode_memory_alloc);
+            
+            Ast* expr = stmt->Assign_Stmt.expr;
+            Value value = {};
+            if (expr && expr->kind == Ast_Value) {
+                value = expr->Value.value;
+            } else {
+                value.type = Value_signed_int;
+                unimplemented;
+                // TODO(Alexander): we need to implement initialization code for this
+            }
+            
+            Bc_Operand value_op = {};
+            value_op.kind = BcOperand_Value;
+            value_op.type = bc_build_type(bc, stmt->type);
+            value_op.Value = value.data;
+            bc_push_operand(bc, value_op);
+            
+            // TODO(Alexander): we should do this if we have const assignment
+            // e.g. const int x = 10;
+            // we currently don't store const info in the types yet.
+            //map_put(bc->ident_to_operand, ident, value_op);
+            
+            Bc_Register reg = {};
+            reg.ident = ident;
+            map_put(bc->declarations, reg, value);
         } break;
     }
 }
@@ -924,10 +1003,6 @@ bc_build_from_top_level_declaration(Bc_Builder* bc, Ast* ast) {
             Ast* type = stmt->Decl_Stmt.type;
             Ast* decl = stmt->Decl_Stmt.decl;
             bc_register_declaration(bc, ident, type, decl);
-        } break;
-        
-        case Ast_Assign_Stmt: {
-            unimplemented;
         } break;
     }
 }

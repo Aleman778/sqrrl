@@ -56,6 +56,14 @@ struct Type_Table {
     int count;
 };
 
+inline void
+type_table_push_type(Type_Table* table, string_id ident, Type* type, smm offset) {
+    map_put(table->ident_to_type, ident, type);
+    map_put(table->ident_to_offset, ident, 0);
+    array_push(table->idents, ident);
+    table->count++;
+}
+
 // NOTE(Alexander): forward declare
 struct Ast;
 struct Interp;

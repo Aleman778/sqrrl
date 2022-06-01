@@ -338,6 +338,11 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
     Type* result = 0;
     
     switch (expr->kind) {
+        case Ast_None: {
+            result = &global_void_type;
+        } break;
+        
+        
         case Ast_Value: {
             
             if (parent_type) {
@@ -840,7 +845,11 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                                                      report_error);
             
             if (found_type) {
-                stmt->type = found_type;
+                if (expected_type) {
+                    stmt->type = expected_type;
+                } else {
+                    stmt->type = found_type;
+                }
                 result = found_type;
                 type_check_assignment(tcx, expected_type, found_type);
                 
@@ -856,9 +865,8 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         } break;
         
         case Ast_Expr_Stmt: {
-            type_infer_expression(tcx, stmt->Expr_Stmt, 0, report_error);
+            result = type_infer_expression(tcx, stmt->Expr_Stmt, 0, report_error);
         } break;
-        
         
         case Ast_Block_Stmt: {
             // TODO(Alexander): create a new scope
@@ -879,6 +887,11 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
             Type* found_type = type_infer_statement(tcx, stmt->Decl_Stmt.decl, report_error);
             
             if (expected_type && found_type) {
+                if (expected_type->kind == Type_Function) {
+                    expected_type->Function.block = stmt->Decl_Stmt.decl;
+                }
+                
+                
                 result = expected_type;
                 stmt->type = result;
                 map_put(tcx->locals, ident, result);
@@ -886,36 +899,99 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         } break;
         
         case Ast_If_Stmt: {
-            
+            Type* cond = type_infer_expression(tcx, 
+                                               stmt->If_Stmt.cond,
+                                               &global_primitive_types[PrimitiveType_bool],
+                                               report_error);
+            Type* then_block = type_infer_statement(tcx, stmt->If_Stmt.then_block, report_error);
+            if (is_ast_stmt(stmt->If_Stmt.else_block)) {
+                Type* else_block = type_infer_statement(tcx, stmt->If_Stmt.else_block, report_error);
+                if (cond && then_block && else_block) {
+                    result = cond;
+                }
+            } else {
+                if (cond && then_block) {
+                    result = cond;
+                }
+            }
         } break;
         
         case Ast_For_Stmt: {
+            Type* init = type_infer_statement(tcx, stmt->For_Stmt.init, report_error);
+            Type* cond = type_infer_expression(tcx, 
+                                               stmt->For_Stmt.cond,
+                                               &global_primitive_types[PrimitiveType_bool],
+                                               report_error);
+            Type* update = type_infer_expression(tcx, stmt->For_Stmt.update, 0, report_error);
+            Type* block = type_infer_statement(tcx, stmt->For_Stmt.block, report_error);
             
+            if (init && cond && update && block) {
+                result = init;
+            }
         } break;
         
         case Ast_While_Stmt: {
+            Type* cond = type_infer_expression(tcx, 
+                                               stmt->While_Stmt.cond,
+                                               &global_primitive_types[PrimitiveType_bool],
+                                               report_error);
+            Type* block = type_infer_statement(tcx, stmt->While_Stmt.block, report_error);
             
+            if (cond && block) {
+                result = cond;
+            }
         } break;
         
         case Ast_Return_Stmt: {
-            Type* type = type_infer_expression(tcx, stmt->Return_Stmt.expr, 0, report_error);
-            
+            result = type_infer_expression(tcx, stmt->Return_Stmt.expr, 0, report_error);
         } break;
     }
     
     return result;
 }
 
+struct Compilation_Unit {
+    Ast* ast;
+    string_id ident;
+    
+};
+
 bool
-type_check_ast(Type_Context* tcx, Ast* ast, bool report_error) {
+type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error) {
     bool result = true;
+    Ast* ast = comp_unit->ast;
+    
     
     if (ast->kind == Ast_Decl_Stmt) {
-        string_id ident = ast_unwrap_ident(ast->Decl_Stmt.ident);
-        Type* type = create_type_from_ast(tcx, ast->Decl_Stmt.type, report_error);
+        Type* type = ast->Decl_Stmt.type->type;
+        ast->type = type;
+        
+        if (type && type->kind == Type_Function) {
+            if (type->kind == Type_Function) {
+                type->Function.block = ast->Decl_Stmt.decl;
+            }
+            
+            
+            // Store the arguments in local context
+            Type_Table* args = &type->Function.arguments;
+            if (args->idents) {
+                for_array_v(args->idents, ident, _) {
+                    Type* arg_type = map_get(args->ident_to_type, ident);
+                    if (arg_type) {
+                        map_put(tcx->locals, ident, arg_type);
+                    }
+                }
+            }
+        }
+    }
+    
+    if (is_ast_type(ast)) {
+        string_id ident = comp_unit->ident;
+        
+        Type* type = create_type_from_ast(tcx, ast, report_error);
         if (type) {
             ast->type = type;
-            map_put(tcx->globals, ident, type);
+            map_put(tcx->globals, comp_unit->ident, type);
         } else {
             result = false;
         }
@@ -938,45 +1014,89 @@ type_check_ast(Type_Context* tcx, Ast* ast, bool report_error) {
     return result;
 }
 
+
+void
+DEBUG_setup_intrinsic_types(Type_Context* tcx) {
+    // TODO(Alexander): these are kind of temporary, since we don't really have
+    // the ability to create these functions yet, need FFI!
+    // We will still have intrinsics but these intrinsics are just for debugging
+    
+    {
+        // Intrinsic syntax: pln(string format...)
+        // e.g. pln("hello %, lucky number is %", "world", 7);
+        Type* type = arena_push_struct(tcx->type_arena, Type);
+        type->kind = Type_Function;
+        type->Function.is_variadic = true;
+        type->Function.arguments = {};
+        
+        string_id arg0_ident = vars_save_cstring("format");
+        type_table_push_type(&type->Function.arguments, arg0_ident, &global_string_type, 0);
+        
+        string_id ident = vars_save_cstring("pln");
+        type->Function.block = 0;
+        type->Function.intrinsic = &interp_intrinsic_pln;
+        type->Function.ident = ident;
+        type->Function.return_value = &global_void_type;
+        
+        map_put(tcx->globals, ident, type);
+    }
+}
+
+
 s32
 type_check_ast_file(Ast_File* ast_file) {
     Type_Context tcx = {};
-    array(Ast*)* queue = 0;
+    array(Compilation_Unit)* queue = 0;
+    
     
     // NOTE(Alexander): store the actual type declarations globally
     Memory_Arena global_type_arena = {};
     tcx.type_arena = &global_type_arena;
     
+    DEBUG_setup_intrinsic_types(&tcx);
+    
+    // First push decl statements and type declarations
     for_map(ast_file->decls, it) {
         string_id ident = it->key;
         Ast* decl = it->value;
         Ast* decl_stmt = decl->Decl.stmt;
-        array_push(queue, decl_stmt);
+        Compilation_Unit comp_unit = {};
+        comp_unit.ident = ident;
+        
+        if (decl_stmt->kind == Ast_Decl_Stmt) {
+            comp_unit.ast = decl_stmt->Decl_Stmt.type;
+        } else {
+            comp_unit.ast = decl_stmt;
+        }
+        
+        array_push(queue, comp_unit);
     }
     
-    {
-        // NOTE(Alexander): makes sure we push the actual declarations after type declarations
-        smm queue_count = array_count(queue);
-        for (smm queue_index = 0; queue_index < queue_count; queue_index++) {
-            Ast* ast = queue[queue_index];
-            if (ast->kind == Ast_Decl_Stmt) {
-                array_push(queue, ast->Decl_Stmt.decl);
-            }
-            
+    // NOTE(Alexander): push actual declarations, makes sure we first try processing the types
+    //                  before the actual declaration
+    for_map(ast_file->decls, it) {
+        string_id ident = it->key;
+        Ast* decl = it->value;
+        Ast* decl_stmt = decl->Decl.stmt;
+        
+        if (decl_stmt->kind == Ast_Decl_Stmt) {
+            Compilation_Unit comp_unit = {};
+            comp_unit.ast = decl_stmt;
+            array_push(queue, comp_unit);
         }
     }
     
-    // NOTE(Alexander): exit condition: assumes that when all items in queue failed then 
-    // we can nolonger process any further and have to report errors and exit.
+    // NOTE(Alexander): exit condition: assumes that when all items in queue failed then we can
+    //                  nolonger process any further and have to report errors and exit.
     smm last_queue_count = 0;
     while (last_queue_count != array_count(queue)) {
         smm queue_count = array_count(queue);
         for (smm queue_index = 0; queue_index < queue_count; queue_index++) {
-            Ast* ast = queue[queue_index];
+            Compilation_Unit comp_unit = queue[queue_index];
             
-            if (!type_check_ast(&tcx, ast, false)) {
+            if (!type_check_ast(&tcx, &comp_unit, false)) {
                 // Failed, retry later
-                array_push(queue, ast);
+                array_push(queue, comp_unit);
             }
         }
         
@@ -986,8 +1106,8 @@ type_check_ast_file(Ast_File* ast_file) {
     }
     
     // NOTE(Alexander): anything left in the queue we report errors for
-    for_array (queue, ast, _) {
-        type_check_ast(&tcx, *ast, true);
+    for_array (queue, comp_unit, _) {
+        type_check_ast(&tcx, comp_unit, true);
     }
     
     return tcx.error_count;

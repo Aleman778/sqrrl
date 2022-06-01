@@ -1,4 +1,7 @@
 
+// TODO(Alexander): this preprocessor was not designed to handle CRLF or CR
+//                  line endings, currently it only works with LF.
+
 internal Replacement_List
 preprocess_parse_actual_arguments(Preprocessor* preprocessor, Tokenizer* t) {
     Replacement_List result = {};

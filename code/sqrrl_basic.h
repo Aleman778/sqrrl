@@ -378,6 +378,13 @@ for (auto it = arr; \
 it_index < array_count(arr); \
 it_index++, it++)
 
+#define for_array_v(arr, it, it_index) \
+int it_index = 0; \
+for (auto it = arr[it_index]; \
+it_index < array_count(arr); \
+it_index++, it = arr[it_index])
+
+
 #define for_array_reverse(arr, it, it_index) \
 int it_index = 0; \
 for (auto it = &array_last(arr); \

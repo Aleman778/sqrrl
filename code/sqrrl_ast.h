@@ -398,6 +398,7 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
             string_builder_push(sb, node->children[1], tokenizer, spacing);
             string_builder_push(sb, node->children[2], tokenizer, spacing);
             string_builder_push(sb, node->children[3], tokenizer, spacing);
+            string_builder_push(sb, node->children[4], tokenizer, spacing);
         } break;
     }
     

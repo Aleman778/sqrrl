@@ -940,7 +940,7 @@ Value
 interp_intrinsic_pln(Interp* interp, array(Interp_Value)* var_args) {
     Interp_Value format = interp_load_value(interp, vars_save_cstring("format"));
     
-    if (format.value.type == Value_string) {
+    if (format.value.type == Value_string || format.type.kind == Type_String) {
         
         if (var_args) {
             String_Builder sb = {};

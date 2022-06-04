@@ -208,7 +208,9 @@ _x64_push_instruction(X64_Builder* x64, X64_Opcode opcode, cstring comment = 0) 
             x64->curr_basic_block->count++;
             x64->instruction_count++;
             *insn = *mov_insn;
+#if BUILD_DEBUG
             insn->comment = 0;
+#endif
             
             mov_insn->opcode = X64Opcode_mov;
             mov_insn->op0 = x64_build_virtual_register(x64, reg_kind);

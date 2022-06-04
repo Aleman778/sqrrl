@@ -104,6 +104,11 @@ format_sprintf(char* dst, umm dst_size, Format_Type type, va_list args) {
     Format_Sprintf_Result result;
     
     switch (type) {
+        case FormatType_bool: {
+            bool value = va_arg(args, bool);
+            result.count = snprintf(dst, dst_size, "%s", value ? "true" : "false");
+        } break;
+        
         case FormatType_char: {
             if (dst_size >= 1) {
                 char value = va_arg(args, char);

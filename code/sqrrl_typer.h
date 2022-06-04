@@ -99,7 +99,7 @@ struct Type {
         
         struct {
             Type_Table arguments;
-            Type* return_value;
+            Type* return_type;
             Ast* block;
             Value (*intrinsic)(Interp*, array(Interp_Value)*); // TODO(Alexander): temporary intrinsic definition
             string_id ident;

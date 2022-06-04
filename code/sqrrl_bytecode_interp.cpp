@@ -50,6 +50,7 @@ bc_type_to_type(Bc_Type type) {
         case BcType_u64: result = &global_primitive_types[PrimitiveType_u64]; break;
         case BcType_f32: result = &global_primitive_types[PrimitiveType_f32]; break;
         case BcType_f64: result = &global_primitive_types[PrimitiveType_f64]; break;
+        case BcType_Aggregate: result = type.aggregate; break;
         default: assert(0 && "bug: provided type is not valid"); break;
     }
     
@@ -118,7 +119,7 @@ bc_interp_operand_value(Bc_Interp* interp, Bc_Operand* operand) {
         } break;
         
         case BcOperand_Value: {
-            result.signed_int = operand->Value.signed_int;
+            bc_interp_store_value(interp, operand->type, &result.signed_int, operand->Value);
         } break;
         
         case BcOperand_Basic_Block: {
@@ -314,13 +315,58 @@ bc_interp_store_register(interp, bc->dest.Register.index, result); \
         } break;
         
         case Bytecode_call: {
-            bc_interp_function_call(interp, bc->src0.Register.ident, bc->dest.Register.index);
+            assert(bc->src0.type.kind == BcType_Aggregate);
+            Type* type = bc->src0.type.aggregate;
             
-            Bc_Interp_Scope* scope = &array_last(interp->scopes);
-            array(u32)* arg_registers = scope->curr_block->args;
-            for_array(bc->src1.Argument_List, arg, arg_index) {
-                Value_Data arg_data = bc_interp_operand_value(interp, arg);
-                bc_interp_store_register(interp, arg_registers[arg_index], arg_data);
+            if (type->Function.intrinsic) {
+                Type_Table* arg_types = &type->Function.arguments;
+                
+                Interp intrinsic_interp = {};
+                array(Interp_Value)* variadic_args = 0;
+                
+                for_array(bc->src1.Argument_List, arg, arg_index) {
+                    
+                    Value value = {};
+                    value.data = bc_interp_operand_value(interp, arg);
+                    
+                    if (arg_index < array_count(arg_types->idents)) {
+                        // Normal argument
+                        string_id ident = arg_types->idents[arg_index];
+                        Type* arg_type = map_get(arg_types->ident_to_type, ident);
+                        
+                        if (arg_type) {
+                            void* data = interp_push_value(&intrinsic_interp, arg_type, value);
+                            interp_push_entity_to_current_scope(&intrinsic_interp, ident, data, arg_type);
+                        } else {
+                            assert(0 && "argument type was not found");
+                        }
+                        
+                    } else {
+                        // Variadic argument
+                        Interp_Value interp_value = {};
+                        interp_value.value = value;
+                        
+                        Type* arg_type = bc_type_to_type(arg->type);
+                        if (arg_type) {
+                            interp_value.type = *arg_type;
+                            array_push(variadic_args, interp_value);
+                        } else {
+                            assert(0 && "argument type was not found");
+                        }
+                    }
+                }
+                
+                type->Function.intrinsic(&intrinsic_interp, variadic_args);
+                
+            } else {
+                bc_interp_function_call(interp, bc->src0.Register.ident, bc->dest.Register.index);
+                
+                Bc_Interp_Scope* scope = &array_last(interp->scopes);
+                array(u32)* arg_registers = scope->curr_block->args;
+                for_array(bc->src1.Argument_List, arg, arg_index) {
+                    Value_Data arg_data = bc_interp_operand_value(interp, arg);
+                    bc_interp_store_register(interp, arg_registers[arg_index], arg_data);
+                }
             }
             
         } break;

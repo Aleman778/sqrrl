@@ -76,6 +76,7 @@ Ast* parse_identifier(Parser* parser, bool report_error=true);
 Ast* parse_atom(Parser* parser, bool report_error=true);
 Ast* parse_expression(Parser* parser, bool report_error=true, u8 min_prec=1, Ast* atom_expr=0);
 Ast* parse_statement(Parser* parser, bool report_error=true);
+Ast* parse_block_or_single_statement(Parser* parser, bool report_error=true);
 Ast* parse_type(Parser* parser, bool report_error=true);
 
 Unary_Op parse_unary_op(Parser* parser);

@@ -439,8 +439,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             
             if (function_type && function_type->kind == Type_Function) {
                 expr->Call_Expr.function_type = function_type;
-                expr->type = function_type->Function.return_value;
-                result = function_type->Function.return_value;
+                result = function_type->Function.return_type;
+                expr->type = result;
                 
                 // Arguments
                 // TODO(Alexander): nice to have: support for keyworded args, default args
@@ -713,9 +713,9 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 map_put(type_arguments->ident_to_offset, ident, offset);
             }
             
-            result->Function.return_value = create_type_from_ast(tcx, 
-                                                                 ast->Function_Type.return_type,
-                                                                 report_error);
+            result->Function.return_type = create_type_from_ast(tcx, 
+                                                                ast->Function_Type.return_type,
+                                                                report_error);
             assert(ast->Function_Type.ident && ast->Function_Type.ident->kind == Ast_Ident);
             result->Function.ident = ast->Function_Type.ident->Ident;
             result->cached_size = sizeof(smm);
@@ -1036,7 +1036,7 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
         type->Function.block = 0;
         type->Function.intrinsic = &interp_intrinsic_pln;
         type->Function.ident = ident;
-        type->Function.return_value = &global_void_type;
+        type->Function.return_type = &global_void_type;
         
         map_put(tcx->globals, ident, type);
     }

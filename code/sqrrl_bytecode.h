@@ -197,6 +197,7 @@ is_bc_type_uint(Bc_Type_Kind kind) {
 
 struct Bc_Type {
     Bc_Type_Kind kind;
+    Type* aggregate;
     u32 ptr_depth;
 };
 

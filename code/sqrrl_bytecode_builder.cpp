@@ -235,6 +235,11 @@ bc_build_type(Bc_Builder* bc, Type* type) {
             result.ptr_depth++;
         } break;
         
+        case Type_Function: {
+            result.kind = BcType_Aggregate;
+            result.aggregate = type;
+        } break;
+        
         default: {
             result.kind = BcType_Aggregate;
         } break;
@@ -672,14 +677,18 @@ case BinaryOp_##name: binary_opcode = Bytecode_##bc_mnemonic; break;
         } break;
         
         case Ast_Call_Expr: {
-            string_id ident = ast_unwrap_ident(node->Call_Expr.ident);
-            Bc_Operand function = map_get(bc->ident_to_operand, ident);
-            assert(function.kind == BcOperand_Type);
-            Bc_Type return_type = function.type;
+            string_id ident = ast_unwrap_ident(node->Call_Expr.ident); 
+            //Bc_Operand function = map_get(bc->ident_to_operand, ident);
+            
+            Type* function_type = node->Call_Expr.function_type;
+            assert(function_type->kind == Type_Function);
+            
+            Bc_Type return_type = bc_build_type(bc, function_type->Function.return_type);
             Bc_Operand temp_register = bc_get_unique_register_operand(bc, return_type);
             Bc_Operand target_label = {};
             target_label.kind = BcOperand_Register;
             target_label.Register = { ident, 0 };
+            target_label.type = bc_build_type(bc, function_type);
             
             Bc_Operand function_args = {};
             function_args.kind = BcOperand_Argument_List;
@@ -690,11 +699,13 @@ case BinaryOp_##name: binary_opcode = Bytecode_##bc_mnemonic; break;
                 array_push(function_args.Argument_List, bc_arg);
             }
             
+            
+            //result = bc_push_instruction(bc, Bytecode_call, target_label, function_args);
+            
             bc_push_instruction(bc, Bytecode_call);
             bc_push_operand(bc, temp_register);
             bc_push_operand(bc, target_label);
             bc_push_operand(bc, function_args);
-            
             result = temp_register;
         } break;
         

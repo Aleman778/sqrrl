@@ -494,10 +494,6 @@ parse_atom(Parser* parser, bool report_error) {
                                                          &parse_actual_argument);
         } break;
         
-        case Token_Semi: {
-            return result;
-        } break;
-        
         default: {
             Unary_Op unop = parse_unary_op(parser);
             if (unop != UnaryOp_None) {
@@ -706,9 +702,10 @@ parse_statement(Parser* parser, bool report_error) {
                 bool opened_paren = next_token_if_matched(parser, Token_Open_Paren, false);
                 result->If_Stmt.cond = parse_expression(parser);
                 next_token_if_matched(parser, Token_Close_Paren, opened_paren);
-                result->If_Stmt.then_block = parse_statement(parser);
+                result->If_Stmt.then_block = parse_block_or_single_statement(parser);
+                
                 if (parse_keyword(parser, Kw_else, false)) {
-                    result->If_Stmt.else_block = parse_statement(parser);
+                    result->If_Stmt.else_block = parse_block_or_single_statement(parser);
                 } else {
                     // TODO(Alexander): maybe reference a "null" pre allocated node instead?
                     result->If_Stmt.else_block = push_ast_node(parser);
@@ -731,7 +728,7 @@ parse_statement(Parser* parser, bool report_error) {
                 next_token_if_matched(parser, Token_Semi);
                 result->For_Stmt.update = parse_expression(parser, false);
                 next_token_if_matched(parser, Token_Close_Paren, opened_paren);
-                result->For_Stmt.block = parse_statement(parser);
+                result->For_Stmt.block = parse_block_or_single_statement(parser);
             } break;
             
             case Kw_while: {
@@ -745,7 +742,7 @@ parse_statement(Parser* parser, bool report_error) {
                 bool opened_paren = next_token_if_matched(parser, Token_Open_Paren, false);
                 result->While_Stmt.cond = parse_expression(parser);
                 next_token_if_matched(parser, Token_Close_Paren, opened_paren);
-                result->While_Stmt.block = parse_statement(parser);
+                result->While_Stmt.block = parse_block_or_single_statement(parser);
             } break;
             
             case Kw_return: {
@@ -816,6 +813,15 @@ parse_statement(Parser* parser, bool report_error) {
     
     update_span(parser, result);
     return result;
+}
+
+Ast*
+parse_block_or_single_statement(Parser* parser, bool report_error) {
+    Ast* stmt = parse_statement(parser, report_error);
+    if (stmt->kind != Ast_Block_Stmt) {
+        next_token_if_matched(parser, Token_Semi, true);
+    }
+    return stmt;
 }
 
 Unary_Op

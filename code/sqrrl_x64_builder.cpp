@@ -21,6 +21,9 @@ struct X64_Builder {
     map(u32, s32)* stack_offsets;
     s32 curr_stack_offset;
     
+    Memory_Arena rodata_segment_arena;
+    string_map(Memory_String)* const_strings;
+    
     u32 next_free_virtual_register;
     map(Bc_Register, X64_Operand)* allocated_virtual_registers; // TODO(Alexander): needs to be renamed
     Bc_Live_Length_Table* bc_register_live_lengths;
@@ -125,7 +128,24 @@ x64_allocate_specific_register(X64_Builder* x64, X64_Register physical_register)
     node->physical_register = physical_register;
     node->is_allocated = true;
     
+    array_push(x64->active_virtual_registers, virtual_register);
+    
     return virtual_register;
+}
+
+
+inline void
+x64_free_virtual_register(X64_Builder* x64, u32 virtual_register) {
+    bool found = false;
+    for_array(x64->active_virtual_registers, it, it_index) {
+        if (*it == virtual_register) {
+            found = true;
+        }
+    }
+    if (found) {
+        //pln("free virtual register: r%", f_u32(allocated.virtual_register));
+        array_swap_remove(x64->active_virtual_registers, it_index);
+    }
 }
 
 
@@ -286,7 +306,24 @@ x64_build_immediate(X64_Builder* x64, Value_Data value, Bc_Type type) {
             result.kind = X64Operand_imm64;
             result.imm64 = (s64) value.signed_int;
         } break;
+        
+        case BcType_Aggregate: {
+            assert(type.aggregate);
+            
+            switch (type.aggregate->kind) {
+                case Type_String: {
+                    // TODO(Alexander): this will ONLY work in JIT environment
+                    // we need to be able to reallocate the address to the string for executables.
+                    
+                    pln("%", f_cstring(value.mstr));
+                    result.kind = X64Operand_imm64;
+                    result.imm64 = (s64) value.mstr;
+                } break;
+            }
+        } break;
         // TODO(Alexander): need to support floats
+        
+        default: assert(0 && "ERROR: invalid type");
     }
     
     return result;
@@ -318,7 +355,6 @@ X64_Operand
 x64_build_physical_register(X64_Builder* x64, X64_Register reg, X64_Operand_Kind kind) {
     // TODO(Alexander): we need to tell the register allocate which physical register
     //                  to preallocate for this virtual register.
-    
     X64_Operand result = {};
     result.kind = kind;
     
@@ -562,8 +598,8 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
             // RAX is used as input and RDX:RAX is used as output
             u32 rax = x64_allocate_specific_register(x64, X64Register_rax);
             u32 rdx = x64_allocate_specific_register(x64, X64Register_rdx);
-            x64_add_interference(x64, rax, rdx);
-            x64_add_interference(x64, rdx, rax);
+            //x64_add_interference(x64, rax, rdx);
+            //x64_add_interference(x64, rdx, rax);
             
             X64_Operand rax_op = {};
             rax_op.kind = operand_kind;
@@ -574,7 +610,7 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
             mov_rax_insn->op0 = rax_op;
             mov_rax_insn->op1 = x64_build_operand(x64, &bc->src0);
             // TODO(Alexander): are we sure this will become a register?
-            x64_add_interference(x64, rax, mov_rax_insn->op1.virtual_register);
+            //x64_add_interference(x64, rax, mov_rax_insn->op1.virtual_register);
             
             // Convert RAX into RDX:RAX
             // TODO(Alexander): check type to pick one of cwd, cwq, cwo
@@ -584,15 +620,16 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
             X64_Instruction* div_insn = x64_push_instruction(x64, div_opcode);
             div_insn->op0 = x64_build_operand(x64, &bc->src1);
             
-            x64_add_interference(x64, rax, div_insn->op0.virtual_register);
-            x64_add_interference(x64, rdx, div_insn->op0.virtual_register);
+            //x64_add_interference(x64, rax, div_insn->op0.virtual_register);
+            //x64_add_interference(x64, rdx, div_insn->op0.virtual_register);
             
             // Store the result back into dest
             X64_Instruction* mov_dest_insn = x64_push_instruction(x64, X64Opcode_mov);
             mov_dest_insn->op0 = x64_build_operand(x64, &bc->dest);
             mov_dest_insn->op1 = rax_op;
             
-            x64_add_interference(x64, rax, mov_dest_insn->op0.virtual_register);
+            x64_free_virtual_register(x64, rax);
+            x64_free_virtual_register(x64, rdx);
         } break;
         
         
@@ -723,6 +760,15 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
                 X64Register_rcx, X64Register_rdx, X64Register_r8, X64Register_r9
             };
             
+            // Allocate registers in order
+            u32 virtual_regs[4];
+            for (int arg_index = 0; arg_index < array_count(bc->src1.Argument_List); arg_index++) {
+                if (arg_index >= fixed_array_count(gpr_registers)) {
+                    break;
+                }
+                virtual_regs[arg_index] = x64_allocate_specific_register(x64, gpr_registers[arg_index]);
+            }
+            
             // Push registers in order
             for (int arg_index = 0; arg_index < array_count(bc->src1.Argument_List); arg_index++) {
                 if (arg_index >= fixed_array_count(gpr_registers)) {
@@ -733,21 +779,31 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
                 
                 X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
                 X64_Operand_Kind kind = x64_get_register_kind(arg->type);
-                mov_insn->op0 = x64_build_physical_register(x64, gpr_registers[arg_index], kind);
+                
+                mov_insn->op0.kind = kind;
+                mov_insn->op0.virtual_register = virtual_regs[arg_index];
                 mov_insn->op1 = x64_build_operand(x64, arg);
                 
             }
             
             // Push onto stack in reverse order (right-to-left)
-            s32 stack_offset = x64->curr_stack_offset;
-            for (int arg_index = (int) array_count(bc->src1.Argument_List) - 1;
-                 arg_index >= fixed_array_count(gpr_registers) && arg_index >= 0; 
-                 arg_index--) {
+            //s32 stack_offset = 8*2; // prev rbp + return address
+            //x64->curr_stack_offset;
+            s32 stack_offset = 32; // rcx rdx, r8 and r9 home
+            for (int arg_index = fixed_array_count(gpr_registers);
+                 arg_index < (int) array_count(bc->src1.Argument_List);
+                 arg_index++) {
+                
+                //for (int arg_index = (int) array_count(bc->src1.Argument_List) - 1;
+                //arg_index >= fixed_array_count(gpr_registers) && arg_index >= 0; 
+                //arg_index--) {
                 
                 
                 Bc_Operand* arg = bc->src1.Argument_List + arg_index;
                 s32 size = bc_type_to_size(arg->type.kind);
-                stack_offset = (s32) align_forward(stack_offset, size);
+                // NOTE(Alexander): I think, windows callign convention always aligns types by at least 8 bytes
+                s32 align = (s32) align_forward(size, 8);
+                stack_offset = (s32) align_forward(stack_offset, align);
                 
                 X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
                 X64_Operand_Kind kind = x64_get_memory_kind(arg->type);
@@ -757,9 +813,36 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
                 stack_offset += size;
             }
             
-            X64_Instruction* call_insn = x64_push_instruction(x64, X64Opcode_call);
-            call_insn->op0.kind = X64Operand_jump_target;
-            call_insn->op0.jump_target = bc->src0.Register;
+            // Set the target to jump to
+            assert(bc->op1.type.kind == BcType_Aggregate);
+            Type* function_type = bc->op1.type.aggregate;
+            assert(function_type->kind == Type_Function);
+            
+            if (function_type->Function.intrinsic) {
+                // TODO(Alexander): r64 hardcoded 
+                X64_Operand_Kind call_address = X64Operand_r64;
+                
+                X64_Instruction* mov_imm64_insn = x64_push_instruction(x64, X64Opcode_mov);
+                mov_imm64_insn->op0 = x64_build_virtual_register(x64, call_address);
+                mov_imm64_insn->op1.kind = X64Operand_imm64;
+                mov_imm64_insn->op1.imm64 = (smm) function_type->Function.intrinsic;
+                
+                X64_Instruction* call_insn = x64_push_instruction(x64, X64Opcode_call);
+                call_insn->op0.kind = call_address;
+                call_insn->op0 = mov_imm64_insn->op0;
+            } else {
+                X64_Instruction* call_insn = x64_push_instruction(x64, X64Opcode_call);
+                call_insn->op0.kind = X64Operand_jump_target;
+                call_insn->op0.jump_target = bc->src0.Register;
+            }
+            
+            // Free allocate registers in order
+            for (int arg_index = 0; arg_index < array_count(bc->src1.Argument_List); arg_index++) {
+                if (arg_index >= fixed_array_count(gpr_registers)) {
+                    break;
+                }
+                x64_free_virtual_register(x64, virtual_regs[arg_index]);
+            }
             
             // Make sure we setup the result as RAX
             X64_Operand dest = {};
@@ -780,7 +863,7 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
 }
 
 void
-x64_push_prologue(X64_Builder* x64) {
+x64_push_prologue(X64_Builder* x64, s32 stack_size) {
     // push rbp
     // mov rbp rsp
     // sub rbp stack_size (only relevant for non-leaf functions)
@@ -793,23 +876,54 @@ x64_push_prologue(X64_Builder* x64) {
     insn->op0 = x64_build_physical_register(x64, X64Register_rbp, X64Operand_r64);
     insn->op1 = x64_build_physical_register(x64, X64Register_rsp, X64Operand_r64);
     
-    //push_instruction(x64, X64Opcode_sub);
-    //push_register_operand(x64, X64Register_rbp);
-    //push_immediate_operand(x64, stack_size);
+    
+    insn = x64_push_instruction(x64, X64Opcode_sub);
+    insn->op0 = x64_build_physical_register(x64, X64Register_rsp, X64Operand_r64);
+    insn->op1.imm32 = stack_size;
+    insn->op1.kind = X64Operand_imm32;
 }
 
 
 void
-x64_push_epilogue(X64_Builder* x64) {
+x64_push_epilogue(X64_Builder* x64, s32 stack_size) {
     // add rsp stack_size (only relevant for non-leaf functions)
     // pop rbp
     // ret
     
-    X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_pop);
+    X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_add);
+    insn->op0 = x64_build_physical_register(x64, X64Register_rsp, X64Operand_r64);
+    insn->op1.imm32 = stack_size;
+    insn->op1.kind = X64Operand_imm32;
+    
+    insn = x64_push_instruction(x64, X64Opcode_pop);
     insn->op0 = x64_build_physical_register(x64, X64Register_rbp, X64Operand_r64);
     
     x64_push_instruction(x64, X64Opcode_ret);
     //pln("bb.count = %", f_umm(x64->curr_basic_block->count));
+}
+
+
+inline Memory_String
+save_read_only_string(X64_Builder* x64, string str) {
+    // TODO(Alexander): can we group or remove this allocation?
+    cstring cstr = string_to_cstring(str);
+    
+    string_map_get_index(x64->const_strings, cstr);
+    void* memory = arena_push_size(&x64->rodata_segment_arena, 
+                                   sizeof(umm) + str.count, alignof(umm));
+    Memory_String result = string_copy_to_memory(str, memory);
+    free((void*) cstr);
+    
+    return result;
+}
+
+// TODO(Alexander): we should probably store strings in vars in earlier stage, maybe even parsing
+#define DEF_READ_ONLY_STRING(op) \
+if ((op).kind == BcOperand_Value && (op).type.kind == BcType_Aggregate && \
+(op).type.aggregate->kind == Type_String) { \
+string str = (op).Value.str; \
+(op).Value.mstr = save_read_only_string(x64, str); \
+pln("mstr = %", f_umm((op).Value.mstr)); \
 }
 
 void
@@ -833,27 +947,30 @@ x64_analyse_function(X64_Builder* x64, Bc_Instruction* bc) {
             //pln("stack_offset(size = %, align = %, %) = %", f_umm(type->cached_size), f_umm(type->cached_align), f_u32(bc->dest.Register.index), f_s64(stack_offset));
         } break;
         
+        case Bytecode_call: {
+            for_array(bc->op2.Argument_List, arg, _) {
+                DEF_READ_ONLY_STRING(*arg);
+            }
+        } break;
+        
+        default: {
+            
+            // TODO(Alexander): right now we assume all strings are constants
+            DEF_READ_ONLY_STRING(bc->op1);
+            DEF_READ_ONLY_STRING(bc->op2);
+        } break;
     }
 }
 
 internal inline void
-x64_free_virtual_register(X64_Builder* x64, Bc_Operand* operand, u32 curr_bc_instruction) {
+x64_free_virtual_register_if_dead(X64_Builder* x64, Bc_Operand* operand, u32 curr_bc_instruction) {
     if (operand->kind == BcOperand_Register) {
         X64_Operand allocated = map_get(x64->allocated_virtual_registers, operand->Register);
         if (operand_is_register(allocated.kind)) {
             u32 live_length = map_get(x64->bc_register_live_lengths, operand->Register);
             //if (live_length > 0) pln("trying to free bytecode register: % (len = %)", f_u32(operand->Register.index), f_u32(live_length));
             if (live_length > 0 && live_length <= curr_bc_instruction) {
-                bool found = false;
-                for_array(x64->active_virtual_registers, it, it_index) {
-                    if (*it == allocated.virtual_register) {
-                        found = true;
-                    }
-                }
-                if (found) {
-                    //pln("free virtual register: r%", f_u32(allocated.virtual_register));
-                    array_swap_remove(x64->active_virtual_registers, it_index);
-                }
+                x64_free_virtual_register(x64, allocated.virtual_register);
             }
         }
     }
@@ -863,10 +980,9 @@ void
 x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
     x64->curr_stack_offset = 0;
     for_bc_basic_block(first_block, insn, insn_index, x64_analyse_function(x64, insn));
+    s32 stack_offset = x64->curr_stack_offset;
     
     x64_push_basic_block(x64, first_block->label);
-    x64_push_prologue(x64);
-    
     
     // TODO(Alexander): uses the x64 microsoft calling convention
     // https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention
@@ -891,7 +1007,7 @@ x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
     }
     
     // Push onto stack in reverse order (right-to-left)
-    s32 stack_offset = 8*2; // push RSP + return address
+    stack_offset += 8*6; // push RSP, return address and paramter (rcx, rdx, r8, r9) home
     for (int arg_index = (int) array_count(first_block->args) - 1;
          arg_index >= fixed_array_count(gpr_registers) && arg_index >= 0;
          arg_index--) {
@@ -900,7 +1016,9 @@ x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
         // TODO(Alexander): s32 is hardcoded for now, we need to store the argument types
         Bc_Type type = { BcType_s32, 0 };
         s32 size = bc_type_to_size(type.kind);
-        stack_offset = (s32) align_forward(stack_offset, bc_type_to_size(type.kind));
+        s32 align = (s32) align_forward(size, 8);
+        stack_offset = (s32) align_forward(stack_offset, align);
+        
         
         X64_Operand arg = x64_build_stack_offset(x64, type, stack_offset);
         Bc_Register reg_ident = { first_block->label.ident, reg };
@@ -908,6 +1026,14 @@ x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
         
         stack_offset += size;
     }
+    
+    // TODO(Alexander): do we need this for other calling conventions?
+    // Align to 16 byte boundary (for windows x64 calling convention)
+    // LINK: https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170#alignment
+    stack_offset = (s32) align_forward(stack_offset, 16);
+    
+    // Prologue
+    x64_push_prologue(x64, stack_offset);
     
     Bc_Basic_Block* curr_block = first_block;
     u32 curr_bc_instruction = 0;
@@ -918,9 +1044,9 @@ x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
             x64_build_instruction_from_bytecode(x64, insn);
             
             //pln("\n\nInstruction: %", f_u32(curr_bc_instruction));
-            x64_free_virtual_register(x64, &insn->dest, curr_bc_instruction);
-            x64_free_virtual_register(x64, &insn->src0, curr_bc_instruction);
-            x64_free_virtual_register(x64, &insn->src1, curr_bc_instruction);
+            x64_free_virtual_register_if_dead(x64, &insn->dest, curr_bc_instruction);
+            x64_free_virtual_register_if_dead(x64, &insn->src0, curr_bc_instruction);
+            x64_free_virtual_register_if_dead(x64, &insn->src1, curr_bc_instruction);
             
             curr_block_insn++;
             curr_bc_instruction++;
@@ -932,7 +1058,9 @@ x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
             x64_push_basic_block(x64, curr_block->label);
         }
     }
-    x64_push_epilogue(x64);
+    
+    // Epilogue
+    x64_push_epilogue(x64, stack_offset);
 }
 
 void

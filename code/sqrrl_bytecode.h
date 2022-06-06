@@ -342,6 +342,15 @@ string_builder_push(String_Builder* sb, Value_Data value, Bc_Type type) {
             case BcType_f64: {
                 string_builder_push_format(sb, "%", f_float(value.floating));
             } break;
+            
+            case BcType_Aggregate: {
+                assert(type.aggregate);
+                switch (type.aggregate->kind) {
+                    case Type_String: {
+                        string_builder_push_format(sb, "\"%\"", f_string(value.str));
+                    } break;
+                }
+            } break;
         }
     } else {
         string_builder_push_format(sb, "%", f_u64_HEX(value.unsigned_int));

@@ -220,7 +220,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         
         // Print interference graph before register allocation
         string interference_graph = x64_interference_graph_to_graphviz_dot(&x64_builder);
-        pln("\nGraphviz interference graph (before):\n%", f_string(interference_graph));
+        //pln("\nGraphviz interference graph (before):\n%", f_string(interference_graph));
+        DEBUG_write_entire_file("build/rig_before.dot", 
+                                interference_graph.data, 
+                                (u32) interference_graph.count);
         
         {
             // Print the human readable x64 assembly code (before register allocation)
@@ -237,7 +240,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         
         // Print interference graph before register allocation
         interference_graph = x64_interference_graph_to_graphviz_dot(&x64_builder);
-        pln("\nGraphviz interference graph (after):\n%", f_string(interference_graph));
+        //pln("\nGraphviz interference graph (after):\n%", f_string(interference_graph));
+        DEBUG_write_entire_file("build/rig_after.dot", 
+                                interference_graph.data, 
+                                (u32) interference_graph.count);
         
         {
             // Print the human readable x64 assembly code
@@ -271,6 +277,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 printf("\n");
             }
         }
+        
+        pln("\n\nRunning JIT:");
         
         asm_make_executable(asm_buffer, asm_size);
         asm_main* func = (asm_main*) asm_buffer;

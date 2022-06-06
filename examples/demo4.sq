@@ -1,12 +1,9 @@
 
 
-
 int
 main() {
-    
     int x = 10;
     
-    if (x > 4) pln("test hello world %", 1);
-    
+    pln("hej %, %, %", "wow", x, x > 4);
     return x;
 }

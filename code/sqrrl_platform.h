@@ -13,6 +13,8 @@ struct Read_File_Result {
 
 Read_File_Result DEBUG_read_entire_file(cstring filename);
 
+bool DEBUG_write_entire_file(cstring filename, void* data, u32 size);
+
 void DEBUG_free_file_memory(void* memory);
 
 // TODO:

@@ -119,6 +119,7 @@ enum Value_Type {
     Value_pointer,
     Value_array,
     Value_string,
+    Value_memory_string,
     
     // TODO(Alexander): these don't really belong here, should be moved.
     Value_ast_node,
@@ -137,6 +138,7 @@ union Value_Data {
     smm pointer;
     Array_Value array;
     string str;
+    Memory_String mstr;
     Ast* ast; // TODO(Alexander): does it make sense to store this here?
     Bc_Basic_Block* basic_block; // TODO(Alexander): does it make sense to store this here?
     void* data;

@@ -132,6 +132,26 @@ DEBUG_read_entire_file(cstring filename) {
     return result;
 }
 
+bool
+DEBUG_write_entire_file(cstring filename, void* data, u32 size) {
+    Read_File_Result result = {};
+    HANDLE file_handle = CreateFileA(filename, GENERIC_WRITE, FILE_SHARE_WRITE, 0, OPEN_ALWAYS, 0, 0);
+    
+    if (file_handle != INVALID_HANDLE_VALUE) {
+        
+        DWORD out_size = 0;
+        bool success = WriteFile(file_handle, data, size, &out_size, 0);
+        
+        CloseHandle(file_handle);
+        
+        return out_size == size && success;
+    } else {
+        platform_error(string_format("file `%` was not found", f_cstring(filename)));
+    }
+    
+    return false;
+}
+
 void
 DEBUG_free_file_memory(void* memory) {
     VirtualFree(memory, 0, MEM_RELEASE);

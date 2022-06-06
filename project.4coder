@@ -39,10 +39,15 @@ commands = {
     .win = "build\\sqrrl.exe",
     .linux = "build/sqrrl",
     .mac = "build/sqrrl", },
+  .graphviz = { .out = "*run*", .footer_panel = false, .save_dirty_files = false,
+    .win = "build_graphs.bat",
+    .linux = "./build_graphs.sh",
+    .mac = "./build_graphs.sh", },
 };
 
 fkey_command = {
   .F1 = "build",
   .F2 = "run",
   .F3 = "build_release",
+  .F4 = "graphviz",
 };

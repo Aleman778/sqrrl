@@ -550,7 +550,7 @@ interp_function_call(Interp* interp, string_id ident, Ast* args, Type* function_
                 // NOTE(Alexander): what about FFI?
                 
                 if (type->Function.intrinsic) {
-                    result.value = type->Function.intrinsic(interp, variadic_arguments);
+                    result.value = type->Function.interp_intrinsic(interp, variadic_arguments);
                     
                 } else {
                     interp_error(interp, string_format("`%` function has no definition and is no intrinsic", f_string(vars_load_string(ident))));
@@ -905,6 +905,8 @@ interp_block(Interp* interp, Ast* ast) {
 
 internal Format_Type
 convert_type_to_format_type(Type* type) {
+    assert(type);
+    
     switch (type->kind) {
         case Type_Primitive: {
             switch (type->Primitive.kind) {

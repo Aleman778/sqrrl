@@ -101,7 +101,8 @@ struct Type {
             Type_Table arguments;
             Type* return_type;
             Ast* block;
-            Value (*intrinsic)(Interp*, array(Interp_Value)*); // TODO(Alexander): temporary intrinsic definition
+            Value (*interp_intrinsic)(Interp*, array(Interp_Value)*); // TODO(Alexander): temporary intrinsic definition
+            void* intrinsic;
             string_id ident;
             b32 is_variadic;
         } Function;
@@ -116,6 +117,10 @@ struct Type {
 
 global Type global_void_type = { Type_Void };
 global Type global_unresolved_type = { Type_Unresolved };
+
+// TODO(Alexander): the sizeof/ alignof is only useful info for specific build of compiler
+// need to update these for other build targets
+global Type global_string_type = { Type_String, {}, {}, sizeof(string), alignof(string) };
 
 global Type global_primitive_types[] = {
 #define S_signed true
@@ -132,10 +137,6 @@ size, size \
 #undef PRIMITIVE
 #undef VAL
 };
-
-// TODO(Alexander): the sizeof/ alignof is only useful info for specific build of compiler
-// need to update these for other build targets
-global Type global_string_type = { Type_String, {}, {}, sizeof(string), alignof(string) };
 
 bool
 type_equals(Type* a, Type* b) {

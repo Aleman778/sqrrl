@@ -40,6 +40,7 @@ x64_assemble_instruction(X64_Assembler* assembler,
         string_builder_free(&sb);
     }
     
+    // Setup rex prefix
     u8 rex_prefix = 0b01000000;
     bool use_rex_prefix = encoding->use_rex_prefix;
     if (encoding->use_rex_w) {
@@ -47,6 +48,21 @@ x64_assemble_instruction(X64_Assembler* assembler,
         use_rex_prefix = true;
     }
     
+    // Primary opcode addend
+    u8 primary_opcode = encoding->primary_opcode;
+    if (encoding->use_opcode_addend) {
+        X64_Operand* addend_operand = &insn->operands[encoding->opcode_addend];
+        u8 addend = (u8) x64_register_id_table[addend_operand->reg];
+        if (addend >= 8) {
+            // set REX.B = 1
+            rex_prefix |= 1;
+            use_rex_prefix = true;
+        }
+        addend %= 8;
+        primary_opcode += addend;
+    }
+    
+    // SIB and ModRM setup
     u8 sib = 0;
     bool use_sib = false;
     
@@ -76,7 +92,7 @@ x64_assemble_instruction(X64_Assembler* assembler,
         rm %= 8;
         
         // NOTE(Alexander): If RSP is used we are forced to use SIB
-        if (rm == 0b100) {
+        if (rm == 0b100 && encoding->modrm_mod != ModRM_direct) {
             use_sib = true;
             sib = (rm << 3) | rm;
         }
@@ -84,7 +100,6 @@ x64_assemble_instruction(X64_Assembler* assembler,
         if (encoding->modrm_mod != ModRM_direct) {
             displacement = modrm_rm->disp32;
         }
-        
         
         if (displacement != 0) {
             if (displacement >= S8_MIN && displacement <= S8_MAX) {
@@ -112,18 +127,6 @@ x64_assemble_instruction(X64_Assembler* assembler,
     // Opcode
     if (encoding->use_0f_prefix) {
         push_u8(assembler, 0x0F);
-    }
-    
-    u8 primary_opcode = encoding->primary_opcode;
-    if (encoding->use_opcode_addend) {
-        X64_Operand* addend_operand = &insn->operands[encoding->opcode_addend];
-        u8 addend = (u8) x64_register_id_table[addend_operand->reg];
-        if (addend >= 8) {
-            // TODO(Alexander): what REX bit should this even set?
-            unimplemented;
-        }
-        addend %= 8;
-        primary_opcode += addend;
     }
     push_u8(assembler, primary_opcode);
     

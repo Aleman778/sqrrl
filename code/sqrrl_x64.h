@@ -408,6 +408,8 @@ x64_get_register_kind(Bc_Type type) {
         case BcType_f32:
         case BcType_f64: return X64Operand_mm;
         
+        case BcType_Aggregate: return X64Operand_r64;
+        
         default: assert(0 && "invalid bytecode type kind");
     }
     

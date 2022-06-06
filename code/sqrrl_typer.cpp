@@ -103,7 +103,8 @@ type_infer_value(Value value) {
         // TODO(Alexander): complex types require potentially building new types
         //case Value_pointer: 
         //case Value_array:
-        //case Value_string:
+        
+        case Value_string: return &global_string_type;
         
         default: {
             assert(0 && "invalid type");
@@ -302,6 +303,10 @@ constant_folding_of_expressions(Ast* ast) {
                     } else if (is_integer(first) || is_integer(second)) {
                         // NOTE(Alexander): integer math
                         first.data.signed_int = value_integer_binary_operation(first, second, ast->Binary_Expr.op);
+                        if (binary_is_comparator_table[ast->Binary_Expr.op]) {
+                            first.type = Value_boolean;
+                        }
+                        
                         result = first;
                     }
                 }
@@ -448,12 +453,12 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 Type_Table* formal_args = &function_type->Function.arguments;
                 s32 arg_index = 0;
                 for_compound(actual_args, actual_arg) {
-                    if (arg_index >= array_count(formal_args->idents)) {
-                        break;
-                    }
+                    Type* formal_type = 0;
                     
-                    string_id ident = formal_args->idents[arg_index];
-                    Type* formal_type = map_get(formal_args->ident_to_type, ident);
+                    if (arg_index < array_count(formal_args->idents)) {
+                        string_id ident = formal_args->idents[arg_index];
+                        formal_type = map_get(formal_args->ident_to_type, ident);
+                    }
                     
                     constant_folding_of_expressions(actual_arg->Argument.assign);
                     Type* actual_type = type_infer_expression(tcx, 
@@ -1034,7 +1039,8 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
         
         string_id ident = vars_save_cstring("pln");
         type->Function.block = 0;
-        type->Function.intrinsic = &interp_intrinsic_pln;
+        type->Function.interp_intrinsic = &interp_intrinsic_pln;
+        type->Function.intrinsic = &print_format;
         type->Function.ident = ident;
         type->Function.return_type = &global_void_type;
         

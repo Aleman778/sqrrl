@@ -84,6 +84,22 @@ bc_interp_store_value(Bc_Interp* interp, Bc_Type type, void* data, Value_Data va
         case BcType_u64: *((u64*) data) = (u64) value.unsigned_int; break;
         case BcType_f32: *((f32*) data) = (f32) value.floating; break;
         case BcType_f64: *((f64*) data) = (f64) value.floating; break;
+        
+        case BcType_Aggregate: {
+            assert(type.aggregate);
+            
+            switch (type.aggregate->kind) {
+                case Type_String: {
+                    *((string*) data) = value.str;
+                } break;
+                
+                default: {
+                    unimplemented;
+                } break;
+            }
+            
+        } break;
+        
         default: assert(0 && "invalid type"); break;
     }
 }
@@ -356,7 +372,7 @@ bc_interp_store_register(interp, bc->dest.Register.index, result); \
                     }
                 }
                 
-                type->Function.intrinsic(&intrinsic_interp, variadic_args);
+                //type->Function.interp_intrinsic(&intrinsic_interp, variadic_args);
                 
             } else {
                 bc_interp_function_call(interp, bc->src0.Register.ident, bc->dest.Register.index);

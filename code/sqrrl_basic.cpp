@@ -7,6 +7,8 @@ print_format(const char* format...) {
     va_list args;
     va_start(args, format);
     
+    //printf("\n\ntest: %s\n\n", format);
+    
     const char* format_at_prev_percent = format;
     int count_until_percent = 0;
     while (*format != '\0') {
@@ -20,6 +22,10 @@ print_format(const char* format...) {
             
             Format_Type type = (Format_Type) va_arg(args, int);
             switch (type) {
+                case FormatType_bool: {
+                    printf("%s", va_arg(args, bool) ? "true" : "false");
+                } break;
+                
                 case FormatType_char: {
                     printf("%c", va_arg(args, char));
                 } break;
@@ -64,6 +70,11 @@ print_format(const char* format...) {
                 case FormatType_string: {
                     string str = va_arg(args, string);
                     printf("%.*s", (int) str.count, (char*) str.data);
+                } break;
+                
+                case FormatType_memory_string: {
+                    Memory_String str = va_arg(args, Memory_String);
+                    printf("%.*s", (int) memory_string_count(str), (char*) str);
                 } break;
                 
                 case FormatType_cstring: {

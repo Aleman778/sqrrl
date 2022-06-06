@@ -123,6 +123,7 @@ struct string {
     u8* data;
 };
 
+
 inline string
 create_string(umm count, u8* data) {
     string result;
@@ -196,6 +197,26 @@ string_unquote_nocopy(string s) {
     }
     
     return result;
+}
+
+// Memory string stores count and cstring next to each other in memory
+typedef cstring Memory_String;
+
+#define memory_string_count(s) *((umm*) s - 1)
+
+inline string
+mstring_to_string(Memory_String str) {
+    string result;
+    result.count = memory_string_count(str);
+    result.data = (u8*) str;
+    return result;
+}
+
+inline Memory_String
+string_copy_to_memory(string str, void* dest) {
+    *(umm*) dest = str.count;
+    memcpy((u8*)((umm*) dest + 1), str.data, str.count);
+    return (Memory_String) ((umm*) dest + 1);
 }
 
 struct String_Builder {
@@ -290,6 +311,7 @@ enum Format_Type { // TODO(Alexander): add more types
     FormatType_f64,
     FormatType_string,
     FormatType_cstring,
+    FormatType_memory_string,
     
     FormatType_u64_HEX,
     
@@ -428,6 +450,7 @@ for (auto it = map; it < map + map_count(map); it++)
 #define string_map_count(m) shlen(m)
 #define string_map_put(m, k, v) shput(m, k, v)
 #define string_map_get(m, k) shget(m, k)
+#define string_map_get_index(m, k) shgeti(m, k)
 #define string_map_remove(m, k) shdel(m, k)
 #define string_map_new_arena(m) sh_new_arena(m)
 

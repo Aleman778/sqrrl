@@ -235,13 +235,9 @@ bc_build_type(Bc_Builder* bc, Type* type) {
             result.ptr_depth++;
         } break;
         
-        case Type_Function: {
-            result.kind = BcType_Aggregate;
-            result.aggregate = type;
-        } break;
-        
         default: {
             result.kind = BcType_Aggregate;
+            result.aggregate = type;
         } break;
     }
     
@@ -684,7 +680,10 @@ case BinaryOp_##name: binary_opcode = Bytecode_##bc_mnemonic; break;
             assert(function_type->kind == Type_Function);
             
             Bc_Type return_type = bc_build_type(bc, function_type->Function.return_type);
-            Bc_Operand temp_register = bc_get_unique_register_operand(bc, return_type);
+            Bc_Operand return_operand = {};
+            if (return_type.kind) {
+                return_operand = bc_get_unique_register_operand(bc, return_type);
+            }
             Bc_Operand target_label = {};
             target_label.kind = BcOperand_Register;
             target_label.Register = { ident, 0 };
@@ -692,21 +691,41 @@ case BinaryOp_##name: binary_opcode = Bytecode_##bc_mnemonic; break;
             
             Bc_Operand function_args = {};
             function_args.kind = BcOperand_Argument_List;
+            int arg_count = 0;
             for_compound(node->Call_Expr.args, arg) {
                 Ast* arg_expr = arg->Argument.assign;
                 Bc_Operand bc_arg = bc_build_expression(bc, arg_expr);
                 bc_arg = bc_build_load_value(bc, bc_arg);
+                
+                // HACK(Alexander): for now print_format pushes the format type first then the value 
+                if (arg_count > 0 && function_type->Function.intrinsic == &print_format) {
+                    Format_Type fmt_type = convert_type_to_format_type(arg_expr->type);
+                    
+                    if (fmt_type == FormatType_string) {
+                        // NOTE(Alexander): memory strings are easier to work with
+                        fmt_type = FormatType_memory_string;
+                    }
+                    
+                    Bc_Operand bc_arg_type = {};
+                    bc_arg_type.kind = BcOperand_Value;
+                    bc_arg_type.type.kind = BcType_s32;
+                    bc_arg_type.Value.signed_int = fmt_type;
+                    array_push(function_args.Argument_List, bc_arg_type);
+                }
+                
+                
                 array_push(function_args.Argument_List, bc_arg);
+                arg_count++;
             }
             
             
             //result = bc_push_instruction(bc, Bytecode_call, target_label, function_args);
             
             bc_push_instruction(bc, Bytecode_call);
-            bc_push_operand(bc, temp_register);
+            bc_push_operand(bc, return_operand);
             bc_push_operand(bc, target_label);
             bc_push_operand(bc, function_args);
-            result = temp_register;
+            result = return_operand;
         } break;
         
         case Ast_Field_Expr: {
@@ -775,12 +794,15 @@ bc_build_compare_expression(Bc_Builder* bc, Ast* node) {
     if (cmp_code == Bytecode_noop) {
         cmp_code = Bytecode_cmpneq;
         first = bc_build_expression(bc, node);
+        first = bc_build_load_value(bc, first);
         second.kind = BcOperand_Value;
         second.Value.signed_int = 0;
         second.type = first.type;
     } else {
         first = bc_build_expression(bc, node->Binary_Expr.first);
+        first = bc_build_load_value(bc, first);
         second = bc_build_expression(bc, node->Binary_Expr.second);
+        second = bc_build_load_value(bc, second);
     }
     
     dest = bc_get_unique_register_operand(bc, dest_type);
@@ -902,6 +924,7 @@ bc_build_statement(Bc_Builder* bc, Ast* node) {
         
         case Ast_Return_Stmt: {
             Bc_Operand source = bc_build_expression(bc, node->Return_Stmt.expr);
+            source = bc_build_load_value(bc, source);
             
             bc_push_instruction(bc, Bytecode_ret);
             // HACK(Alexander): we can't set the operands directly

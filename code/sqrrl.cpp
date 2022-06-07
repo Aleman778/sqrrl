@@ -40,8 +40,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     if (argc > 1) {
         filepath = string_lit(argv[1]);
     } else {
-        filepath = string_lit("examples/demo4.sq");
-        //filepath = string_lit("examples/primes.sq");
+        //filepath = string_lit("examples/demo4.sq");
+        filepath = string_lit("examples/primes.sq");
         //filepath = string_lit("tests/literals.sq");
     }
 #else

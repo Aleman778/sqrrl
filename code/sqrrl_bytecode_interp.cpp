@@ -58,15 +58,14 @@ bc_type_to_type(Bc_Type type) {
 }
 
 inline void*
-bc_interp_alloc_register(Bc_Interp* interp, Bc_Register reg, Type* type, Value value = {}) {
+bc_interp_alloc_register(Bc_Interp* interp, Bc_Register reg, Type* type) {
     assert(type->cached_size > 0 && "bad size");
     assert(type->cached_align > 0 && "bad align");
     
     void* data = arena_push_size(&interp->stack, type->cached_size, type->cached_align);
-    
-    Value_Data result;
-    result.data = data; // TODO(Alexander): we should store stack offsets
-    bc_interp_store_register(interp, reg.index, result);
+    Value_Data value;
+    value.data = data;
+    bc_interp_store_register(interp, reg.index, value);
     return data;
 }
 
@@ -333,10 +332,10 @@ bc_interp_store_register(interp, bc->dest.Register.index, result); \
         case Bytecode_call: {
             assert(bc->src0.type.kind == BcType_Aggregate);
             Type* type = bc->src0.type.aggregate;
+            assert(type->kind == Type_Function);
             
+            Type_Table* arg_types = &type->Function.arguments;
             if (type->Function.intrinsic) {
-                Type_Table* arg_types = &type->Function.arguments;
-                
                 Interp intrinsic_interp = {};
                 array(Interp_Value)* variadic_args = 0;
                 
@@ -380,8 +379,28 @@ bc_interp_store_register(interp, bc->dest.Register.index, result); \
                 Bc_Interp_Scope* scope = &array_last(interp->scopes);
                 array(u32)* arg_registers = scope->curr_block->args;
                 for_array(bc->src1.Argument_List, arg, arg_index) {
-                    Value_Data arg_data = bc_interp_operand_value(interp, arg);
-                    bc_interp_store_register(interp, arg_registers[arg_index], arg_data);
+                    
+                    if (arg_index < array_count(arg_types->idents)) {
+                        string_id ident = arg_types->idents[arg_index];
+                        Type* arg_type = map_get(arg_types->ident_to_type, ident);
+                        
+                        // HACK: we should store pointer type somewhere
+                        //Type arg_pointer_type = {};
+                        //arg_pointer_type.kind = Type_Pointer;
+                        //arg_pointer_type.Pointer = arg_type;
+                        //arg_pointer_type.cached_size = 8;
+                        //arg_pointer_type.cached_align = 8;
+                        
+                        Value_Data arg_data = bc_interp_operand_value(interp, arg);
+                        
+                        Bc_Register reg = {};
+                        reg.ident = ident;
+                        reg.index = arg_index + 1;
+                        void* data = bc_interp_alloc_register(interp, reg, arg_type);
+                        bc_interp_store_value(interp, arg->type, data, arg_data);
+                    } else {
+                        // Variadic argument
+                    }
                 }
             }
             

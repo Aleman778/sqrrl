@@ -929,6 +929,9 @@ bc_build_statement(Bc_Builder* bc, Ast* node) {
             bc_push_instruction(bc, Bytecode_ret);
             // HACK(Alexander): we can't set the operands directly
             bc->curr_instruction->src0 = source;
+            
+            
+            // TODO(Alexander): we need to branch to exit the function
         } break;
         
         default: assert(0 && "bug: not an expression");
@@ -952,7 +955,8 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* type, Ast* decl) {
             for_compound(type->Function_Type.arguments, it) {
                 string_id arg_ident = ast_unwrap_ident(it->Argument.ident);
                 Bc_Type arg_type = bc_build_type(bc, it->Argument.type);
-                Bc_Operand arg_dest = bc_get_unique_register_operand(bc, arg_type);
+                
+                Bc_Operand arg_dest = bc_build_stack_alloc(bc, arg_type);
                 map_put(bc->ident_to_operand, arg_ident, arg_dest);
                 array_push(block->args, arg_dest.Register.index);
             }

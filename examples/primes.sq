@@ -2,35 +2,35 @@
 
 bool
 is_prime(int x, bool verbose) {
-    if (verbose) {
-        pln("");
-        pln("is_prime? x = %:", x);
-    }
+    //if (verbose) {
+    //pln("");
+    //pln("is_prime? x = %:", x);
+    //}
     
     if (x < 2) {
-        if (verbose) pln("  no: because first prime is 2");
+        //if (verbose) pln("  no: because first prime is 2");
         return false;
     }
     
     if (x == 2) {
-        if (verbose) pln(" yes: because first prime is 2");
+        //if (verbose) pln(" yes: because first prime is 2");
         return true;
         
     }
     
     if (x % 2 == 0) {
-        if (verbose) pln("  no: because it's odd");
+        //if (verbose) pln("  no: because it's odd");
         return false;
     }
     
     for (int i = 3; i < x; i += 2) {
         if (x % i == 0) {
-            if (verbose) pln("  no: found divisor %", x);
+            //if (verbose) pln("  no: found divisor %", x);
             return false;
         }
     }
     
-    if (verbose) pln("  yes");
+    //if (verbose) pln("  yes");
     return true;
 }
 
@@ -46,17 +46,21 @@ next_prime(int x) {
 
 int
 main() {
-    bool verbose = false;
-    for (int i = 0; i < 100; i += 1) {
-        if (is_prime(i, verbose)) {
-            pln("%", i);
-        }
+    bool verbose = true;
+    //for (int i = 0; i < 100; i += 1) {
+    int i = 12;
+    bool p = is_prime(i, verbose);
+    if (p) {
+        pln("% is a prime number", i);
+    } else {
+        pln("% is NOT a prime number", i);
     }
+    //}
     
-    int first = 90;
-    pln("");
-    pln("");
-    pln("next_prime starting at % is %", first, next_prime(first));
+    //int first = 90;
+    //pln("");
+    //pln("");
+    //pln("next_prime starting at % is %", first, next_prime(first));
     
     return 0;
 }

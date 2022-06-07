@@ -113,9 +113,9 @@ x64_allocate_virtual_register(X64_Builder* x64) {
         X64_Register_Node* other_node = &map_get(x64->interference_graph, *other_vreg);
         array_push(node->interference, other_node->virtual_register);
         array_push(other_node->interference, node->virtual_register);
-        pln("interference % -> %", 
-            f_u32(node->virtual_register),
-            f_u32(other_node->virtual_register));
+        //pln("interference % -> %", 
+        //f_u32(node->virtual_register),
+        //f_u32(other_node->virtual_register));
     }
     
     return result;
@@ -315,7 +315,7 @@ x64_build_immediate(X64_Builder* x64, Value_Data value, Bc_Type type) {
                     // TODO(Alexander): this will ONLY work in JIT environment
                     // we need to be able to reallocate the address to the string for executables.
                     
-                    pln("%", f_cstring(value.mstr));
+                    //pln("%", f_cstring(value.mstr));
                     result.kind = X64Operand_imm64;
                     result.imm64 = (s64) value.mstr;
                 } break;
@@ -590,7 +590,8 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
             }
         } break;
         
-        case Bytecode_div: {
+        case Bytecode_div:
+        case Bytecode_mod: {
             Bc_Type type = bc->src0.type;
             X64_Operand_Kind operand_kind = x64_get_register_kind(type);
             X64_Opcode div_opcode = X64Opcode_idiv; // TODO(Alexander): check signedness
@@ -626,12 +627,19 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
             // Store the result back into dest
             X64_Instruction* mov_dest_insn = x64_push_instruction(x64, X64Opcode_mov);
             mov_dest_insn->op0 = x64_build_operand(x64, &bc->dest);
-            mov_dest_insn->op1 = rax_op;
+            if (bc->opcode == Bytecode_div) {
+                mov_dest_insn->op1 = rax_op;
+            } else {
+                X64_Operand rdx_op = {};
+                rdx_op.kind = operand_kind;
+                rdx_op.virtual_register = rdx;
+                
+                mov_dest_insn->op1 = rdx_op;
+            }
             
             x64_free_virtual_register(x64, rax);
             x64_free_virtual_register(x64, rdx);
         } break;
-        
         
         case Bytecode_cmpeq:
         case Bytecode_cmpneq:
@@ -923,7 +931,6 @@ if ((op).kind == BcOperand_Value && (op).type.kind == BcType_Aggregate && \
 (op).type.aggregate->kind == Type_String) { \
 string str = (op).Value.str; \
 (op).Value.mstr = save_read_only_string(x64, str); \
-pln("mstr = %", f_umm((op).Value.mstr)); \
 }
 
 void

@@ -386,10 +386,12 @@ string_builder_push(String_Builder* sb, Bc_Operand* operand, bool show_type = tr
         
         case BcOperand_Argument_List: {
             string_builder_push(sb, "[");
-            for_array_v(operand->Argument_List, arg, arg_index) {
-                string_builder_push(sb, &arg);
-                if (arg_index < array_count(operand->Argument_List) - 1) {
-                    string_builder_push(sb, ", ");
+            if (operand->Argument_List) {
+                for_array_v(operand->Argument_List, arg, arg_index) {
+                    string_builder_push(sb, &arg);
+                    if (arg_index < array_count(operand->Argument_List) - 1) {
+                        string_builder_push(sb, ", ");
+                    }
                 }
             }
             string_builder_push(sb, "]");

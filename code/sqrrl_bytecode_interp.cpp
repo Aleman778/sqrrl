@@ -407,7 +407,7 @@ bc_interp_store_register(interp, bc->dest.Register.index, result); \
         } break;
         
         case Bytecode_ret: {
-            Value_Data value = bc_interp_operand_value(interp, &bc->src0);
+            Value_Data value = bc_interp_operand_value(interp, &bc->op0);
             switch (bc->src0.type.kind) {
                 case BcType_s1:  value.unsigned_int = (u64) 1 & value.unsigned_int; break;
                 case BcType_s8:  value.signed_int = (s8) value.signed_int; break;
@@ -434,7 +434,7 @@ bc_interp_store_register(interp, bc->dest.Register.index, result); \
         } break;
         
         default: {
-            unimplemented;
+            //unimplemented;
         } break;
     }
 }

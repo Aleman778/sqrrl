@@ -617,9 +617,22 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
             // TODO(Alexander): check type to pick one of cwd, cwq, cwo
             x64_push_instruction(x64, X64Opcode_cwd);
             
+            X64_Operand divisor = x64_build_operand(x64, &bc->src1);
+            if (operand_is_immediate(divisor.kind)) {
+                X64_Operand temp_reg = {};
+                temp_reg.virtual_register = x64_allocate_virtual_register(x64);
+                temp_reg.kind = x64_get_register_kind(bc->src1.type);
+                
+                X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
+                mov_insn->op0 = temp_reg;
+                mov_insn->op1 = divisor;
+                
+                divisor = temp_reg;
+            }
+            
             // Perform division
             X64_Instruction* div_insn = x64_push_instruction(x64, div_opcode);
-            div_insn->op0 = x64_build_operand(x64, &bc->src1);
+            div_insn->op0 = divisor;
             
             //x64_add_interference(x64, rax, div_insn->op0.virtual_register);
             //x64_add_interference(x64, rdx, div_insn->op0.virtual_register);
@@ -862,9 +875,9 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
         
         case Bytecode_ret: {
             X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
-            X64_Operand_Kind operand_kind = x64_get_register_kind(bc->src0.type);
+            X64_Operand_Kind operand_kind = x64_get_register_kind(bc->op0.type);
             mov_insn->op0 = x64_build_physical_register(x64, X64Register_rax, operand_kind);
-            mov_insn->op1 = x64_build_operand(x64, &bc->src0);
+            mov_insn->op1 = x64_build_operand(x64, &bc->op0);
             
         } break;
     }

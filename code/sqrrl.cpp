@@ -264,7 +264,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         assembler.size = asm_size;
         
         // TODO(Alexander): int3 breakpoint for debugging
-        //push_u8(&assembler, 0xCC);
+        push_u8(&assembler, 0xCC);
         
         x64_assemble_to_machine_code(&assembler,
                                      x64_instruction_definitions,

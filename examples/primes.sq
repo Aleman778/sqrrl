@@ -7,10 +7,10 @@ is_prime(int x, bool verbose) {
     //pln("is_prime? x = %:", x);
     //}
     
-    if (x < 2) {
-        //if (verbose) pln("  no: because first prime is 2");
-        return false;
-    }
+    //if (x < 2) {
+    //if (verbose) pln("  no: because first prime is 2");
+    //return false;
+    //}
     
     if (x == 2) {
         //if (verbose) pln(" yes: because first prime is 2");
@@ -48,7 +48,7 @@ int
 main() {
     bool verbose = true;
     //for (int i = 0; i < 100; i += 1) {
-    int i = 12;
+    int i = 13;
     bool p = is_prime(i, verbose);
     if (p) {
         pln("% is a prime number", i);

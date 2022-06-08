@@ -8,8 +8,10 @@ struct Bc_Builder {
     
     // Current building block
     Bc_Basic_Block* curr_declaration;
+    Bc_Basic_Block* curr_declaration_epilogue;
     Bc_Instruction* curr_instruction;
     Bc_Basic_Block* curr_basic_block;
+    Bc_Operand curr_return_dest;
     u32 curr_local_count;
     u32 instruction_count;
     map(string_id, Bc_Operand)* ident_to_operand;
@@ -690,6 +692,7 @@ case BinaryOp_##name: binary_opcode = Bytecode_##bc_mnemonic; break;
             target_label.type = bc_build_type(bc, function_type);
             
             Bc_Operand function_args = {};
+            
             function_args.kind = BcOperand_Argument_List;
             int arg_count = 0;
             for_compound(node->Call_Expr.args, arg) {
@@ -717,7 +720,6 @@ case BinaryOp_##name: binary_opcode = Bytecode_##bc_mnemonic; break;
                 array_push(function_args.Argument_List, bc_arg);
                 arg_count++;
             }
-            
             
             //result = bc_push_instruction(bc, Bytecode_call, target_label, function_args);
             
@@ -815,7 +817,7 @@ bc_build_compare_expression(Bc_Builder* bc, Ast* node) {
 }
 
 void
-bc_build_statement(Bc_Builder* bc, Ast* node) {
+bc_build_statement(Bc_Builder* bc, Ast* node, bool last_statement=false) {
     
     switch (node->kind) {
         case Ast_Assign_Stmt: {
@@ -926,12 +928,18 @@ bc_build_statement(Bc_Builder* bc, Ast* node) {
             Bc_Operand source = bc_build_expression(bc, node->Return_Stmt.expr);
             source = bc_build_load_value(bc, source);
             
-            bc_push_instruction(bc, Bytecode_ret);
+            bc_push_instruction(bc, Bytecode_store);
+            bc_push_operand(bc, bc->curr_return_dest);
+            bc_push_operand(bc, source);
+            
+            //bc_push_instruction(bc, Bytecode_ret);
             // HACK(Alexander): we can't set the operands directly
-            bc->curr_instruction->src0 = source;
+            //bc->curr_instruction->src0 = source;
             
+            // Need to branch to the epilogue of the current function
+            Bc_Instruction* branch = bc_push_branch(bc, 0);
+            branch->dest.Basic_Block = bc->curr_declaration_epilogue;
             
-            // TODO(Alexander): we need to branch to exit the function
         } break;
         
         default: assert(0 && "bug: not an expression");
@@ -945,11 +953,20 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* type, Ast* decl) {
             assert(decl->kind == Ast_Block_Stmt);
             
             Bc_Register label = { ident, 0 };
+            Bc_Basic_Block* block_epilogue = bc_push_basic_block(bc);
+            block_epilogue->label = label;
+            ;
             Bc_Basic_Block* block = bc_push_basic_block(bc);
             block->label = label;
-            bc->curr_declaration = block;
+            block_epilogue->next = 0; // NOTE(Alexander): don't not create a cycle to the start
             
+            bc->curr_declaration = block;
+            bc->curr_declaration_epilogue = block_epilogue;
             bc->curr_local_count = 1;
+            
+            // TODO(Alexander): we should use type checker function Type* instead
+            Bc_Type return_type = bc_build_type(bc, type->Function_Type.return_type);
+            bc->curr_return_dest = bc_build_stack_alloc(bc, return_type);
             
             // Allocate arguments
             for_compound(type->Function_Type.arguments, it) {
@@ -961,8 +978,43 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* type, Ast* decl) {
                 array_push(block->args, arg_dest.Register.index);
             }
             
+            // Build the actual declaration
             bc_build_statement(bc, decl);
             
+            {
+                // Epilogue
+                block_epilogue->label.index = bc->curr_local_count++;
+                block_epilogue->count = 0;
+                if (bc->curr_basic_block) {
+                    bc->curr_basic_block->next = block_epilogue;
+                } else {
+                    block->next = block_epilogue;
+                }
+                bc->curr_basic_block = block_epilogue;
+                
+                // We have to repush the block because it is currently at the at top of memory block
+                Bc_Operand block_operand = {};
+                block_operand.kind = BcOperand_Basic_Block;
+                block_operand.Basic_Block = block;
+                bc_push_instruction(bc, Bytecode_label);
+                bc_push_operand(bc, block_operand);
+                
+                block_epilogue->first = bc->curr_instruction; // label is new first instruction
+                
+                Bc_Operand return_value_op = bc_get_unique_register_operand(bc, return_type);
+                Bc_Operand return_type_op = {};
+                return_type_op.kind = BcOperand_Type;
+                return_type_op.type = return_type;
+                bc_push_instruction(bc, Bytecode_load);
+                bc_push_operand(bc, return_value_op);
+                bc_push_operand(bc, return_type_op);
+                bc_push_operand(bc, bc->curr_return_dest);
+                
+                bc_push_instruction(bc, Bytecode_ret);
+                bc_push_operand(bc, return_value_op);
+            }
+            
+            // Save declaration
             Value value;
             value.type = Value_basic_block;
             value.data.basic_block = block;

@@ -408,7 +408,8 @@ string_builder_push(String_Builder* sb, Bc_Instruction* insn) {
         string_builder_push(sb, block->label);
         string_builder_push(sb, ":");
     } else {
-        bool is_opcode_assign = insn->opcode == Bytecode_branch;
+        bool is_opcode_assign = (insn->opcode == Bytecode_branch ||
+                                 insn->opcode == Bytecode_ret);
         
         string_builder_push(sb, "    ");
         

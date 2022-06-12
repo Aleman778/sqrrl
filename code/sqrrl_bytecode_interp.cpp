@@ -335,7 +335,7 @@ bc_interp_store_register(interp, bc->dest.Register.index, result); \
             assert(type->kind == Type_Function);
             
             Type_Table* arg_types = &type->Function.arguments;
-            if (type->Function.intrinsic) {
+            if (type->Function.interp_intrinsic) {
                 Interp intrinsic_interp = {};
                 array(Interp_Value)* variadic_args = 0;
                 
@@ -371,13 +371,12 @@ bc_interp_store_register(interp, bc->dest.Register.index, result); \
                     }
                 }
                 
-                //type->Function.interp_intrinsic(&intrinsic_interp, variadic_args);
+                type->Function.interp_intrinsic(&intrinsic_interp, variadic_args);
                 
             } else {
                 bc_interp_function_call(interp, bc->src0.Register.ident, bc->dest.Register.index);
                 
                 Bc_Interp_Scope* scope = &array_last(interp->scopes);
-                array(u32)* arg_registers = scope->curr_block->args;
                 for_array(bc->src1.Argument_List, arg, arg_index) {
                     
                     if (arg_index < array_count(arg_types->idents)) {

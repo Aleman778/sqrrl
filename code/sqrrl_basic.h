@@ -544,24 +544,34 @@ arena_initialize(Memory_Arena* arena, umm min_block_size) {
     arena->min_block_size = min_block_size;
 }
 
+
+inline void
+arena_reallocate(Memory_Arena* arena, umm block_size = 0) {
+    if (block_size == 0) {
+        if (arena->min_block_size == 0) {
+            arena->min_block_size = ARENA_DEFAULT_BLOCK_SIZE;
+        }
+        
+        block_size = arena->min_block_size;
+    }
+    
+    arena->base = (u8*) calloc(1, arena->min_block_size);
+    arena->curr_used = 0;
+    arena->prev_used = 0;
+    arena->size = block_size;
+}
+
+
 void*
 arena_push_size(Memory_Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT, umm flags=0) {
     umm current = (umm) (arena->base + arena->curr_used);
     umm offset = align_forward(current, align) - (umm) arena->base;
     
     if (offset + size > arena->size) {
-        if (arena->min_block_size == 0) {
-            arena->min_block_size = ARENA_DEFAULT_BLOCK_SIZE;
-        }
-        
-        arena->base = (u8*) calloc(1, arena->min_block_size);
-        arena->curr_used = 0;
-        arena->prev_used = 0;
-        arena->size = arena->min_block_size;
+        arena_reallocate(arena);
         
         current = (umm) arena->base + arena->curr_used;
         offset = align_forward(current, align) - (umm) arena->base;
-        // TODO(Alexander): we need to also store the previous memory block so we can eventually free it.
     }
     
     void* result = arena->base + offset;
@@ -572,6 +582,14 @@ arena_push_size(Memory_Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT, umm 
     
     return result;
 }
+
+inline bool
+arena_can_fit_size(Memory_Arena* arena, umm size, umm align) {
+    umm current = (umm) (arena->base + arena->curr_used);
+    umm offset = align_forward(current, align) - (umm) arena->base;
+    return offset + size <= arena->size;
+}
+
 
 #define arena_push_struct(arena, type, ...) \
 (type*) arena_push_size(arena, (umm) sizeof(type), (umm) alignof(type), __VA_ARGS__)

@@ -998,6 +998,9 @@ x64_free_virtual_register_if_dead(X64_Builder* x64, Bc_Operand* operand, u32 cur
 
 void
 x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
+    array_free(x64->active_virtual_registers);
+    map_free(x64->allocated_virtual_registers);
+    
     x64->curr_stack_offset = 0;
     for_bc_basic_block(first_block, insn, insn_index, x64_analyse_function(x64, insn));
     s32 stack_offset = x64->curr_stack_offset;
@@ -1012,6 +1015,32 @@ x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
     
     // TODO(Alexander): callee should save volatile registers
     
+    // Setup argument registers
+    stack_offset += 8*6; // push RSP, return address and paramter (rcx, rdx, r8, r9) home
+    Bc_Instruction* label_insn = first_block->first;
+    if (label_insn) {
+        array(Bc_Operand*) args = label_insn->op1.Argument_List;
+        for_array(args, arg, arg_index) {
+            if (arg_index < fixed_array_count(gpr_registers)) {
+                X64_Operand_Kind type_kind = x64_get_register_kind(arg->type);
+                X64_Operand value = x64_build_physical_register(x64, gpr_registers[arg_index], type_kind);
+                map_put(x64->allocated_virtual_registers, arg->Register, value);
+                
+            } else {
+                
+                // TODO(Alexander): s32 is hardcoded for now, we need to store the argument types
+                s32 size = bc_type_to_size(arg->type.kind);
+                s32 align = (s32) align_forward(size, 8);
+                stack_offset = (s32) align_forward(stack_offset, align);
+                
+                X64_Operand value = x64_build_stack_offset(x64, arg->type, stack_offset);
+                map_put(x64->allocated_virtual_registers, arg->Register, value);
+            }
+        }
+    }
+    
+    
+#if 0
     // Push registers in order
     for (int arg_index = 0; arg_index < array_count(first_block->args); arg_index++) {
         if (arg_index >= fixed_array_count(gpr_registers)) {
@@ -1046,6 +1075,7 @@ x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
         
         stack_offset += size;
     }
+#endif
     
     // TODO(Alexander): do we need this for other calling conventions?
     // Align to 16 byte boundary (for windows x64 calling convention)

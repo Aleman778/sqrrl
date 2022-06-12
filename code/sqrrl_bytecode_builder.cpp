@@ -44,11 +44,22 @@ push_instruction(Bc_Builder* bc, Bc_Opcode opcode) {
 }
 #endif
 
+// NOTE(Alexander): forward declare
+Bc_Basic_Block* bc_push_basic_block(Bc_Builder* bc);
+
+
 void
 bc_push_instruction(Bc_Builder* bc, Bc_Opcode opcode) {
     Bc_Basic_Block* bb = bc->curr_basic_block;
     if (!bb) {
+        // TODO: do we even support this case anyways?
+        assert(0);
         bb = &bc->entry_basic_block;
+    }
+    
+    if (!arena_can_fit_size(&bc->arena, sizeof(Bc_Instruction), alignof(Bc_Instruction))) {
+        arena_reallocate(&bc->arena);
+        bb = bc_push_basic_block(bc);
     }
     
     Bc_Instruction* insn = arena_push_struct(&bc->arena, Bc_Instruction);
@@ -61,6 +72,19 @@ bc_push_instruction(Bc_Builder* bc, Bc_Opcode opcode) {
     if (!bb->first) {
         bb->first = insn;
     }
+    
+#if 0
+    else {
+        if (bb->first + (bb->count - 1) != insn) {
+            // NOTE(Alexander): special case, instruction is not stored contigously
+            
+            
+            
+            pln("\ncurr_block: %\n", f_string(vars_load_string(bb->label.ident)));
+            assert(0);
+        }
+    }
+#endif
 }
 
 void
@@ -955,7 +979,7 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* type, Ast* decl) {
             Bc_Register label = { ident, 0 };
             Bc_Basic_Block* block_epilogue = bc_push_basic_block(bc);
             block_epilogue->label = label;
-            ;
+            
             Bc_Basic_Block* block = bc_push_basic_block(bc);
             block->label = label;
             block_epilogue->next = 0; // NOTE(Alexander): don't not create a cycle to the start
@@ -969,13 +993,30 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* type, Ast* decl) {
             bc->curr_return_dest = bc_build_stack_alloc(bc, return_type);
             
             // Allocate arguments
+            Bc_Instruction* label_insn = block->first;
+            label_insn->op1.kind = BcOperand_Argument_List;
             for_compound(type->Function_Type.arguments, it) {
                 string_id arg_ident = ast_unwrap_ident(it->Argument.ident);
                 Bc_Type arg_type = bc_build_type(bc, it->Argument.type);
                 
-                Bc_Operand arg_dest = bc_build_stack_alloc(bc, arg_type);
-                map_put(bc->ident_to_operand, arg_ident, arg_dest);
-                array_push(block->args, arg_dest.Register.index);
+                Bc_Operand arg = {};//bc_get_unique_register_operand(bc, arg_type);
+                arg.kind = BcOperand_Register;
+                arg.type = arg_type;
+                arg.Register.ident = arg_ident;
+                array_push(label_insn->op1.Argument_List, arg);
+            }
+            
+            // Allocate and store arguments
+            array(Bc_Operand*) args = label_insn->op1.Argument_List;
+            for_array(args, arg, _) {
+                Bc_Operand arg_dest = bc_build_stack_alloc(bc, arg->type);
+                
+                bc_push_instruction(bc, Bytecode_store);
+                bc_push_operand(bc, arg_dest);
+                bc_push_operand(bc, *arg);
+                
+                map_put(bc->ident_to_operand, arg->Register.ident, arg_dest);
+                //array_push(block->args, arg_dest.Register.index);
             }
             
             // Build the actual declaration
@@ -996,10 +1037,9 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* type, Ast* decl) {
                 Bc_Operand block_operand = {};
                 block_operand.kind = BcOperand_Basic_Block;
                 block_operand.Basic_Block = block;
+                block_epilogue->first = 0;
                 bc_push_instruction(bc, Bytecode_label);
                 bc_push_operand(bc, block_operand);
-                
-                block_epilogue->first = bc->curr_instruction; // label is new first instruction
                 
                 Bc_Operand return_value_op = bc_get_unique_register_operand(bc, return_type);
                 Bc_Operand return_type_op = {};

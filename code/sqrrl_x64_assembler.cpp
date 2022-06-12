@@ -254,6 +254,7 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
                 s8 rel8 = (s8) rel32;
                 modify_u8(assembler, source + asm_jump_target->insn_size - 1, rel8);
             } else {
+                pln("problem: rel32 is %!", f_int(rel32));
                 assert(0 && "relative jump doesn't fit in rel8 value");
             }
         } else if (asm_jump_target->rel_kind == X64Operand_rel32) {

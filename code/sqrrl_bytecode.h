@@ -225,7 +225,7 @@ struct Bc_Basic_Block {
     Bc_Instruction* first;
     umm count;
     Bc_Basic_Block* next;
-    array(u32)* args;
+    //array(u32)* args;
 };
 
 #define for_bc_basic_block(first_block, it, it_index, code) { \

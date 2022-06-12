@@ -2,15 +2,10 @@
 
 bool
 is_prime(int x, bool verbose) {
-    //if (verbose) {
-    //pln("");
-    //pln("is_prime? x = %:", x);
-    //}
-    
-    //if (x < 2) {
-    //if (verbose) pln("  no: because first prime is 2");
-    //return false;
-    //}
+    if (x < 2) {
+        //if (verbose) pln("  no: because first prime is 2");
+        return false;
+    }
     
     if (x == 2) {
         //if (verbose) pln(" yes: because first prime is 2");
@@ -19,7 +14,7 @@ is_prime(int x, bool verbose) {
     }
     
     if (x % 2 == 0) {
-        //if (verbose) pln("  no: because it's odd");
+        //if (verbose) pln("  no: because % is divisible by 2", x);
         return false;
     }
     
@@ -34,28 +29,29 @@ is_prime(int x, bool verbose) {
     return true;
 }
 
-int
-next_prime(int x) {
-    while (!(is_prime(x, false))) {
-        x += 1;
-    }
-    
-    return x;
-}
+//#if 0
+//int
+//next_prime(int x) {
+//while (!(is_prime(x, false))) {
+//x += 1;
+//}
+
+//return x;
+//}
+//#endif
 
 
 int
 main() {
     bool verbose = true;
-    //for (int i = 0; i < 100; i += 1) {
-    int i = 13;
-    bool p = is_prime(i, verbose);
-    if (p) {
-        pln("% is a prime number", i);
-    } else {
-        pln("% is NOT a prime number", i);
+    // TODO(Alexander): 127 is the largets number which is s8 max value
+    // for some reason the typer thinks that the literal is a boolean
+    for (int i = 0; i < 100; i += 1) {
+        bool p = is_prime(i, verbose);
+        if (p) {
+            pln("%, ", i);
+        }
     }
-    //}
     
     //int first = 90;
     //pln("");

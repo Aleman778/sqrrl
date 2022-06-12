@@ -1,9 +1,13 @@
 
 
 int
-main() {
-    int x = 10;
+test(int x) {
+    pln("test print of %", x);
     
-    pln("hej %, %, %", "wow", x, x > 4);
-    return x;
+    return 10;
+}
+
+int
+main() {
+    return test(13);
 }

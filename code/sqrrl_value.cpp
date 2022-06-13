@@ -126,8 +126,16 @@ value_integer_binary_operation(Value first, Value second, Binary_Op op) {
             return second.data.signed_int;
         }
         
+        case BinaryOp_Logical_And: {
+            return first.data.boolean && second.data.boolean;
+        } break;
+        
+        case BinaryOp_Logical_Or: {
+            return first.data.boolean || second.data.boolean;
+        } break;
+        
         default: {
-            assert(0 && "unimplemented");
+            assert(0 && "unsupported binary operator");
         }
     }
     

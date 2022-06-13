@@ -1,5 +1,8 @@
 
-#if 0
+// TODO(Alexander): Currently there are 3 failing tests
+// both on BC and X64
+
+
 
 int
 test_binary_expressions() {
@@ -18,7 +21,6 @@ test_many_parameters(int a, int b, int c, int d, int e, int f) {
     return a + b + c + d + e + f;
 }
 
-#endif
 
 int
 main() {
@@ -62,47 +64,47 @@ main() {
 #elif 0
     // Add operator
     int x = 10;
-    int x = x + 10;
+    x = x + 10;
     return x; // expects: 20
     
 #elif 0
     // And operator
     bool x = true;
-    bool x = x && true;
+    x = x && true;
     return (int) x; // expects: true (1)
     
 #elif 0
     // Or operator
     bool x = false;
-    bool x = x || true;
+    x = x || true;
     return (int) x; // expects: true (1)
     
 #elif 0
     // Equals operator
     int x = 10;
-    bool y = x == 10;
+    int y = x == 10;
     return (int) y; // expects: 1
     
 #elif 0
     // Function call
     return test_binary_expressions(); // expects: 30
     
-#elif 0
+#elif 0 // TODO: this one is failing now for some reason (BC and X64)
     // Function call with arguments
     return test_add(10, 20); // expects: 30
     
-#elif 0
+#elif 0 // TODO: this one is failing now for some reason (BC and X64)
     // Function call with arguments
     return test_many_parameters(1, 2, 3, 4, 5, 6); // expects: 21
     
-#elif 1
+#elif 0 // TODO: this one is failing now for some reason (BC and X64)
     // Pointers
     int x = 10;
     int* p = &x;
     *p += 1;
     return x; // expects: 11
     
-#elif 0
+#elif 1
     // Boolean expressions
     int count = 0;
     bool x = false;

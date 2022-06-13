@@ -1,8 +1,12 @@
 
+#include "windows.h"
 
 int
 test(int x) {
     pln("test print of %", x);
+    
+    MessageBoxA(0, "Hello world from the Sqrrl programming language!", "Hello world! Testing FFI!", 0x40);
+    
     
     return 10;
 }

@@ -90,6 +90,8 @@ type_warning(Type_Context* tcx, string message) {
     tcx->warning_count++;
 }
 
+// NOTE(Alexander): forward declare
+Type* create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error);
 
 Type*
 type_infer_value(Value value) {
@@ -477,12 +479,29 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             }
         } break;
         
+        case Ast_Cast_Expr: {
+            type_infer_expression(tcx, expr->Cast_Expr.expr, parent_type, report_error);
+            result = create_type_from_ast(tcx, expr->Cast_Expr.type, report_error);
+            expr->type = result;
+        } break;
+        
         case Ast_Paren_Expr: {
             result = type_infer_expression(tcx, expr->Paren_Expr.expr, parent_type, report_error);
         } break;
         
         case Ast_Index_Expr: {
-            
+            type_infer_expression(tcx, expr->Index_Expr.index, parent_type, report_error);
+            Type* type = type_infer_expression(tcx, expr->Index_Expr.array, parent_type, report_error);
+            if (type) {
+                if (type->kind == Type_Array) {
+                    result = type->Array.type;
+                } else {
+                    if (report_error) {
+                        type_error(tcx, string_lit("index operator expects an array"));
+                    }
+                }
+                expr->type = result;
+            }
         } break;
         
         case Ast_Field_Expr: {
@@ -504,9 +523,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
     
     return result;
 }
-
-// NOTE(Alexander): forward declare
-Type* create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error);
 
 internal Type*
 create_struct_or_union_type_from_ast(Type_Context* tcx, 
@@ -861,9 +877,29 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                 string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
                 
                 if (tcx->block_depth > 0) {
-                    map_put(tcx->locals, ident, expected_type);
+                    if (map_get(tcx->locals, ident)) {
+                        result = 0;
+                        if (report_error) {
+                            type_error(tcx,
+                                       string_format("cannot redeclare previous local variable `%`",
+                                                     f_string(vars_load_string(ident))));
+                        }
+                    } else {
+                        map_put(tcx->locals, ident, expected_type);
+                    }
+                    
                 } else {
-                    map_put(tcx->globals, ident, expected_type);
+                    
+                    if (map_get(tcx->globals, ident) && report_error) {
+                        result = 0;
+                        if (report_error) {
+                            type_error(tcx,
+                                       string_format("cannot redeclare previous declaration `%`",
+                                                     f_string(vars_load_string(ident))));
+                        }
+                    } else {
+                        map_put(tcx->globals, ident, expected_type);
+                    }
                 }
             }
             

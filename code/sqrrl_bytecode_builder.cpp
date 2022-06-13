@@ -760,6 +760,7 @@ case BinaryOp_##name: binary_opcode = Bytecode_##bc_mnemonic; break;
         
         case Ast_Cast_Expr: {
             Bc_Operand expr = bc_build_expression(bc, node->Cast_Expr.expr);
+            expr = bc_build_load_value(bc, expr);
             Bc_Type dest_type = bc_build_type(bc, node->Cast_Expr.type);
             result = bc_build_type_cast(bc, &expr, dest_type);
         } break;

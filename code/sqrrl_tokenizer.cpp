@@ -411,6 +411,7 @@ advance_token(Tokenizer* tokenizer) {
             token.type = Token_Div_Assign;
         } else {
             token.type = Token_Div;
+            advance_utf32_at_end = false;
         }
         
     } else if (*tokenizer->curr >= '0' && *tokenizer->curr <= '9') {

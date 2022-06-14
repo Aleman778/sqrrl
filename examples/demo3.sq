@@ -89,22 +89,23 @@ main() {
     // Function call
     return test_binary_expressions(); // expects: 30
     
-#elif 0 // TODO: this one is failing now for some reason (BC and X64)
+#elif 0
     // Function call with arguments
     return test_add(10, 20); // expects: 30
     
-#elif 0 // TODO: this one is failing now for some reason (BC and X64)
+#elif 0
     // Function call with arguments
+    debug_break();
     return test_many_parameters(1, 2, 3, 4, 5, 6); // expects: 21
     
-#elif 0 // TODO: this one is failing now for some reason (BC and X64)
+#elif 1 // TODO: this one is failing now for some reason (BC and X64)
     // Pointers
     int x = 10;
     int* p = &x;
     *p += 1;
     return x; // expects: 11
     
-#elif 1
+#elif 0
     // Boolean expressions
     int count = 0;
     bool x = false;

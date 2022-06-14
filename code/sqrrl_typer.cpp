@@ -1082,6 +1082,25 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
         
         map_put(tcx->globals, ident, type);
     }
+    
+    
+    {
+        // Intrinsic syntax: debug_break format...)
+        // Inserts a breakpoint (e.g. int3 on x64) to enable debugger
+        Type* type = arena_push_struct(tcx->type_arena, Type);
+        type->kind = Type_Function;
+        type->Function.is_variadic = false;
+        type->Function.arguments = {};
+        
+        string_id ident = vars_save_cstring("debug_break");
+        type->Function.block = 0;
+        type->Function.interp_intrinsic = &interp_intrinsic_debug_break;
+        type->Function.intrinsic = &interp_intrinsic_debug_break;
+        type->Function.ident = ident;
+        type->Function.return_type = &global_void_type;
+        
+        map_put(tcx->globals, ident, type);
+    }
 }
 
 

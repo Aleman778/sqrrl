@@ -19,9 +19,27 @@
 
 typedef int asm_main(void);
 
+int test2(int a, int b, int c) {
+    
+    return a + b + c;
+}
+
+int test_many_parameters(int a, int b, int c, int d, int e, int d2, int e2) {
+    
+    if (a > 10) {
+        return 10;
+    }
+    
+    return a + b + c + test2(d, d, d) + e;
+}
+
+
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm)) {
+    
+    //__debugbreak();
+    //test_many_parameters(1, 2, 3, 4, 5, 6, 7); // expects: 21
     
     {
         // Put dummy file as index 0

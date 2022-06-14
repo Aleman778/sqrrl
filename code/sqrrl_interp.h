@@ -213,3 +213,5 @@ void interp_declaration_statement(Interp* interp, Ast* ast);
 void interp_ast_declarations(Interp* interp, Named_Ast* decls);
 
 Value interp_intrinsic_pln(Interp* interp, array(Interp_Value)* var_args);
+
+Value interp_intrinsic_debug_break(Interp* interp, array(Interp_Value)* var_args);

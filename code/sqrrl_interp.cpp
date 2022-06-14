@@ -1017,6 +1017,16 @@ interp_intrinsic_pln(Interp* interp, array(Interp_Value)* var_args) {
     return {};
 }
 
+Value
+interp_intrinsic_debug_break(Interp* interp, array(Interp_Value)* var_args) {
+    // TODO(Alexander): this is a msvc intrinsic
+    //__debugbreak();
+    
+    // __builtin_trap or inline int3 asm should be used for gcc etc.
+    Value result = {};
+    return result;
+}
+
 void
 interp_declaration_statement(Interp* interp, Ast* ast) {
     assert(ast->kind == Ast_Decl_Stmt);

@@ -89,6 +89,10 @@ print_format(const char* format...) {
                     print_type(va_arg(args, Type*));
                 } break;
                 
+                case FormatType_value: {
+                    print_value(va_arg(args, Value*));
+                } break;
+                
                 default: {
                     assert(0 && "unimplemented format type");
                 } break;

@@ -1,9 +1,9 @@
 
 struct Bc_Interp_Scope {
-    map(u32, Value_Data)* registers; // TODO(Alexander): u32 or Bc_Register
+    map(Bc_Register, Value_Data)* registers;
     Bc_Basic_Block* curr_block;
     umm curr_block_insn;
-    u32 return_register;
+    Bc_Register return_register;
 };
 
 struct Bc_Interp {
@@ -16,7 +16,7 @@ struct Bc_Interp {
 };
 
 inline void
-bc_interp_store_register(Bc_Interp* interp, u32 reg, Value_Data value) {
+bc_interp_store_register(Bc_Interp* interp, Bc_Register reg, Value_Data value) {
     assert(array_count(interp->scopes) > 0);
     Bc_Interp_Scope* scope = &array_last(interp->scopes);
     map_put(scope->registers, reg, value);
@@ -26,7 +26,7 @@ inline Value_Data
 bc_interp_load_register(Bc_Interp* interp, Bc_Register reg) {
     assert(array_count(interp->scopes) > 0);
     Bc_Interp_Scope* scope = &array_last(interp->scopes);
-    smm index = map_get_index(scope->registers, reg.index);
+    smm index = map_get_index(scope->registers, reg);
     if (index != -1) {
         return scope->registers[index].value;
     } else {
@@ -65,7 +65,7 @@ bc_interp_alloc_register(Bc_Interp* interp, Bc_Register reg, Type* type) {
     void* data = arena_push_size(&interp->stack, type->cached_size, type->cached_align);
     Value_Data value;
     value.data = data;
-    bc_interp_store_register(interp, reg.index, value);
+    bc_interp_store_register(interp, reg, value);
     return data;
 }
 
@@ -150,7 +150,7 @@ bc_interp_operand_value(Bc_Interp* interp, Bc_Operand* operand) {
 }
 
 void
-bc_interp_function_call(Bc_Interp* interp, string_id ident, u32 return_register = 0) {
+bc_interp_function_call(Bc_Interp* interp, string_id ident, Bc_Register return_register={}) {
     Bc_Register label = { ident, 0 };
     Value decl_value = map_get(interp->declarations, label);
     assert(decl_value.type == Value_basic_block);
@@ -204,7 +204,7 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             Type* type = bc_type_to_type(bc->src0.type);
             Value_Data src = bc_interp_operand_value(interp, &bc->src1);
             Value_Data value = bc_interp_load_value(interp, bc->src0.type, src.data);
-            bc_interp_store_register(interp, bc->dest.Register.index, value);
+            bc_interp_store_register(interp, bc->dest.Register, value);
             
             if (bc->src0.type.ptr_depth > 0) {
                 bc_interp_alloc_register(interp, bc->dest.Register, type);
@@ -213,21 +213,21 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
         
         case Bytecode_assign: {
             Value_Data result = bc_interp_operand_value(interp, &bc->src0);
-            bc_interp_store_register(interp, bc->dest.Register.index, result); \
+            bc_interp_store_register(interp, bc->dest.Register, result); \
         } break;
         
         case Bytecode_neg: {
             Value_Data first = bc_interp_operand_value(interp, &bc->src0);
             Value_Data result;
             result.signed_int = -first.signed_int;
-            bc_interp_store_register(interp, bc->dest.Register.index, result); \
+            bc_interp_store_register(interp, bc->dest.Register, result); \
         } break;
         
         case Bytecode_not: {
             Value_Data first = bc_interp_operand_value(interp, &bc->src0);
             Value_Data result;
             result.boolean = !first.boolean;
-            bc_interp_store_register(interp, bc->dest.Register.index, result); \
+            bc_interp_store_register(interp, bc->dest.Register, result); \
         } break;
         
         
@@ -239,7 +239,7 @@ Value_Data second = bc_interp_operand_value(interp, &bc->src1); \
 Value_Data result; \
 result.signed_int = first.signed_int binary_operator second.signed_int; \
         \
-bc_interp_store_register(interp, bc->dest.Register.index, result); \
+bc_interp_store_register(interp, bc->dest.Register, result); \
 } break;
         
         BINARY_CASE(Bytecode_add, +);
@@ -276,7 +276,7 @@ bc_interp_store_register(interp, bc->dest.Register.index, result); \
         // TODO(Alexander): do we need this we should truncate when storing the value instead
         case Bytecode_truncate: {
             Value_Data result = bc_interp_operand_value(interp, &bc->src0);
-            bc_interp_store_register(interp, bc->dest.Register.index, result);
+            bc_interp_store_register(interp, bc->dest.Register, result);
         } break;
         
         case Bytecode_sign_extend: {
@@ -292,7 +292,7 @@ bc_interp_store_register(interp, bc->dest.Register.index, result); \
                 result.unsigned_int = result.unsigned_int & ~mask;
             }
             
-            bc_interp_store_register(interp, bc->dest.Register.index, result);
+            bc_interp_store_register(interp, bc->dest.Register, result);
         } break;
         
         case Bytecode_zero_extend: {
@@ -302,7 +302,7 @@ bc_interp_store_register(interp, bc->dest.Register.index, result); \
             u64 mask = U64_MAX << (u64) bc_type_to_bitsize(bc->src1.type.kind);
             result.unsigned_int = result.unsigned_int & ~mask;
             
-            bc_interp_store_register(interp, bc->dest.Register.index, result);
+            bc_interp_store_register(interp, bc->dest.Register, result);
         } break;
         
         case Bytecode_cast_fp_to_sint: {
@@ -374,7 +374,7 @@ bc_interp_store_register(interp, bc->dest.Register.index, result); \
                 type->Function.interp_intrinsic(&intrinsic_interp, variadic_args);
                 
             } else {
-                bc_interp_function_call(interp, bc->src0.Register.ident, bc->dest.Register.index);
+                bc_interp_function_call(interp, bc->src0.Register.ident, bc->dest.Register);
                 
                 Bc_Interp_Scope* scope = &array_last(interp->scopes);
                 for_array(bc->src1.Argument_List, arg, arg_index) {
@@ -383,22 +383,13 @@ bc_interp_store_register(interp, bc->dest.Register.index, result); \
                         string_id ident = arg_types->idents[arg_index];
                         Type* arg_type = map_get(arg_types->ident_to_type, ident);
                         
-                        // HACK: we should store pointer type somewhere
-                        //Type arg_pointer_type = {};
-                        //arg_pointer_type.kind = Type_Pointer;
-                        //arg_pointer_type.Pointer = arg_type;
-                        //arg_pointer_type.cached_size = 8;
-                        //arg_pointer_type.cached_align = 8;
-                        
                         Value_Data arg_data = bc_interp_operand_value(interp, arg);
-                        
                         Bc_Register reg = {};
                         reg.ident = ident;
-                        reg.index = arg_index + 1;
-                        void* data = bc_interp_alloc_register(interp, reg, arg_type);
-                        bc_interp_store_value(interp, arg->type, data, arg_data);
+                        bc_interp_store_register(interp, reg, arg_data);
                     } else {
                         // Variadic argument
+                        unimplemented;
                     }
                 }
             }
@@ -425,9 +416,9 @@ bc_interp_store_register(interp, bc->dest.Register.index, result); \
                 interp->return_value = value;
             } else  {
                 Bc_Interp_Scope* scope = &array_last(interp->scopes);
-                if (scope->return_register != 0) {
+                if (scope->return_register.index != 0) {
                     bc_interp_store_register(interp, scope->return_register, value);
-                    scope->return_register = 0;
+                    scope->return_register.index = 0;
                 }
             }
         } break;

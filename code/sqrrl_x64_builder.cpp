@@ -863,7 +863,7 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
             // Push onto stack in reverse order (right-to-left)
             //s32 stack_offset = 8*2; // prev rbp + return address
             //x64->curr_stack_offset;
-            s32 stack_offset = 32; // rcx rdx, r8 and r9 home
+            s32 stack_offset = 8; // rcx rdx, r8 and r9 home
             for (int arg_index = fixed_array_count(gpr_registers);
                  arg_index < (int) array_count(bc->src1.Argument_List);
                  arg_index++) {
@@ -881,7 +881,7 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
                 
                 X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
                 X64_Operand_Kind kind = x64_get_memory_kind(arg->type);
-                mov_insn->op0 = x64_build_stack_offset(x64, arg->type, stack_offset, X64Register_rsp);
+                mov_insn->op0 = x64_build_stack_offset(x64, arg->type, -stack_offset, X64Register_rbp);
                 mov_insn->op1 = x64_build_operand(x64, arg);
                 
                 stack_offset += size;
@@ -893,17 +893,23 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
             assert(function_type->kind == Type_Function);
             
             if (function_type->Function.intrinsic) {
-                // TODO(Alexander): r64 hardcoded 
-                X64_Operand_Kind call_address = X64Operand_r64;
                 
-                X64_Instruction* mov_imm64_insn = x64_push_instruction(x64, X64Opcode_mov);
-                mov_imm64_insn->op0 = x64_build_virtual_register(x64, call_address);
-                mov_imm64_insn->op1.kind = X64Operand_imm64;
-                mov_imm64_insn->op1.imm64 = (smm) function_type->Function.intrinsic;
-                
-                X64_Instruction* call_insn = x64_push_instruction(x64, X64Opcode_call);
-                call_insn->op0.kind = call_address;
-                call_insn->op0 = mov_imm64_insn->op0;
+                if (function_type->Function.intrinsic == &interp_intrinsic_debug_break) {
+                    x64_push_instruction(x64, X64Opcode_int3);
+                    
+                } else {
+                    // TODO(Alexander): r64 hardcoded 
+                    X64_Operand_Kind call_address = X64Operand_r64;
+                    
+                    X64_Instruction* mov_imm64_insn = x64_push_instruction(x64, X64Opcode_mov);
+                    mov_imm64_insn->op0 = x64_build_virtual_register(x64, call_address);
+                    mov_imm64_insn->op1.kind = X64Operand_imm64;
+                    mov_imm64_insn->op1.imm64 = (smm) function_type->Function.intrinsic;
+                    
+                    X64_Instruction* call_insn = x64_push_instruction(x64, X64Opcode_call);
+                    call_insn->op0.kind = call_address;
+                    call_insn->op0 = mov_imm64_insn->op0;
+                }
             } else {
                 X64_Instruction* call_insn = x64_push_instruction(x64, X64Opcode_call);
                 call_insn->op0.kind = X64Operand_jump_target;
@@ -1066,11 +1072,20 @@ x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
         X64Register_rcx, X64Register_rdx, X64Register_r8, X64Register_r9
     };
     
+    stack_offset += 8*5; // push RSP and paramter (rcx, rdx, r8, r9) home
+    // NOTE(Alexander): the return value is automatically pushed
+    
+    // TODO(Alexander): do we need this for other calling conventions?
+    // Align to 16 byte boundary (for windows x64 calling convention)
+    // LINK: https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170#alignment
+    stack_offset = (s32) align_forward(stack_offset + 8, 16) - 8;
+    // NOTE(Alexander): add 8 in alignment to account for the return value, but actual offset we don't use it since it has already modified our RSP
+    
     // TODO(Alexander): callee should save volatile registers
     
     // Setup argument registers
-    stack_offset += 8*6; // push RSP, return address and paramter (rcx, rdx, r8, r9) home
     Bc_Instruction* label_insn = first_block->first;
+    s32 param_stack_offset = stack_offset - 8; // NOTE(Alexander): - RSP size
     if (label_insn) {
         array(Bc_Operand*) args = label_insn->op1.Argument_List;
         for_array(args, arg, arg_index) {
@@ -1081,13 +1096,15 @@ x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
                 
             } else {
                 
+                
                 // TODO(Alexander): s32 is hardcoded for now, we need to store the argument types
+                X64_Operand value = x64_build_stack_offset(x64, arg->type, param_stack_offset);
+                map_put(x64->allocated_virtual_registers, arg->Register, value);
+                
+                
                 s32 size = bc_type_to_size(arg->type.kind);
                 s32 align = (s32) align_forward(size, 8);
-                stack_offset = (s32) align_forward(stack_offset, align);
-                
-                X64_Operand value = x64_build_stack_offset(x64, arg->type, stack_offset);
-                map_put(x64->allocated_virtual_registers, arg->Register, value);
+                param_stack_offset -= align;
             }
         }
     }
@@ -1129,11 +1146,6 @@ x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
         stack_offset += size;
     }
 #endif
-    
-    // TODO(Alexander): do we need this for other calling conventions?
-    // Align to 16 byte boundary (for windows x64 calling convention)
-    // LINK: https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170#alignment
-    stack_offset = (s32) align_forward(stack_offset, 16);
     
     // Prologue
     x64_push_prologue(x64, stack_offset);

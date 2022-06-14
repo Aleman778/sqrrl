@@ -201,6 +201,9 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
             X64_Instruction* insn = curr_block->first + insn_index;
             if (insn->opcode == X64Opcode_label) {
                 continue;
+            } else if (insn->opcode == X64Opcode_int3) {
+                push_u8(assembler, 0xCC);
+                continue;
             }
             
             X64_Instruction_Index index = {};

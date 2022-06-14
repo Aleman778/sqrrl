@@ -2,6 +2,7 @@
 #define DEF_X64_OPCODES \
 X64_OPCODE(invalid, INVALID) \
 X64_OPCODE(noop, NOOP) \
+X64_OPCODE(int3, INT3) \
 X64_OPCODE(and, AND) \
 X64_OPCODE(or, OR) \
 X64_OPCODE(add, ADD) \

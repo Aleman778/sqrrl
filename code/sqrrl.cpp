@@ -183,7 +183,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 if (it->value.type == Value_basic_block) {
                     Bc_Basic_Block* curr_block = it->value.data.basic_block;
                     while (curr_block) {
-                        pln("printing block: %\n", f_string(vars_load_string(curr_block->label.ident)));
                         Bc_Instruction* curr_insn = curr_block->first;
                         for (int i = 0; i < curr_block->count; i++) {
                             string_builder_push(&sb, curr_insn++);

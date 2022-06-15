@@ -476,7 +476,7 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
                     
                     smm ptr_stack_index = map_get_index(x64->stack_offsets, bc->src0.Register.index);
                     assert(ptr_stack_index != -1 && "not stored on stack");
-                    s32 ptr_stack_offset = x64->stack_offsets[stack_index].value;
+                    s32 ptr_stack_offset = x64->stack_offsets[ptr_stack_index].value;
                     
                     assert(bc->dest.type.ptr_depth - bc->src0.type.ptr_depth == 1);
                     
@@ -728,8 +728,8 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
         } break;
         
         case Bytecode_truncate: {
-            s32 dest_size = bc_type_to_size(bc->dest.type.kind);
-            s32 src_size = bc_type_to_size(bc->src0.type.kind);
+            s32 dest_size = bc_type_to_size(bc->dest.type);
+            s32 src_size = bc_type_to_size(bc->src0.type);
             
             if (dest_size != src_size) {
                 assert(dest_size < src_size);
@@ -753,8 +753,8 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
         
         case Bytecode_sign_extend:
         case Bytecode_zero_extend: {
-            s32 dest_size = bc_type_to_size(bc->dest.type.kind);
-            s32 src_size = bc_type_to_size(bc->src0.type.kind);
+            s32 dest_size = bc_type_to_size(bc->dest.type);
+            s32 src_size = bc_type_to_size(bc->src0.type);
             
             if (dest_size != src_size) {
                 assert(dest_size > src_size);
@@ -874,7 +874,7 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1); \
                 
                 
                 Bc_Operand* arg = bc->src1.Argument_List + arg_index;
-                s32 size = bc_type_to_size(arg->type.kind);
+                s32 size = bc_type_to_size(arg->type);
                 // NOTE(Alexander): I think, windows callign convention always aligns types by at least 8 bytes
                 s32 align = (s32) align_forward(size, 8);
                 stack_offset = (s32) align_forward(stack_offset, align);
@@ -1013,12 +1013,13 @@ x64_analyse_function(X64_Builder* x64, Bc_Instruction* bc) {
             assert(bc->src0.kind == BcOperand_Type);
             assert(bc->src1.kind == BcOperand_None);
             
-            Type* type = bc_type_to_type(bc->src0.type);
-            assert(type->cached_size > 0 && "bad size");
-            assert(type->cached_align > 0 && "bad align");
+            s32 size = bc_type_to_size(bc->src0.type);
+            s32 align = bc_type_to_align(bc->src0.type);
+            assert(size > 0 && "bad size");
+            assert(align > 0 && "bad align");
             
-            s32 stack_offset = (s32) align_forward((umm) x64->curr_stack_offset, type->cached_align);
-            stack_offset += type->cached_size;
+            s32 stack_offset = (s32) align_forward((umm) x64->curr_stack_offset, align);
+            stack_offset += size;
             // NOTE(Alexander): we use negative because stack grows downwards
             map_put(x64->stack_offsets, bc->dest.Register.index, -stack_offset);
             x64->curr_stack_offset = stack_offset;
@@ -1102,7 +1103,7 @@ x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
                 map_put(x64->allocated_virtual_registers, arg->Register, value);
                 
                 
-                s32 size = bc_type_to_size(arg->type.kind);
+                s32 size = bc_type_to_size(arg->type);
                 s32 align = (s32) align_forward(size, 8);
                 param_stack_offset -= align;
             }

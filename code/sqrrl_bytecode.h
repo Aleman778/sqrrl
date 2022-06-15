@@ -88,6 +88,13 @@ enum Bc_Type_Kind {
     BcType_Aggregate,
 };
 
+struct Bc_Type {
+    Bc_Type_Kind kind;
+    Type* aggregate;
+    u32 ptr_depth;
+};
+
+
 inline bool
 is_bc_type_floating(Bc_Type_Kind kind) {
     return kind == BcType_f32 || kind == BcType_f64;
@@ -120,8 +127,12 @@ bc_type_to_bitsize(Bc_Type_Kind kind) {
 }
 
 inline s32
-bc_type_to_size(Bc_Type_Kind kind) {
-    switch (kind) {
+bc_type_to_size(Bc_Type type) {
+    if (type.ptr_depth > 0) {
+        return 8; // arch dep!
+    }
+    
+    switch (type.kind) {
         case BcType_s1: return 1;
         case BcType_s8: return 1;
         case BcType_s16: return 2;
@@ -135,6 +146,39 @@ bc_type_to_size(Bc_Type_Kind kind) {
         
         case BcType_f32: return 4;
         case BcType_f64: return 8;
+        
+        case BcType_Aggregate: {
+            return type.aggregate->cached_size;
+        } break;
+    }
+    
+    return 0;
+}
+
+inline s32
+bc_type_to_align(Bc_Type type) {
+    if (type.ptr_depth > 0) {
+        return 8; // arch dep!
+    }
+    
+    switch (type.kind) {
+        case BcType_s1: return 1;
+        case BcType_s8: return 1;
+        case BcType_s16: return 2;
+        case BcType_s32: return 4;
+        case BcType_s64: return 8;
+        
+        case BcType_u8: return 1;
+        case BcType_u16: return 2;
+        case BcType_u32: return 4;
+        case BcType_u64: return 8;
+        
+        case BcType_f32: return 4;
+        case BcType_f64: return 8;
+        
+        case BcType_Aggregate: {
+            return type.aggregate->cached_align;
+        } break;
     }
     
     return 0;
@@ -194,12 +238,6 @@ inline bool
 is_bc_type_uint(Bc_Type_Kind kind) {
     return kind >= BcType_u8 && kind <= BcType_u64;
 }
-
-struct Bc_Type {
-    Bc_Type_Kind kind;
-    Type* aggregate;
-    u32 ptr_depth;
-};
 
 global const Bc_Type bc_type_s1 = { BcType_s1, 0 };
 

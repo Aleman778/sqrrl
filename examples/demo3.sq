@@ -95,17 +95,16 @@ main() {
     
 #elif 0
     // Function call with arguments
-    debug_break();
     return test_many_parameters(1, 2, 3, 4, 5, 6); // expects: 21
     
-#elif 1 // TODO: this one is failing now for some reason (BC and X64)
+#elif 0
     // Pointers
     int x = 10;
     int* p = &x;
     *p += 1;
     return x; // expects: 11
     
-#elif 0
+#elif 1
     // Boolean expressions
     int count = 0;
     bool x = false;

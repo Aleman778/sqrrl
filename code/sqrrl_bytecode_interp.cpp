@@ -34,6 +34,7 @@ bc_interp_load_register(Bc_Interp* interp, Bc_Register reg) {
     }
 }
 
+// TODO(Alexander): this is kind of silly to go from Type* -> Bc_Type -> Type*
 Type*
 bc_type_to_type(Bc_Type type) {
     Type* result = 0;
@@ -58,11 +59,11 @@ bc_type_to_type(Bc_Type type) {
 }
 
 inline void*
-bc_interp_alloc_register(Bc_Interp* interp, Bc_Register reg, Type* type) {
-    assert(type->cached_size > 0 && "bad size");
-    assert(type->cached_align > 0 && "bad align");
+bc_interp_alloc_register(Bc_Interp* interp, Bc_Register reg, Bc_Type type) {
+    s32 size = bc_type_to_size(type);
+    s32 align = bc_type_to_align(type);
     
-    void* data = arena_push_size(&interp->stack, type->cached_size, type->cached_align);
+    void* data = arena_push_size(&interp->stack, size, align);
     Value_Data value;
     value.data = data;
     bc_interp_store_register(interp, reg, value);
@@ -71,6 +72,11 @@ bc_interp_alloc_register(Bc_Interp* interp, Bc_Register reg, Type* type) {
 
 inline void
 bc_interp_store_value(Bc_Interp* interp, Bc_Type type, void* data, Value_Data value) {
+    if (type.ptr_depth > 0) {
+        *((umm*) data) = (umm) value.unsigned_int;
+        return;
+    }
+    
     switch (type.kind) {
         case BcType_s1:   *((s8*) data) = (s8)  value.signed_int; break;
         case BcType_s8:   *((s8*) data) = (s8)  value.signed_int; break;
@@ -106,6 +112,11 @@ bc_interp_store_value(Bc_Interp* interp, Bc_Type type, void* data, Value_Data va
 inline Value_Data
 bc_interp_load_value(Bc_Interp* interp, Bc_Type type, void* data) {
     Value_Data result;
+    if (type.ptr_depth > 0) {
+        result.signed_int = *((umm*) data);
+        return result;
+    }
+    
     switch (type.kind) {
         case BcType_s1:  result.signed_int   =  *((s8*) data); break;
         case BcType_s8:  result.signed_int   =  *((s8*) data); break;
@@ -182,8 +193,7 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             assert(bc->src0.kind == BcOperand_Type);
             assert(bc->src1.kind == BcOperand_None);
             
-            Type* type = bc_type_to_type(bc->src0.type);
-            bc_interp_alloc_register(interp, bc->dest.Register, type);
+            bc_interp_alloc_register(interp, bc->dest.Register, bc->src0.type);
         } break;
         
         case Bytecode_store: {
@@ -201,13 +211,13 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             assert(bc->src0.kind == BcOperand_Type);
             assert(bc->src1.kind == BcOperand_Register);
             
-            Type* type = bc_type_to_type(bc->src0.type);
             Value_Data src = bc_interp_operand_value(interp, &bc->src1);
             Value_Data value = bc_interp_load_value(interp, bc->src0.type, src.data);
             bc_interp_store_register(interp, bc->dest.Register, value);
             
             if (bc->src0.type.ptr_depth > 0) {
-                bc_interp_alloc_register(interp, bc->dest.Register, type);
+                //bc_interp_store_register(interp, bc->dest.Register, src);
+                //bc_interp_alloc_register(interp, bc->dest.Register, bc->src0.type);
             }
         } break;
         

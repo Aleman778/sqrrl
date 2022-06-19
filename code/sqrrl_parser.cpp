@@ -168,7 +168,7 @@ parse_string(Parser* parser) {
         curr += n;
     }
     
-    if (last_push != curr - 1) {
+    if (last_push < curr - 1) {
         string_builder_push(&sb, string_view(last_push, curr - 1));
     }
     

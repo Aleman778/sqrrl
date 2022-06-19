@@ -68,6 +68,8 @@ VAR(endif)    \
 VAR(include)  \
 VAR(ifdef)    \
 VAR(ifndef)   \
+VAR(pragma)   \
+VAR(once)     \
 VAR(line)     \
 VAR(undef)    \
 VAR(main)     \

@@ -117,6 +117,33 @@ cstring_count(cstring str) {
     return (umm) strlen(str);
 }
 
+inline void
+cstring_free(cstring str) {
+    free((void*) str);
+}
+
+inline cstring
+cstring_concat(cstring a_data, umm a_count,
+               cstring b_data, umm b_count) {
+    
+    char* result = (char*) malloc(a_count + b_count + 1);
+    
+    if (result) {
+        copy_memory((void*) result, a_data, a_count);
+        copy_memory((void*) (result + a_count), b_data, b_count);
+        
+        result[a_count + b_count] = '\0';
+    }
+    
+    return (cstring) result;
+}
+
+inline cstring
+cstring_concat(cstring a, cstring b) {
+    return cstring_concat(a, cstring_count(a), 
+                          b, cstring_count(b));
+}
+
 // NOTE(Alexander): strings
 struct string {
     umm count;
@@ -139,6 +166,11 @@ string_alloc(umm count) {
     result.count = count;
     result.data = (u8*) malloc(count);
     return (string) result;
+}
+
+inline void
+string_free(string str) {
+    free(str.data);
 }
 
 inline string
@@ -165,11 +197,32 @@ string_copy(string str) {
     return result;
 }
 
+inline int
+string_compare(string a, string b) {
+    umm count = min(a.count, b.count);
+    for (umm i = 0; i < count; i++) {
+        if (a.data[i] != b.data[i]) {
+            return b.data[i] - a.data[i];
+        }
+    }
+    
+    return (int) (b.count - a.count);
+}
+
 inline string
 string_concat(string a, string b) {
     string concat = string_alloc(a.count + b.count);
     copy_memory(concat.data, a.data, a.count);
     copy_memory(concat.data + a.count, b.data, b.count);
+    return concat;
+}
+
+inline string
+string_concat(string a, cstring b) {
+    umm b_count = cstring_count(b);
+    string concat = string_alloc(a.count + b_count);
+    copy_memory(concat.data, a.data, a.count);
+    copy_memory(concat.data + a.count, b, b_count);
     return concat;
 }
 

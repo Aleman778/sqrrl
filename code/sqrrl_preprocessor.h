@@ -32,6 +32,10 @@ struct Preprocessor {
     array(bool)* if_result_stack;
     b32 curr_branch_taken;
     
+    u32 curr_file_index;
+    map(u32, u32)* loaded_file_indices;
+    
+    b32 abort_curr_file;
     s32 error_count;
 };
 

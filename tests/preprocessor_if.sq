@@ -1,3 +1,5 @@
+#define _MSVC_LANG 201703
+#include <sal.h>
 
 int 
 main() {
@@ -82,4 +84,5 @@ main() {
 #else
     pln("10. fail");
 #endif
+    
 }

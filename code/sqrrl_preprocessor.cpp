@@ -42,11 +42,11 @@ preprocess_parse_actual_arguments(Preprocessor* preprocessor, Tokenizer* t) {
 
 internal bool
 preprocess_parse_and_eval_constant_expression(Preprocessor* preprocessor, Tokenizer* t) {
+    u8* base = t->curr;
     
     String_Builder sb = {};
     string_builder_alloc(&sb, t->end - t->curr + 64);
     // TODO(Alexander): could really use some scratch memory to allocate the expanded string
-    
     
     preprocess_expand_macro(preprocessor, &sb, t, {}, {});
     
@@ -59,21 +59,37 @@ preprocess_parse_and_eval_constant_expression(Preprocessor* preprocessor, Tokeni
     // TODO(Alexander): could really use some scratch memory to allocate the nodes
     Ast* expr = parse_expression(&parser);
     
+    if (parser.error_count > 0) {
+        pln("\nFailed while parsing source:\n`%`", f_string(tokenizer.source));
+        
+#if 1
+        pln("Parsed AST for #if:\n");
+        print_ast(expr, t);
+#endif
+        
+        return false;
+    } else {
+        
+        
+    }
     
     // TODO(Alexander): interpreter needs to be able to access macro definitions
     Interp interp = {};
     Interp_Value result = interp_expression(&interp, expr);
     
-#if 0
-    pln("#if");
-    print_ast(expr, t);
-    print_format("= ");
-    print_value(&result.value);
-#endif
+    preprocessor->error_count += interp.error_count;
+    //print_format("#if = ");
+    //print_value(&result.value);
+    
+    bool no_eval_errors = parser.error_count == 0 && interp.error_count == 0;
     
     // TODO(Alexander): clear memory
-    if (!is_integer(result.value) && parser.error_count == 0 && interp.error_count == 0) {
+    if (!is_integer(result.value) && no_eval_errors) {
         preprocess_error(preprocessor, string_lit("constant expression doesn't evaluate to integer value"));
+    }
+    
+    if (!no_eval_errors) {
+        pln("Expanded source line:\n`%`\n", f_string(string_view(base, t->end)));
     }
     
     string_builder_free(&sb);
@@ -95,13 +111,6 @@ preprocess_parse_define(Preprocessor* preprocessor, Tokenizer* t) {
     }
     
     string_id ident = vars_save_string(token.source);
-    
-    // Make sure we don't already have a macro with the same name
-    if (map_key_exists(preprocessor->macros, ident)) {
-        preprocess_error(preprocessor, string_format("cannot redeclare macro with same identifier `%`", 
-                                                     f_string(vars_load_string(ident))));
-        return;
-    }
     
     Preprocessor_Macro macro = {};
     
@@ -179,6 +188,21 @@ preprocess_parse_define(Preprocessor* preprocessor, Tokenizer* t) {
     
     macro.source = string_view(macro_begin, macro_end);
     
+    // Make sure we don't already have a macro with the same name
+    // NOTE(Alexander): however for some reason you may want to define the exact same macro multiple times
+    smm index = map_get_index(preprocessor->macros, ident);
+    if (index >= 0) {
+        
+        Preprocessor_Macro* prev_macro = &preprocessor->macros[index].value;
+        if (string_compare(macro.source, prev_macro->source) != 0) {
+            
+            preprocess_error(preprocessor, string_format("cannot redeclare macro with same identifier `%`", 
+                                                         f_string(vars_load_string(ident))));
+            return;
+        }
+    }
+    
+    
     // Store the macro
     macro.is_valid = true;
     map_put(preprocessor->macros, ident, macro);
@@ -193,6 +217,15 @@ preprocess_parse_define(Preprocessor* preprocessor, Tokenizer* t) {
         pln("#define % %", f_string(ident_string), f_string(macro.source));
     }
 #endif
+}
+
+internal inline bool
+check_if_curr_branch_is_taken(array(bool)* if_stack) {
+    bool result = true;
+    for_array_v (if_stack, it, _) {
+        result = result && it;
+    }
+    return result;
 }
 
 internal void
@@ -221,20 +254,69 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                 }
             } break;
             
+            case Sym_pragma: {
+                if (preprocessor->curr_branch_taken) {
+                    token = advance_semantical_token(t);
+                    if (token.type == Token_Ident) {
+                        string_id symbol2 = vars_save_string(token.source);
+                        
+                        switch (symbol2) {
+                            case Sym_once: {
+                                if (preprocessor->curr_file_index > 0) {
+                                    u32 index = preprocessor->curr_file_index;
+                                    u32 num_includes = map_get(preprocessor->loaded_file_indices, index);
+                                    if (num_includes != 1) {
+                                        preprocessor->abort_curr_file = true;
+                                    }
+                                }
+                                
+                            } break;
+                            
+                            // TODO(Alexander): add more pragmas
+                        }
+                    }
+                    
+                }
+            } break;
+            
             case Sym_include: {
                 if (preprocessor->curr_branch_taken) {
                     token = advance_semantical_token(t);
+                    
+                    Loaded_Source_File included_file = {};
                     if (token.type == Token_Lt) {
-                        preprocess_error(preprocessor, string_lit("system header files include directives `#include <file>` are not supported"));
+                        token = advance_semantical_token(t);
+                        string filename = token.source;
+                        filename.count = 0;
+                        
+                        while (token.type != Token_Gt) {
+                            if (token.type == Token_EOF) {
+                                return;
+                            }
+                            
+                            filename.count += token.source.count;
+                            token = advance_token(t);
+                        }
+                        
+                        included_file = read_entire_system_header_file(filename);
+                        
                     } else if (token.type == Token_String) {
                         string filename = string_unquote_nocopy(token.source);
-                        Loaded_Source_File included_file = read_entire_source_file(filename);
-                        if (included_file.is_valid) {
-                            preprocess_file(preprocessor, included_file.source, 
-                                            included_file.filepath, included_file.index);
-                        } else {
-                            preprocessor->error_count++;
-                        }
+                        included_file = read_entire_source_file(filename);
+                    }
+                    
+                    if (included_file.is_valid) {
+                        
+                        preprocessor->curr_file_index = included_file.index;
+                        u32 prev_num_includes = map_get(preprocessor->loaded_file_indices, included_file.index);
+                        map_put(preprocessor->loaded_file_indices, included_file.index, prev_num_includes + 1);
+                        preprocessor->abort_curr_file = false;
+                        
+                        preprocess_file(preprocessor, included_file.source, 
+                                        included_file.filepath, included_file.index);
+                        preprocessor->abort_curr_file = false; // if #pragma once hit then restore it
+                    } else {
+                        preprocessor->error_count++;
                     }
                 }
                 
@@ -242,25 +324,53 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
             
             case Kw_if: {
                 bool value = preprocess_parse_and_eval_constant_expression(preprocessor, t);
-                array_push(preprocessor->if_result_stack, preprocessor->curr_branch_taken);
-                preprocessor->curr_branch_taken = value;
+                array_push(preprocessor->if_result_stack, value);
+                
+                preprocessor->curr_branch_taken =
+                    check_if_curr_branch_is_taken(preprocessor->if_result_stack);
             } break;
             
             case Sym_elif: {
-                bool value = preprocess_parse_and_eval_constant_expression(preprocessor, t);
-                preprocessor->curr_branch_taken = value;
+                if (array_count(preprocessor->if_result_stack) > 0) {
+                    bool last_result = array_last(preprocessor->if_result_stack);
+                    if (last_result) {
+                        preprocessor->curr_branch_taken = false;
+                    } else {
+                        
+                        bool value = preprocess_parse_and_eval_constant_expression(preprocessor, t);
+                        array_last(preprocessor->if_result_stack) = value;
+                        
+                        preprocessor->curr_branch_taken =
+                            check_if_curr_branch_is_taken(preprocessor->if_result_stack);
+                    }
+                } else {
+                    preprocess_error(preprocessor, string_lit("#else directive outside #if scope"));
+                }
             } break;
             
             case Kw_else: {
-                preprocessor->curr_branch_taken = !preprocessor->curr_branch_taken;
+                if (array_count(preprocessor->if_result_stack) > 0) {
+                    bool last_result = array_last(preprocessor->if_result_stack);
+                    if (last_result) {
+                        preprocessor->curr_branch_taken = false;
+                    } else {
+                        array_last(preprocessor->if_result_stack) = !last_result;
+                        preprocessor->curr_branch_taken =
+                            check_if_curr_branch_is_taken(preprocessor->if_result_stack);
+                    }
+                } else {
+                    preprocess_error(preprocessor, string_lit("#else directive outside #if scope"));
+                }
                 // TODO(Alexander): detect two else in row
             } break;
             
             case Sym_endif: {
                 if (array_count(preprocessor->if_result_stack) > 0) {
-                    preprocessor->curr_branch_taken = array_pop(preprocessor->if_result_stack);
+                    array_pop(preprocessor->if_result_stack);
+                    preprocessor->curr_branch_taken =
+                        check_if_curr_branch_is_taken(preprocessor->if_result_stack);
                 } else {
-                    preprocess_error(preprocessor, string_lit("trying to end if directive outside scope"));
+                    preprocess_error(preprocessor, string_lit("#endif directive outside #if scope"));
                 }
             } break;
             
@@ -275,8 +385,9 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                     if (symbol == Sym_ifndef) {
                         value = !value;
                     }
-                    array_push(preprocessor->if_result_stack, preprocessor->curr_branch_taken);
-                    preprocessor->curr_branch_taken = value;
+                    array_push(preprocessor->if_result_stack, value);
+                    preprocessor->curr_branch_taken =
+                        check_if_curr_branch_is_taken(preprocessor->if_result_stack);
                     
                 } else {
                     preprocess_error(preprocessor, string_format("expected `identifier`, found `%`", 
@@ -296,11 +407,18 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
 
 internal Preprocessor_Line
 preprocess_splice_line(Preprocessor* preprocessor, u8* curr, u32 curr_line_number, u8* end) {
+    // TODO(Alexander): this can be improved by using the already implemented tokenizer
+    // the only problem right now with the tokenizer is that it doesn't care about new
+    // lines it will simply skip them and we cannot tell easily where new line started/ ended.
+    
     Preprocessor_Line result = {};
     result.curr_line_number = curr_line_number;
     
     u32 next_line_number = curr_line_number + 1;
     u8* begin = curr;
+    
+    int block_comment_depth = 0;
+    
     while (curr < end && curr_line_number < next_line_number) {
         Utf8_To_Utf32_Result character = utf8_convert_to_utf32(curr, end);
         if (character.num_bytes == 0) {
@@ -308,11 +426,43 @@ preprocess_splice_line(Preprocessor* preprocessor, u8* curr, u32 curr_line_numbe
             break;
         }
         
-        u8 c = *curr;
-        if (c == '\\') {
-            next_line_number++;
-        } else if (c == '\n') {
-            curr_line_number++;
+        // TODO(Alexander): make sure this works with UTF-8 strings
+        if (character.num_bytes == 1) {
+            u8 c = *curr;
+            u8 cn = (curr + 1) < end ? *(curr + 1) : 0;
+            
+            if (c == '/' && cn == '*') {
+                block_comment_depth++;
+                curr++;
+                
+            } else if (c == '*' && cn == '/') {
+                if (block_comment_depth > 0) {
+                    block_comment_depth--;
+                }
+                curr++;
+                
+            } else if (c == '\\') {
+                next_line_number++;
+                
+            } else if (c == '\r') {
+                curr_line_number++;
+                if (block_comment_depth > 0) {
+                    next_line_number = curr_line_number + 1;;
+                }
+                
+                if (cn == '\n') {
+                    curr++; // TODO(Alexander): is this okay?
+                }
+            } else if (c == '\n') {
+                curr_line_number++;
+                if (block_comment_depth > 0) {
+                    next_line_number = curr_line_number + 1;;
+                }
+                
+                if (cn == '\r') {
+                    curr++; // TODO(Alexander): is this okay?
+                }
+            }
         }
         
         curr += character.num_bytes;
@@ -321,6 +471,8 @@ preprocess_splice_line(Preprocessor* preprocessor, u8* curr, u32 curr_line_numbe
     end = curr;
     result.substring = string_view(begin, end);
     result.next_line_number = next_line_number;
+    
+    //pln("Line %: `%`", f_u32(result.curr_line_number), f_string(result.substring));
     
     return result;
 }
@@ -407,6 +559,8 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
             return false;
         }
         
+        umm first_used = sb->curr_used;
+        
         // TODO(Alexander): record line/ col of this
         Tokenizer tokenizer = {};
         tokenizer_set_source(&tokenizer, macro.source, string_lit("macro"));
@@ -414,6 +568,9 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
         //tokenizer_set_substring(t, macro.source, 0, 0);
         preprocess_expand_macro(preprocessor, sb, &tokenizer, macro, macro_args);
         //restore_tokenizer(&state);
+        
+        string expanded_source = string_view(sb->data + first_used, sb->data + sb->curr_used);
+        pln("Expanding macro `%` to:\n`%`", f_string(vars_load_string(ident)), f_string(expanded_source));
         return true;
     }
     return false;
@@ -441,7 +598,12 @@ preprocess_expand_macro(Preprocessor* preprocessor,
                         return;
                     }
                     string arg_source = args.list[arg_index];
-                    string_builder_push(sb, arg_source);
+                    Tokenizer_State t_restore = save_tokenizer(t);
+                    
+                    tokenizer_set_source(t, arg_source, t->file);
+                    //tokenizer_set_substring();
+                    preprocess_expand_macro(preprocessor, sb, t, macro, args);
+                    restore_tokenizer(&t_restore);
                 } else {
                     
                     if (!preprocess_try_expand_ident(preprocessor, sb, t, macro, args, ident)) {
@@ -464,6 +626,10 @@ preprocess_expand_macro(Preprocessor* preprocessor,
 internal bool
 preprocess_line(Preprocessor* preprocessor, String_Builder* sb, Tokenizer* t) {
     Token token = advance_token(t);
+    if (token.type == Token_Whitespace) {
+        token = advance_token(t);
+    }
+    
     if (token.type == Token_Directive) {
         preprocess_directive(preprocessor, t);
         return false;
@@ -609,8 +775,11 @@ preprocess_finalize_code(string source) {
 
 string
 preprocess_file(Preprocessor* preprocessor, string source, string filepath, int file_index) {
+    Tokenizer* prev_tokenizer = preprocessor->tokenizer;
+    
     Tokenizer tokenizer = {};
     tokenizer_set_source(&tokenizer, source, filepath);
+    preprocessor->tokenizer = &tokenizer;
     
     u32 curr_line_number = 0;
     u8* curr = source.data;
@@ -619,9 +788,12 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath, int 
     String_Builder* sb = &preprocessor->output;
     string_builder_alloc(sb, source.count);
     
-    
-    array_push(preprocessor->if_result_stack, preprocessor->curr_branch_taken);
+    //if (array_count(preprocessor->if_result_stack) == 0) {
     preprocessor->curr_branch_taken = true;
+    //}
+    
+    //array_push(preprocessor->if_result_stack, preprocessor->curr_branch_taken);
+    //preprocessor->curr_branch_taken = true;
     
     Source_Group current_group = {};
     current_group.file_index = file_index;
@@ -639,21 +811,33 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath, int 
         bool run_finalize = preprocess_line(preprocessor, sb, &tokenizer);
         umm end_used = sb->curr_used;
         
+        if (preprocessor->error_count > 50) {
+            if (preprocessor->error_count < 1000) { // hack to only print once, while it unrolls the recursion
+                pln("preprocessor reported more than 50 errors, exiting...");
+            }
+            preprocessor->error_count = 1000;
+            return {};
+        }
+        
+        if (preprocessor->abort_curr_file) {
+            break;
+        }
+        
         if (run_finalize) {
             sb->curr_used = begin_used;
             string expanded_code = create_string(end_used - begin_used, sb->data + begin_used);
             string finalized_string = preprocess_finalize_code(expanded_code);
             string_builder_push(sb, finalized_string);
-            free(finalized_string.data);
             
             if (current_group.count == 0) {
                 current_group.offset = begin_used;
             }
-            current_group.count += (umm) (curr - curr_line);
+            current_group.count += (umm) finalized_string.count;
+            
+            string_free(finalized_string);
         } else {
             // If we skip a line we will start a new source group
             if (current_group.count > 0) {
-                // NOTE(Alexander): count > 0 as we don't want to 
                 array_push(preprocessor->source_groups, current_group);
                 current_group = {};
                 current_group.offset = sb->curr_used;
@@ -668,7 +852,8 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath, int 
         array_push(preprocessor->source_groups, current_group);
     }
     
-    preprocessor->curr_branch_taken = array_pop(preprocessor->if_result_stack);
+    preprocessor->tokenizer = prev_tokenizer; // restore previous tokenizer
+    //preprocessor->curr_branch_taken = array_pop(preprocessor->if_result_stack);
     
     return string_builder_to_string_nocopy(sb);
 }

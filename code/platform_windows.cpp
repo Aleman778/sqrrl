@@ -8,6 +8,8 @@
 #define PATH_MAX 200 // TODO(alexander): this shouldn't be used, just for debug code!!!
 #endif
 
+global array(cstring)* windows_system_header_dirs = 0;
+
 #if BUILD_DEBUG
 void 
 DEBUG_log_backtrace() {
@@ -96,34 +98,48 @@ DEBUG_log_backtrace() {
 #endif
 
 Read_File_Result
-DEBUG_read_entire_file(cstring filename) {
+read_entire_file_handle(HANDLE file_handle, cstring filename) {
     Read_File_Result result = {};
-    HANDLE file_handle = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
     
-    if (file_handle != INVALID_HANDLE_VALUE) {
-        LARGE_INTEGER file_size;
-        if (GetFileSizeEx(file_handle, &file_size)) {
-            if (file_size.QuadPart > U32_MAX) {
-                platform_error(string_format("file `%` exeeds maximum file size of 4GB", f_cstring(filename)));
-                return result;
-            }
-            
-            result.contents_size = (u32) file_size.QuadPart;
-            result.contents = VirtualAlloc(0, result.contents_size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
-            
-            if (result.contents) {
-                if (!ReadFile(file_handle, result.contents, (u32) result.contents_size, 0, 0)) {
-                    platform_error(string_format("failed to read file `%`", f_cstring(filename)));
-                }
+    LARGE_INTEGER file_size;
+    if (GetFileSizeEx(file_handle, &file_size)) {
+        if (file_size.QuadPart > U32_MAX) {
+            platform_error(string_format("file `%` exeeds maximum file size of 4GB", f_cstring(filename)));
+            return result;
+        }
+        
+        result.contents_size = (u32) file_size.QuadPart;
+        result.contents = VirtualAlloc(0, result.contents_size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+        
+        if (result.contents) {
+            if (!ReadFile(file_handle, result.contents, (u32) result.contents_size, 0, 0)) {
+                platform_error(string_format("failed to read file `%`, win32 error code: `0x%` see\nhttps://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes for more info", 
+                                             f_cstring(filename), f_u64_HEX(GetLastError())));
                 
-            } else {
-                platform_error(string_format("out of memory when allocating space for `%`", f_cstring(filename)));
+                DEBUG_free_file_memory(result.contents);
+                result.contents_size = 0;
+                result.contents = 0;
             }
             
         } else {
-            platform_error(string_format("failed to read file `%`", f_cstring(filename)));
+            platform_error(string_format("out of memory when allocating space for `%`", f_cstring(filename)));
         }
         
+    } else {
+        platform_error(string_format("failed to read file `%`", f_cstring(filename)));
+    }
+    
+    return result;
+}
+
+Read_File_Result
+DEBUG_read_entire_file(cstring filename) {
+    Read_File_Result result = {};
+    
+    HANDLE file_handle = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+    
+    if (file_handle != INVALID_HANDLE_VALUE) {
+        result = read_entire_file_handle(file_handle, filename);
         CloseHandle(file_handle);
     } else {
         platform_error(string_format("file `%` was not found", f_cstring(filename)));
@@ -131,6 +147,7 @@ DEBUG_read_entire_file(cstring filename) {
     
     return result;
 }
+
 
 bool
 DEBUG_write_entire_file(cstring filename, void* data, u32 size) {
@@ -152,6 +169,37 @@ DEBUG_write_entire_file(cstring filename, void* data, u32 size) {
     return false;
 }
 
+Read_File_Result
+DEBUG_read_entire_system_header(cstring filename) {
+    Read_File_Result result = {};
+    bool success = false;
+    
+    pln("Searching for `%` in:", f_cstring(filename));
+    
+    for_array_v (windows_system_header_dirs, dir, _) {
+        cstring filepath = cstring_concat(dir, filename);
+        
+        pln("- %", f_cstring(dir));
+        
+        HANDLE file_handle = CreateFileA(filepath, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+        
+        if (file_handle != INVALID_HANDLE_VALUE) {
+            result = read_entire_file_handle(file_handle, filename);
+            success = true;
+            cstring_free(filepath);
+            break;
+        }
+        
+        cstring_free(filepath);
+    }
+    
+    if (!success) {
+        platform_error(string_format("system header file `%` is not found", f_cstring(filename)));
+    }
+    
+    return result;
+}
+
 void
 DEBUG_free_file_memory(void* memory) {
     VirtualFree(memory, 0, MEM_RELEASE);
@@ -164,9 +212,84 @@ asm_buffer_prepare_for_execute(void* data, umm size) {
 }
 
 
+cstring
+read_string_from_system_registry(HKEY key, cstring value_name) {
+    // Uses malloc to try and read the value, retries until sucessfull
+    
+    cstring result = 0;
+    
+    DWORD required_count;
+    if (RegQueryValueExA(key, value_name, 0, 0, 0, &required_count) == ERROR_SUCCESS) {
+        
+        for (;;) {
+            DWORD count = required_count + 1; // null terminated
+            result = (cstring) malloc(count + 1); // for extra for safety
+            if (!result) break;
+            
+            
+            DWORD type;
+            auto status = RegQueryValueExA(key, value_name, 0, &type, (LPBYTE) result, &count);
+            if (status == ERROR_MORE_DATA) {
+                cstring_free(result);
+                required_count = count;
+                continue;
+            }
+            
+            // Check if query is valid and that the type is string
+            if ((status != ERROR_SUCCESS) || (type != REG_SZ)) {
+                cstring_free(result);
+                result = {};
+            }
+            
+            break;
+        }
+    }
+    
+    return result;
+}
+
+cstring
+find_windows_kits_include_dir() {
+    cstring result = 0;
+    
+    HKEY main_key;
+    auto status = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots",
+                                0, KEY_QUERY_VALUE | KEY_WOW64_32KEY | KEY_ENUMERATE_SUB_KEYS, &main_key);
+    if (status == ERROR_SUCCESS) {
+        cstring windows10_root = read_string_from_system_registry(main_key, "KitsRoot10");
+        if (windows10_root != 0) {
+            
+            // TODO(Alexander): more Microsoft craziness, the version number needs to also be found
+            result = cstring_concat(windows10_root, "Include\\10.0.22000.0\\");
+            cstring_free(windows10_root);
+        }
+        
+        RegCloseKey(main_key);
+    }
+    
+    return result;
+}
+
+
 int main(int argc, char* argv[]) {
     umm asm_buffer_size = 1024;
     void* asm_buffer = VirtualAlloc(0, asm_buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    
+    cstring windows_system_headers_root_dir = find_windows_kits_include_dir();
+    
+    if (windows_system_headers_root_dir != 0) {
+        array_push(windows_system_header_dirs, cstring_concat(windows_system_headers_root_dir, "um\\"));
+        array_push(windows_system_header_dirs, cstring_concat(windows_system_headers_root_dir, "ucrt\\"));
+        array_push(windows_system_header_dirs, cstring_concat(windows_system_headers_root_dir, "shared\\"));
+        array_push(windows_system_header_dirs, cstring_concat(windows_system_headers_root_dir, "winrt\\"));
+        array_push(windows_system_header_dirs, cstring_concat(windows_system_headers_root_dir, "cppwinrt\\"));
+        cstring_free(windows_system_headers_root_dir);
+    }
+    
+    // TODO(Alexander): we need more microsoft craziness to get all VS paths
+    // for now I will just hard code these
+    array_push(windows_system_header_dirs, 
+               "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Tools\\MSVC\\14.29.30133\\include\\");
     
     // NOTE(alexander): here goes any platform specific initialization
     return compiler_main_entry(argc, argv, asm_buffer, asm_buffer_size, &asm_buffer_prepare_for_execute);

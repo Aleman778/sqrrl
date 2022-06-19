@@ -13,6 +13,7 @@ struct Read_File_Result {
 
 Read_File_Result DEBUG_read_entire_file(cstring filename);
 
+Read_File_Result DEBUG_read_entire_system_header(cstring filename);
 bool DEBUG_write_entire_file(cstring filename, void* data, u32 size);
 
 void DEBUG_free_file_memory(void* memory);
@@ -30,6 +31,8 @@ void DEBUG_free_file_memory(void* memory);
 void
 platform_error(string message) {
     pln("error: %", f_string(message));
+    
+    DEBUG_log_backtrace();
 }
 
 // TBD.

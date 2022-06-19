@@ -17,29 +17,13 @@
 #include "sqrrl_x64_insn_def.cpp"
 #include "sqrrl_x64_assembler.cpp"
 
+
 typedef int asm_main(void);
-
-int test2(int a, int b, int c) {
-    
-    return a + b + c;
-}
-
-int test_many_parameters(int a, int b, int c, int d, int e, int d2, int e2) {
-    
-    if (a > 10) {
-        return 10;
-    }
-    
-    return a + b + c + test2(d, d, d) + e;
-}
 
 
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm)) {
-    
-    //__debugbreak();
-    //test_many_parameters(1, 2, 3, 4, 5, 6, 7); // expects: 21
     
     {
         // Put dummy file as index 0
@@ -58,10 +42,11 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     if (argc > 1) {
         filepath = string_lit(argv[1]);
     } else {
-        filepath = string_lit("examples/demo3.sq");
-        //filepath = string_lit("examples/demo4.sq");
+        //filepath = string_lit("examples/demo3.sq");
+        filepath = string_lit("examples/demo4.sq");
         //filepath = string_lit("examples/primes.sq");
         //filepath = string_lit("tests/literals.sq");
+        //filepath = string_lit("tests/preprocessor_if.sq");
     }
 #else
     if (argc <= 1) {
@@ -93,6 +78,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     // Read entire source file
     Loaded_Source_File file = read_entire_source_file(filename);
     
+    if (!file.is_valid) {
+        return -1;
+    }
+    
     Preprocessor preprocessor = {};
     string preprocessed_source = preprocess_file(&preprocessor, file.source, file.filepath, file.index);
     
@@ -113,7 +102,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     
     // TODO(alexander): temp printing source
-    //pln("%", f_string(preprocessed_source));
+    pln("%", f_string(preprocessed_source));
     
     // Lexer
     Tokenizer tokenizer = {};

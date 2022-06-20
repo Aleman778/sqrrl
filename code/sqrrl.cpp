@@ -20,7 +20,6 @@
 
 typedef int asm_main(void);
 
-
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm)) {
@@ -85,6 +84,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     Preprocessor preprocessor = {};
     string preprocessed_source = preprocess_file(&preprocessor, file.source, file.filepath, file.index);
     
+    
+    // TODO(alexander): temp printing source
+    pln("%", f_string(preprocessed_source));
+    
 #if 0
     // Source group debugging
     for_array(preprocessor.source_groups, group, index) {
@@ -99,10 +102,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         pln("\nErrors found during preprocessing, exiting...\n");
         return 1;
     }
-    
-    
-    // TODO(alexander): temp printing source
-    pln("%", f_string(preprocessed_source));
     
     // Lexer
     Tokenizer tokenizer = {};

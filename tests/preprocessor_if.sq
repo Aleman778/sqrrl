@@ -1,5 +1,6 @@
 #define _MSVC_LANG 201703
-#include <sal.h>
+//#include <sal.h>
+
 
 int 
 main() {
@@ -85,4 +86,27 @@ main() {
     pln("10. fail");
 #endif
     
+    // Nested function calls
+#define min(a, b) (a) < (b) ? (a) : (b)
+#define max(a, b) (a) > (b) ? (a) : (b)
+    
+    int a = 20;
+    int b = 30;
+    int c = 10;
+    
+    pln("min of a, b and c = %", min(a, min(b, c)));
+    pln("max of a, b and c = %", max(a, max(b, c)));
+    
+    // Detect cycles
+#define INC(x) (x + 1)
+#define ONE_PLUS_ONE (1 + 1)
+#define DEF_AST_NODE(name) pln("%", f_int(name));
+#define AST_IDENT   DEF_AST_NODE(INC(1) + ONE_PLUS_ONE + MA + MA)
+    
+#define MA MB
+#define MB MC
+#define MC MA
+    
+    
+    AST_IDENT
 }

@@ -25,6 +25,7 @@ struct Preprocessor {
     Tokenizer* tokenizer;
     
     map(string_id, Preprocessor_Macro)* macros;
+    map(string_id, bool)* macro_in_use;
     
     String_Builder output;
     array(Source_Group)* source_groups;

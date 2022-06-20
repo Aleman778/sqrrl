@@ -1,45 +1,4 @@
 
-// TODO(Alexander): this preprocessor was not designed to handle CRLF or CR
-//                  line endings, currently it only works with LF.
-
-internal Replacement_List
-preprocess_parse_actual_arguments(Preprocessor* preprocessor, Tokenizer* t) {
-    Replacement_List result = {};
-    result.success = true;
-    
-    // Parse formal arguments
-    Token token = advance_semantical_token(t);
-    if (token.type != Token_Open_Paren) {
-        preprocess_error(preprocessor, string_format("function macro expected `(`, found `%`", f_token(token.type)));
-        return result;
-    }
-    
-    token = advance_semantical_token(t);
-    while (is_token_valid(token) && token.type != Token_Close_Paren) {
-        u8* begin = token.source.data;
-        
-        while (is_token_valid(token) && token.type != Token_Comma && token.type != Token_Close_Paren) {
-            token = advance_semantical_token(t);
-        }
-        
-        u8* end = token.source.data;
-        string replacement = string_view(begin, end);
-        array_push(result.list, replacement);
-        
-        if (!is_token_valid(token) || token.type == Token_Close_Paren) {
-            break;
-        }
-        token = advance_semantical_token(t);
-    }
-    
-    if (token.type != Token_Close_Paren) {
-        preprocess_error(preprocessor, string_lit("argument list ended without `)`"));
-        result.success = false;
-    }
-    
-    return result;
-}
-
 internal bool
 preprocess_parse_and_eval_constant_expression(Preprocessor* preprocessor, Tokenizer* t) {
     u8* base = t->curr;
@@ -68,9 +27,6 @@ preprocess_parse_and_eval_constant_expression(Preprocessor* preprocessor, Tokeni
 #endif
         
         return false;
-    } else {
-        
-        
     }
     
     // TODO(Alexander): interpreter needs to be able to access macro definitions
@@ -477,6 +433,84 @@ preprocess_splice_line(Preprocessor* preprocessor, u8* curr, u32 curr_line_numbe
     return result;
 }
 
+
+internal inline bool
+preprocess_try_expand_ident(Preprocessor* preprocessor, 
+                            String_Builder* sb, 
+                            Tokenizer* t, 
+                            Preprocessor_Macro parent_macro,
+                            Replacement_List args, 
+                            string_id ident);
+
+internal Replacement_List
+preprocess_parse_actual_arguments(Preprocessor* preprocessor, Tokenizer* t, string_id curr_macro_ident) {
+    Replacement_List result = {};
+    result.success = true;
+    
+    // Parse formal arguments
+    Token token = advance_semantical_token(t);
+    if (token.type != Token_Open_Paren) {
+        preprocess_error(preprocessor, string_format("function macro expected `(`, found `%`", f_token(token.type)));
+        result.success = false;
+        return result;
+    }
+    
+    String_Builder sb = {};
+    
+    token = advance_semantical_token(t);
+    while (is_token_valid(token) && token.type != Token_Close_Paren) {
+        sb.curr_used = 0;
+        
+        u8* begin = token.source.data;
+        
+        while (is_token_valid(token) && token.type != Token_Comma && token.type != Token_Close_Paren) {
+            if (token.type == Token_Ident) {
+                
+                string_id ident = vars_save_string(token.source);
+                pln("% == %", f_u32(ident), f_u32(curr_macro_ident));
+                if (ident == curr_macro_ident) {
+                    preprocess_error(preprocessor, string_format("undeclared identifier `%`", 
+                                                                 f_string(token.source)));
+                    result.success = false;
+                    return result;
+                }
+                
+                if (!preprocess_try_expand_ident(preprocessor, &sb, t, {}, {}, ident)) {
+                    string_builder_push(&sb, token.source);
+                }
+            } else {
+                string_builder_push(&sb, token.source);
+            }
+            
+            token = advance_semantical_token(t);
+        }
+        
+        
+        if (is_token_valid(token)) {
+            string replacement = string_builder_to_string(&sb);
+            array_push(result.list, replacement);
+            
+            if (token.type == Token_Close_Paren) {
+                break;
+            }
+        } else {
+            preprocess_error(preprocessor, string_lit("reached end of file while preprocessing file"));
+            break;
+        }
+        
+        token = advance_semantical_token(t);
+    }
+    
+    string_builder_free(&sb);
+    
+    if (token.type != Token_Close_Paren) {
+        preprocess_error(preprocessor, string_lit("argument list ended without `)`"));
+        result.success = false;
+    }
+    
+    return result;
+}
+
 internal inline bool
 preprocess_try_expand_ident(Preprocessor* preprocessor, 
                             String_Builder* sb, 
@@ -540,10 +574,15 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
     }
     
     Preprocessor_Macro macro = map_get(preprocessor->macros, ident);
-    if (macro.is_valid) {
+    bool in_use = map_get(preprocessor->macro_in_use, ident);
+    if (macro.is_valid && !in_use) {
+        
+        // We should only expand the same macro once, avoid circular dependencies
+        map_put(preprocessor->macro_in_use, ident, true);
+        
         Replacement_List macro_args = {};
         if (macro.is_functional) {
-            macro_args = preprocess_parse_actual_arguments(preprocessor, t);
+            macro_args = preprocess_parse_actual_arguments(preprocessor, t, ident);
             if (!macro_args.success) {
                 return false;
             }
@@ -554,7 +593,8 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
         if ((actual_arg_count < formal_arg_count) ||
             (actual_arg_count > formal_arg_count && !macro.is_variadic)) {
             
-            preprocess_error(preprocessor, string_format("function-like macro expected % arguments, found % arguments",
+            preprocess_error(preprocessor, string_format("function-like macro `%` expected % arguments, found % arguments",
+                                                         f_string(vars_load_string(ident)),
                                                          f_int(formal_arg_count), f_int(actual_arg_count)));
             return false;
         }
@@ -571,6 +611,9 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
         
         string expanded_source = string_view(sb->data + first_used, sb->data + sb->curr_used);
         pln("Expanding macro `%` to:\n`%`", f_string(vars_load_string(ident)), f_string(expanded_source));
+        
+        map_put(preprocessor->macro_in_use, ident, false);
+        
         return true;
     }
     return false;
@@ -598,12 +641,7 @@ preprocess_expand_macro(Preprocessor* preprocessor,
                         return;
                     }
                     string arg_source = args.list[arg_index];
-                    Tokenizer_State t_restore = save_tokenizer(t);
-                    
-                    tokenizer_set_source(t, arg_source, t->file);
-                    //tokenizer_set_substring();
-                    preprocess_expand_macro(preprocessor, sb, t, macro, args);
-                    restore_tokenizer(&t_restore);
+                    string_builder_push(sb, arg_source);
                 } else {
                     
                     if (!preprocess_try_expand_ident(preprocessor, sb, t, macro, args, ident)) {

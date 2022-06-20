@@ -1,17 +1,18 @@
 
 // Windows needs to know abit about our compilation target
 #define _MSC_VER 1929
-#define __cplusplus 199711
+//#define __cplusplus 199711
 
 // // NOTE(Alexander): not sure if they have updated their docs for Windows 11 or it's just the same?
 // https://docs.microsoft.com/sv-se/windows/win32/winprog/using-the-windows-headers?redirectedfrom=MSDN
 // TODO(Alexander): somehow the compiler must figure these things out, if possible
 #define NTDDI_VERSION NTDDI_WIN10_19H1
+#define _USE_DECLSPECS_FOR_SAL 1
 //#define _WIN32_WINNT _WIN32_WINNT_WIN10 // do we need this?
 //#define WINVER _WIN32_WINNT_WIN10
 
-#define NOCOMM // no COM API crap
-#define WIN32_LEAN_AND_MEAN // maybe we will get rid of some garbage?
+//#define NOCOMM // no COM API crap
+//#define WIN32_LEAN_AND_MEAN // maybe we will get rid of some garbage?
 
 #include <windows.h>
 //#include <winuser.h>

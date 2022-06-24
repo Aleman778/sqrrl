@@ -11,9 +11,9 @@ struct Preprocessor_Macro {
 
 struct Preprocessor_Line {
     string substring;
-    u32 curr_line_number;
-    u32 next_line_number;
-    u32 file_index;
+    umm curr_line_number;
+    umm next_line_number;
+    umm file_index;
 };
 
 struct Replacement_List {

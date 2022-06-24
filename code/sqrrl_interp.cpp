@@ -227,65 +227,106 @@ interp_expression(Interp* interp, Ast* ast) {
         
         case Ast_Binary_Expr: {
             Interp_Value first_op = interp_expression(interp, ast->Binary_Expr.first);
-            Interp_Value second_op = interp_expression(interp, ast->Binary_Expr.second);
             
-            // TODO(Alexander): check illegal types such as arrays and struct literals!
-            Value first = first_op.value;
-            Value second = second_op.value;
             
-            // NOTE(Alexander): Type rules
-            // int + int;
-            // float + int -> float + float;
-            // int + float -> float + float;
-            // float -x-> int (is a no no, it has to be an explicit cast)
             
-            if (is_floating(first) || is_floating(second)) {
-                // NOTE(Alexander): Make sure both types are floating
-                if (is_integer(first)) {
-                    first.data.floating  = value_to_f64(first);
-                    first.type = Value_floating;
-                    result.type = second_op.type;
-                } else if (is_integer(second)) {
-                    second.data.floating = value_to_f64(second);
-                    second.type = Value_floating;
-                    result.type = first_op.type;
-                } else if (is_floating(first) && is_floating(second)) {
-                    result.type = first_op.type;
-                } else {
+            if (ast->Binary_Expr.op == BinaryOp_Logical_And) {
+                result.value.type = Value_boolean;
+                result.value.data.boolean = false;
+                
+                if (!is_integer(first_op.value)) {
                     interp_error(interp, string_lit("type error: mismatched types"));
                 }
                 
-                first = value_floating_binary_operation(first, second, ast->Binary_Expr.op);
-                
-                result.value = first;
-            } else if (is_integer(first) || is_integer(second)) {
-                // NOTE(Alexander): integer math
-                first.data.signed_int = value_integer_binary_operation(first, second, ast->Binary_Expr.op);
-                
-                result.value = first;
-                result.type = first_op.type;
-            } else {
-                interp_mismatched_types(interp, &first_op.type, &second_op.type);
-            }
-            
-            // NOTE(Alexander): handle assign binary expression
-            if (result.value.type != Value_void && is_binary_assign(ast->Binary_Expr.op)) {
-                
-                if (ast->Binary_Expr.first->kind == Ast_Ident) {
-                    string_id ident = ast->Binary_Expr.first->Ident;
-                    Interp_Entity entity = interp_load_entity_from_current_scope(interp, ident);
-                    if (interp_entity_is_declared(interp, &entity, ident)) {
-                        if (entity.data) {
-                            interp_save_value(interp, entity.type, entity.data, result.value);
-                        } else {
-                            entity.data = interp_push_value(interp, entity.type, result.value);
-                        }
+                if (value_to_bool(first_op.value)) {
+                    Interp_Value second_op = interp_expression(interp, ast->Binary_Expr.second);
+                    if (!is_integer(second_op.value)) {
+                        interp_error(interp, string_lit("type error: mismatched types"));
                     }
-                } else if (first_op.data && first_op.type.kind) {
-                    interp_save_value(interp, &first_op.type, first_op.data, first);
                     
+                    result.value.data.boolean = value_to_bool(second_op.value);
+                }
+                
+            } else if (ast->Binary_Expr.op == BinaryOp_Logical_Or) {
+                result.value.type = Value_boolean;
+                result.value.data.boolean = false;
+                
+                if (!is_integer(first_op.value)) {
+                    interp_error(interp, string_lit("type error: mismatched types"));
+                }
+                
+                if (value_to_bool(first_op.value)) {
+                    result.value.data.boolean = true;
                 } else {
-                    interp_error(interp, string_lit("unexpected assignment"));
+                    Interp_Value second_op = interp_expression(interp, ast->Binary_Expr.second);
+                    if (!is_integer(second_op.value)) {
+                        interp_error(interp, string_lit("type error: mismatched types"));
+                    }
+                    
+                    result.value.data.boolean = value_to_bool(second_op.value);
+                }
+            } else {
+                Interp_Value second_op = interp_expression(interp, ast->Binary_Expr.second);
+                
+                // TODO(Alexander): check illegal types such as arrays and struct literals!
+                Value first = first_op.value;
+                Value second = second_op.value;
+                
+                // NOTE(Alexander): Type rules
+                // int + int;
+                // float + int -> float + float;
+                // int + float -> float + float;
+                // float -x-> int (is a no no, it has to be an explicit cast)
+                
+                if (is_floating(first) || is_floating(second)) {
+                    // NOTE(Alexander): Make sure both types are floating
+                    if (is_integer(first)) {
+                        first.data.floating  = value_to_f64(first);
+                        first.type = Value_floating;
+                        result.type = second_op.type;
+                    } else if (is_integer(second)) {
+                        second.data.floating = value_to_f64(second);
+                        second.type = Value_floating;
+                        result.type = first_op.type;
+                    } else if (is_floating(first) && is_floating(second)) {
+                        result.type = first_op.type;
+                    } else {
+                        interp_error(interp, string_lit("type error: mismatched types"));
+                    }
+                    
+                    first = value_floating_binary_operation(first, second, ast->Binary_Expr.op);
+                    
+                    result.value = first;
+                } else if (is_integer(first) || is_integer(second)) {
+                    
+                    // NOTE(Alexander): integer math
+                    first.data.signed_int = value_integer_binary_operation(first, second, ast->Binary_Expr.op);
+                    
+                    result.value = first;
+                    result.type = first_op.type;
+                } else {
+                    interp_mismatched_types(interp, &first_op.type, &second_op.type);
+                }
+                
+                // NOTE(Alexander): handle assign binary expression
+                if (result.value.type != Value_void && is_binary_assign(ast->Binary_Expr.op)) {
+                    
+                    if (ast->Binary_Expr.first->kind == Ast_Ident) {
+                        string_id ident = ast->Binary_Expr.first->Ident;
+                        Interp_Entity entity = interp_load_entity_from_current_scope(interp, ident);
+                        if (interp_entity_is_declared(interp, &entity, ident)) {
+                            if (entity.data) {
+                                interp_save_value(interp, entity.type, entity.data, result.value);
+                            } else {
+                                entity.data = interp_push_value(interp, entity.type, result.value);
+                            }
+                        }
+                    } else if (first_op.data && first_op.type.kind) {
+                        interp_save_value(interp, &first_op.type, first_op.data, first);
+                        
+                    } else {
+                        interp_error(interp, string_lit("unexpected assignment"));
+                    }
                 }
             }
         } break;

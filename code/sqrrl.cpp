@@ -45,7 +45,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         filepath = string_lit("examples/demo4.sq");
         //filepath = string_lit("examples/primes.sq");
         //filepath = string_lit("tests/literals.sq");
-        //filepath = string_lit("tests/preprocessor_if.sq");
+        //filepath = string_lit("tests/preprocessor.sq");
     }
 #else
     if (argc <= 1) {
@@ -99,7 +99,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
 #endif
     
     if (preprocessor.error_count > 0) {
-        pln("\nErrors found during preprocessing, exiting...\n");
+        pln("\nErrors (%) found during preprocessing, exiting...\n", f_u32(preprocessor.error_count));
         return 1;
     }
     

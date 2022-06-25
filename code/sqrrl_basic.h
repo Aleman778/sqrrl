@@ -117,9 +117,30 @@ cstring_count(cstring str) {
     return (umm) strlen(str);
 }
 
+inline cstring
+cstring_copy(cstring str) {
+    umm count = cstring_count(str);
+    cstring result = (cstring) malloc(count + 1);
+    copy_memory((void*) result, (void*) str, count + 1);
+    return result;
+}
+
 inline void
 cstring_free(cstring str) {
     free((void*) str);
+}
+
+inline cstring
+cstring_to_lower_ascii(cstring str) {
+    umm count = cstring_count(str);
+    char* result = (char*) malloc(count + 1);
+    for (umm i = 0; i < count; i++) {
+        char c = str[i];
+        char is_upper = (u8) (c >= 'A' && c <= 'Z');
+        result[i] = is_upper * (c - 'A' + 'a') + !is_upper * c;
+    }
+    result[count] = 0;
+    return (cstring) result;
 }
 
 inline cstring
@@ -207,6 +228,15 @@ string_compare(string a, string b) {
     }
     
     return (int) (b.count - a.count);
+}
+
+inline void
+string_to_lower_ascii_no_copy(string* str) {
+    for (umm i = 0; i < str->count; i++) {
+        u8 c = str->data[i];
+        u8 is_upper = (u8) (c >= 'A' && c <= 'Z');
+        str->data[i] = is_upper * (c - 'A' + 'a') + !is_upper * c;
+    }
 }
 
 inline string

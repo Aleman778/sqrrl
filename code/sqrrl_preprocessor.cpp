@@ -255,8 +255,10 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                         included_file = read_entire_system_header_file(filename);
                         
                     } else if (token.type == Token_String) {
+                        Loaded_Source_File* curr_file =
+                            get_source_file_by_index(preprocessor->curr_file_index);
                         string filename = string_unquote_nocopy(token.source);
-                        included_file = read_entire_source_file(filename);
+                        included_file = read_entire_source_file(filename, curr_file);
                     }
                     
                     if (included_file.is_valid) {
@@ -267,7 +269,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                         preprocessor->abort_curr_file = false;
                         
                         preprocess_file(preprocessor, included_file.source, 
-                                        included_file.filepath, included_file.index);
+                                        included_file.filename, included_file.index);
                         preprocessor->abort_curr_file = false; // if #pragma once hit then restore it
                     } else {
                         preprocessor->error_count++;
@@ -277,11 +279,15 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
             } break;
             
             case Kw_if: {
-                bool value = preprocess_parse_and_eval_constant_expression(preprocessor, t);
-                array_push(preprocessor->if_result_stack, value);
-                
-                preprocessor->curr_branch_taken =
-                    check_if_curr_branch_is_taken(preprocessor->if_result_stack);
+                if (preprocessor->curr_branch_taken) {
+                    bool value = preprocess_parse_and_eval_constant_expression(preprocessor, t);
+                    array_push(preprocessor->if_result_stack, value);
+                    
+                    preprocessor->curr_branch_taken =
+                        check_if_curr_branch_is_taken(preprocessor->if_result_stack);
+                } else {
+                    array_push(preprocessor->if_result_stack, false);
+                }
             } break;
             
             case Sym_elif: {
@@ -673,7 +679,9 @@ preprocess_expand_macro(Preprocessor* preprocessor,
                 }
             } break;
             
-            case Token_Backslash: break;
+            case Token_Backslash: 
+            case Token_Line_Comment: 
+            case Token_Block_Comment: break;
             
             default: {
                 string_builder_push(sb, token.source);
@@ -716,7 +724,9 @@ preprocess_line(Preprocessor* preprocessor, String_Builder* sb, Tokenizer* t) {
                     preprocess_error(preprocessor, string_lit("preprocessor concatenator (##) can only be used inside macro"));
                 } break;
                 
-                case Token_Backslash: break;
+                case Token_Backslash:
+                case Token_Line_Comment:
+                case Token_Block_Comment: break;
                 
                 default: {
                     string_builder_push(sb, token.source);

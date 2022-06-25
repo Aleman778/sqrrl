@@ -195,7 +195,7 @@ tokenizer_set_source_group(Tokenizer* tokenizer, Source_Group* group) {
     
     // TODO(Alexander): maybe cache file_index?
     Loaded_Source_File* file = get_source_file_by_index(group->file_index);
-    tokenizer->file = file->filepath;
+    tokenizer->file = file->filename;
 }
 
 struct Tokenizer_State {

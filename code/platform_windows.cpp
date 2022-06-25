@@ -5,10 +5,11 @@
 #include "dbghelp.h"
 
 #ifndef PATH_MAX
-#define PATH_MAX 200 // TODO(alexander): this shouldn't be used, just for debug code!!!
+#define PATH_MAX 260 // TODO(alexander): this shouldn't be used, just for debug code!!!
 #endif
 
 global array(cstring)* windows_system_header_dirs = 0;
+//global cstring working_directory = "";
 
 #if BUILD_DEBUG
 void 
@@ -97,6 +98,104 @@ DEBUG_log_backtrace() {
 }
 #endif
 
+internal inline Canonicalized_Path
+canonicalize_path(cstring filepath) {
+    Canonicalized_Path result = {};
+    
+    DWORD buffer_count = PATH_MAX; // TODO(Alexander): ugh PATH_MAX is not very large.
+    result.fullpath = (cstring) malloc(buffer_count);
+    
+    // TODO(Alexander): maybe need to switch to UNICODE mode for longer filepaths
+    // TODO(Alexander): more error check we can get the actual count and retry
+    // NOTE(Alexander): converts file paths with /../ etc. to its absolute version
+    DWORD actual_count = GetFullPathNameA(filepath, buffer_count, 
+                                          (LPSTR) result.fullpath, 
+                                          (LPSTR*) &result.file_part);
+    
+    return result;
+}
+
+Canonicalized_Path
+DEBUG_get_canonicalized_path(cstring filename, cstring curr_file_dir) {
+    // searches first in curr file directory (optionally), else in current working directory.
+    
+    // NOTE(Alexander): we aren't case sentitive in windows
+    filename = cstring_to_lower_ascii(filename);
+    
+    cstring relative_filepath = 0;
+    cstring filepath = filename;
+    if (curr_file_dir) {
+        
+        relative_filepath = cstring_concat(curr_file_dir, filename);
+        pln("relative path: %\n", f_cstring(relative_filepath));
+        HANDLE file_handle = CreateFileA(relative_filepath, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+        
+        if (file_handle != INVALID_HANDLE_VALUE) {
+            filepath = relative_filepath;
+            CloseHandle(file_handle);
+        }
+    }
+    
+    Canonicalized_Path result = canonicalize_path(filepath);
+    
+    
+    pln("path: `%`\nname: `%`", f_cstring(result.fullpath), f_cstring(result.file_part));
+    cstring_free(filename);
+    if (relative_filepath) {
+        cstring_free(relative_filepath);
+    }
+    
+    return result;
+}
+
+Canonicalized_Path
+DEBUG_get_system_canonicalized_path(cstring filename) {
+    bool success = false;
+    
+    pln("Searching for `%` in:", f_cstring(filename));
+    
+    cstring filepath = 0;
+    
+    for_array_v (windows_system_header_dirs, dir, _) {
+        filepath = cstring_concat(dir, filename);
+        
+        pln("- %", f_cstring(dir));
+        
+        HANDLE file_handle = CreateFileA(filepath, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+        
+        if (file_handle != INVALID_HANDLE_VALUE) {
+            filepath = filepath;
+            
+            CloseHandle(file_handle);
+            success = true;
+            break;
+        }
+        
+        cstring_free(filepath);
+        filepath = 0;
+    }
+    
+    if (!success) {
+        platform_error(string_format("system header file `%` is not found", f_cstring(filename)));
+    }
+    
+    if (filepath) {
+        Canonicalized_Path result = canonicalize_path(filepath);
+        pln("SYS! path: `%`\nname: `%`", f_cstring(result.fullpath), f_cstring(result.file_part));
+        cstring_free(filepath);
+        return result;
+    }
+    
+    return {};
+}
+
+void
+DEBUG_free_canonicalized_path(Canonicalized_Path path) {
+    cstring_free(path.fullpath);
+}
+
+
+
 Read_File_Result
 read_entire_file_handle(HANDLE file_handle, cstring filename) {
     Read_File_Result result = {};
@@ -167,37 +266,6 @@ DEBUG_write_entire_file(cstring filename, void* data, u32 size) {
     }
     
     return false;
-}
-
-Read_File_Result
-DEBUG_read_entire_system_header(cstring filename) {
-    Read_File_Result result = {};
-    bool success = false;
-    
-    pln("Searching for `%` in:", f_cstring(filename));
-    
-    for_array_v (windows_system_header_dirs, dir, _) {
-        cstring filepath = cstring_concat(dir, filename);
-        
-        pln("- %", f_cstring(dir));
-        
-        HANDLE file_handle = CreateFileA(filepath, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
-        
-        if (file_handle != INVALID_HANDLE_VALUE) {
-            result = read_entire_file_handle(file_handle, filename);
-            success = true;
-            cstring_free(filepath);
-            break;
-        }
-        
-        cstring_free(filepath);
-    }
-    
-    if (!success) {
-        platform_error(string_format("system header file `%` is not found", f_cstring(filename)));
-    }
-    
-    return result;
 }
 
 void

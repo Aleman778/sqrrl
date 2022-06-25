@@ -5,15 +5,28 @@
 
 void DEBUG_log_backtrace();
 
+struct Canonicalized_Path {
+    cstring fullpath;
+    cstring file_part;
+};
+
+Canonicalized_Path
+DEBUG_get_canonicalized_path(cstring filepath, cstring curr_file_dir = 0);
+
+Canonicalized_Path
+DEBUG_get_system_canonicalized_path(cstring filepath);
+
+void
+DEBUG_free_canonicalized_path(Canonicalized_Path canonicalized_path);
 
 struct Read_File_Result {
     void* contents;
     u32 contents_size;
 };
 
-Read_File_Result DEBUG_read_entire_file(cstring filename);
+Read_File_Result DEBUG_read_entire_file(cstring filepath);
 
-Read_File_Result DEBUG_read_entire_system_header(cstring filename);
+Read_File_Result DEBUG_read_entire_system_header(cstring filepath);
 bool DEBUG_write_entire_file(cstring filename, void* data, u32 size);
 
 void DEBUG_free_file_memory(void* memory);

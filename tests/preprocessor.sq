@@ -137,4 +137,13 @@ EXTERN_C const GUID name \
                  0x4ee0,
                  0xad, 0x10, 0x86, 0x91, 0x5a, 0xfd, 0xad, 0x09
                  );
+    
+    
+#ifdef __cplusplus
+#if __cplusplus >= 201402
+#endif
+    pln("11. fail");
+#else
+    pln("Ok!");
+#endif
 }

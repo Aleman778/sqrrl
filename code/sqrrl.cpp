@@ -27,7 +27,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     {
         // Put dummy file as index 0
         Loaded_Source_File file = {};
-        file.filepath = string_lit("invalid");
+        file.filename = string_lit("invalid");
         file.source = string_lit("");
         array_push(loaded_source_files, file);
         
@@ -45,7 +45,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         filepath = string_lit("examples/demo4.sq");
         //filepath = string_lit("examples/primes.sq");
         //filepath = string_lit("tests/literals.sq");
-        //filepath = string_lit("tests/preprocessor.sq");
+        //filepath = string_lit("tests/Preprocessor.sq");
     }
 #else
     if (argc <= 1) {
@@ -58,18 +58,18 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     // Extract the directory from the filepath and use as working directory
     // TODO(Alexander): this is hackish solution, we should rely on OS service to do this
-    working_directory = filepath;
-    working_directory.count = 0;
-    for (int index = 0; index < filepath.count; index++) {
-        if (filepath.data[index] == '\\' || filepath.data[index] == '/') {
-            working_directory.count = index + 1;
-        }
-    }
+    //working_directory = filepath;
+    //working_directory.count = 0;
+    //for (int index = 0; index < filepath.count; index++) {
+    //if (filepath.data[index] == '\\' || filepath.data[index] == '/') {
+    //working_directory.count = index + 1;
+    //}
+    //}
     string filename = filepath;
-    filename.data += working_directory.count;
-    filename.count -= working_directory.count;
+    //filename.data += working_directory.count;
+    //filename.count -= working_directory.count;
     
-    pln("working directory: %", f_string(working_directory));
+    //pln("working directory: %", f_string(working_directory));
     
     // Setup string interning of variables
     vars_initialize();
@@ -82,7 +82,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
     Preprocessor preprocessor = {};
-    string preprocessed_source = preprocess_file(&preprocessor, file.source, file.filepath, file.index);
+    string preprocessed_source = preprocess_file(&preprocessor, file.source, file.filename, file.index);
     
     
     // TODO(alexander): temp printing source

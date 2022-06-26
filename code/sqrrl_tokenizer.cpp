@@ -606,6 +606,7 @@ advance_token(Tokenizer* tokenizer) {
             case ']':  token.type = Token_Close_Bracket; break;
             case '{':  token.type = Token_Open_Brace; break;
             case '}':  token.type = Token_Close_Brace; break;
+            case '~':  token.type = Token_Bit_Not; break;
             case '\\': token.type = Token_Backslash; break;
             case '\0': token.type = Token_EOF; break;
             

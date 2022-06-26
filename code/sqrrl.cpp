@@ -45,7 +45,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         filepath = string_lit("examples/demo4.sq");
         //filepath = string_lit("examples/primes.sq");
         //filepath = string_lit("tests/literals.sq");
-        //filepath = string_lit("tests/Preprocessor.sq");
+        //filepath = string_lit("tests/preprocessor.sq");
     }
 #else
     if (argc <= 1) {
@@ -86,9 +86,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     
     // TODO(alexander): temp printing source
-    pln("%", f_string(preprocessed_source));
+    pln("Preprocessed source:\n%", f_string(preprocessed_source));
     
-#if 0
+#if 1
     // Source group debugging
     for_array(preprocessor.source_groups, group, index) {
         pln("group(%): file_index: %, line: %, offset: %, count: %\nSource:", f_int(index), f_uint(group->file_index), f_uint(group->line), f_umm(group->offset), f_umm(group->count));

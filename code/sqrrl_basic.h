@@ -320,8 +320,9 @@ inline void
 string_builder_alloc(String_Builder* sb, umm new_size) {
     void* new_data = realloc(sb->data, new_size);
     if (!new_data) {
+        new_data = malloc(new_size);
+        copy_memory(new_data, sb->data, sb->size);
         free(sb->data);
-        sb->data = (u8*) malloc(new_size);
     }
     sb->data = (u8*) new_data;
     sb->size = new_size;

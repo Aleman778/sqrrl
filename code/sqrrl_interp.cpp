@@ -155,8 +155,15 @@ interp_expression(Interp* interp, Ast* ast) {
         case Ast_Ident: {
             result = interp_load_value(interp, ast->Ident);
             if (!result.data && result.type.kind == Type_None) {
-                interp_error(interp, string_format("undeclared identifier `%`", 
-                                                   f_string(vars_load_string(ast->Ident))));
+                if (interp->set_undeclared_to_zero) {
+                    result.value = {};
+                    result.value.type = Value_signed_int;
+                    result.type = global_primitive_types[PrimitiveType_int];
+                    
+                } else {
+                    interp_error(interp, string_format("undeclared identifier `%`", 
+                                                       f_string(vars_load_string(ast->Ident))));
+                }
             }
         } break;
         

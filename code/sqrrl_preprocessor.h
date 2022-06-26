@@ -37,6 +37,7 @@ struct Preprocessor {
     map(u32, u32)* loaded_file_indices;
     
     b32 abort_curr_file;
+    b32 is_system_header;
     s32 error_count;
 };
 

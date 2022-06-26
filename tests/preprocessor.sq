@@ -124,7 +124,7 @@ EXTERN_C const GUID FAR name
 #else // !defined(INITGUID)
     
 #define DEFINE_GUID(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8) \
-EXTERN_C const GUID name \
+GUID = name \
 = { l, w1, w2, { b1, b2,  b3,  b4,  b5,  b6,  b7,  b8 } }
 #endif // !defined(INITGUID)
 #endif // !defined(DEFINE_GUID)
@@ -144,6 +144,40 @@ EXTERN_C const GUID name \
 #endif
     pln("11. fail");
 #else
-    pln("Ok!");
+    pln("11. Ok!");
+#endif
+    
+#define _SAL2_Source_(a, b, c)
+#define _In_opt_z_ _SAL2_Source_(_In_opt_z_, (), 10)
+    _In_opt_z_
+        
+        
+#define DUMMY_FN2(a) a
+#define DUMMY_FN(a) a
+    
+    DUMMY_FN(DUMMY_FN2)
+        
+        
+        //
+        //
+#define _AMD64_
+    
+#if defined(_AMD64_)
+    
+    //
+    //
+#if defined(_RANDOM_)
+    
+#if defined(_M_AMD64) && !defined(RC_INVOKED) && !defined(MIDL_PASS)
+    pln("12.1 fail");
+#else 
+#define NOT_DEFINED
+#endif
+#endif
+    pln("12. Ok!");
+#endif
+    
+#ifdef NOT_DEFINED
+    pln("12.2 fail");
 #endif
 }

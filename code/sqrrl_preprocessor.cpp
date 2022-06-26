@@ -26,6 +26,7 @@ preprocess_parse_and_eval_constant_expression(Preprocessor* preprocessor, Tokeni
     
     // TODO(Alexander): interpreter needs to be able to access macro definitions
     Interp interp = {};
+    interp.set_undeclared_to_zero = preprocessor->is_system_header;
     Interp_Value result = interp_expression(&interp, expr);
     
     preprocessor->error_count += interp.error_count;
@@ -150,8 +151,11 @@ preprocess_parse_define(Preprocessor* preprocessor, Tokenizer* t) {
         Preprocessor_Macro* prev_macro = &preprocessor->macros[index].value;
         if (string_compare(macro.source, prev_macro->source) != 0) {
             
-            preprocess_error(preprocessor, string_format("cannot redeclare macro with same identifier `%`", 
-                                                         f_string(vars_load_string(ident))));
+            // TODO(Alexander): is this error Ok to suppress for system headers?
+            if (!preprocessor->is_system_header) {
+                preprocess_error(preprocessor, string_format("cannot redeclare macro with same identifier `%`", 
+                                                             f_string(vars_load_string(ident))));
+            }
             return;
         }
     }
@@ -234,6 +238,8 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
             } break;
             
             case Sym_include: {
+                b32 prev_system_header_flag = preprocessor->is_system_header;
+                
                 if (preprocessor->curr_branch_taken) {
                     token = advance_semantical_token(t);
                     
@@ -253,6 +259,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                         }
                         
                         included_file = read_entire_system_header_file(filename);
+                        preprocessor->is_system_header = true;
                         
                     } else if (token.type == Token_String) {
                         Loaded_Source_File* curr_file =
@@ -270,6 +277,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                         
                         preprocess_file(preprocessor, included_file.source, 
                                         included_file.filename, included_file.index);
+                        preprocessor->is_system_header = prev_system_header_flag;
                         preprocessor->abort_curr_file = false; // if #pragma once hit then restore it
                     } else {
                         preprocessor->error_count++;
@@ -381,15 +389,41 @@ preprocess_splice_next_line(Preprocessor* preprocessor, Tokenizer* t) {
     
     t->curr = t->end;
     
-    umm curr_line_number = t->line_number;
-    umm next_line_number = t->line_number + 1;
+    umm target_line_number = t->line_number + 1;
     u8* begin = t->curr;
-    u8* curr = t->curr;
-    
     
     int block_comment_depth = 0;
     int paren_depth = 0;
     
+    // Use tokenizer to find where the next line ends
+    t->end = t->end_of_file;
+    t->next = t->curr;
+    utf8_advance_character(t);
+    
+    Token token = advance_token(t);
+    while (is_token_valid(token) && t->line_number < target_line_number) {
+        if (token.type == Token_Backslash) {
+            target_line_number++;
+        }
+        token = advance_token(t);
+    }
+    
+    t->end = t->curr;
+    
+    if (token.type == Token_Whitespace) {
+        // NOTE(Alexander): tokenizer doesn't stop at newline character so we need to find its
+        for (int i = (int) token.source.count - 1; i >= 0; i--) {
+            char c = token.source.data[i];
+            if (c == '\n' || c == '\r') {
+                //t->end = token.source.data + i + 1;
+                //break;
+            }
+        }
+    }
+    
+    
+    
+#if 0
     while (curr < t->end_of_file && curr_line_number < next_line_number) {
         Utf8_To_Utf32_Result character = utf8_convert_to_utf32(curr, t->end_of_file);
         if (character.num_bytes == 0) {
@@ -439,13 +473,16 @@ preprocess_splice_next_line(Preprocessor* preprocessor, Tokenizer* t) {
         
         curr += character.num_bytes;
     }
+#endif
     
-    t->end = curr;
+    
+    t->curr = begin;
     t->next = t->curr;
     t->curr_line = t->curr;
-    t->column_number = 0;
     result.substring = string_view(t->curr, t->end);
-    result.next_line_number = next_line_number;
+    result.next_line_number = t->line_number;
+    t->line_number = result.curr_line_number;
+    t->column_number = 0;
     utf8_advance_character(t);
     
     //pln("Line %: `%`", f_u32(result.curr_line_number), f_string(result.substring));
@@ -463,13 +500,16 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
                             string_id ident);
 
 internal inline Token
-advance_semantical_token_multiline(Preprocessor* preprocessor, Tokenizer* t) {
+preprocess_actual_argument_next_token(Preprocessor* preprocessor, Tokenizer* t, int* paren_depth) {
     // This will merge with below line if it reaches the end line
     Token token = advance_semantical_token(t);
     if (token.type == Token_EOF) {
         preprocess_splice_next_line(preprocessor, t);
         token = advance_semantical_token(t);
     }
+    
+    if (token.type == Token_Open_Paren) *paren_depth += 1;
+    if (token.type == Token_Close_Paren) *paren_depth -= 1;
     
     return token;
 }
@@ -479,24 +519,20 @@ preprocess_parse_actual_arguments(Preprocessor* preprocessor, Tokenizer* t, Prep
     Replacement_List result = {};
     result.success = true;
     
-    // Parse formal arguments
-    Token token = advance_semantical_token_multiline(preprocessor, t);
-    if (token.type != Token_Open_Paren) {
-        preprocess_error(preprocessor, string_format("function macro expected `(`, found `%`", f_token(token.type)));
-        result.success = false;
-        return result;
-    }
-    
+    int paren_depth = 1;
     String_Builder sb = {};
-    
-    token = advance_semantical_token_multiline(preprocessor, t);
-    while (is_token_valid(token) && token.type != Token_Close_Paren) {
+    Token token = preprocess_actual_argument_next_token(preprocessor, t, &paren_depth);
+    while (is_token_valid(token) && paren_depth > 0) {
         
         sb.curr_used = 0;
         
         u8* begin = token.source.data;
         
-        while (is_token_valid(token) && token.type != Token_Comma && token.type != Token_Close_Paren) {
+        while (is_token_valid(token)) {
+            if ((token.type == Token_Comma && paren_depth == 1) || paren_depth == 0) {
+                break;
+            }
+            
             if (token.type == Token_Ident) {
                 string_id ident = vars_save_string(token.source);
                 if (!preprocess_try_expand_ident(preprocessor, &sb, t, parent_macro, {}, ident)) {
@@ -506,7 +542,7 @@ preprocess_parse_actual_arguments(Preprocessor* preprocessor, Tokenizer* t, Prep
                 string_builder_push(&sb, token.source);
             }
             
-            token = advance_semantical_token_multiline(preprocessor, t);
+            token = preprocess_actual_argument_next_token(preprocessor, t, &paren_depth);
         }
         
         
@@ -521,7 +557,7 @@ preprocess_parse_actual_arguments(Preprocessor* preprocessor, Tokenizer* t, Prep
             break;
         }
         
-        token = advance_semantical_token_multiline(preprocessor, t);
+        token = preprocess_actual_argument_next_token(preprocessor, t, &paren_depth);
     }
     
     string_builder_free(&sb);
@@ -607,8 +643,18 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
         
         Replacement_List macro_args = {};
         if (macro.is_functional) {
-            macro_args = preprocess_parse_actual_arguments(preprocessor, t, parent_macro);
-            if (!macro_args.success) {
+            
+            int paren_depth = 0;
+            Tokenizer_State restore_t = save_tokenizer(t);
+            Token token = preprocess_actual_argument_next_token(preprocessor, t, &paren_depth);
+            
+            if (token.type == Token_Open_Paren) {
+                macro_args = preprocess_parse_actual_arguments(preprocessor, t, parent_macro);
+                if (!macro_args.success) {
+                    return false;
+                }
+            } else {
+                restore_tokenizer(&restore_t);
                 return false;
             }
         }
@@ -694,11 +740,9 @@ preprocess_expand_macro(Preprocessor* preprocessor,
 
 internal bool
 preprocess_line(Preprocessor* preprocessor, String_Builder* sb, Tokenizer* t) {
-    Token token = advance_token(t);
-    if (token.type == Token_Whitespace) {
-        token = advance_token(t);
-    }
-    
+    u8* base = t->curr;
+    Token token = advance_semantical_token(t);
+    Token first_token = token;
     if (token.type == Token_Directive) {
         preprocess_directive(preprocessor, t);
         return false;
@@ -717,6 +761,11 @@ preprocess_line(Preprocessor* preprocessor, String_Builder* sb, Tokenizer* t) {
                 } break;
                 
                 case Token_Directive: {
+                    pln("failed on line:\n`%`", f_string(string_view(base, t->end)));
+                    pln("first token is `%`", f_token(first_token.type));
+                    if (first_token.type == Token_Ident) {
+                        pln("== `%`", f_string(first_token.source));
+                    }
                     preprocess_error(preprocessor, string_lit("preprocessor directive (#) must start at the beginning of a line"));
                 } break;
                 
@@ -858,7 +907,7 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath, int 
     u8* end = source.data + source.count;
     
     String_Builder* sb = &preprocessor->output;
-    string_builder_alloc(sb, source.count);
+    string_builder_ensure_capacity(sb, source.count);
     
     //if (array_count(preprocessor->if_result_stack) == 0) {
     preprocessor->curr_branch_taken = true;
@@ -896,7 +945,10 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath, int 
         if (run_finalize) {
             sb->curr_used = begin_used;
             string expanded_code = create_string(end_used - begin_used, sb->data + begin_used);
+            
+            //pln("expanded code:\n`%`", f_string(expanded_code));
             string finalized_string = preprocess_finalize_code(expanded_code);
+            //pln(" -->\n  `%`", f_string(finalized_string));
             string_builder_push(sb, finalized_string);
             
             if (current_group.count == 0) {

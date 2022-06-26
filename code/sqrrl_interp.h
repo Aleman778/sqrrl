@@ -29,6 +29,8 @@ struct Interp {
     
     s32 block_depth;
     s32 error_count;
+    
+    b32 set_undeclared_to_zero; // TODO(Alexander): maybe turn this into a bitflag later...
 };
 
 enum Interp_Value_Mod {

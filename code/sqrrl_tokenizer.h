@@ -185,6 +185,7 @@ struct Source_Group {
     // TODO(Alexander): we need to record expanded macro spans here, column will just be 0 always
     u32 column;
     u32 file_index;
+    b32 c_compatibility_mode; // TODO(Alexander): maybe convert to flags
 };
 
 inline void

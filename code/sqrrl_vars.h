@@ -73,6 +73,22 @@ VAR(once)     \
 VAR(line)     \
 VAR(undef)    \
 VAR(main)     \
+VAR(unsigned) \
+VAR(signed)   \
+VAR(long)     \
+VAR(short)    \
+VAR(float)    \
+VAR(double)   \
+VAR(__int8)   \
+VAR(__int16)  \
+VAR(__int32)  \
+VAR(__int64)  \
+VAR(__pragma) \
+VAR(__cdecl)  \
+VAR(__fastcall) \
+VAR(pack)     \
+VAR(push)     \
+VAR(pop)      \
 
 // NOTE(alexander): interning strings into ids
 typedef u32 string_id;

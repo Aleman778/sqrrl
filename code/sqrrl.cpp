@@ -86,9 +86,11 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     
     // TODO(alexander): temp printing source
-    pln("Preprocessed source:\n%", f_string(preprocessed_source));
+    //pln("Preprocessed source:\n%", f_string(preprocessed_source));
+    DEBUG_write_entire_file("build/preprocessed.sq", preprocessed_source.data,
+                            (u32) preprocessed_source.count);
     
-#if 1
+#if 0
     // Source group debugging
     for_array(preprocessor.source_groups, group, index) {
         pln("group(%): file_index: %, line: %, offset: %, count: %\nSource:", f_int(index), f_uint(group->file_index), f_uint(group->line), f_umm(group->offset), f_umm(group->count));

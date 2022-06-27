@@ -127,7 +127,7 @@ DEBUG_get_canonicalized_path(cstring filename, cstring curr_file_dir) {
     if (curr_file_dir) {
         
         relative_filepath = cstring_concat(curr_file_dir, filename);
-        pln("relative path: %\n", f_cstring(relative_filepath));
+        //pln("relative path: %\n", f_cstring(relative_filepath));
         HANDLE file_handle = CreateFileA(relative_filepath, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
         
         if (file_handle != INVALID_HANDLE_VALUE) {
@@ -139,7 +139,7 @@ DEBUG_get_canonicalized_path(cstring filename, cstring curr_file_dir) {
     Canonicalized_Path result = canonicalize_path(filepath);
     
     
-    pln("path: `%`\nname: `%`", f_cstring(result.fullpath), f_cstring(result.file_part));
+    //pln("path: `%`\nname: `%`", f_cstring(result.fullpath), f_cstring(result.file_part));
     cstring_free(filename);
     if (relative_filepath) {
         cstring_free(relative_filepath);
@@ -152,14 +152,14 @@ Canonicalized_Path
 DEBUG_get_system_canonicalized_path(cstring filename) {
     bool success = false;
     
-    pln("Searching for `%` in:", f_cstring(filename));
+    //pln("Searching for `%` in:", f_cstring(filename));
     
     cstring filepath = 0;
     
     for_array_v (windows_system_header_dirs, dir, _) {
         filepath = cstring_concat(dir, filename);
         
-        pln("- %", f_cstring(dir));
+        //pln("- %", f_cstring(dir));
         
         HANDLE file_handle = CreateFileA(filepath, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
         
@@ -181,7 +181,7 @@ DEBUG_get_system_canonicalized_path(cstring filename) {
     
     if (filepath) {
         Canonicalized_Path result = canonicalize_path(filepath);
-        pln("SYS! path: `%`\nname: `%`", f_cstring(result.fullpath), f_cstring(result.file_part));
+        //pln("SYS! path: `%`\nname: `%`", f_cstring(result.fullpath), f_cstring(result.file_part));
         cstring_free(filepath);
         return result;
     }

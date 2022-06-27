@@ -128,6 +128,7 @@ AST(Function_Type,     "function", struct {     \
 Ast* ident;                                     \
 Ast* return_type;                               \
 Ast* arguments;                                 \
+Ast_Decl_Modifier mods;                         \
 })                                              \
 AST(Struct_Type,       "struct", struct {       \
 Ast* ident;                                     \
@@ -185,11 +186,13 @@ enum Ast_Kind {
 
 typedef s32 Ast_Decl_Modifier;
 enum {
-    AstDeclModifier_None      = 0,
-    AstDeclModifier_Inline    = bit(1),
-    AstDeclModifier_No_Inline = bit(2),
-    AstDeclModifier_Internal  = bit(3),
-    AstDeclModifier_Global    = bit(4),
+    AstDeclModifier_None           = 0,
+    AstDeclModifier_Inline         = bit(1),
+    AstDeclModifier_No_Inline      = bit(2),
+    AstDeclModifier_Internal       = bit(3),
+    AstDeclModifier_Global         = bit(4),
+    AstDeclModifier_Cconv_cdecl    = bit(5),
+    AstDeclModifier_Cconv_fastcall = bit(6),
 };
 
 union Span {

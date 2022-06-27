@@ -1,4 +1,5 @@
 
+// TODO(Alexander): add custom string interner to avoid bloating the global one.
 
 internal bool
 preprocess_parse_and_eval_constant_expression(Preprocessor* preprocessor, Tokenizer* t) {
@@ -54,16 +55,18 @@ preprocess_parse_and_eval_constant_expression(Preprocessor* preprocessor, Tokeni
 
 internal void
 preprocess_parse_define(Preprocessor* preprocessor, Tokenizer* t) {
-    Token token = advance_token(t);
-    if (token.type != Token_Whitespace) {
-        return;
-    }
+    Token token = advance_semantical_token(t);
     
-    token = advance_token(t);
     if (token.type != Token_Ident) {
         preprocess_error(preprocessor, string_format("expected `identifier`, found `%`", f_token(token.type)));
         return;
     }
+    
+    //if (string_compare(token.source, string_lit("CreateWindow")) == 0) {
+    //assert(0);
+    //}
+    if (!preprocessor->curr_branch_taken) return;
+    
     
     string_id ident = vars_save_string(token.source);
     
@@ -78,6 +81,11 @@ preprocess_parse_define(Preprocessor* preprocessor, Tokenizer* t) {
         int arg_index = 0;
         token = advance_semantical_token(t);
         while (is_token_valid(token) && token.type != Token_Close_Paren) {
+            if (token.type == Token_Backslash) {
+                token = advance_semantical_token(t);
+                continue;
+            }
+            
             if (token.type == Token_Ident) {
                 string_id arg_ident = vars_save_string(token.source);
                 map_put(macro.arg_mapper, arg_ident, arg_index);
@@ -195,9 +203,9 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
         
         switch (symbol) {
             case Sym_define: {
-                if (preprocessor->curr_branch_taken) {
-                    preprocess_parse_define(preprocessor, t);
-                }
+                //if (preprocessor->curr_branch_taken) {
+                preprocess_parse_define(preprocessor, t);
+                //}
             } break;
             
             case Sym_undef: {
@@ -909,6 +917,11 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath, int 
     String_Builder* sb = &preprocessor->output;
     string_builder_ensure_capacity(sb, source.count);
     
+    
+#if BUILD_DEBUG
+    string_builder_push(sb, string_format("// File: `%`\n", f_string(tokenizer.file)));
+#endif
+    
     //if (array_count(preprocessor->if_result_stack) == 0) {
     preprocessor->curr_branch_taken = true;
     //}
@@ -918,6 +931,8 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath, int 
     
     Source_Group current_group = {};
     current_group.file_index = file_index;
+    // TODO(Alexander): deosn't have to be C compat, but for now we assume that
+    current_group.c_compatibility_mode = preprocessor->is_system_header;
     
     while (tokenizer.curr < tokenizer.end_of_file) {
         u8* curr_line = curr;
@@ -939,6 +954,8 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath, int 
         //}
         
         if (preprocessor->abort_curr_file) {
+            //Loaded_Source_File* file = get_source_file_by_index(preprocessor->curr_file_index);
+            //pln("abort preprossing: `%`", f_string(file->filename));
             break;
         }
         
@@ -964,6 +981,8 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath, int 
                 current_group = {};
                 current_group.offset = sb->curr_used;
                 current_group.file_index = file_index;
+                // TODO(Alexander): deosn't have to be C compat, but for now we assume that
+                current_group.c_compatibility_mode = preprocessor->is_system_header;
             }
             
             current_group.line = (u32) line.next_line_number;

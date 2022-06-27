@@ -10,6 +10,9 @@ struct Parser {
     
     s32 error_count;
     
+    b32 c_compatibility_mode;
+    b32 abort_curr_file;
+    
     Memory_Arena ast_arena;
 };
 
@@ -47,8 +50,23 @@ Token peek_second_token(Parser* parser);
 // TODO(alexander): better diagnostic, this will do for now!
 inline void
 parse_error(Parser* parser, Token token, string message) {
-    pln("%:%:%: error: %\n(Tokens - current: `%`, peek: `%`, peek second: `%`)", f_string(token.file), f_smm(token.line + 1), f_smm(token.column + 1), f_string(message), f_token(parser->current_token.type), 
+    pln("%:%:%: error: %", f_string(token.file), f_smm(token.line + 1), f_smm(token.column + 1), f_string(message));
+    
+#if BUILD_DEBUG
+    u8* lookback = token.source.data - 30;
+    if (lookback < parser->tokenizer->start) {
+        lookback = parser->tokenizer->start;
+    }
+    u8* lookahead = token.source.data + 30;
+    if (lookahead > parser->tokenizer->end) {
+        lookahead = parser->tokenizer->end;
+    }
+    pln("  Source: `%...`", f_string(string_view(lookback, lookahead)));
+    pln("  Tokens: { current = `%`, peek = `%`, peek second = `%` }", f_token(parser->current_token.type), 
         f_token(peek_token(parser).type), f_token(peek_second_token(parser).type));
+    
+#endif
+    
     DEBUG_log_backtrace();
     parser->error_count++;
 }
@@ -78,6 +96,7 @@ Ast* parse_expression(Parser* parser, bool report_error=true, u8 min_prec=1, Ast
 Ast* parse_statement(Parser* parser, bool report_error=true);
 Ast* parse_block_or_single_statement(Parser* parser, bool report_error=true);
 Ast* parse_type(Parser* parser, bool report_error=true);
+Ast* parse_extended_type(Parser* parser, Ast* base_type, bool report_error=true);
 
 Unary_Op parse_unary_op(Parser* parser);
 Binary_Op parse_binary_op(Parser* parser);
@@ -89,6 +108,7 @@ Ast* parse_formal_function_argument(Parser* parser);
 Ast* parse_actual_function_argument(Parser* parser);
 Ast* parse_actual_argument(Parser* parser);
 Ast* parse_actual_statement(Parser* parser);
+Ast* parse_actual_type(Parser* parser);
 Ast* parse_compound(Parser* parser, 
                     Token_Type begin, Token_Type end, Token_Type separator,
                     Ast* (*element_parser)(Parser* parser));

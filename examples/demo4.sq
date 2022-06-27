@@ -3,40 +3,33 @@
 #define _MSC_VER 1929
 #define _MSC_FULL_VER 192930133
 #define _M_AMD64 100
+#define _AMD64_
 #define _M_IX86 600
 
-//#define __cplusplus 199711
+#define NOCOMM // no COM API crap
+#define WIN32_LEAN_AND_MEAN // maybe we will get rid of some garbage?
 
-// // NOTE(Alexander): not sure if they have updated their docs for Windows 11 or it's just the same?
-// https://docs.microsoft.com/sv-se/windows/win32/winprog/using-the-windows-headers?redirectedfrom=MSDN
-// TODO(Alexander): somehow the compiler must figure these things out, if possible
-//#define NTDDI_VERSION NTDDI_WIN10_19H1
-//#define _USE_DECLSPECS_FOR_SAL 1
-//#define _WIN32_WINNT _WIN32_WINNT_WIN10 // do we need this?
-//#define WINVER _WIN32_WINNT_WIN10
-
-//#define NOCOMM // no COM API crap
-//#define WIN32_LEAN_AND_MEAN // maybe we will get rid of some garbage?
-
-#include <windows.h>
-//#include <winuser.h>
-
-int
-test(int x) {
-    pln("test print of %", x);
-    
-    MessageBoxA(0, "Hello world from the Sqrrl programming language!", "Hello world! Testing FFI!", 0x40);
-    
-    
-    return 10;
-}
+//#include <windows.h>
+#include <winuser.h>
 
 int
 main() {
-    return test(13);
+    WNDCLASSA wndclass = {};
+    wndclass.style = CS_HREDRAW | CS_VREDRAW;
+    wndclass.lpfnWndProc = win32_main_callback;
+    wndclass.hInstance = h_instance;
+    wndclass.lpszClassName = "PlatfomerWindowClass";
+    
+    if (RegisterClass(&wndclass)) {
+        HWND window = CreateWindowExA(0,
+                                      wndclass.lpszClassName,
+                                      "Platformer",
+                                      WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                                      CW_USEDEFAULT,
+                                      CW_USEDEFAULT,
+                                      640, 480,
+                                      0, 0,
+                                      h_instance,
+                                      0);
+    }
 }
-
-//int
-//main() {
-//return 0;
-//}

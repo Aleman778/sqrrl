@@ -7,6 +7,7 @@ VAR(asm)      \
 VAR(break)    \
 VAR(cast)     \
 VAR(continue) \
+VAR(const)    \
 VAR(defer)    \
 VAR(do)       \
 VAR(else)     \

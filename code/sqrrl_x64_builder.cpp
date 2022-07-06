@@ -337,6 +337,14 @@ x64_build_jump_target(X64_Builder* x64, Bc_Register label) {
     return result;
 }
 
+X64_Operand
+x64_build_data_target(X64_Builder* x64, Bc_Register label) {
+    X64_Operand result = {};
+    result.kind = X64Operand_data_target;
+    result.jump_target = label;
+    return result;
+}
+
 
 X64_Operand
 x64_build_stack_offset(X64_Builder* x64, 
@@ -505,16 +513,19 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             if (stack_index == -1) {
                 X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
                 insn->op0 = x64_build_operand(x64, &bc->dest);
-                insn->op1 = x64_build_operand(x64, &bc->src1);
+                //insn->op1 = x64_build_operand(x64, &bc->src1);
+                insn->op1 = x64_build_data_target(x64, bc->src1.Register);
+                //
+                //assert(bc->src1.kind == BcOperand_Register);
                 //insn->op0 = x64_operand_type_cast(insn->op0, type);
-                insn->op0.kind = X64Operand_r64;
+                //insn->op0.kind = X64Operand_r64;
                 
                 
-                map_put(x64->allocated_virtual_registers, bc->src1.Register, insn->op0);
+                //map_put(x64->allocated_virtual_registers, bc->src1.Register, insn->op0);
                 
-                X64_Operand result = insn->op0;
-                result.kind = x64_get_memory_kind(type);
-                map_put(x64->allocated_virtual_registers, bc->dest.Register, result);
+                //X64_Operand result = insn->op0;
+                //result.kind = x64_get_memory_kind(type);
+                //map_put(x64->allocated_virtual_registers, bc->dest.Register, result);
             } else {
                 umm stack_offset = x64->stack_offsets[stack_index].value;
                 
@@ -1025,6 +1036,11 @@ x64_analyse_function(X64_Builder* x64, Bc_Instruction* bc) {
             x64->curr_stack_offset = stack_offset;
             
             //pln("stack_offset(size = %, align = %, %) = %", f_umm(type->cached_size), f_umm(type->cached_align), f_u32(bc->dest.Register.index), f_s64(stack_offset));
+        } break;
+        
+        
+        case Bytecode_memory_alloc: {
+            
         } break;
         
         case Bytecode_call: {

@@ -1081,7 +1081,7 @@ interp_declaration_statement(Interp* interp, Ast* ast) {
     
     Type* type = ast->type;
     if (type->kind == Type_Function) {
-        type->Function.block = ast->Decl_Stmt.decl;
+        type->Function.block = ast->Decl_Stmt.stmt;
     }
     
     assert(ast->Decl_Stmt.ident->kind == Ast_Ident);
@@ -1093,22 +1093,23 @@ void
 interp_ast_declarations(Interp* interp, Ast_Decl_Table* decls) {
     Ast** interp_statements = 0;
     
-    for_map (decls, decl) {
-        assert(decl->value->kind == Ast_Decl);
-        Ast* stmt = decl->value->Decl.stmt;
+    for_map (decls, it) {
+        string_id ident = it->key;
+        Ast* decl = it->value;
         
-        if (stmt->kind == Ast_Decl_Stmt) {
-            interp_declaration_statement(interp, stmt);
+        if (decl->kind == Ast_Decl_Stmt) {
+            interp_declaration_statement(interp, decl);
+        } else if (decl->type) {
+            interp_push_entity_to_current_scope(interp, ident, 0, decl->type);
         }
     }
     
     // HACK(alexander): this should be merged with the loop above,
     // but for the time being we don't want to run any code before injecting the types.
     for_map (decls, decl) {
-        assert(decl->value->kind == Ast_Decl);
-        Ast* stmt = decl->value->Decl.stmt;
+        Ast* stmt = decl->value;
         
-        if (stmt->kind != Ast_Decl_Stmt) {
+        if (is_ast_stmt(stmt) && stmt->kind != Ast_Decl_Stmt) {
             Interp_Value interp_result = interp_statement(interp, stmt);
             if (!is_void(interp_result.value)) {
                 void* data = interp_push_value(interp, &interp_result.type, interp_result.value);

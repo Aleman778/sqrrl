@@ -30,7 +30,14 @@ bc_interp_load_register(Bc_Interp* interp, Bc_Register reg) {
     if (index != -1) {
         return scope->registers[index].value;
     } else {
-        return map_get(interp->declarations, reg).data;
+        // Try global scope which is the first one
+        scope = array_first(interp->scopes);
+        index = map_get_index(scope->registers, reg);
+        if (index != -1) {
+            return scope->registers[index].value;
+        } else {
+            return map_get(interp->declarations, reg).data;
+        }
     }
 }
 
@@ -194,6 +201,15 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             assert(bc->src1.kind == BcOperand_None);
             
             bc_interp_alloc_register(interp, bc->dest.Register, bc->src0.type);
+        } break;
+        
+        case Bytecode_memory_alloc: {
+            assert(bc->dest.kind == BcOperand_Register);
+            assert(bc->src0.kind == BcOperand_Type);
+            assert(bc->src1.kind == BcOperand_Value);
+            
+            void* data = bc_interp_alloc_register(interp, bc->dest.Register, bc->src0.type);
+            bc_interp_store_value(interp, bc->src0.type, data, bc->src1.Value);
         } break;
         
         case Bytecode_store: {
@@ -441,6 +457,26 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
 
 Value_Data
 bc_interp_bytecode(Bc_Interp* interp, string_id entry_point = Sym_main) {
+    // First analyse the globals
+    bc_interp_function_call(interp, Kw_global);
+    
+    for (;;) {
+        Bc_Interp_Scope* scope = &array_last(interp->scopes);
+        if (!scope->curr_block) {
+            break;
+        }
+        
+        if (scope->curr_block_insn >= scope->curr_block->count) {
+            scope->curr_block = scope->curr_block->next;
+            scope->curr_block_insn = 0;
+            continue;
+        }
+        
+        Bc_Instruction* insn = scope->curr_block->first + scope->curr_block_insn++;
+        bc_interp_instruction(interp, insn);
+    }
+    
+    // Run the entry point
     bc_interp_function_call(interp, entry_point);
     
     for (;;) {

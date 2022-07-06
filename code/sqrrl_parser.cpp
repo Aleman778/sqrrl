@@ -674,7 +674,7 @@ parse_block_statement(Parser* parser, Token* token=0) {
 }
 
 Ast*
-parse_statement(Parser* parser, bool report_error) {
+parse_statement(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
     Token token = peek_token(parser);
     Ast* result = 0;
     
@@ -722,7 +722,7 @@ parse_statement(Parser* parser, bool report_error) {
                 }
                 bool opened_paren = next_token_if_matched(parser, Token_Open_Paren, false);
                 // TODO(alexander): should probably not be statement, move out variable decl
-                result->For_Stmt.init = parse_statement(parser, false);
+                result->For_Stmt.init = parse_statement(parser, false, 0);
                 next_token_if_matched(parser, Token_Semi);
                 result->For_Stmt.cond = parse_expression(parser, false);
                 next_token_if_matched(parser, Token_Semi);
@@ -753,7 +753,7 @@ parse_statement(Parser* parser, bool report_error) {
             } break;
             
             default: {
-                Ast* type = parse_type(parser, false);
+                Ast* type = parse_type(parser, false, mods);
                 
                 if (type) {
                     switch (type->kind) {
@@ -771,14 +771,11 @@ parse_statement(Parser* parser, bool report_error) {
                             result->kind = Ast_Decl_Stmt;
                             result->Decl_Stmt.ident = type->Function_Type.ident;
                             result->Decl_Stmt.type = type;
-                            result->Decl_Stmt.decl = parse_block_statement(parser);
+                            result->Decl_Stmt.stmt = parse_block_statement(parser);
                         } break;
                         
                         case Ast_Typedef: {
-                            result = push_ast_node(parser, &token);
-                            result->kind = Ast_Decl_Stmt;
-                            result->Decl_Stmt.type = type;
-                            result->Decl_Stmt.ident = type->Typedef.ident;
+                            result = type;
                         } break;
                         
                         case Ast_Named_Type: {
@@ -817,7 +814,7 @@ parse_statement(Parser* parser, bool report_error) {
 
 Ast*
 parse_block_or_single_statement(Parser* parser, bool report_error) {
-    Ast* stmt = parse_statement(parser, report_error);
+    Ast* stmt = parse_statement(parser, report_error, 0);
     if (stmt->kind != Ast_Block_Stmt) {
         next_token_if_matched(parser, Token_Semi, true);
     }
@@ -1046,7 +1043,7 @@ parse_compound(Parser* parser,
 }
 
 Ast*
-parse_type(Parser* parser, bool report_error) {
+parse_type(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
     Token token = peek_token(parser);
     
     if (token.type == Token_Open_Paren) {
@@ -1247,7 +1244,7 @@ parse_type(Parser* parser, bool report_error) {
     
     Ast* result = 0;
     if (base) {
-        result = parse_extended_type(parser, base, report_error);
+        result = parse_extended_type(parser, base, report_error, mods);
     } else {
         if (report_error) {
             parse_error(parser, token,
@@ -1260,7 +1257,7 @@ parse_type(Parser* parser, bool report_error) {
 }
 
 Ast*
-parse_extended_type(Parser* parser, Ast* base_type, bool report_error) {
+parse_extended_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_Modifier mods) {
     Ast* result = base_type;
     
     Token token = peek_token(parser);
@@ -1293,14 +1290,12 @@ parse_extended_type(Parser* parser, Ast* base_type, bool report_error) {
                 token = peek_token(parser);
             }
             
-            
-            
             if (peek_second_token(parser).type == Token_Open_Paren) {
                 // TODO(alexander): check what the base type is, e.g. cannot be struct type as return type
                 result = push_ast_node(parser);
                 result->kind = Ast_Function_Type;
                 result->Function_Type.return_type = base_type;
-                result->Function_Type.mods = function_mods;
+                result->Function_Type.mods = function_mods | mods;
                 result->Function_Type.ident = parse_identifier(parser);
                 result->Function_Type.arguments = parse_compound(parser,
                                                                  Token_Open_Paren, Token_Close_Paren, Token_Comma,
@@ -1358,27 +1353,39 @@ parse_extended_type(Parser* parser, Ast* base_type, bool report_error) {
 }
 
 
-Named_Ast
-parse_top_level_declaration(Parser* parser) {
-    Named_Ast result = {};
-    Token peek = peek_token(parser);
-    Ast* decl = push_ast_node(parser, &peek);
+internal void
+push_static_ast_node(Parser* parser, Ast_File* ast_file, Ast* node) {
+    if (!ast_file->static_block_first || !ast_file->static_block_last) {
+        Ast* first = push_ast_node(parser);
+        first->kind = Ast_Compound;
+        ast_file->static_block_first = first;
+        ast_file->static_block_last = first;
+    }
     
-    decl->kind = Ast_Decl;
-    decl->Decl.mods = AstDeclModifier_None;
-    result.ast = decl;
+    Ast* next = push_ast_node(parser);
+    next->kind = Ast_Compound;
+    Ast* last = ast_file->static_block_last;
+    last->Compound.node = node;
+    last->Compound.next = next;
+    ast_file->static_block_last = last->Compound.next;
+}
+
+
+void
+parse_top_level_declaration(Parser* parser, Ast_File* ast_file) {
     
+    Token token = peek_token(parser);
+    if (token.type != Token_Ident) {
+        next_token(parser);
+        parse_error_unexpected_token(parser, Token_Ident, token);
+        return;
+    }
+    
+    Ast_Decl_Modifier mods = AstDeclModifier_None;
     while (true) {
-        Token token = peek_token(parser);
-        if (token.type == Token_Semi) {
-            next_token(parser);
-            token = peek_token(parser);
-        }
-        
-        if (token.type != Token_Ident) {
-            next_token(parser);
-            parse_error_unexpected_token(parser, Token_Ident, token);
-            return result;
+        token = peek_token(parser);
+        if (!is_token_valid(token)) {
+            break;
         }
         
         string_id id = vars_save_string(token.source);
@@ -1386,60 +1393,83 @@ parse_top_level_declaration(Parser* parser) {
             case Kw_inline: {
                 next_token(parser);
                 // TODO(alexander): check if we already have inline/no_inline bit set
-                decl->Decl.mods |= AstDeclModifier_Inline;
+                mods |= AstDeclModifier_Inline;
+                continue;
+                
             } break;
             
             case Kw_no_inline: {
                 next_token(parser);
                 // TODO(alexander): check if we already have inline/no_inline bit set
-                decl->Decl.mods |= AstDeclModifier_No_Inline;
+                mods |= AstDeclModifier_No_Inline;
+                continue;
+                
             } break;
             
             // TODO(alexander): we might want to change this to annotation syntax
             case Kw_internal: {
                 next_token(parser);
                 // TODO(alexander): check if we already have internal bit set
-                decl->Decl.mods |= AstDeclModifier_Internal;
+                mods |= AstDeclModifier_Internal;
+                continue;
+                
             } break;
             
             case Kw_global: {
                 next_token(parser);
                 // TODO(alexander): check if we already have global bit set
-                decl->Decl.mods |= AstDeclModifier_Global;
+                mods |= AstDeclModifier_Global;
+                continue;
+                
             } break;
             
-            default: {
-                Ast* decl_stmt = parse_statement(parser);
-                decl->Decl.stmt = decl_stmt;
+            
+            case Kw_const: {
+                next_token(parser);
+                // TODO(alexander): check if we already have global bit set
+                mods |= AstDeclModifier_Const;
+                continue;
                 
-                // TODO(alexander): report error
-                if (decl_stmt->kind < Ast_Stmt_Begin && decl_stmt->kind > Ast_Stmt_End) {
-                    parse_error(parser, token, string_format("expected statement found `%`", f_token(token.type)));
-                }
-                
-                if (decl_stmt->kind != Ast_Decl_Stmt) {
-                    next_token_if_matched(parser, Token_Semi);
-                }
-                
-                // NOTE(alexander): tries to find an identifier to use as search key
-                for (int i = 0; i < fixed_array_count(decl_stmt->children); i++) {
-                    Ast* node = decl_stmt->children[i];
-                    if (!node) continue;
-                    if (node->kind == Ast_Ident) {
-                        decl->Decl.ident = node;
-                        result.ident = node->Ident;
-                        return result;
-                    }
-                }
-                
-                parse_error(parser, token, string_lit("cannot declare top level declaration without identifier"));
-                return result;
             } break;
         }
+        
+        break;
     }
     
-    return result;
+    token = peek_token(parser);
+    pln("%", f_string(token.source));
+    Ast* decl = parse_statement(parser, true, mods);
+    
+    if (decl->kind < Ast_Stmt_Begin && decl->kind > Ast_Stmt_End) {
+        return;
+    }
+    
+    switch (decl->kind) {
+        case Ast_Decl_Stmt: {
+            string_id ident = ast_unwrap_ident(decl->Decl_Stmt.ident);
+            map_put(ast_file->decls, ident, decl);
+        } break;
+        
+        case Ast_Assign_Stmt: {
+            string_id ident = ast_unwrap_ident(decl->Assign_Stmt.ident);
+            map_put(ast_file->decls, ident, decl);
+            push_static_ast_node(parser, ast_file, decl);
+        } break;
+        
+        case Ast_Typedef: {
+            string_id ident = ast_unwrap_ident(decl->Typedef.ident);
+            map_put(ast_file->decls, ident, decl);
+        } break;
+        
+        default: {
+            push_static_ast_node(parser, ast_file, decl);
+        } break;
+        
+    }
+    
+    while (next_token_if_matched(parser, Token_Semi, false));
 }
+
 
 Ast_File
 parse_file(Parser* parser) {
@@ -1451,21 +1481,16 @@ parse_file(Parser* parser) {
         tokenizer_set_source_group(parser->tokenizer, group);
     }
     
-    while (true) {
-        Token token = peek_token(parser);
-        if (!is_token_valid(token)) {
-            break;
-        }
+    Token token = peek_token(parser);
+    while (is_token_valid(token)) {
+        
+        parse_top_level_declaration(parser, &result);
+        token = peek_token(parser);
         
         if (parser->error_count > 10) {
             pln("Found more than 10 parsing errors, exiting parsing...");
             break;
         }
-        
-        Named_Ast decl = parse_top_level_declaration(parser);
-        update_span(parser, decl.ast);
-        
-        map_put(result.decls, decl.ident, decl.ast);
     }
     
     result.error_count = parser->error_count;

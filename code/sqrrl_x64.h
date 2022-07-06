@@ -174,6 +174,7 @@ X64_OP(zmm) \
 X64_OP(rel8) \
 X64_OP(rel32) \
 X64_OP(jump_target) \
+X64_OP(data_target) \
 X64_OP(basic_block)
 
 enum X64_Operand_Kind {
@@ -201,88 +202,92 @@ X64_REGISTER(unallocated_stx,  10, -1, st, GPR) \
 X64_REGISTER(unallocated_mmx,  8,  -1, mm, GPR) \
 \
 X64_REGISTER(ah,   1, 20, r8, GPR) \
-X64_REGISTER(al,   1, 0, r8, GPR) \
+X64_REGISTER(al,   1, 0, r8,  GPR) \
 X64_REGISTER(ax,   2, 0, r16, GPR) \
 X64_REGISTER(eax,  4, 0, r32, GPR) \
 X64_REGISTER(rax,  8, 0, r64, GPR) \
 \
 X64_REGISTER(bh,   1, 23, r8, GPR) \
-X64_REGISTER(bl,   1, 3, r8, GPR) \
+X64_REGISTER(bl,   1, 3, r8,  GPR) \
 X64_REGISTER(bx,   2, 3, r16, GPR) \
 X64_REGISTER(ebx,  4, 3, r32, GPR) \
 X64_REGISTER(rbx,  8, 3, r64, GPR) \
 \
 X64_REGISTER(ch,   1, 21, r8, GPR) \
-X64_REGISTER(cl,   1, 1, r8, GPR) \
+X64_REGISTER(cl,   1, 1, r8,  GPR) \
 X64_REGISTER(cx,   2, 1, r16, GPR)\
 X64_REGISTER(ecx,  4, 1, r32, GPR) \
 X64_REGISTER(rcx,  8, 1, r64, GPR) \
 \
 X64_REGISTER(dh,   1, 22, r8, GPR) \
-X64_REGISTER(dl,   1, 2, r8, GPR) \
+X64_REGISTER(dl,   1, 2, r8,  GPR) \
 X64_REGISTER(dx,   2, 2, r16, GPR) \
 X64_REGISTER(edx,  4, 2, r32, GPR) \
 X64_REGISTER(rdx,  8, 2, r64, GPR) \
 \
-X64_REGISTER(sil,  1, 6, r8, GPR) \
+X64_REGISTER(sil,  1, 6, r8,  GPR) \
 X64_REGISTER(si,   2, 6, r16, GPR) \
 X64_REGISTER(esi,  4, 6, r32, GPR) \
 X64_REGISTER(rsi,  8, 6, r64, GPR) \
 \
-X64_REGISTER(dil,  1, 7, r8, GPR) \
+X64_REGISTER(dil,  1, 7, r8,  GPR) \
 X64_REGISTER(di,   2, 7, r16, GPR) \
 X64_REGISTER(edi,  4, 7, r32, GPR) \
 X64_REGISTER(rdi,  8, 7, r64, GPR) \
 \
-X64_REGISTER(bpl,  1, 5, r8, GPR) \
+X64_REGISTER(bpl,  1, 5, r8,  GPR) \
 X64_REGISTER(bp,   2, 5, r16, GPR) \
 X64_REGISTER(ebp,  4, 5, r32, GPR) \
 X64_REGISTER(rbp,  8, 5, r64, GPR) \
 \
-X64_REGISTER(spl,  1, 4, r8, GPR) \
+X64_REGISTER(spl,  1, 4, r8,  GPR) \
 X64_REGISTER(sp,   2, 4, r16, GPR) \
 X64_REGISTER(esp,  4, 4, r32, GPR) \
 X64_REGISTER(rsp,  8, 4, r64, GPR) \
 \
-X64_REGISTER(r8b,  1, 8, r8, GPR) \
+X64_REGISTER(r8b,  1, 8, r8,  GPR) \
 X64_REGISTER(r8w,  2, 8, r16, GPR)\
 X64_REGISTER(r8d,  4, 8, r32, GPR) \
 X64_REGISTER(r8,   8, 8, r64, GPR) \
 \
-X64_REGISTER(r9b,  1, 9, r8, GPR) \
+X64_REGISTER(r9b,  1, 9, r8,  GPR) \
 X64_REGISTER(r9w,  2, 9, r16, GPR) \
 X64_REGISTER(r9d,  4, 9, r32, GPR) \
 X64_REGISTER(r9,   8, 9, r64, GPR) \
 \
-X64_REGISTER(r10b,  1, 10, r8, GPR) \
+X64_REGISTER(r10b,  1, 10, r8,  GPR) \
 X64_REGISTER(r10w,  2, 10, r16, GPR)\
 X64_REGISTER(r10d,  4, 10, r32, GPR) \
 X64_REGISTER(r10,   8, 10, r64, GPR) \
 \
-X64_REGISTER(r11b,  1, 11, r8, GPR) \
+X64_REGISTER(r11b,  1, 11, r8,  GPR) \
 X64_REGISTER(r11w,  2, 11, r16, GPR) \
 X64_REGISTER(r11d,  4, 11, r32, GPR) \
 X64_REGISTER(r11,   8, 11, r64, GPR) \
 \
-X64_REGISTER(r12b,  1, 12, r8, GPR) \
+X64_REGISTER(r12b,  1, 12, r8,  GPR) \
 X64_REGISTER(r12w,  2, 12, r16, GPR)\
 X64_REGISTER(r12d,  4, 12, r32, GPR) \
 X64_REGISTER(r12,   8, 12, r64, GPR) \
 \
-X64_REGISTER(r13b,  1, 13, r8, GPR) \
+X64_REGISTER(r13b,  1, 13, r8,  GPR) \
 X64_REGISTER(r13w,  2, 13, r16, GPR) \
 X64_REGISTER(r13d,  4, 13, r32, GPR) \
 X64_REGISTER(r13,   8, 13, r64, GPR) \
 \
-X64_REGISTER(r14b,  1, 14, r8, GPR) \
+X64_REGISTER(r14b,  1, 14, r8,  GPR) \
 X64_REGISTER(r14w,  2, 14, r16, GPR) \
 X64_REGISTER(r14d,  4, 14, r32, GPR) \
 X64_REGISTER(r14,   8, 14, r64, GPR) \
 \
-X64_REGISTER(r15b,  1, 15, r8, GPR) \
+X64_REGISTER(r15b,  1, 15, r8,  GPR) \
 X64_REGISTER(r15w,  2, 15, r16, GPR) \
 X64_REGISTER(r15d,  4, 15, r32, GPR) \
 X64_REGISTER(r15,   8, 15, r64, GPR) \
+\
+X64_REGISTER(ip,    2, 25, r16, GPR) \
+X64_REGISTER(eip,   4, 25, r32, GPR) \
+X64_REGISTER(rip,   8, 25, r64, GPR) \
 \
 X64_REGISTER(st0, 10, 0, st, FPU) \
 X64_REGISTER(st1, 10, 1, st, FPU) \
@@ -673,6 +678,15 @@ string_builder_push(String_Builder* sb, X64_Operand* operand, bool show_virtual_
             string_builder_push_format(sb, "%", f_string(vars_load_string(operand->jump_target.ident)));
             if (operand->jump_target.index > 0) {
                 string_builder_push_format(sb, "%", f_u32(operand->jump_target.index));
+            }
+        } break;
+        
+        case X64Operand_data_target: {
+            string_builder_push_format(sb, "[%", f_string(vars_load_string(operand->jump_target.ident)));
+            if (operand->jump_target.index > 0) {
+                string_builder_push_format(sb, "%]", f_u32(operand->jump_target.index));
+            } else {
+                string_builder_push(sb, "]");
             }
         } break;
         

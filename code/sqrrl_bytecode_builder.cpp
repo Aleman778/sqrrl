@@ -4,7 +4,7 @@ typedef map(Bc_Register, u32) Bc_Live_Length_Table;
 struct Bc_Builder {
     Memory_Arena arena;
     
-    Bc_Basic_Block entry_basic_block;
+    Bc_Basic_Block* global_block;
     
     // Current building block
     Bc_Basic_Block* curr_declaration;
@@ -45,17 +45,13 @@ push_instruction(Bc_Builder* bc, Bc_Opcode opcode) {
 #endif
 
 // NOTE(Alexander): forward declare
-Bc_Basic_Block* bc_push_basic_block(Bc_Builder* bc);
+Bc_Basic_Block* bc_push_basic_block(Bc_Builder* bc, Bc_Register label = {});
 
 
 void
 bc_push_instruction(Bc_Builder* bc, Bc_Opcode opcode) {
     Bc_Basic_Block* bb = bc->curr_basic_block;
-    if (!bb) {
-        // TODO: do we even support this case anyways?
-        assert(0);
-        bb = &bc->entry_basic_block;
-    }
+    assert(bb);
     
     if (!arena_can_fit_size(&bc->arena, sizeof(Bc_Instruction), alignof(Bc_Instruction))) {
         arena_reallocate(&bc->arena);
@@ -152,14 +148,19 @@ bc_get_unique_register(Bc_Builder* bc) {
 }
 
 Bc_Basic_Block*
-bc_push_basic_block(Bc_Builder* bc) {
+bc_push_basic_block(Bc_Builder* bc, Bc_Register label) {
     
     Bc_Basic_Block* block = arena_push_struct(&bc->arena, Bc_Basic_Block);
     if (bc->curr_basic_block) {
         bc->curr_basic_block->next = block;
     }
     bc->curr_basic_block = block;
-    block->label = bc_get_unique_register(bc);
+    
+    if (label.ident != 0) {
+        block->label = label;
+    } else {
+        block->label = bc_get_unique_register(bc);
+    }
     
     Bc_Operand block_operand = {};
     block_operand.kind = BcOperand_Basic_Block;
@@ -170,8 +171,10 @@ bc_push_basic_block(Bc_Builder* bc) {
     block->first = bc->curr_instruction;
     block->count = 1;
     
-    Value_Data decl;
-    decl.basic_block = block;
+    // TODO(Alexander): maybe we need this later, but right now this makes x64 backend compile the same function multiple times.
+    //Value decl = {};
+    //decl.type = Value_basic_block;
+    //decl.data.basic_block = block;
     //map_put(bc->declarations, block->label, decl);
     
     return block;
@@ -432,7 +435,7 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
             result = map_get(bc->ident_to_operand, node->Ident);
             if (!result.kind) {
                 Bc_Register reg = {};
-                reg.ident = node->Ident;
+                reg.ident = ast_unwrap_ident(node);
                 Value value = map_get(bc->declarations, reg);
                 if (value.type != Value_void) {
                     Bc_Operand type_operand = {};
@@ -1065,16 +1068,12 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* type, Ast* decl) {
 }
 
 void
-bc_analyze_top_level_declaration(Bc_Builder* bc, Ast* ast) {
-    assert(ast->kind == Ast_Decl);
-    
+bc_analyze_top_level_declaration(Bc_Builder* bc, Ast* decl, string_id ident) {
     Bc_Instruction result = {};
-    Ast* stmt = ast->Decl.stmt;
-    string_id ident = ast_unwrap_ident(ast->Decl.ident);
     
-    switch (stmt->kind) {
+    switch (decl->kind) {
         case Ast_Decl_Stmt: {
-            Ast* type = stmt->Decl_Stmt.type;
+            Ast* type = decl->Decl_Stmt.type;
             
             switch (type->kind) {
                 case Ast_Function_Type: {
@@ -1090,9 +1089,17 @@ bc_analyze_top_level_declaration(Bc_Builder* bc, Ast* ast) {
         } break;
         
         case Ast_Assign_Stmt: {
+            Bc_Register reg = {};
+            reg.ident = ident;
+            
             bc_push_instruction(bc, Bytecode_memory_alloc);
             
-            Ast* expr = stmt->Assign_Stmt.expr;
+            Bc_Operand dest_op = {};
+            dest_op.kind = BcOperand_Register;
+            dest_op.Register = reg;
+            bc_push_operand(bc, dest_op);
+            
+            Ast* expr = decl->Assign_Stmt.expr;
             Value value = {};
             if (expr && expr->kind == Ast_Value) {
                 value = expr->Value.value;
@@ -1100,11 +1107,16 @@ bc_analyze_top_level_declaration(Bc_Builder* bc, Ast* ast) {
                 value.type = Value_signed_int;
                 unimplemented;
                 // TODO(Alexander): we need to implement initialization code for this
+                // EDIT: although we should probably just pre compute at compile time in prev. stage
             }
+            
+            Bc_Operand type_op = {};
+            type_op.kind = BcOperand_Type;
+            type_op.type = bc_build_type(bc, decl->type);
+            bc_push_operand(bc, type_op);
             
             Bc_Operand value_op = {};
             value_op.kind = BcOperand_Value;
-            value_op.type = bc_build_type(bc, stmt->type);
             value_op.Value = value.data;
             bc_push_operand(bc, value_op);
             
@@ -1113,27 +1125,22 @@ bc_analyze_top_level_declaration(Bc_Builder* bc, Ast* ast) {
             // we currently don't store const info in the types yet.
             //map_put(bc->ident_to_operand, ident, value_op);
             
-            Bc_Register reg = {};
-            reg.ident = ident;
             map_put(bc->declarations, reg, value);
         } break;
     }
 }
 
 void
-bc_build_from_top_level_declaration(Bc_Builder* bc, Ast* ast) {
-    assert(ast->kind == Ast_Decl);
-    
+bc_build_from_top_level_declaration(Bc_Builder* bc, Ast* decl) {
     Bc_Instruction result = {};
-    Ast* stmt = ast->Decl.stmt;
     
-    switch (stmt->kind) {
+    switch (decl->kind) {
         case Ast_Decl_Stmt: {
-            string_id ident = ast_unwrap_ident(stmt->Decl_Stmt.ident);
+            string_id ident = ast_unwrap_ident(decl->Decl_Stmt.ident);
             
-            Ast* type = stmt->Decl_Stmt.type;
-            Ast* decl = stmt->Decl_Stmt.decl;
-            bc_register_declaration(bc, ident, type, decl);
+            Ast* type = decl->Decl_Stmt.type;
+            Ast* stmt = decl->Decl_Stmt.stmt;
+            bc_register_declaration(bc, ident, type, stmt);
         } break;
     }
 }
@@ -1145,10 +1152,24 @@ bc_build_from_ast(Bc_Builder* bc, Ast_File* ast_file) {
     pln("sizeof(Bc_Instruction) = %", f_umm(sizeof(Bc_Instruction)));
     pln("sizeof(Bc_Operand) = %\n", f_umm(sizeof(Bc_Operand)));
     
+    
+    {
+        // Define global declarations
+        Bc_Register reg = {};
+        reg.ident = Kw_global;
+        Bc_Basic_Block* global_block = bc_push_basic_block(bc, reg);
+        
+        Value decl = {};
+        decl.type = Value_basic_block;
+        decl.data.basic_block = global_block;
+        map_put(bc->declarations, global_block->label, decl);
+    }
+    
+    
     // TODO(Alexander): this will likely get replacecd with the type checker later on
     // Analyse the ast first
-    for_map(ast_file->decls, decl) {
-        bc_analyze_top_level_declaration(bc, decl->value);
+    for_map(ast_file->decls, it) {
+        bc_analyze_top_level_declaration(bc, it->value, it->key);
     }
     
     // Build bytecode for each declaration

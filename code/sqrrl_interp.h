@@ -212,7 +212,7 @@ Interp_Value interp_block(Interp* interp, Ast* ast);
 
 void interp_declaration_statement(Interp* interp, Ast* ast);
 
-void interp_ast_declarations(Interp* interp, Named_Ast* decls);
+void interp_ast_declarations(Interp* interp, Ast_Decl_Table* decls);
 
 Value interp_intrinsic_pln(Interp* interp, array(Interp_Value)* var_args);
 

@@ -1,0 +1,18 @@
+
+//typedef u32 string_id, *ptr_string_id;
+
+typedef u32 string_id;
+
+global string_id global_variable = 10;
+
+int
+main() {
+    //debug_break();
+    
+    string_id local_variable = 5;
+    
+    //pln("test");
+    
+    
+    return  local_variable + global_variable;
+}

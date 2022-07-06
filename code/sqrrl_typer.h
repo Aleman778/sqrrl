@@ -49,6 +49,7 @@ enum Type_Kind {
     Type_Unresolved
 };
 
+// NOTE(Alexander): type table is perhaps not the correct name for this maybe Type_Arguments or Type_Arg_List
 struct Type_Table {
     map(string_id, Type*)* ident_to_type;
     map(string_id, smm)* ident_to_offset;

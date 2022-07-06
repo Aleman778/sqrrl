@@ -1,5 +1,4 @@
 
-
 #if 0
 void
 test_type_rules() {
@@ -64,8 +63,15 @@ test_type_rules() {
 
 struct Type_Context {
     Memory_Arena* type_arena;
+    
     map(string_id, Type*)* locals;
     map(string_id, Type*)* globals;
+    
+    map(string_id, Type*)* local_type_table;
+    map(string_id, Type*)* global_type_table;
+    
+    Type* return_type;
+    
     b32 block_depth;
     s32 error_count;
     s32 warning_count;
@@ -380,6 +386,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     result = type;
                     
                 } else if (report_error) {
+                    // NOTE(Alexander): copypasta
                     type_error(tcx, string_format("`%` is an undeclared identifier", 
                                                   f_string(vars_load_string(expr->Ident))));
                 }
@@ -655,8 +662,15 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     result = &global_primitive_types[index];
                 }
             } else {
-                // TODO(Alexander): need to store types in global type table
-                unimplemented;
+                result = map_get(tcx->local_type_table, ident);
+                if (!result) {
+                    result = map_get(tcx->global_type_table, ident);
+                    if (!result) {
+                        // NOTE(Alexander): copypasta
+                        type_error(tcx, string_format("`%` is an undeclared identifier", 
+                                                      f_string(vars_load_string(ident))));
+                    }
+                } 
             }
         } break;
         
@@ -820,7 +834,22 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         } break;
         
         case Ast_Typedef: {
-            result = create_type_from_ast(tcx, ast->Typedef.type, report_error);
+            if (ast->Typedef.ident->kind == Ast_Compound) {
+                // NOTE(Alexander): c crazyiess
+                unimplemented;
+            } else {
+                string_id ident = ast_unwrap_ident(ast->Typedef.ident);
+                
+                // TODO(Alexander): we don't care about locality of typedefs at the moment (always global)
+                result = map_get(tcx->global_type_table, ident);
+                
+                if (!result) {
+                    result = create_type_from_ast(tcx, ast->Typedef.type, report_error);
+                    map_put(tcx->global_type_table, ident, result);
+                } else {
+                    type_error(tcx, string_format("`%` is already defined"));
+                }
+            }
         } break;
     }
     
@@ -860,6 +889,10 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
             constant_folding_of_expressions(stmt->Assign_Stmt.expr);
             
             Type* expected_type = create_type_from_ast(tcx, stmt->Assign_Stmt.type, report_error);
+            if (!expected_type) {
+                return result;
+            }
+            
             Type* found_type = type_infer_expression(tcx, 
                                                      stmt->Assign_Stmt.expr, 
                                                      expected_type,
@@ -925,11 +958,11 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         case Ast_Decl_Stmt: {
             string_id ident = ast_unwrap_ident(stmt->Decl_Stmt.ident);
             Type* expected_type = create_type_from_ast(tcx, stmt->Decl_Stmt.type, report_error);
-            Type* found_type = type_infer_statement(tcx, stmt->Decl_Stmt.decl, report_error);
+            Type* found_type = type_infer_statement(tcx, stmt->Decl_Stmt.stmt, report_error);
             
             if (expected_type && found_type) {
                 if (expected_type->kind == Type_Function) {
-                    expected_type->Function.block = stmt->Decl_Stmt.decl;
+                    expected_type->Function.block = stmt->Decl_Stmt.stmt;
                 }
                 
                 
@@ -994,7 +1027,6 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
 struct Compilation_Unit {
     Ast* ast;
     string_id ident;
-    
 };
 
 bool
@@ -1009,7 +1041,7 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
         
         if (type && type->kind == Type_Function) {
             if (type->kind == Type_Function) {
-                type->Function.block = ast->Decl_Stmt.decl;
+                type->Function.block = ast->Decl_Stmt.stmt;
             }
             
             
@@ -1023,6 +1055,8 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
                     }
                 }
             }
+            
+            tcx->return_type = type->Function.return_type;
         }
     }
     
@@ -1046,7 +1080,7 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
             result = false;
         }
     } else {
-        assert(0 && "illegal type: expected Decl_Stmt or any X_Type node");
+        assert(0 && "illegal type: expected X_Stmt or any X_Type node");
     }
     
     map_free(tcx->locals);
@@ -1120,14 +1154,15 @@ type_check_ast_file(Ast_File* ast_file) {
     for_map(ast_file->decls, it) {
         string_id ident = it->key;
         Ast* decl = it->value;
-        Ast* decl_stmt = decl->Decl.stmt;
         Compilation_Unit comp_unit = {};
         comp_unit.ident = ident;
         
-        if (decl_stmt->kind == Ast_Decl_Stmt) {
-            comp_unit.ast = decl_stmt->Decl_Stmt.type;
+        pln("Push decl `%`", f_string(vars_load_string(ident)));
+        
+        if (decl->kind == Ast_Decl_Stmt) {
+            comp_unit.ast = decl->Decl_Stmt.type;
         } else {
-            comp_unit.ast = decl_stmt;
+            comp_unit.ast = decl;
         }
         
         array_push(queue, comp_unit);
@@ -1138,11 +1173,10 @@ type_check_ast_file(Ast_File* ast_file) {
     for_map(ast_file->decls, it) {
         string_id ident = it->key;
         Ast* decl = it->value;
-        Ast* decl_stmt = decl->Decl.stmt;
         
-        if (decl_stmt->kind == Ast_Decl_Stmt) {
+        if (decl->kind == Ast_Decl_Stmt) {
             Compilation_Unit comp_unit = {};
-            comp_unit.ast = decl_stmt;
+            comp_unit.ast = decl;
             array_push(queue, comp_unit);
         }
     }

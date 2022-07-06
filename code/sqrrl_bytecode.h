@@ -3,7 +3,7 @@
 #define DEF_BYTECODES \
 BC(noop, 0) \
 BC(stack_alloc, 2) \
-BC(memory_alloc, 1) \
+BC(memory_alloc, 2) \
 BC(load, 2) \
 BC(store, 2) \
 BC(assign, 2) \
@@ -67,6 +67,23 @@ inline bool
 bc_opcode_is_conditional(Bc_Opcode opcode) {
     return opcode >= Bytecode_cmpeq && opcode <= Bytecode_cmpgt;
 }
+
+// NOTE(Alexander): forward declare
+struct Bc_Instruction;
+
+enum Bc_Decl_Kind {
+    BcDecl_Global,
+    BcDecl_Function,
+    BcDecl_Basic_Block,
+};
+
+struct Bc_Decl {
+    Bc_Decl_Kind kind;
+    union {
+        Bc_Instruction* Global;
+        
+    };
+};
 
 enum Bc_Type_Kind {
     BcType_None,
@@ -255,9 +272,6 @@ struct Bc_Register {
     u32 index;
 };
 
-// NOTE(Alexander): forward declare
-struct Bc_Instruction;
-
 struct Bc_Basic_Block {
     Bc_Register label;
     Bc_Instruction* first;
@@ -349,10 +363,14 @@ string_builder_push(String_Builder* sb, Bc_Type type) {
 }
 
 void
-string_builder_push(String_Builder* sb, Bc_Register reg) {
+string_builder_push(String_Builder* sb, Bc_Register reg, bool is_label = false) {
     if (reg.index == 0) {
         string_builder_push_format(sb, "%", f_string(vars_load_string(reg.ident)));
     } else {
+        if (is_label) {
+            string_builder_push_format(sb, "%", f_string(vars_load_string(reg.ident)));
+        }
+        
         string_builder_push_format(sb, "%", f_u32(reg.index));
     }
 }
@@ -402,7 +420,7 @@ string_builder_push(String_Builder* sb, Bc_Operand* operand, bool show_type = tr
         
         case BcOperand_Basic_Block: {
             string_builder_push(sb, "%");
-            string_builder_push(sb, operand->Basic_Block->label);
+            string_builder_push(sb, operand->Basic_Block->label, true);
         } break;
         
         case BcOperand_Register: {
@@ -443,7 +461,7 @@ void
 string_builder_push(String_Builder* sb, Bc_Instruction* insn) {
     if (insn->opcode == Bytecode_label) {
         Bc_Basic_Block* block = insn->dest.Basic_Block;
-        string_builder_push(sb, block->label);
+        string_builder_push(sb, block->label, true);
         string_builder_push(sb, ":");
     } else {
         bool is_opcode_assign = (insn->opcode == Bytecode_branch ||

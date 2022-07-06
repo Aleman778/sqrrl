@@ -11,11 +11,6 @@ AST(Ident_Data,      "identifier", struct {     \
 string_id ident;                                \
 string contents;                                \
 })                                              \
-AST(Decl, "top level declaration", struct {     \
-Ast* ident;                                     \
-Ast* stmt;                                      \
-Ast_Decl_Modifier mods;                         \
-})                                              \
 AST(Argument,          "argument", struct {     \
 Ast* type;                                      \
 Ast* ident;                                     \
@@ -76,6 +71,7 @@ AST(Assign_Stmt,       "assignment", struct {   \
 Ast* type;                                      \
 Ast* ident;                                     \
 Ast* expr;                                      \
+Ast_Decl_Modifier mods;                         \
 })                                              \
 AST(Expr_Stmt,         "expression", Ast*)      \
 AST(Block_Stmt,        "block", struct {        \
@@ -90,7 +86,7 @@ Ast* ident;                                     \
 AST(Decl_Stmt,         "declaration", struct {  \
 Ast* ident;                                     \
 Ast* type;                                      \
-Ast* decl;                                      \
+Ast* stmt;                                      \
 })                                              \
 AST(If_Stmt,           "if", struct {           \
 Ast* cond;                                      \
@@ -169,8 +165,8 @@ global cstring ast_strings[] = {
 };
 
 global cstring ast_struct_strings[] = {
-#define AST(symbol, ...) "Ast_" #symbol,
-#define AST_GROUP(symbol, ...) "Ast_" #symbol,
+#define AST(symbol, ...) #symbol,
+#define AST_GROUP(symbol, ...) #symbol,
     DEF_AST
 #undef AST_GROUP
 #undef AST
@@ -191,8 +187,9 @@ enum {
     AstDeclModifier_No_Inline      = bit(2),
     AstDeclModifier_Internal       = bit(3),
     AstDeclModifier_Global         = bit(4),
-    AstDeclModifier_Cconv_cdecl    = bit(5),
-    AstDeclModifier_Cconv_fastcall = bit(6),
+    AstDeclModifier_Const          = bit(5),
+    AstDeclModifier_Cconv_cdecl    = bit(6),
+    AstDeclModifier_Cconv_fastcall = bit(7),
 };
 
 union Span {
@@ -276,15 +273,12 @@ struct Ast {
     Span span;
 };
 
-struct Named_Ast {
-    string_id ident;
-    Ast* ast;
-};
-
 typedef map(string_id, Ast*) Ast_Decl_Table;
 
 struct Ast_File {
     Ast_Decl_Table* decls;
+    Ast* static_block_first; // compound, start of linked list
+    Ast* static_block_last; // compound, end of linked list
     s32 error_count;
 };
 
@@ -300,11 +294,6 @@ is_ast_none(Ast* ast) {
 }
 
 inline bool
-is_ast_decl(Ast* ast) {
-    return ast->kind == Ast_Decl;
-}
-
-inline bool
 is_ast_expr(Ast* ast) {
     return ast->kind > Ast_Expr_Begin && ast->kind < Ast_Expr_End;
 }
@@ -317,6 +306,26 @@ is_ast_stmt(Ast* ast) {
 inline bool
 is_ast_type(Ast* ast) {
     return ast->kind > Ast_Type_Begin && ast->kind < Ast_Type_End;
+}
+
+void
+string_builder_push(String_Builder* sb, Ast_Decl_Modifier mods) {
+    if (mods > 0) {
+        string_builder_push(sb, "( ");
+        if (is_bitflag_set(mods, AstDeclModifier_Inline)) {
+            string_builder_push(sb, "inline ");
+        }
+        if (is_bitflag_set(mods, AstDeclModifier_No_Inline)) {
+            string_builder_push(sb, "no_inline ");
+        }
+        if (is_bitflag_set(mods, AstDeclModifier_Internal)) {
+            string_builder_push(sb, "internal ");
+        }
+        if (is_bitflag_set(mods, AstDeclModifier_Global)) {
+            string_builder_push(sb, "global ");
+        }
+        string_builder_push(sb, ")");
+    }
 }
 
 void
@@ -351,6 +360,14 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
             string_builder_push_format(sb, " `%`", f_string(vars_load_string(node->Ident)));
         } break;
         
+        
+        case Ast_Assign_Stmt: {
+            string_builder_push(sb, node->Assign_Stmt.mods);
+            string_builder_push(sb, node->Assign_Stmt.type, tokenizer, spacing);
+            string_builder_push(sb, node->Assign_Stmt.ident, tokenizer, spacing);
+            string_builder_push(sb, node->Assign_Stmt.expr, tokenizer, spacing);
+        } break;
+        
         case Ast_Unary_Expr: {
             assert_enum(UnaryOp, node->Unary_Expr.op);
             string_builder_push_format(sb, " (%)", f_cstring(unary_op_strings[node->Unary_Expr.op]));
@@ -369,30 +386,17 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
             string_builder_push(sb, node->Call_Expr.args, tokenizer, spacing);
         } break;
         
-        case Ast_Decl: {
-            if (node->Decl.mods > 0) {
-                string_builder_push(sb, "( ");
-                if (is_bitflag_set(node->Decl.mods, AstDeclModifier_Inline)) {
-                    string_builder_push(sb, "inline ");
-                }
-                if (is_bitflag_set(node->Decl.mods, AstDeclModifier_No_Inline)) {
-                    string_builder_push(sb, "no_inline ");
-                }
-                if (is_bitflag_set(node->Decl.mods, AstDeclModifier_Internal)) {
-                    string_builder_push(sb, "internal ");
-                }
-                if (is_bitflag_set(node->Decl.mods, AstDeclModifier_Global)) {
-                    string_builder_push(sb, "global ");
-                }
-                string_builder_push(sb, ")");
-            }
-            string_builder_push(sb, node->Decl.stmt, tokenizer, spacing);
-        } break;
-        
         case Ast_Compound: {
             for_compound(node, child_node) {
                 string_builder_push(sb, child_node, tokenizer, spacing);
             }
+        } break;
+        
+        case Ast_Function_Type: {
+            string_builder_push(sb, node->Function_Type.mods);
+            string_builder_push(sb, node->Function_Type.return_type, tokenizer, spacing);
+            string_builder_push(sb, node->Function_Type.ident, tokenizer, spacing);
+            string_builder_push(sb, node->Function_Type.arguments, tokenizer, spacing);
         } break;
         
         default: {

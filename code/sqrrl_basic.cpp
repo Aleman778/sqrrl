@@ -13,6 +13,13 @@ print_format(const char* format...) {
     int count_until_percent = 0;
     while (*format != '\0') {
         if (*format == '%') {
+            if (*(format + 1) == '%') {
+                printf("%%");
+                format += 2;
+                format_at_prev_percent = format;
+                continue;
+            }
+            
             if (count_until_percent > 0) {
                 printf("%.*s", count_until_percent, format_at_prev_percent);
                 count_until_percent = 0;
@@ -270,8 +277,8 @@ _string_builder_push_format(String_Builder* sb, cstring format, va_list args) {
         if (*scan == '%') {
             if (*(scan + 1) == '%') {
                 scan += 2;
-                *(sb->data + sb->curr_used) = '%';
-                sb->curr_used++;
+                last_push = scan;
+                string_builder_push(sb, "%");
                 continue;
             }
             

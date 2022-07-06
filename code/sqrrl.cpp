@@ -42,7 +42,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         filepath = string_lit(argv[1]);
     } else {
         //filepath = string_lit("examples/demo3.sq");
-        filepath = string_lit("examples/demo4.sq");
+        //filepath = string_lit("examples/demo4.sq");
+        filepath = string_lit("examples/demo5.sq");
         //filepath = string_lit("examples/primes.sq");
         //filepath = string_lit("tests/literals.sq");
         //filepath = string_lit("tests/preprocessor.sq");
@@ -165,11 +166,15 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         // Build bytecode representation of the AST
         Bc_Builder bytecode_builder = {};
         bc_build_from_ast(&bytecode_builder, &ast_file);
-        pln("Bytecode size: % bytes", f_umm(bytecode_builder.arena.curr_used)); // TODO(Alexander): only counts last memory block
+        pln("Bytecode size (% bytes):\n", f_umm(bytecode_builder.arena.curr_used)); // TODO(Alexander): only counts last memory block
         
         {
             String_Builder sb = {};
             for_map (bytecode_builder.declarations, it) {
+                if (it->key.ident == Kw_global) {
+                    continue;
+                }
+                
                 if (it->value.type == Value_basic_block) {
                     Bc_Basic_Block* curr_block = it->value.data.basic_block;
                     while (curr_block) {
@@ -182,7 +187,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                         curr_block = curr_block->next;
                     }
                 } else {
-                    string_builder_push_format(&sb, "% = memory_alloc %\n\n",
+                    string_builder_push_format(&sb, "%%% = %\n\n",
                                                f_string(vars_load_string(it->key.ident)),
                                                f_value(&it->value));
                 }
@@ -212,7 +217,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         pln("compiling function `%`", f_string(vars_load_string(Sym_main)));
         
         for_map (bytecode_builder.declarations, it) {
-            if (it->key.ident == Sym_main || it->key.index != 0) {
+            if (it->key.ident == Sym_main || it->key.ident == Kw_global || it->key.index != 0) {
                 continue;
             }
             

@@ -26,6 +26,12 @@ modify_u32(X64_Assembler* assembler, umm byte_index, u32 value) {
     *((u32*) (assembler->bytes + byte_index)) = value;
 }
 
+inline void
+modify_u64(X64_Assembler* assembler, umm byte_index, u64 value) {
+    assert(assembler->curr_used > byte_index);
+    *((u64*) (assembler->bytes + byte_index)) = value;
+}
+
 
 internal void
 x64_assemble_instruction(X64_Assembler* assembler,
@@ -84,30 +90,40 @@ x64_assemble_instruction(X64_Assembler* assembler,
             reg %= 8;
         }
         X64_Operand* modrm_rm = &insn->operands[encoding->modrm_rm];
-        u8 rm = (u8) x64_register_id_table[modrm_rm->reg];
-        if (rm >= 8) {
-            use_rex_prefix = true;
-            rex_prefix |= 1; // Set REX.B
-        }
-        rm %= 8;
         
-        // NOTE(Alexander): If RSP is used we are forced to use SIB
-        if (rm == 0b100 && encoding->modrm_mod != ModRM_direct) {
-            use_sib = true;
-            sib = (rm << 3) | rm;
-        }
-        
-        if (encoding->modrm_mod != ModRM_direct) {
+        u8 rm = 0;
+        if (modrm_rm->reg == X64Register_rip) {
+            rm = 0b101;
+            encoding->modrm_mod = ModRM_indirect;
             displacement = modrm_rm->disp32;
-        }
-        
-        if (displacement != 0) {
-            if (displacement >= S8_MIN && displacement <= S8_MAX) {
-                modrm = ModRM_indirect_disp8;
-                displacement_bytes = 1;
-            } else {
-                modrm = ModRM_indirect_disp32;
-                displacement_bytes = 4;
+            displacement_bytes = 4;
+        } else {
+            
+            rm = (u8) x64_register_id_table[modrm_rm->reg];
+            if (rm >= 8) {
+                use_rex_prefix = true;
+                rex_prefix |= 1; // Set REX.B
+            }
+            rm %= 8;
+            
+            // NOTE(Alexander): If RSP is used we are forced to use SIB
+            if (rm == 0b100 && encoding->modrm_mod != ModRM_direct) {
+                use_sib = true;
+                sib = (rm << 3) | rm;
+            }
+            
+            if (encoding->modrm_mod != ModRM_direct) {
+                displacement = modrm_rm->disp32;
+            }
+            
+            if (displacement != 0) {
+                if (displacement >= S8_MIN && displacement <= S8_MAX) {
+                    modrm = ModRM_indirect_disp8;
+                    displacement_bytes = 1;
+                } else {
+                    modrm = ModRM_indirect_disp32;
+                    displacement_bytes = 4;
+                }
             }
         }
         
@@ -145,7 +161,7 @@ x64_assemble_instruction(X64_Assembler* assembler,
     }
     
     // Displacement
-    if (encoding->modrm_mod != ModRM_direct && displacement != 0) {
+    if (encoding->modrm_mod != ModRM_direct && displacement_bytes > 0) {
         // TODO(Alexander): might now work for cross compiling
         u8* disp_bytes = (u8*) &displacement;
         for (s32 byte_index = 0; byte_index < displacement_bytes; byte_index++) {
@@ -166,10 +182,11 @@ x64_assemble_instruction(X64_Assembler* assembler,
     }
 }
 
-struct X64_Asm_Jump_Target {
+struct X64_Asm_Label_Target {
     X64_Instruction* insn;
     X64_Basic_Block* block;
-    X64_Operand_Kind rel_kind;
+    X64_Operand_Kind operand;
+    s32 address_align;
     u32 insn_size;
 };
 
@@ -188,7 +205,7 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
         }
     }
     
-    map(umm, X64_Asm_Jump_Target)* jump_targets = 0;
+    map(umm, X64_Asm_Label_Target)* label_targets = 0;
     
     // Assemble to machine code 
     X64_Basic_Block* curr_block = basic_block; 
@@ -212,32 +229,67 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
             index.op1 = (u8) insn->op1.kind;
             index.op2 = (u8) insn->op2.kind;
             
+            
+            // TODO(Alexander): this is a bit janky, data targets could appear anywhere
             if (insn->op0.kind == X64Operand_jump_target) {
                 
                 // TODO(Alexander): jump targets are resolved later
-                X64_Asm_Jump_Target asm_jump_target;
-                asm_jump_target.insn = insn;
-                asm_jump_target.block = map_get(named_basic_blocks, insn->op0.jump_target);
-                assert(asm_jump_target.block != 0);
+                X64_Asm_Label_Target asm_label_target;
+                asm_label_target.address_align = 0;
+                asm_label_target.insn = insn;
+                asm_label_target.block = map_get(named_basic_blocks, insn->op0.jump_target);
+                assert(asm_label_target.block != 0);
                 
                 if (insn->opcode == X64Opcode_call) {
                     index.op0 = (u8) X64Operand_rel32;
-                    asm_jump_target.rel_kind = X64Operand_rel32;
+                    asm_label_target.operand = X64Operand_rel32;
                 } else {
                     index.op0 = (u8) X64Operand_rel8;
-                    asm_jump_target.rel_kind = X64Operand_rel8;
+                    asm_label_target.operand = X64Operand_rel8;
                 }
                 
-                map_put(jump_targets, assembler->curr_used, asm_jump_target);
+                map_put(label_targets, assembler->curr_used, asm_label_target);
+                
+            } else if (insn->op1.kind == X64Operand_data_target) {
+                
+                X64_Asm_Label_Target asm_label_target = {};
+                asm_label_target.address_align = 0;
+                asm_label_target.insn = insn;
+                asm_label_target.block = map_get(named_basic_blocks, insn->op1.jump_target);
+                assert(asm_label_target.block != 0);
+                
+                switch (insn->op0.kind) {
+                    
+                    case X64Operand_r32: {
+                        index.op1 = (u8) X64Operand_m32;
+                        insn->op1.reg = X64Register_rip;
+                        asm_label_target.operand = X64Operand_rel32;
+                        asm_label_target.address_align = 4;
+                    } break;
+                    
+                    
+                    case X64Operand_r64: {
+                        index.op1 = (u8) X64Operand_m64;
+                        insn->op1.reg = X64Register_rip;
+                        asm_label_target.operand = X64Operand_rel32;
+                        asm_label_target.address_align = 7;
+                    } break;
+                    
+                    default: {
+                        unimplemented; 
+                    } break;
+                }
+                
+                map_put(label_targets, assembler->curr_used, asm_label_target);
             }
             
             umm prev_used = assembler->curr_used;
             X64_Encoding encoding = map_get(x64_instruction_definitions, index);
             x64_assemble_instruction(assembler, insn, &encoding);
             
-            if (insn->op0.kind == X64Operand_jump_target) {
-                X64_Asm_Jump_Target* asm_jump_target = &map_get(jump_targets, prev_used);
-                asm_jump_target->insn_size = (u32) (assembler->curr_used - prev_used);
+            if (insn->op0.kind == X64Operand_jump_target || insn->op1.kind == X64Operand_data_target) {
+                X64_Asm_Label_Target* asm_label_target = &map_get(label_targets, prev_used);
+                asm_label_target->insn_size = (u32) (assembler->curr_used - prev_used);
             }
         }
         
@@ -246,24 +298,48 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
     }
     
     // Patch relative jump distances
-    for_map(jump_targets, it) {
+    for_map(label_targets, it) {
         umm source = it->key;
-        X64_Asm_Jump_Target* asm_jump_target = &it->value;
+        X64_Asm_Label_Target* asm_label_target = &it->value;
         
-        s32 rel32 = (s32) asm_jump_target->block->code.offset - (s32) source - asm_jump_target->insn_size;
         
-        if (asm_jump_target->rel_kind == X64Operand_rel8) {
-            if (rel32 >= S8_MIN && rel32 <= S8_MAX) {
-                s8 rel8 = (s8) rel32;
-                modify_u8(assembler, source + asm_jump_target->insn_size - 1, rel8);
-            } else {
-                pln("problem: rel32 is %!", f_int(rel32));
-                assert(0 && "relative jump doesn't fit in rel8 value");
-            }
-        } else if (asm_jump_target->rel_kind == X64Operand_rel32) {
-            modify_u32(assembler, source + asm_jump_target->insn_size - 4, rel32);
-        } else {
-            assert(0 && "invalid jump target kind");
+        s64 abs64 = (s64) asm_label_target->block->code.offset;
+        s64 rel64 = abs64 - (s64) source - asm_label_target->insn_size;
+        
+        if (asm_label_target->address_align) {
+            rel64 = align_forward(rel64, asm_label_target->address_align);
+        }
+        
+        switch (asm_label_target->operand) {
+            
+            case X64Operand_rel8: {
+                if (rel64 >= S8_MIN && rel64 <= S8_MAX) {
+                    s8 rel8 = (s8) rel64;
+                    modify_u8(assembler, source + asm_label_target->insn_size - 1, rel8);
+                } else {
+                    pln("problem: rel64 is %!", f_s64(rel64));
+                    assert(0 && "relative jump doesn't fit in rel8 value");
+                }
+            } break;
+            
+            case X64Operand_rel32: {
+                if (rel64 >= S32_MIN && rel64 <= S32_MAX) {
+                    s32 rel32 = (s32) rel64;
+                    modify_u32(assembler, source + asm_label_target->insn_size - 4, rel32);
+                } else {
+                    pln("problem: rel64 is %!", f_s64(rel64));
+                    assert(0 && "relative jump doesn't fit in rel32 value");
+                }
+            } break;
+            
+            case X64Operand_imm64: {
+                s64 imm64 = (s64) assembler->bytes + abs64;
+                modify_u64(assembler, source + asm_label_target->insn_size - 8, imm64);
+            } break;
+            
+            default: {
+                assert(0 && "invalid label target kind");
+            } break;
         }
     }
 }

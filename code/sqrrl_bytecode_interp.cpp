@@ -264,6 +264,7 @@ Value_Data second = bc_interp_operand_value(interp, &bc->src1); \
         \
 Value_Data result; \
 result.signed_int = first.signed_int binary_operator second.signed_int; \
+pln("% = % % %", f_s64(result.signed_int), f_s64(first.signed_int), f_cstring(#binary_operator), f_s64(second.signed_int)); \
         \
 bc_interp_store_register(interp, bc->dest.Register, result); \
 } break;
@@ -424,7 +425,7 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
         
         case Bytecode_ret: {
             Value_Data value = bc_interp_operand_value(interp, &bc->op0);
-            switch (bc->src0.type.kind) {
+            switch (bc->op0.type.kind) {
                 case BcType_s1:  value.unsigned_int = (u64) 1 & value.unsigned_int; break;
                 case BcType_s8:  value.signed_int = (s8) value.signed_int; break;
                 case BcType_s16: value.signed_int = (s16) value.signed_int; break;
@@ -438,7 +439,8 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
             array_pop(interp->scopes);
             
             // Store value in specific return register, specified by the caller instruction
-            if (array_count(interp->scopes) == 0) {
+            // NOTE(Alexander): assumes top level scope is the global scope which has no return.
+            if (array_count(interp->scopes) == 1) {
                 interp->return_value = value;
             } else  {
                 Bc_Interp_Scope* scope = &array_last(interp->scopes);

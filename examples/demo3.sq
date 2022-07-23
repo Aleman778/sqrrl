@@ -25,12 +25,6 @@ test_many_parameters(int a, int b, int c, int d, int e, int f) {
 int
 main() {
 #if 0
-    int x = 10;
-    if (x == 10) {
-        return 20 / x; // expects: 2
-    } else {
-        return x; // expects: not executed
-    }
     
 #elif 0
     int x = 10;

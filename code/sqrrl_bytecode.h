@@ -260,6 +260,7 @@ global const Bc_Type bc_type_s1 = { BcType_s1, 0 };
 
 enum Bc_Operand_Kind {
     BcOperand_None,
+    BcOperand_Void, // do nothing
     BcOperand_Register,
     BcOperand_Value,
     BcOperand_Basic_Block,
@@ -416,7 +417,8 @@ string_builder_push(String_Builder* sb, Value_Data value, Bc_Type type) {
 bool
 string_builder_push(String_Builder* sb, Bc_Operand* operand, bool show_type = true) {
     switch (operand->kind) {
-        case BcOperand_None: return false;
+        case BcOperand_None:
+        case BcOperand_Void: return false;
         
         case BcOperand_Basic_Block: {
             string_builder_push(sb, "%");

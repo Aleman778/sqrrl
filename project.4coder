@@ -39,6 +39,10 @@ commands = {
     .win = "build\\sqrrl.exe",
     .linux = "build/sqrrl",
     .mac = "build/sqrrl", },
+  .run_all_tests = { .out = "*tests*", .footer_panel = false, .save_dirty_files = false,
+    .win = "build\\sqrrl.exe test",
+    .linux = "build/sqrrl test",
+    .mac = "build/sqrrl test", },
   .graphviz = { .out = "*run*", .footer_panel = false, .save_dirty_files = false,
     .win = "build_graphs.bat",
     .linux = "./build_graphs.sh",
@@ -50,4 +54,5 @@ fkey_command = {
   .F2 = "run",
   .F3 = "build_release",
   .F4 = "graphviz",
+  .F9 = "run_all_tests",
 };

@@ -133,8 +133,13 @@ type_check_value(Type_Context* tcx, Type* type, Value value) {
         
         case Value_boolean: {
             result = (type->kind == Type_Primitive &&
-                      (type->Primitive.kind == PrimitiveType_bool || 
-                       type->Primitive.kind == PrimitiveType_b32));
+                      type->Primitive.archetype == Primitive_Int);
+            
+            // TODO(Alexander): this is maybe too restrictive,
+            // we want to be able to implicitly cast bool to int but not vice versa
+            //result = (type->kind == Type_Primitive &&
+            //(type->Primitive.kind == PrimitiveType_bool || 
+            //type->Primitive.kind == PrimitiveType_b32));
         } break;
         
         case Value_signed_int: {
@@ -294,6 +299,7 @@ constant_folding_of_expressions(Ast* ast) {
                     // float + int -> float + float;
                     // int + float -> float + float;
                     // float -x-> int (is a no no, it has to be an explicit cast)
+                    // X == X -> bool (where == is any valid comparison operator)
                     
                     if (is_floating(first) || is_floating(second)) {
                         // NOTE(Alexander): Make sure both types are floating
@@ -311,11 +317,13 @@ constant_folding_of_expressions(Ast* ast) {
                     } else if (is_integer(first) || is_integer(second)) {
                         // NOTE(Alexander): integer math
                         first.data.signed_int = value_integer_binary_operation(first, second, ast->Binary_Expr.op);
-                        if (binary_is_comparator_table[ast->Binary_Expr.op]) {
-                            first.type = Value_boolean;
-                        }
                         
                         result = first;
+                        
+                        if (binary_is_comparator(ast->Binary_Expr.op)) {
+                            // Comparison operands always results in boolean
+                            result.type = Value_boolean;
+                        }
                     }
                 }
             }
@@ -1117,9 +1125,8 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
         map_put(tcx->globals, ident, type);
     }
     
-    
     {
-        // Intrinsic syntax: debug_break format...)
+        // Intrinsic syntax: debug_break()
         // Inserts a breakpoint (e.g. int3 on x64) to enable debugger
         Type* type = arena_push_struct(tcx->type_arena, Type);
         type->kind = Type_Function;
@@ -1135,8 +1142,28 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
         
         map_put(tcx->globals, ident, type);
     }
+    
+    {
+        // Intrinsic syntax: assert(int expr)
+        // Assets that expr is true, used as test case for 
+        Type* type = arena_push_struct(tcx->type_arena, Type);
+        type->kind = Type_Function;
+        type->Function.is_variadic = false;
+        type->Function.arguments = {};
+        
+        string_id arg0_ident = vars_save_cstring("expr");
+        type_table_push_type(&type->Function.arguments, arg0_ident, &global_primitive_types[PrimitiveType_int], 0);
+        
+        string_id ident = vars_save_cstring("assert");
+        type->Function.block = 0;
+        type->Function.interp_intrinsic = &interp_intrinsic_assert;
+        type->Function.intrinsic = &intrinsic_assert;
+        type->Function.ident = ident;
+        type->Function.return_type = &global_void_type;
+        
+        map_put(tcx->globals, ident, type);
+    }
 }
-
 
 s32
 type_check_ast_file(Ast_File* ast_file) {

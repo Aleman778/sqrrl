@@ -259,3 +259,8 @@ print_type(Type* type) {
     pln("%", f_string(result));
     string_builder_free(&sb);
 }
+
+// NOTE(Alexander): forward declare
+struct Ast_File;
+
+s32 type_check_ast_file(Ast_File* ast_file);

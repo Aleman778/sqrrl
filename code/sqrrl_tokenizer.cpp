@@ -597,7 +597,7 @@ advance_token(Tokenizer* tokenizer) {
             
             case ',':  token.type = Token_Comma; break;
             case ';':  token.type = Token_Semi; break;
-            case '@':  token.type = Token_Annotation; break;
+            case '@':  token.type = Token_Attribute; break;
             case '?':  token.type = Token_Question; break;
             case '$':  token.type = Token_Dollar; break;
             case '(':  token.type = Token_Open_Paren; break;

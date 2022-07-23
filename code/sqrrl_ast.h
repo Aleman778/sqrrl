@@ -16,6 +16,10 @@ Ast* type;                                      \
 Ast* ident;                                     \
 Ast* assign;                                    \
 })                                              \
+AST(Attribute,         "attribute", struct {     \
+Ast* ident;                                     \
+Ast* expr;                                      \
+})                                              \
 AST(Compound,          "compound", struct {     \
 Ast* node;                                      \
 Ast* next;                                      \
@@ -124,6 +128,7 @@ AST(Function_Type,     "function", struct {     \
 Ast* ident;                                     \
 Ast* return_type;                               \
 Ast* arguments;                                 \
+Ast* attributes;                                \
 Ast_Decl_Modifier mods;                         \
 })                                              \
 AST(Struct_Type,       "struct", struct {       \

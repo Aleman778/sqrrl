@@ -12,7 +12,7 @@ TOKEN(Open_Brace,              "{")                 \
 TOKEN(Close_Brace,             "}")                 \
 TOKEN(Open_Bracket,            "[")                 \
 TOKEN(Close_Bracket,           "]")                 \
-TOKEN(Annotation,              "@")                 \
+TOKEN(Attribute,               "@")                 \
 TOKEN(Directive,               "#")                 \
 TOKEN(Concatenator,            "##")                \
 TOKEN(Question,                "?")                 \

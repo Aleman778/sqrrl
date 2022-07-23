@@ -104,6 +104,13 @@ __assert(cstring expression, cstring file, int line) {
 #define assert(expression)
 #endif
 
+//#if !BUILD_TEST
+//extern "C" void
+//intrinsic_assert(int expr) {
+//assert(expr && "assertion in external code");
+//}
+//#endif
+
 #define unimplemented assert(0 && "this code is not implemented yet")
 #define invalid_code_path assert(0 && "invalid code path, this is likely a bug")
 #define compiler_bug(m) assert(0 && "Compiler Bug!"#m)
@@ -229,6 +236,7 @@ string_compare(string a, string b) {
     
     return (int) (b.count - a.count);
 }
+#define string_equals(a, b) (string_compare(a, b) == 0)
 
 inline void
 string_to_lower_ascii_no_copy(string* str) {

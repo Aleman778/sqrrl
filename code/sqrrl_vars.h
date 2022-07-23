@@ -74,6 +74,7 @@ VAR(once)     \
 VAR(line)     \
 VAR(undef)    \
 VAR(main)     \
+VAR(test_proc) \
 VAR(unsigned) \
 VAR(signed)   \
 VAR(long)     \

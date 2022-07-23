@@ -6,6 +6,7 @@
 
 #include "sqrrl_basic.cpp"
 #include "sqrrl_value.cpp"
+#include "sqrrl_test.cpp"
 #include "sqrrl_tokenizer.cpp"
 #include "sqrrl_preprocessor.cpp"
 #include "sqrrl_parser.cpp"
@@ -19,6 +20,7 @@
 
 
 typedef int asm_main(void);
+
 
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
@@ -35,11 +37,24 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         map_put(file_index_table, ident, 0);
     }
     
-    string filepath;
+    string filepath = {};
     
 #if BUILD_DEBUG
     if (argc > 1) {
+        
+#if BUILD_TEST
+        if (string_equals(string_lit(argv[1]), string_lit("test"))) {
+            if (argc > 2) {
+                filepath = string_lit(argv[2]);
+            } else {
+                filepath = string_lit("tests/first.sq");
+            }
+            return run_compiler_tests(filepath);
+        }
+#endif
+        
         filepath = string_lit(argv[1]);
+        
     } else {
         //filepath = string_lit("examples/demo3.sq");
         //filepath = string_lit("examples/demo4.sq");
@@ -88,8 +103,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     // TODO(alexander): temp printing source
     //pln("Preprocessed source:\n%", f_string(preprocessed_source));
-    DEBUG_write_entire_file("build/preprocessed.sq", preprocessed_source.data,
-                            (u32) preprocessed_source.count);
+    //DEBUG_write_entire_file("build/preprocessed.sq", preprocessed_source.data,
+    //(u32) preprocessed_source.count);
     
 #if 0
     // Source group debugging
@@ -108,7 +123,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     // Lexer
     Tokenizer tokenizer = {};
-    tokenizer_set_source(&tokenizer, preprocessed_source, filepath);
+    tokenizer_set_source(&tokenizer, preprocessed_source, file.filename);
     // TODO(alexander): calculate line number!
     
     Parser parser = {};

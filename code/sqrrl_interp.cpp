@@ -1075,6 +1075,21 @@ interp_intrinsic_debug_break(Interp* interp, array(Interp_Value)* var_args) {
     return result;
 }
 
+Value
+interp_intrinsic_assert(Interp* interp, array(Interp_Value)* var_args) {
+    Interp_Value expr = interp_load_value(interp, vars_save_cstring("expr"));
+    
+    if (expr.value.type == Value_signed_int || expr.type.kind == Type_Primitive) {
+        intrinsic_assert((int) expr.value.data.signed_int);
+    } else {
+        interp_error(interp, string_format("expected `int` as first argument, found `%`",
+                                           f_type(&expr.type)));
+    }
+    
+    Value result = {};
+    return result;
+}
+
 void
 interp_declaration_statement(Interp* interp, Ast* ast) {
     assert(ast->kind == Ast_Decl_Stmt);

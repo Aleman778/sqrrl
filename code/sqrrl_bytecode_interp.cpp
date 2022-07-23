@@ -1,20 +1,4 @@
 
-struct Bc_Interp_Scope {
-    map(Bc_Register, Value_Data)* registers;
-    Bc_Basic_Block* curr_block;
-    umm curr_block_insn;
-    Bc_Register return_register;
-};
-
-struct Bc_Interp {
-    array(Bc_Interp_Scope)* scopes;
-    Bc_Label_To_Value_Table* declarations;
-    
-    Memory_Arena stack;
-    smm base_pointer;
-    Value_Data return_value;
-};
-
 inline void
 bc_interp_store_register(Bc_Interp* interp, Bc_Register reg, Value_Data value) {
     assert(array_count(interp->scopes) > 0);
@@ -256,7 +240,7 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             bc_interp_store_register(interp, bc->dest.Register, result); \
         } break;
         
-        
+        //pln("% = % % %", f_s64(result.signed_int), f_s64(first.signed_int), f_cstring(#binary_operator), f_s64(second.signed_int)); 
 #define BINARY_CASE(opcode, binary_operator) \
 case opcode: { \
 Value_Data first = bc_interp_operand_value(interp, &bc->src0); \
@@ -264,7 +248,6 @@ Value_Data second = bc_interp_operand_value(interp, &bc->src1); \
         \
 Value_Data result; \
 result.signed_int = first.signed_int binary_operator second.signed_int; \
-pln("% = % % %", f_s64(result.signed_int), f_s64(first.signed_int), f_cstring(#binary_operator), f_s64(second.signed_int)); \
         \
 bc_interp_store_register(interp, bc->dest.Register, result); \
 } break;

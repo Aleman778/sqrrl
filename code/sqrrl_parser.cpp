@@ -968,6 +968,15 @@ parse_actual_function_argument(Parser* parser) {
 }
 
 Ast*
+parse_function_attribute(Parser* parser) {
+    Ast* result = push_ast_node(parser);
+    result->kind = Ast_Attribute;
+    result->Attribute.ident = parse_identifier(parser);
+    result->Attribute.expr = parse_expression(parser, true, 1, result->Attribute.ident);
+    return result;
+}
+
+Ast*
 parse_actual_argument(Parser* parser) {
     return parse_expression(parser);
 }
@@ -1037,6 +1046,36 @@ parse_compound(Parser* parser,
             }
         }
         
+    }
+    
+    return result;
+}
+
+Ast*
+parse_prefixed_compound(Parser* parser, Token_Type prefix,
+                        Ast* (*element_parser)(Parser* parser)) {
+    // Parse elements until the prefix doesn't match anymore
+    Ast* result = push_ast_node(parser);
+    result->kind = Ast_Compound;
+    
+    if (!next_token_if_matched(parser, prefix, false)) {
+        result->Compound.node = push_ast_node(parser);
+        result->Compound.next = push_ast_node(parser);
+        return result;
+    }
+    
+    Ast* curr = result;
+    for (;;) {
+        Token token = peek_token(parser);
+        curr->kind = Ast_Compound;
+        Ast* node = element_parser(parser);
+        curr->Compound.node = node;
+        curr->Compound.next = push_ast_node(parser);
+        curr = curr->Compound.next;
+        
+        if (!next_token_if_matched(parser, prefix, false)) {
+            break;
+        }
     }
     
     return result;
@@ -1201,7 +1240,7 @@ parse_type(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
                             Ast* def = push_ast_node(parser, &token);
                             def->kind = Ast_Argument;
                             def->Argument.type =
-                                parse_extended_type(parser, base->Typedef.ident, report_error);
+                                parse_complex_type(parser, base->Typedef.ident, report_error);
                             def->Argument.ident =
                                 parse_identifier(parser, report_error);
                             
@@ -1244,7 +1283,7 @@ parse_type(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
     
     Ast* result = 0;
     if (base) {
-        result = parse_extended_type(parser, base, report_error, mods);
+        result = parse_complex_type(parser, base, report_error, mods);
     } else {
         if (report_error) {
             parse_error(parser, token,
@@ -1257,17 +1296,25 @@ parse_type(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
 }
 
 Ast*
-parse_extended_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_Modifier mods) {
+parse_complex_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_Modifier mods) {
     Ast* result = base_type;
     
     Token token = peek_token(parser);
     switch (token.type) {
+        case Token_Attribute:
         case Token_Ident: {
+            Ast* attributes = 0;
             
             Ast_Decl_Modifier function_mods = AstDeclModifier_None;
             {
                 Token curr_token = token;
-                while (curr_token.type == Token_Ident) {
+                while (curr_token.type == Token_Ident || curr_token.type == Token_Attribute) {
+                    if (curr_token.type == Token_Attribute) {
+                        attributes = parse_prefixed_compound(parser, Token_Attribute, &parse_function_attribute);
+                        curr_token = peek_token(parser);
+                        continue;
+                    }
+                    
                     string_id ident = vars_save_string(curr_token.source);
                     switch (ident) {
                         case Sym___cdecl: {
@@ -1296,6 +1343,7 @@ parse_extended_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_
                 result->kind = Ast_Function_Type;
                 result->Function_Type.return_type = base_type;
                 result->Function_Type.mods = function_mods | mods;
+                result->Function_Type.attributes = attributes;
                 result->Function_Type.ident = parse_identifier(parser);
                 result->Function_Type.arguments = parse_compound(parser,
                                                                  Token_Open_Paren, Token_Close_Paren, Token_Comma,

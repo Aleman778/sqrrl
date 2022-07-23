@@ -96,7 +96,7 @@ Ast* parse_expression(Parser* parser, bool report_error=true, u8 min_prec=1, Ast
 Ast* parse_statement(Parser* parser, bool report_error=true, Ast_Decl_Modifier mods=0);
 Ast* parse_block_or_single_statement(Parser* parser, bool report_error=true);
 Ast* parse_type(Parser* parser, bool report_error=true, Ast_Decl_Modifier mods=0);
-Ast* parse_extended_type(Parser* parser, Ast* base_type, bool report_error=true, Ast_Decl_Modifier mods=0);
+Ast* parse_complex_type(Parser* parser, Ast* base_type, bool report_error=true, Ast_Decl_Modifier mods=0);
 
 Unary_Op parse_unary_op(Parser* parser);
 Binary_Op parse_binary_op(Parser* parser);
@@ -112,3 +112,5 @@ Ast* parse_actual_type(Parser* parser);
 Ast* parse_compound(Parser* parser, 
                     Token_Type begin, Token_Type end, Token_Type separator,
                     Ast* (*element_parser)(Parser* parser));
+
+Ast_File parse_file(Parser* parser);

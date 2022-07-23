@@ -24,14 +24,14 @@ goto :EOF
 
 :Debug
     echo Compiling sqrrl in debug mode
-    set compiler_flags=-Od -DDEBUG=1 -DBUILD_DEBUG=1 %compiler_flags%
+    set compiler_flags=-Od -DDEBUG=1 -DBUILD_DEBUG=1 -DBUILD_TEST=1 %compiler_flags%
     set compiler_flags=-DBUILD_INTERNAL=1 -DBUILD_MAX_DEBUG=1 %compiler_flags%
     set linker_flags=dbghelp.lib %linker_flags%
     goto :Compile
 
 :Release
     echo Compiling sqrrl in release mode
-    set compiler_flags=-DBUILD_DEBUG=0 %compiler_flags%
+    set compiler_flags=-DBUILD_DEBUG=0 -DBUILD_TEST=0 %compiler_flags%
     set compiler_flags=-DBUILD_INTERNAL=0 -DBUILD_MAX_DEBUG=0 %compiler_flags%
     set compiler_flags=-O2 -DNDEBUG=1 %compiler_flags%
     goto :Compile

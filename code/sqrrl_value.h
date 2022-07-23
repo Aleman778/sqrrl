@@ -90,6 +90,8 @@ bool binary_is_comparator_table[] = {
 #undef BINOP
 };
 
+#define binary_is_comparator(binop) (binary_is_comparator_table[binop])
+
 inline bool
 is_binary_assign(Binary_Op op) {
     return op >= BinaryOp_Assign;

@@ -116,6 +116,27 @@ struct Type {
     s32 cached_align;
 };
 
+struct Compilation_Unit {
+    Ast* ast;
+    string_id ident;
+};
+
+struct Type_Context {
+    Memory_Arena* type_arena;
+    
+    map(string_id, Type*)* locals;
+    map(string_id, Type*)* globals;
+    
+    map(string_id, Type*)* local_type_table;
+    map(string_id, Type*)* global_type_table;
+    
+    Type* return_type;
+    
+    b32 block_depth;
+    s32 error_count;
+    s32 warning_count;
+};
+
 global Type global_void_type = { Type_Void };
 global Type global_unresolved_type = { Type_Unresolved };
 

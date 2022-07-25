@@ -29,6 +29,4 @@ if_statements() {
     } else {
         assert(0);
     }
-    
-    return 0;
 }

@@ -501,3 +501,17 @@ string_builder_push(String_Builder* sb, Bc_Instruction* insn) {
         string_builder_push(sb, &insn->src1);
     }
 }
+
+void
+string_builder_push(String_Builder* sb, Bc_Basic_Block* block) {
+    Bc_Basic_Block* curr_block = block;
+    while (curr_block) {
+        Bc_Instruction* curr_insn = curr_block->first;
+        for (int i = 0; i < curr_block->count; i++) {
+            string_builder_push(sb, curr_insn++);
+            string_builder_push(sb, "\n");
+        }
+        
+        curr_block = curr_block->next;
+    }
+}

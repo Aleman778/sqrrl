@@ -14,3 +14,6 @@ struct Bc_Interp {
     smm base_pointer;
     Value_Data return_value;
 };
+
+
+Value_Data bc_interp_bytecode(Bc_Interp* interp, string_id entry_point = Sym_main);

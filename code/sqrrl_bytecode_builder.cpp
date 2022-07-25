@@ -1088,8 +1088,8 @@ void
 bc_build_from_ast(Bc_Builder* bc, Ast_File* ast_file) {
     // NOTE(Alexander): we want to minimize this as far as possible
     // to be able to compile large programs.
-    pln("sizeof(Bc_Instruction) = %", f_umm(sizeof(Bc_Instruction)));
-    pln("sizeof(Bc_Operand) = %\n", f_umm(sizeof(Bc_Operand)));
+    //pln("sizeof(Bc_Instruction) = %", f_umm(sizeof(Bc_Instruction)));
+    //pln("sizeof(Bc_Operand) = %\n", f_umm(sizeof(Bc_Operand)));
     
     
     {

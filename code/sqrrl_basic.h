@@ -317,6 +317,12 @@ struct String_Builder {
 };
 
 inline void
+string_builder_clear(String_Builder* sb) {
+    // TODO(Alexander): maybe we want to shink the buffer if it's very large?
+    sb->curr_used = 0;
+}
+
+inline void
 string_builder_free(String_Builder* sb) {
     free(sb->data);
     sb->data = 0;

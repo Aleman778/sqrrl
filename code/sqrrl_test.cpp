@@ -6,12 +6,15 @@
 // this is intended to be called from the compiled program
 void
 intrinsic_assert(int expr) {
-    if (expr == 0) {
-        curr_test->num_passed++;
-        pln("test passed");
+    if (is_test_mode && curr_test) {
+        curr_test->num_tests++;
+        if (expr == 0) {
+            curr_test->num_failed++;
+        } else {
+            curr_test->num_passed++;
+        }
     } else {
-        curr_test->num_failed++;
-        pln("test failed");
+        assert(expr && "assert from external code");
     }
 }
 
@@ -69,11 +72,13 @@ run_compiler_tests(string filename) {
     
     // Make sure to compile entry point function first
     //Bc_Register entry_point_label = { Sym_main, 0 };
-    //Value main_decl = map_get(bytecode_builder.declarations, entry_point_label);
-    //assert(main_decl.type == Value_basic_block);
     
-    //Bc_Basic_Block* main_block = main_decl.data.basic_block;
-    //x64_build_function(&x64_builder, main_block);
+    //for_map (bytecode_builder.declarations, it) {
+    //if (it->key.ident == Kw_global || it->key.index != 0) {
+    //continue;
+    //}
+    //
+    //}
     
     // Collect all the test to run
     map(string_id, Test_Result)* tests = 0;
@@ -92,7 +97,7 @@ run_compiler_tests(string filename) {
                 if (attr_ident == Sym_test_proc) {
                     // TODO(Alexander): check the expr part for exec mode
                     Test_Execution_Modes modes = (TestExecutionMode_Interp |
-                                                  TestExecutionMode_Bytecode_Interp |
+                                                  TestExecutionMode_Bc_Interp |
                                                   TestExecutionMode_X64);
                     
                     Test_Result test = {};
@@ -111,22 +116,87 @@ run_compiler_tests(string filename) {
     }
     
     // Run tests
-    pln("Running % tests...", f_smm(map_count(tests)));
+    pln("Running % tests...\n", f_smm(map_count(tests)));
     
     
+    String_Builder string_builder_test_result = {};
+    String_Builder* sb_test_result = &string_builder_test_result;
+    string_builder_alloc(sb_test_result, 80);
+    
+    String_Builder string_builder_failure_log = {};
+    String_Builder* sb_failure_log = &string_builder_failure_log;
+    
+    Test_Result totals = {};
+    totals.num_tests = (u32) map_count(tests);
     for_map(tests, it) {
         Test_Result* test = &it->value;
+        curr_test = test;
         
         // Interpreter
         if (is_bitflag_set(test->modes, TestExecutionMode_Interp)) {
             interp_function_call(&interp, test->ident, 0, test->ast->type);
             if (interp.error_count > 0) {
                 test->num_failed += interp.error_count;
+                test->num_tests +=  interp.error_count;
                 interp.error_count = 0;
             }
         }
+        
+        // Bytecode interpreter
+        if (is_bitflag_set(test->modes, TestExecutionMode_Bc_Interp)) {
+            u32 prev_num_failed = test->num_failed;
+            bc_interp_bytecode(&bc_interp, test->ident);
+            if (prev_num_failed != test->num_failed) {
+                Bc_Register reg = {};
+                reg.ident = test->ident;
+                Value decl = map_get(bc_interp.declarations, reg);
+                if (decl.type == Value_basic_block) {
+                    string_builder_push(sb_failure_log, decl.data.basic_block);
+                }
+            }
+        }
+        
+        // X64
+        if (is_bitflag_set(test->modes, TestExecutionMode_X64)) {
+            u32 prev_num_failed = test->num_failed;
+            // TODO: run JITTED code
+            if (prev_num_failed != test->num_failed) {
+            }
+        }
+        
+        const umm test_name_max_count = 50;
+        string test_name = vars_load_string(test->ident);
+        if (test_name.count > test_name_max_count) {
+            test_name.count = test_name_max_count;
+        }
+        
+        string_builder_clear(sb_test_result);
+        string_builder_push_format(sb_test_result, "%", f_string(test_name));
+        for (umm i = test_name.count; i < test_name_max_count + 3; i++) string_builder_push(sb_test_result, ".");
+        
+        if (test->num_failed == 0) {
+            totals.num_passed++;
+            string_builder_push_format(sb_test_result, " OK!");
+        } else {
+            totals.num_failed++;
+            string_builder_push_format(sb_test_result, " Failed [%/%]", f_u32(test->num_passed), f_u32(test->num_tests));
+        }
+        
+        pln("%", f_string(string_builder_to_string_nocopy(sb_test_result)));
     }
     
+    pln("%", f_string(string_builder_to_string_nocopy(sb_failure_log)));
+    pln("Finished % tests: % passed - % failed - % skipped", 
+        f_u32(totals.num_tests),
+        f_u32(totals.num_passed), 
+        f_u32(totals.num_failed),
+        f_u32(totals.num_skipped));
+    
+    string_builder_free(sb_failure_log);
+    string_builder_free(sb_test_result);
+    
+    
+#if 0
     // Create test report in text
     {
         String_Builder test_report_text = {};
@@ -154,6 +224,7 @@ run_compiler_tests(string filename) {
         pln("%", f_string(string_builder_to_string_nocopy(sb)));
         string_builder_free(sb);
     }
+#endif
     
     return 0;
 }

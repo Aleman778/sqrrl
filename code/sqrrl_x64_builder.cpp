@@ -542,6 +542,22 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             insn->op1 = x64_build_operand(x64, &bc->src0);
         } break;
         
+        case Bytecode_neg: {
+            
+            Bc_Type type = bc->src0.type; 
+            
+            X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov); 
+            mov_insn->op0 = x64_build_operand(x64, &bc->dest); 
+            mov_insn->op1 = x64_build_operand(x64, &bc->src0);
+            
+            X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_neg);
+            insn->op0 = mov_insn->op0;
+        } break;
+        
+        case Bytecode_not: {
+            
+        } break;
+        
 #define BINARY_CASE(opcode) \
 Bc_Type type = bc->src0.type; \
         \

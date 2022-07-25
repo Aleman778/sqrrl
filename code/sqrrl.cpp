@@ -186,16 +186,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 }
                 
                 if (it->value.type == Value_basic_block) {
-                    Bc_Basic_Block* curr_block = it->value.data.basic_block;
-                    while (curr_block) {
-                        Bc_Instruction* curr_insn = curr_block->first;
-                        for (int i = 0; i < curr_block->count; i++) {
-                            string_builder_push(&sb, curr_insn++);
-                            string_builder_push(&sb, "\n");
-                        }
-                        
-                        curr_block = curr_block->next;
-                    }
+                    string_builder_push(&sb, it->value.data.basic_block);
                 } else {
                     string_builder_push_format(&sb, "%%% = %\n\n",
                                                f_string(vars_load_string(it->key.ident)),

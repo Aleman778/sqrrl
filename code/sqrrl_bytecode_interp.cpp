@@ -137,6 +137,7 @@ bc_interp_operand_value(Bc_Interp* interp, Bc_Operand* operand) {
         
         case BcOperand_Value: {
             bc_interp_store_value(interp, operand->type, &result.signed_int, operand->Value);
+            result = bc_interp_load_value(interp, operand->type, &result.signed_int);
         } break;
         
         case BcOperand_Basic_Block: {
@@ -240,7 +241,8 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             bc_interp_store_register(interp, bc->dest.Register, result); \
         } break;
         
-        //pln("% = % % %", f_s64(result.signed_int), f_s64(first.signed_int), f_cstring(#binary_operator), f_s64(second.signed_int)); 
+        //pln("% = % % %", f_s64(result.signed_int), f_s64(first.signed_int), f_cstring(#binary_operator), f_s64(second.signed_int));
+        
 #define BINARY_CASE(opcode, binary_operator) \
 case opcode: { \
 Value_Data first = bc_interp_operand_value(interp, &bc->src0); \
@@ -248,7 +250,6 @@ Value_Data second = bc_interp_operand_value(interp, &bc->src1); \
         \
 Value_Data result; \
 result.signed_int = first.signed_int binary_operator second.signed_int; \
-        \
 bc_interp_store_register(interp, bc->dest.Register, result); \
 } break;
         
@@ -441,7 +442,7 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
 }
 
 Value_Data
-bc_interp_bytecode(Bc_Interp* interp, string_id entry_point = Sym_main) {
+bc_interp_bytecode(Bc_Interp* interp, string_id entry_point) {
     // First analyse the globals
     bc_interp_function_call(interp, Kw_global);
     

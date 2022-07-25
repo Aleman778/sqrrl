@@ -60,24 +60,6 @@ test_type_rules() {
 }
 #endif
 
-
-struct Type_Context {
-    Memory_Arena* type_arena;
-    
-    map(string_id, Type*)* locals;
-    map(string_id, Type*)* globals;
-    
-    map(string_id, Type*)* local_type_table;
-    map(string_id, Type*)* global_type_table;
-    
-    Type* return_type;
-    
-    b32 block_depth;
-    s32 error_count;
-    s32 warning_count;
-};
-
-
 void
 type_error(Type_Context* tcx, string message) {
     Span_Data span = {};
@@ -263,23 +245,25 @@ constant_folding_of_expressions(Ast* ast) {
         
         case Ast_Unary_Expr: {
             Value first = constant_folding_of_expressions(ast->Unary_Expr.first);
-            switch (ast->Unary_Expr.op) {
-                case UnaryOp_Negate: {
-                    if (is_integer(first)) {
-                        result.data.signed_int = -first.data.signed_int;
-                        result.type = Value_signed_int;
-                    } else if(is_floating(first)) {
-                        result.data.floating = -first.data.floating;
-                        result.type = Value_floating;
-                    }
-                } break;
-                
-                case UnaryOp_Logical_Not: {
-                    if (is_integer(first)) {
-                        result.data.boolean = !value_to_bool(first);
-                        result.type = Value_boolean;
-                    }
-                } break;
+            if (!is_void(first)) {
+                switch (ast->Unary_Expr.op) {
+                    case UnaryOp_Negate: {
+                        if (is_integer(first)) {
+                            result.data.signed_int = -first.data.signed_int;
+                            result.type = Value_signed_int;
+                        } else if(is_floating(first)) {
+                            result.data.floating = -first.data.floating;
+                            result.type = Value_floating;
+                        }
+                    } break;
+                    
+                    case UnaryOp_Logical_Not: {
+                        if (is_integer(first)) {
+                            result.data.boolean = !value_to_bool(first);
+                            result.type = Value_boolean;
+                        }
+                    } break;
+                }
             }
         } break;
         
@@ -1032,11 +1016,6 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
     return result;
 }
 
-struct Compilation_Unit {
-    Ast* ast;
-    string_id ident;
-};
-
 bool
 type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error) {
     bool result = true;
@@ -1048,10 +1027,7 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
         ast->type = type;
         
         if (type && type->kind == Type_Function) {
-            if (type->kind == Type_Function) {
-                type->Function.block = ast->Decl_Stmt.stmt;
-            }
-            
+            type->Function.block = ast->Decl_Stmt.stmt;
             
             // Store the arguments in local context
             Type_Table* args = &type->Function.arguments;
@@ -1184,7 +1160,7 @@ type_check_ast_file(Ast_File* ast_file) {
         Compilation_Unit comp_unit = {};
         comp_unit.ident = ident;
         
-        pln("Push decl `%`", f_string(vars_load_string(ident)));
+        //pln("Push decl `%`", f_string(vars_load_string(ident)));
         
         if (decl->kind == Ast_Decl_Stmt) {
             comp_unit.ast = decl->Decl_Stmt.type;

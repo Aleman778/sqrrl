@@ -4,7 +4,7 @@
 typedef s32 Test_Execution_Modes;
 enum {
     TestExecutionMode_Interp = bit(0),
-    TestExecutionMode_Bytecode_Interp = bit(1),
+    TestExecutionMode_Bc_Interp = bit(1),
     TestExecutionMode_X64 = bit(2),
 };
 
@@ -20,7 +20,6 @@ struct Test_Result {
 };
 
 global bool is_test_mode;
-global Test_Result total_test_result;
 global Test_Result* curr_test;
 global Test_Execution_Modes curr_test_exec_mode;
 

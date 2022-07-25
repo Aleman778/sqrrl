@@ -1485,7 +1485,6 @@ parse_top_level_declaration(Parser* parser, Ast_File* ast_file) {
     }
     
     token = peek_token(parser);
-    pln("%", f_string(token.source));
     Ast* decl = parse_statement(parser, true, mods);
     
     if (decl->kind < Ast_Stmt_Begin && decl->kind > Ast_Stmt_End) {

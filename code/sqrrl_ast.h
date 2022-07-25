@@ -157,9 +157,10 @@ AST_GROUP(Type_End,    "type")
 // }
 // TODO(Alexander): this is really ugly and inefficient, try similar to C++ iterators.
 #define for_compound(compound, it) \
-for (Ast* it = compound->Compound.node; \
-compound && compound->kind == Ast_Compound && compound->Compound.node && compound->Compound.node->kind != Ast_None; \
-compound = compound->Compound.next, it = compound->Compound.node)
+Ast* compound_##it = compound; \
+for (Ast* it = compound_##it->Compound.node; \
+compound_##it&& compound_##it->kind == Ast_Compound && compound_##it->Compound.node && compound_##it->Compound.node->kind != Ast_None; \
+compound_##it = compound_##it->Compound.next, it = compound_##it->Compound.node)
 
 global cstring ast_strings[] = {
 #define AST(symbol, name, decl) name,
@@ -365,6 +366,9 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
             string_builder_push_format(sb, " `%`", f_string(vars_load_string(node->Ident)));
         } break;
         
+        case Ast_Attribute: {
+            string_builder_push(sb, node->Attribute.expr, tokenizer, spacing);
+        } break;
         
         case Ast_Assign_Stmt: {
             string_builder_push(sb, node->Assign_Stmt.mods);
@@ -401,6 +405,7 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
             string_builder_push(sb, node->Function_Type.mods);
             string_builder_push(sb, node->Function_Type.return_type, tokenizer, spacing);
             string_builder_push(sb, node->Function_Type.ident, tokenizer, spacing);
+            string_builder_push(sb, node->Function_Type.attributes, tokenizer, spacing);
             string_builder_push(sb, node->Function_Type.arguments, tokenizer, spacing);
         } break;
         

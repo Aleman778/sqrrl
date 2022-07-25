@@ -2,6 +2,8 @@
 
 #if BUILD_TEST
 
+typedef void asm_test(void);
+
 // TODO(Alexander): this is just a simple assertion function to get started, improve this
 // this is intended to be called from the compiled program
 void
@@ -19,7 +21,8 @@ intrinsic_assert(int expr) {
 }
 
 int
-run_compiler_tests(string filename) {
+run_compiler_tests(string filename, void* asm_buffer, umm asm_size, 
+                   void (*asm_make_executable)(void*, umm)) {
     
     is_test_mode = true;
     
@@ -66,19 +69,39 @@ run_compiler_tests(string filename) {
     Bc_Interp bc_interp = {};
     bc_interp.declarations = bytecode_builder.declarations;
     
-    // Compile to X64 machine code
-    //X64_Builder x64_builder = {};
-    //x64_builder.bc_register_live_lengths = bytecode_builder.live_lengths;
+    // Compile to X64 instructions
+    X64_Builder x64_builder = {};
+    x64_builder.bc_register_live_lengths = bytecode_builder.live_lengths;
     
-    // Make sure to compile entry point function first
-    //Bc_Register entry_point_label = { Sym_main, 0 };
+    for_map (bytecode_builder.declarations, it) {
+        if (it->key.ident == Kw_global || it->key.index != 0) {
+            continue;
+        }
+        
+        if (it->value.type == Value_basic_block) {
+            Bc_Basic_Block* function_block = it->value.data.basic_block;
+            x64_build_function(&x64_builder, function_block);
+        } else {
+            // TODO(Alexander): we need to store the actual value type in the declarations
+            x64_build_data_storage(&x64_builder, it->key, it->value.data, &global_primitive_types[PrimitiveType_int]);
+        }
+    }
     
-    //for_map (bytecode_builder.declarations, it) {
-    //if (it->key.ident == Kw_global || it->key.index != 0) {
-    //continue;
-    //}
-    //
-    //}
+    // Perform register allocation
+    x64_perform_register_allocation(&x64_builder);
+    
+    // x64 build instruction definitions
+    X64_Instruction_Def_Table* x64_instruction_definitions = parse_x86_64_definitions();
+    
+    // Assemble to X64 machine code
+    X64_Assembler assembler = {};
+    assembler.bytes = (u8*) asm_buffer;
+    assembler.size = asm_size;
+    
+    x64_assemble_to_machine_code(&assembler,
+                                 x64_instruction_definitions,
+                                 x64_builder.first_basic_block);
+    asm_make_executable(asm_buffer, asm_size);
     
     // Collect all the test to run
     map(string_id, Test_Result)* tests = 0;
@@ -159,8 +182,11 @@ run_compiler_tests(string filename) {
         // X64
         if (is_bitflag_set(test->modes, TestExecutionMode_X64)) {
             u32 prev_num_failed = test->num_failed;
-            // TODO: run JITTED code
+            umm offset = map_get(assembler.label_offsets, test->ident);
+            asm_test* test_func = (asm_test*) ((u8*) asm_buffer + offset);
+            test_func();
             if (prev_num_failed != test->num_failed) {
+                // TODO(Alexander): add some diagnostics
             }
         }
         
@@ -176,7 +202,7 @@ run_compiler_tests(string filename) {
         
         if (test->num_failed == 0) {
             totals.num_passed++;
-            string_builder_push_format(sb_test_result, " OK!");
+            string_builder_push_format(sb_test_result, " OK! [%]", f_u32(test->num_passed));
         } else {
             totals.num_failed++;
             string_builder_push_format(sb_test_result, " Failed [%/%]", f_u32(test->num_passed), f_u32(test->num_tests));

@@ -1,38 +1,4 @@
 
-
-struct X64_Assembler {
-    u8* bytes;
-    umm curr_used;
-    umm size;
-    
-};
-
-inline void
-push_u8(X64_Assembler* assembler, u8 value) {
-    // TODO(Alexander): check if we need to reallocate this
-    assembler->bytes[assembler->curr_used] = value;
-    assembler->curr_used++;
-}
-
-inline void
-modify_u8(X64_Assembler* assembler, umm byte_index, u8 value) {
-    assert(assembler->curr_used > byte_index);
-    assembler->bytes[byte_index] = value;
-}
-
-inline void
-modify_u32(X64_Assembler* assembler, umm byte_index, u32 value) {
-    assert(assembler->curr_used > byte_index);
-    *((u32*) (assembler->bytes + byte_index)) = value;
-}
-
-inline void
-modify_u64(X64_Assembler* assembler, umm byte_index, u64 value) {
-    assert(assembler->curr_used > byte_index);
-    *((u64*) (assembler->bytes + byte_index)) = value;
-}
-
-
 internal void
 x64_assemble_instruction(X64_Assembler* assembler,
                          X64_Instruction* insn, 
@@ -182,14 +148,6 @@ x64_assemble_instruction(X64_Assembler* assembler,
     }
 }
 
-struct X64_Asm_Label_Target {
-    X64_Instruction* insn;
-    X64_Basic_Block* block;
-    X64_Operand_Kind operand;
-    s32 address_align;
-    u32 insn_size;
-};
-
 void
 x64_assemble_to_machine_code(X64_Assembler* assembler, 
                              X64_Instruction_Def_Table* x64_instruction_definitions,
@@ -217,6 +175,10 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
         for (umm insn_index = 0; insn_index < curr_block->count; insn_index++) {
             X64_Instruction* insn = curr_block->first + insn_index;
             if (insn->opcode == X64Opcode_label) {
+                X64_Basic_Block* block = insn->op0.basic_block;
+                if (block->label.index == 0) {
+                    map_put(assembler->label_offsets, block->label.ident, assembler->curr_used);
+                }
                 continue;
             } else if (insn->opcode == X64Opcode_int3) {
                 push_u8(assembler, 0xCC);

@@ -26,8 +26,6 @@ json_hex_byte_value(json_value_s* val) {
     return (second << 4) | first;
 }
 
-typedef string_map(X64_Operand_Kind) X64_Operand_Kind_Table;
-
 inline u8
 x64_encode_operand(json_object_s* operand, X64_Operand_Kind_Table* operand_kind_table) {
     if (strcmp(operand->start->name->string,  "type") == 0) {
@@ -96,7 +94,7 @@ parse_x86_64_definitions() {
     assert(insns_elem->value->type == json_type_object);
     
     json_object_s* insns = (json_object_s*) insns_elem->value->payload;
-    pln("\n\nsqrrl_x64_insn_def.cpp: number of instructions loaded: %", f_umm(insns->length));
+    //pln("\n\nsqrrl_x64_insn_def.cpp: number of instructions loaded: %", f_umm(insns->length));
     
     
     json_object_element_s* curr_insn = insns->start;
@@ -334,8 +332,8 @@ parse_x86_64_definitions() {
         map_put(result, index, encoding);
     }
     
-    pln("sqrrl_x64_insn_def.cpp: number of encodings built: %", f_umm(map_count(result)));
-    pln("sqrrl_x64_insn_def.cpp: size of x86_64 encoding data: %", f_umm(map_count(result)*sizeof(X64_Encoding)));
+    //pln("sqrrl_x64_insn_def.cpp: number of encodings built: %", f_umm(map_count(result)));
+    //pln("sqrrl_x64_insn_def.cpp: size of x86_64 encoding data: %", f_umm(map_count(result)*sizeof(X64_Encoding)));
     
     free(root);
     DEBUG_free_file_memory(x64_file.contents);

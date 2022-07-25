@@ -126,6 +126,10 @@ vars_load_string(string_id id) {
 
 void
 vars_initialize() {
+    if (vars_id_counter != 0) {
+        return;
+    }
+    
     string_map_new_arena(vars_str_to_id);
 #define VAR(symbol) vars_save_cstring(#symbol);
 #define VAR_GROUP(symbol) VAR(symbol)

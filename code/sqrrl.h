@@ -20,6 +20,8 @@
 #include "sqrrl_bytecode_builder.h"
 #include "sqrrl_bytecode_interp.h"
 #include "sqrrl_x64.h"
+#include "sqrrl_x64_builder.h"
+#include "sqrrl_x64_assembler.h"
 #include "sqrrl_test.h"
 
 extern "C" int compiler_main_entry(int argc, char* argv[]);

@@ -150,7 +150,7 @@ bc_build_type(Bc_Builder* bc, Ast* type) {
                     case Kw_char: result.kind = BcType_u8; break;
                     case Kw_bool: result.kind = BcType_s8; break;
                     case Kw_b32:  result.kind = BcType_s32; break;
-                    case Kw_void: result.kind = BcType_None; break;
+                    case Kw_void: result.kind = BcType_void; break;
                     default: assert(0 && "invalid primitive type");
                 }
             }
@@ -169,7 +169,13 @@ Bc_Type
 bc_build_type(Bc_Builder* bc, Type* type) {
     Bc_Type result = {};
     
+    assert(type->kind != Type_None);
+    
     switch (type->kind) {
+        case Type_Void: {
+            result.kind = BcType_void;
+        } break;
+        
         case Type_Primitive: {
             Primitive_Type_Kind primitive_kind = type->Primitive.kind;
             
@@ -191,7 +197,7 @@ bc_build_type(Bc_Builder* bc, Type* type) {
                 case PrimitiveType_char: result.kind = BcType_u8; break;
                 case PrimitiveType_bool: result.kind = BcType_s8; break;
                 case PrimitiveType_b32:  result.kind = BcType_s32; break;
-                case PrimitiveType_void: result.kind = BcType_None; break;
+                case PrimitiveType_void: result.kind = BcType_void; break;
                 default: assert(0 && "invalid primitive type");
             }
         } break;
@@ -933,7 +939,9 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* type, Ast* decl) {
             
             // TODO(Alexander): we should use type checker function Type* instead
             Bc_Type return_type = bc_build_type(bc, type->Function_Type.return_type);
-            bc->curr_return_dest = bc_build_stack_alloc(bc, return_type);
+            if (return_type.kind  != BcType_void) {
+                bc->curr_return_dest = bc_build_stack_alloc(bc, return_type);
+            }
             
             // Allocate arguments
             Bc_Instruction* label_insn = block->first;
@@ -984,17 +992,21 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* type, Ast* decl) {
                 bc_push_instruction(bc, Bytecode_label);
                 bc_push_operand(bc, block_operand);
                 
-                Bc_Operand return_value_op = bc_get_unique_register_operand(bc, return_type);
-                Bc_Operand return_type_op = {};
-                return_type_op.kind = BcOperand_Type;
-                return_type_op.type = return_type;
-                bc_push_instruction(bc, Bytecode_load);
-                bc_push_operand(bc, return_value_op);
-                bc_push_operand(bc, return_type_op);
-                bc_push_operand(bc, bc->curr_return_dest);
-                
-                bc_push_instruction(bc, Bytecode_ret);
-                bc_push_operand(bc, return_value_op);
+                if (return_type.kind != BcType_void) {
+                    Bc_Operand return_value_op = bc_get_unique_register_operand(bc, return_type);
+                    Bc_Operand return_type_op = {};
+                    return_type_op.kind = BcOperand_Type;
+                    return_type_op.type = return_type;
+                    bc_push_instruction(bc, Bytecode_load);
+                    bc_push_operand(bc, return_value_op);
+                    bc_push_operand(bc, return_type_op);
+                    bc_push_operand(bc, bc->curr_return_dest);
+                    
+                    bc_push_instruction(bc, Bytecode_ret);
+                    bc_push_operand(bc, return_value_op);
+                } else {
+                    bc_push_instruction(bc, Bytecode_ret);
+                }
             }
             
             // Save declaration

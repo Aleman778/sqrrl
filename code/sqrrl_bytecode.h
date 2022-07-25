@@ -86,7 +86,7 @@ struct Bc_Decl {
 };
 
 enum Bc_Type_Kind {
-    BcType_None,
+    BcType_void,
     
     BcType_s1,
     BcType_s8,
@@ -338,7 +338,7 @@ typedef map(Bc_Register, Value) Bc_Label_To_Value_Table;
 bool
 string_builder_push(String_Builder* sb, Bc_Type type) {
     switch (type.kind) {
-        case BcType_None: return false;
+        case BcType_void: return false;
         
         case BcType_s1: string_builder_push(sb, "s1"); break;
         case BcType_s8: string_builder_push(sb, "s8"); break;

@@ -49,7 +49,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             } else {
                 filepath = string_lit("tests/first.sq");
             }
-            return run_compiler_tests(filepath);
+            return run_compiler_tests(filepath, asm_buffer, asm_size, asm_make_executable);
         }
 #endif
         

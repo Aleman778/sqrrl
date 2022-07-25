@@ -408,15 +408,18 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
         } break;
         
         case Bytecode_ret: {
-            Value_Data value = bc_interp_operand_value(interp, &bc->op0);
-            switch (bc->op0.type.kind) {
-                case BcType_s1:  value.unsigned_int = (u64) 1 & value.unsigned_int; break;
-                case BcType_s8:  value.signed_int = (s8) value.signed_int; break;
-                case BcType_s16: value.signed_int = (s16) value.signed_int; break;
-                case BcType_s32: value.signed_int = (s32) value.signed_int; break;
-                case BcType_u8:  value.unsigned_int = (u8) value.unsigned_int; break;
-                case BcType_u16: value.unsigned_int = (u16) value.unsigned_int; break;
-                case BcType_u32: value.unsigned_int = (u32) value.unsigned_int; break;
+            Value_Data value = {};
+            if (bc->op0.kind == BcOperand_Register) {
+                value = bc_interp_operand_value(interp, &bc->op0);
+                switch (bc->op0.type.kind) {
+                    case BcType_s1:  value.unsigned_int = (u64) 1 & value.unsigned_int; break;
+                    case BcType_s8:  value.signed_int = (s8) value.signed_int; break;
+                    case BcType_s16: value.signed_int = (s16) value.signed_int; break;
+                    case BcType_s32: value.signed_int = (s32) value.signed_int; break;
+                    case BcType_u8:  value.unsigned_int = (u8) value.unsigned_int; break;
+                    case BcType_u16: value.unsigned_int = (u16) value.unsigned_int; break;
+                    case BcType_u32: value.unsigned_int = (u32) value.unsigned_int; break;
+                }
             }
             
             // Pop scope

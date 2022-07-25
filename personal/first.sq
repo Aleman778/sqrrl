@@ -1,8 +1,0 @@
-// Personal testing, anything in this folder is not pushed to git
-
-int
-main() {
-    
-    return 0;
-}
-

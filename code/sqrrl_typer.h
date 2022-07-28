@@ -18,8 +18,7 @@ PRIMITIVE(f32,  Primitive_Float, 4, signed,   0, 0) \
 PRIMITIVE(f64,  Primitive_Float, 8, signed,   0, 0) \
 PRIMITIVE(char, Primitive_Int,   1, unsigned, CHAR_MAX, CHAR_MIN) \
 PRIMITIVE(bool, Primitive_Int,   1, signed,   BOOL_MAX, BOOL_MIN) \
-PRIMITIVE(b32,  Primitive_Int,   1, signed,   S32_MAX, S32_MIN) \
-PRIMITIVE(void, Primitive_None,  0, unsigned, 0, 0)
+PRIMITIVE(b32,  Primitive_Int,   1, signed,   S32_MAX, S32_MIN)
 // NOTE(Alexander): this has to be synched with the keywords in sqrrl_vars.h
 
 enum Primitive_Type_Kind {
@@ -262,7 +261,23 @@ string_builder_push(String_Builder* sb, Type* type) {
             string_builder_push(sb, "enum");
         } break;
         case Type_Function: {
-            string_builder_push(sb, "function");
+            string_builder_push(sb, type->Function.return_type);
+            string_builder_push(sb, " ");
+            if (type->Function.ident > 0) {
+                string_builder_push(sb, vars_load_string(type->Function.ident));
+            }
+            string_builder_push(sb, "(");
+            Type_Table* args = &type->Function.arguments;
+            for_array_v(args->idents, arg_ident, arg_index) {
+                Type* arg_type = map_get(args->ident_to_type, arg_ident);
+                string_builder_push(sb, arg_type);
+                string_builder_push(sb, " ");
+                string_builder_push(sb, vars_load_string(arg_ident));
+                if (arg_index < array_count(args->idents) - 1) {
+                    string_builder_push(sb, ", ");
+                }
+            }
+            string_builder_push(sb, ")");
         } break;
         
         default: {

@@ -177,6 +177,7 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
             if (insn->opcode == X64Opcode_label) {
                 X64_Basic_Block* block = insn->op0.basic_block;
                 if (block->label.index == 0) {
+                    assert(map_get_index(assembler->label_offsets, block->label.ident) == -1 && "duplicate label");
                     map_put(assembler->label_offsets, block->label.ident, assembler->curr_used);
                 }
                 continue;

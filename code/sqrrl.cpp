@@ -39,9 +39,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     string filepath = {};
     
-#if BUILD_DEBUG
+    
     if (argc > 1) {
-        
 #if BUILD_TEST
         if (string_equals(string_lit(argv[1]), string_lit("test"))) {
             if (argc > 2) {
@@ -56,16 +55,15 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         filepath = string_lit(argv[1]);
         
     } else {
+#if BUILD_DEBUG
         filepath = string_lit("personal/first.sq");
-    }
-#else
-    if (argc <= 1) {
-        pln("Usage: sqrrl file.sq");
-        return 0;
-    }
-    filepath = string_lit(argv[1]);
+#else 
+        if (argc <= 1) {
+            pln("Usage: sqrrl file.sq");
+            return 0;
+        }
 #endif
-    
+    }
     
     // Extract the directory from the filepath and use as working directory
     // TODO(Alexander): this is hackish solution, we should rely on OS service to do this

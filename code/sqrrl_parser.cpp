@@ -815,7 +815,7 @@ parse_statement(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
 Ast*
 parse_block_or_single_statement(Parser* parser, bool report_error) {
     Ast* stmt = parse_statement(parser, report_error, 0);
-    if (stmt->kind != Ast_Block_Stmt) {
+    if (should_ast_stmt_end_with_semicolon(stmt)) {
         next_token_if_matched(parser, Token_Semi, true);
     }
     return stmt;
@@ -1015,11 +1015,7 @@ parse_compound(Parser* parser,
         curr = curr->Compound.next;
         
         // HACK(Alexander): to get avoid requiring separators for block statements
-        if (node && (node->kind == Ast_Block_Stmt ||
-                     node->kind == Ast_Decl_Stmt ||
-                     node->kind == Ast_If_Stmt ||
-                     node->kind == Ast_For_Stmt ||
-                     node->kind == Ast_While_Stmt)) {
+        if (node && !should_ast_stmt_end_with_semicolon(node)) {
             continue;
         }
         if (!next_token_if_matched(parser, separator, false)) {

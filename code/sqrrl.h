@@ -1,6 +1,22 @@
 #ifndef _SQRRL_H_
 #define _SQRRL_H_
 
+// TODO(Alexander): keep this if we want to modify the allocations of stb libs 
+#if 0
+void*
+sqrrl_realloc(void* data, size_t size) {
+    return realloc(data, size);
+}
+
+void
+sqrrl_free(void* data) {
+    free(data);
+}
+
+#define STBDS_REALLOC(c, p, s) sqrrl_realloc(p, s)
+#define STBDS_FREE(c, p) sqrrl_free(p)
+#endif
+
 // TODO(alexander): this will in the future be replaced with our own implementation
 #define STB_DS_IMPLEMENTATION
 #include "stb_ds.h" // TODO(alexander): implement this on our own!

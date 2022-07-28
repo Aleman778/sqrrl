@@ -226,6 +226,7 @@ bc_type_to_value_type(Bc_Type_Kind kind) {
     return Value_void;
 }
 
+
 Primitive_Type_Kind
 bc_type_to_primitive_type_kind(Bc_Type_Kind kind) {
     switch (kind) {
@@ -248,7 +249,7 @@ bc_type_to_primitive_type_kind(Bc_Type_Kind kind) {
         } break;
     }
     
-    return PrimitiveType_void;
+    return PrimitiveType_int;
 }
 
 inline bool

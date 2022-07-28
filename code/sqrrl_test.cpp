@@ -80,6 +80,11 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
         
         if (it->value.type == Value_basic_block) {
             Bc_Basic_Block* function_block = it->value.data.basic_block;
+            pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
+            String_Builder test_sb = {};
+            string_builder_push(&test_sb, function_block);
+            //pln("%", f_string(string_builder_to_string_nocopy(&test_sb)));
+            string_builder_free(&test_sb);
             x64_build_function(&x64_builder, function_block);
         } else {
             // TODO(Alexander): we need to store the actual value type in the declarations
@@ -183,6 +188,8 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
         if (is_bitflag_set(test->modes, TestExecutionMode_X64)) {
             u32 prev_num_failed = test->num_failed;
             umm offset = map_get(assembler.label_offsets, test->ident);
+            //pln("Running `%` at memory location: 0x%", f_string(vars_load_string(test->ident)),
+            //f_u64_HEX((u8*) asm_buffer + offset));
             asm_test* test_func = (asm_test*) ((u8*) asm_buffer + offset);
             test_func();
             if (prev_num_failed != test->num_failed) {
@@ -202,7 +209,7 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
         
         if (test->num_failed == 0) {
             totals.num_passed++;
-            string_builder_push_format(sb_test_result, " OK! [%]", f_u32(test->num_passed));
+            string_builder_push_format(sb_test_result, " OK!");
         } else {
             totals.num_failed++;
             string_builder_push_format(sb_test_result, " Failed [%/%]", f_u32(test->num_passed), f_u32(test->num_tests));

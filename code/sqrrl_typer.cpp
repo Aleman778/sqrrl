@@ -644,7 +644,9 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         case Ast_Named_Type: {
             string_id ident = ast->Named_Type->Ident;
             if (is_builtin_type_keyword(ident)) {
-                if (ident == Kw_string) {
+                if (ident == Kw_void) {
+                    result = &global_void_type;
+                } else if (ident == Kw_string) {
                     result = &global_string_type;
                 } else if (ident == Kw_infer) {
                     unimplemented;

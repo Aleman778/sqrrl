@@ -11,6 +11,7 @@ unary_expressions() {
     assert(flag == false);
 }
 
+
 void
 @test_proc
 basic_referencing() {
@@ -18,6 +19,95 @@ basic_referencing() {
     int* y = &x;
     int* z = &x;
     assert(y == z);
+}
+
+#if 0
+void
+@test_proc
+truncating_integer() {
+    s64 x = (s64) 140234230023;
+    assert(x == -1499690745);
+}
+#endif
+
+void
+@test_proc
+sign_extend_and_wrapping_integers() {
+    s8 x = (s8) -10;
+    x += (s8) 200;
+    
+    int y = (int) x;
+    assert(y == -66);
+}
+
+void
+@test_proc
+add_operator() {
+    int x = 10;
+    x = x + 10;
+    assert(x == 20);
+}
+
+void
+@test_proc
+and_operator() {
+    bool x = true;
+    x = x && true;
+    assert(x);
+}
+
+void
+@test_proc
+or_operator() {
+    bool x = false;
+    x = x || true;
+    assert(x);
+}
+
+void
+@test_proc
+equals_operator() {
+    int x = 10;
+    int y = x == 10;
+    assert(y);
+}
+
+int
+test_func() {
+    int x = 10;
+    x = x + 20;
+    return x;
+}
+
+void
+@test_proc
+function_with_no_arguments() {
+    int x = test_func();
+    assert(x == 30);
+}
+
+int
+test_add(int x, int y) {
+    return x + y;
+}
+
+void
+@test_proc
+function_with_two_arguments() {
+    int x = test_add(10, 20);
+    assert(x == 30);
+}
+
+int
+test_many_parameters(int a, int b, int c, int d, int e, int f) {
+    return a + b + c + d + e + f;
+}
+
+void
+@test_proc
+function_with_many_arguments() {
+    int x = test_many_parameters(1, 2, 3, 4, 5, 6);
+    assert(x == 21);
 }
 
 void 
@@ -29,4 +119,41 @@ if_statements() {
     } else {
         assert(0);
     }
+}
+
+void
+@test_proc
+else_if_statements() {
+    int x = 10;
+    if (x < 0) {
+        assert(0);
+    } else if (x < 10) {
+        assert(0);
+    } else if (x < 100) {
+        assert(1);
+    } else {
+        assert(0);
+    }
+}
+
+void
+@test_proc
+for_loop() {
+    int x = 10;
+    int y = 0;
+    for (int i = 0; i < x; i += 1) {
+        y += 2;
+    }
+    
+    assert(y == 20);
+}
+
+void 
+@test_proc
+while_loop() {
+    int x = 0;
+    while (x < 25) {
+        x += 1;
+    }
+    assert(x == 25);
 }

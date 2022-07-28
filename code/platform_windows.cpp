@@ -340,7 +340,7 @@ find_windows_kits_include_dir() {
 
 
 int main(int argc, char* argv[]) {
-    umm asm_buffer_size = 1024;
+    umm asm_buffer_size = 2048;
     void* asm_buffer = VirtualAlloc(0, asm_buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     
     cstring windows_system_headers_root_dir = find_windows_kits_include_dir();

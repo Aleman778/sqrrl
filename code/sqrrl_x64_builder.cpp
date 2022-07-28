@@ -100,21 +100,19 @@ x64_allocate_specific_register(X64_Builder* x64, X64_Register physical_register)
     return virtual_register;
 }
 
-
 inline void
 x64_free_virtual_register(X64_Builder* x64, u32 virtual_register) {
-    bool found = false;
+    s32 found_index = -1;
     for_array(x64->active_virtual_registers, it, it_index) {
         if (*it == virtual_register) {
-            found = true;
+            found_index = it_index;
         }
     }
-    if (found) {
-        //pln("free virtual register: r%", f_u32(allocated.virtual_register));
-        array_swap_remove(x64->active_virtual_registers, it_index);
+    if (found_index >= 0) {
+        //pln("free virtual register: r%", f_u32(virtual_register));
+        array_swap_remove(x64->active_virtual_registers, found_index);
     }
 }
-
 
 inline bool
 operand_is_unallocated_register(X64_Operand operand) {
@@ -158,8 +156,9 @@ x64_push_size(X64_Builder* x64, umm size, umm align, umm flags=0) {
         arena->prev_used = 0;
         arena->size = arena->min_block_size;
         
-        // TODO(Alexander): should probably not use the same label
-        x64_push_basic_block(x64, x64->curr_basic_block->label);
+        Bc_Register label = x64->curr_basic_block->label;
+        label.index = x64->next_free_virtual_register++;
+        x64_push_basic_block(x64, label);
         
         current = (umm) arena->base + arena->curr_used;
         offset = align_forward(current, align) - (umm) arena->base;

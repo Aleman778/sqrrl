@@ -104,12 +104,12 @@ __assert(cstring expression, cstring file, int line) {
 #define assert(expression)
 #endif
 
-//#if !BUILD_TEST
-//extern "C" void
-//intrinsic_assert(int expr) {
-//assert(expr && "assertion in external code");
-//}
-//#endif
+#if !BUILD_TEST
+extern "C" void
+intrinsic_assert(int expr) {
+    assert(expr && "assertion in external code");
+}
+#endif
 
 #define unimplemented assert(0 && "this code is not implemented yet")
 #define invalid_code_path assert(0 && "invalid code path, this is likely a bug")
@@ -502,20 +502,21 @@ string string_format(cstring format...);
 #define for_array(arr, it, it_index) \
 int it_index = 0; \
 for (auto it = arr; \
-it_index < array_count(arr); \
+it && it_index < array_count(arr); \
 it_index++, it++)
 
 #define for_array_v(arr, it, it_index) \
 int it_index = 0; \
+if (arr) \
 for (auto it = arr[it_index]; \
 it_index < array_count(arr); \
-it_index++, it = arr[it_index])
+it = arr[++it_index])
 
 
 #define for_array_reverse(arr, it, it_index) \
 int it_index = 0; \
-for (auto it = &array_last(arr); \
-it_index >= arr; \
+for (auto it = arr ? &array_last(arr) : arr; \
+it && it_index >= arr; \
 it_index--, it--)
 
 // NOTE(Alexander): hash maps

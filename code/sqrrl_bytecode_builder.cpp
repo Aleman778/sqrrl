@@ -197,7 +197,6 @@ bc_build_type(Bc_Builder* bc, Type* type) {
                 case PrimitiveType_char: result.kind = BcType_u8; break;
                 case PrimitiveType_bool: result.kind = BcType_s8; break;
                 case PrimitiveType_b32:  result.kind = BcType_s32; break;
-                case PrimitiveType_void: result.kind = BcType_void; break;
                 default: assert(0 && "invalid primitive type");
             }
         } break;

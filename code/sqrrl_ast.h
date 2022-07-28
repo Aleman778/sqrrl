@@ -295,6 +295,15 @@ ast_unwrap_ident(Ast* ast_ident) {
 }
 
 inline bool
+should_ast_stmt_end_with_semicolon(Ast* node) {
+    return !(node->kind == Ast_Block_Stmt ||
+             node->kind == Ast_Decl_Stmt ||
+             node->kind == Ast_If_Stmt ||
+             node->kind == Ast_For_Stmt ||
+             node->kind == Ast_While_Stmt);
+}
+
+inline bool
 is_ast_none(Ast* ast) {
     return ast->kind == Ast_None;
 }
@@ -345,7 +354,7 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
     string_builder_push_format(sb, "(%", f_cstring(ast_struct_strings[node->kind]));
     
     if (node->type) {
-        string_builder_push_format(sb, " [%]", f_type(node->type));
+        string_builder_push_format(sb, " <%>", f_type(node->type));
     }
     
     spacing += 2;

@@ -8,7 +8,7 @@ struct Bc_Interp_Scope {
 
 struct Bc_Interp {
     array(Bc_Interp_Scope)* scopes;
-    Bc_Label_To_Value_Table* declarations;
+    Bc_Decl_Table* declarations;
     
     Memory_Arena stack;
     smm base_pointer;

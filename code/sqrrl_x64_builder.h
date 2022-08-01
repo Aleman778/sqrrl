@@ -35,7 +35,7 @@ struct X64_Builder {
 void x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block);
 
 void x64_build_data_storage(X64_Builder* x64, 
-                            Bc_Register label, 
+                            Bc_Label label, 
                             Value_Data value, 
                             Type* type);
 

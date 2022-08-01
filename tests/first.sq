@@ -21,14 +21,12 @@ basic_referencing() {
     assert(y == z);
 }
 
-#if 0
 void
 @test_proc
 truncating_integer() {
     s64 x = (s64) 140234230023;
     assert(x == -1499690745);
 }
-#endif
 
 void
 @test_proc

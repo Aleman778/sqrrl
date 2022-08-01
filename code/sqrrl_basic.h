@@ -684,6 +684,9 @@ arena_push_size(Memory_Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT, umm 
     return result;
 }
 
+#define arena_can_fit(arena, type) \
+arena_can_fit_size(arena, sizeof(type), alignof(type))
+
 inline bool
 arena_can_fit_size(Memory_Arena* arena, umm size, umm align) {
     umm current = (umm) (arena->base + arena->curr_used);

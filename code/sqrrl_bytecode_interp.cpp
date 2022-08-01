@@ -135,9 +135,16 @@ bc_interp_operand_value(Bc_Interp* interp, Bc_Operand* operand) {
             result = bc_interp_load_register(interp, operand->Register);
         } break;
         
-        case BcOperand_Value: {
-            bc_interp_store_value(interp, operand->type, &result.signed_int, operand->Value);
-            result = bc_interp_load_value(interp, operand->type, &result.signed_int);
+        case BcOperand_Signed_Int: {
+            result.signed_int = operand->Signed_Int;
+        } break;
+        
+        case BcOperand_Unsigned_Int: {
+            result.unsigned_int = operand->Unsigned_Int;
+        } break;
+        
+        case BcOperand_Float: {
+            result.floating = operand->Float;
         } break;
         
         case BcOperand_Basic_Block: {
@@ -154,7 +161,7 @@ bc_interp_operand_value(Bc_Interp* interp, Bc_Operand* operand) {
 
 void
 bc_interp_function_call(Bc_Interp* interp, string_id ident, Bc_Register return_register={}) {
-    Bc_Register label = { ident, 0 };
+    Bc_Label label = { ident, 0 }; // TODO(Alexander): might not always be 0
     Value decl_value = map_get(interp->declarations, label);
     assert(decl_value.type == Value_basic_block);
     

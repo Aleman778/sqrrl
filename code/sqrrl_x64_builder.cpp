@@ -269,8 +269,15 @@ x64_build_immediate(X64_Builder* x64, Value_Data value, Bc_Type type) {
         
         case BcType_s64:
         case BcType_u64: {
-            result.kind = X64Operand_imm64;
-            result.imm64 = (s64) value.signed_int;
+            // NOTE(Alexander): if possible use 32-bit immediate
+            if (value.signed_int < S32_MIN || value.signed_int > S32_MAX) {
+                result.kind = X64Operand_imm64;
+                result.imm64 = (s64) value.signed_int;
+            } else {
+                // NOTE(Alexander): this will be sign-extended
+                result.kind = X64Operand_imm32;
+                result.imm32 = (s32) value.signed_int;
+            }
         } break;
         
         case BcType_Aggregate: {
@@ -1204,7 +1211,7 @@ x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
 }
 
 void
-x64_build_data_storage(X64_Builder* x64, Bc_Register label, Value_Data value, Type* type) {
+x64_build_data_storage(X64_Builder* x64, Bc_Label label, Value_Data value, Type* type) {
     x64_push_basic_block(x64, label);
     
     X64_Operand value_operand = {};

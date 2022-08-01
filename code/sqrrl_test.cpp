@@ -175,9 +175,9 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
             u32 prev_num_failed = test->num_failed;
             bc_interp_bytecode(&bc_interp, test->ident);
             if (prev_num_failed != test->num_failed) {
-                Bc_Register reg = {};
-                reg.ident = test->ident;
-                Value decl = map_get(bc_interp.declarations, reg);
+                Bc_Label label = {};
+                label.ident = test->ident;
+                Value decl = map_get(bc_interp.declarations, label);
                 if (decl.type == Value_basic_block) {
                     string_builder_push(sb_failure_log, decl.data.basic_block);
                 }

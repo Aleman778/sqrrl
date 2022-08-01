@@ -2,8 +2,8 @@
 // BC(name, num_operands)
 #define DEF_BYTECODES \
 BC(noop, 0) \
-BC(stack_alloc, 2) \
-BC(memory_alloc, 2) \
+BC(alloca, 2) \
+BC(memory, 2) \
 BC(load, 2) \
 BC(store, 2) \
 BC(assign, 2) \
@@ -111,6 +111,12 @@ struct Bc_Type {
     u32 ptr_depth;
 };
 
+inline Bc_Type
+create_bc_type(Bc_Type_Kind type_kind) {
+    Bc_Type result = {};
+    result.kind = type_kind;
+    return result;
+}
 
 inline bool
 is_bc_type_floating(Bc_Type_Kind kind) {
@@ -226,32 +232,6 @@ bc_type_to_value_type(Bc_Type_Kind kind) {
     return Value_void;
 }
 
-
-Primitive_Type_Kind
-bc_type_to_primitive_type_kind(Bc_Type_Kind kind) {
-    switch (kind) {
-        case BcType_s1:  return PrimitiveType_bool;
-        case BcType_s8:  return PrimitiveType_s8;
-        case BcType_s16: return PrimitiveType_s16;
-        case BcType_s32: return PrimitiveType_s32;
-        case BcType_s64: return PrimitiveType_s64;
-        
-        case BcType_u8:  return PrimitiveType_u8;
-        case BcType_u16: return PrimitiveType_u16;
-        case BcType_u32: return PrimitiveType_u32;
-        case BcType_u64: return PrimitiveType_u64;
-        
-        case BcType_f32: return PrimitiveType_f32;
-        case BcType_f64: return PrimitiveType_f64;
-        
-        default: {
-            assert(0 && "invalid bytecode primitive type");
-        } break;
-    }
-    
-    return PrimitiveType_int;
-}
-
 inline bool
 is_bc_type_uint(Bc_Type_Kind kind) {
     return kind >= BcType_u8 && kind <= BcType_u64;
@@ -263,19 +243,31 @@ enum Bc_Operand_Kind {
     BcOperand_None,
     BcOperand_Void, // do nothing
     BcOperand_Register,
-    BcOperand_Value,
-    BcOperand_Basic_Block,
+    BcOperand_Signed_Int,
+    BcOperand_Unsigned_Int,
+    BcOperand_Float,
+    BcOperand_Label,
+    BcOperand_Basic_Block, // TODO: remove this
     BcOperand_Argument_List,
     BcOperand_Type
 };
 
-struct Bc_Register {
+inline bool
+is_bc_operand_value(Bc_Operand_Kind kind) {
+    return (kind == BcOperand_Signed_Int ||
+            kind == BcOperand_Unsigned_Int ||
+            kind == BcOperand_Float);
+}
+
+typedef u64 Bc_Register;
+
+struct Bc_Label {
     string_id ident;
     u32 index;
 };
 
 struct Bc_Basic_Block {
-    Bc_Register label;
+    Bc_Label label;
     Bc_Instruction* first;
     umm count;
     Bc_Basic_Block* next;
@@ -297,44 +289,35 @@ it_index = 0; \
 } \
 }
 
+// NOTE(Alexander): forward declare
+struct Bc_Argument;
+
 struct Bc_Operand {
     Bc_Operand_Kind kind;
-    Bc_Type type;
     union {
         Bc_Register Register;
-        Value_Data Value;
+        Bc_Label Label;
+        s64 Signed_Int;
+        u64 Unsigned_Int;
+        f64 Float;
         Bc_Basic_Block* Basic_Block;
-        array(Bc_Operand)* Argument_List;
+        array(Bc_Argument)* Argument_List;
+        Bc_Type Type;
     };
+};
+
+struct Bc_Argument {
+    Bc_Type type;
+    Bc_Operand src;
 };
 
 struct Bc_Instruction {
     Bc_Opcode opcode;
-    union {
-        struct {
-            Bc_Operand op0;
-            Bc_Operand op1;
-            Bc_Operand op2;
-        };
-        struct {
-            Bc_Operand dest;
-            Bc_Operand src0;
-            Bc_Operand src1;
-        };
-        struct {
-            Bc_Operand cond;
-            Bc_Operand true_block;
-            Bc_Operand false_block;
-        };
-        struct {
-            Bc_Operand ret;
-            Bc_Operand unused0;
-            Bc_Operand unused1;
-        };
-    };
+    Bc_Type dest_type;
+    Bc_Operand dest;
+    Bc_Operand src0;
+    Bc_Operand src1;
 };
-
-typedef map(Bc_Register, Value) Bc_Label_To_Value_Table;
 
 bool
 string_builder_push(String_Builder* sb, Bc_Type type) {
@@ -364,19 +347,19 @@ string_builder_push(String_Builder* sb, Bc_Type type) {
     return true;
 }
 
-void
-string_builder_push(String_Builder* sb, Bc_Register reg, bool is_label = false) {
-    if (reg.index == 0) {
-        string_builder_push_format(sb, "%", f_string(vars_load_string(reg.ident)));
-    } else {
-        if (is_label) {
-            string_builder_push_format(sb, "%", f_string(vars_load_string(reg.ident)));
-        }
-        
-        string_builder_push_format(sb, "%", f_u32(reg.index));
+inline void
+string_builder_push(String_Builder* sb, Bc_Label label) {
+    assert(label.ident > 0);
+    
+    string_builder_push_format(sb, "%", f_string(vars_load_string(label.ident)));
+    
+    if (label.index > 0) {
+        string_builder_push_format(sb, "%", f_u32(label.index));
     }
 }
 
+// TODO(Alexander): we don't need this anymore
+#if 0
 void
 string_builder_push(String_Builder* sb, Value_Data value, Bc_Type type) {
     if (type.ptr_depth == 0) {
@@ -414,40 +397,46 @@ string_builder_push(String_Builder* sb, Value_Data value, Bc_Type type) {
         string_builder_push_format(sb, "%", f_u64_HEX(value.unsigned_int));
     }
 }
+#endif
 
 bool
-string_builder_push(String_Builder* sb, Bc_Operand* operand, bool show_type = true) {
+string_builder_push(String_Builder* sb, Bc_Operand* operand, Bc_Type type={}) {
     switch (operand->kind) {
         case BcOperand_None:
         case BcOperand_Void: return false;
         
-        case BcOperand_Basic_Block: {
+        case BcOperand_Label: {
             string_builder_push(sb, "%");
-            string_builder_push(sb, operand->Basic_Block->label, true);
+            string_builder_push(sb, operand->Label);
         } break;
         
         case BcOperand_Register: {
-            if (show_type && string_builder_push(sb, operand->type)) {
-                string_builder_push(sb, " ");
-            }
-            string_builder_push(sb, "%");
-            string_builder_push(sb, operand->Register);
+            string_builder_push_format(sb, "r%", f_u64(operand->Register));
         } break;
         
-        case BcOperand_Value: {
-            string_builder_push(sb, operand->Value, operand->type);
-            
+        case BcOperand_Signed_Int: {
+            string_builder_push_format(sb, "%", f_s64(operand->Signed_Int));
+        } break;
+        
+        case BcOperand_Unsigned_Int: {
+            string_builder_push_format(sb, "%", f_u64(operand->Unsigned_Int));
+        } break;
+        
+        case BcOperand_Float: {
+            string_builder_push_format(sb, "%", f_u64(operand->Float));
         } break;
         
         case BcOperand_Type: {
-            if (show_type) string_builder_push(sb, operand->type);
+            string_builder_push(sb, operand->Type);
         } break;
         
         case BcOperand_Argument_List: {
             string_builder_push(sb, "[");
             if (operand->Argument_List) {
-                for_array_v(operand->Argument_List, arg, arg_index) {
-                    string_builder_push(sb, &arg);
+                for_array(operand->Argument_List, arg, arg_index) {
+                    string_builder_push(sb, arg->type);
+                    string_builder_push(sb, " ");
+                    string_builder_push(sb, &arg->src);
                     if (arg_index < array_count(operand->Argument_List) - 1) {
                         string_builder_push(sb, ", ");
                     }
@@ -464,23 +453,22 @@ void
 string_builder_push(String_Builder* sb, Bc_Instruction* insn) {
     if (insn->opcode == Bytecode_label) {
         Bc_Basic_Block* block = insn->dest.Basic_Block;
-        string_builder_push(sb, block->label, true);
+        string_builder_push(sb, block->label);
         string_builder_push(sb, ":");
     } else {
-        bool is_opcode_assign = (insn->opcode == Bytecode_branch ||
-                                 insn->opcode == Bytecode_ret);
         
         string_builder_push(sb, "    ");
         
-        if (!is_opcode_assign) {
-            if (string_builder_push(sb, &insn->dest, true)) {
-                string_builder_push(sb, " = ");
-            }
+        bool has_assignment = string_builder_push(sb, insn->dest_type);
+        
+        if (has_assignment) {
+            string_builder_push(sb, &insn->dest);
+            string_builder_push(sb, " = ");
         }
         
         string_builder_push(sb, bytecode_opcode_names[insn->opcode]);
         
-        if (is_opcode_assign) {
+        if (has_assignment) {
             string_builder_push(sb, " ");
             if (string_builder_push(sb, &insn->dest)) {
                 if (insn->src1.kind) {

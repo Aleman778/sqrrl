@@ -356,6 +356,8 @@ register_is_gpr(X64_Register reg) {
 // NOTE(Alexander): forward declare
 struct X64_Basic_Block;
 
+typedef Bc_Label X64_Label;
+
 struct X64_Operand {
     X64_Operand_Kind kind;
     union {
@@ -365,8 +367,8 @@ struct X64_Operand {
         s32 imm32;
         s64 imm64;
         X64_Basic_Block* basic_block;
-        Bc_Register jump_target;
-        u32 virtual_register;
+        X64_Label jump_target;
+        u64 virtual_register;
     };
     union {
         s8 disp8;
@@ -512,7 +514,7 @@ struct X64_Machine_Code {
 };
 
 struct X64_Basic_Block {
-    Bc_Register label;
+    X64_Label label;
     X64_Instruction* first;
     umm count;
     X64_Basic_Block* next;

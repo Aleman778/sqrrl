@@ -320,7 +320,7 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
             
             if (binary_op == BinaryOp_Logical_And) {
                 // Store the result in new local variable
-                Bc_Operand dest = bc_alloca(bc, first_var_type);
+                Bc_Operand dest = bc_stack_alloc(bc, first_var_type);
                 bc_store(bc, dest, first);
                 
                 Bc_Operand cond = bc_build_type_cast(bc, &first, first_var_type, bc_type_s1);
@@ -341,7 +341,7 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
             } else if (binary_op == BinaryOp_Logical_Or) {
                 
                 // Store the result in new local variable
-                Bc_Operand dest = bc_alloca(bc, first_var_type);
+                Bc_Operand dest = bc_stack_alloc(bc, first_var_type);
                 bc_store(bc, dest, first);
                 
                 Bc_Operand cond = bc_build_type_cast(bc, &first, first_var_type, bc_type_s1);
@@ -523,7 +523,7 @@ bc_build_statement(Bc_Builder* bc, Ast* node, bool last_statement=false) {
         case Ast_Assign_Stmt: {
             
             Bc_Type type = bc_build_type(bc, node->type);
-            Bc_Operand dest = bc_alloca(bc, type);
+            Bc_Operand dest = bc_stack_alloc(bc, type);
             string_id ident = ast_unwrap_ident(node->Assign_Stmt.ident);
             map_put(bc->local_variable_mapper, ident, dest);
             
@@ -646,18 +646,24 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
         case Type_Function: {
             assert(decl->kind == Ast_Block_Stmt);
             
+            Bc_Decl result = {};
+            result.kind = BcDecl_Procedure;
+            
             bc->curr_decl = ident;
             bc->curr_prologue = create_unique_bc_label(bc);
             bc->curr_epilogue = create_unique_bc_label(bc);
             bc->curr_return_dest = {};
             
+            result.Procedure.first_basic_block = bc->arena.curr_used;
             bc->curr_basic_block = bc_push_basic_block(bc, bc->curr_prologue);
             
             // TODO(Alexander): we should use type checker function Type* instead
             Bc_Type return_type = bc_build_type(bc, type->Function.return_type);
             if (return_type.kind  != BcType_void) {
-                bc->curr_return_dest = bc_alloca(bc, return_type);
+                bc->curr_return_dest = bc_stack_alloc(bc, return_type);
+                result.Procedure.return_reg = bc->curr_return_dest.Register;
             }
+            result.Procedure.first_arg_reg = bc->next_register;
             
             // Allocate arguments
             array(Bc_Argument)* actual_args = 0;
@@ -670,7 +676,7 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
                 arg.src = create_unique_bc_register(bc);
                 array_push(actual_args, arg);
                 
-                Bc_Operand arg_dest = bc_alloca(bc, arg.type);
+                Bc_Operand arg_dest = bc_stack_alloc(bc, arg.type);
                 bc_store(bc, arg_dest, arg.src);
                 map_put(bc->local_variable_mapper, arg_ident, arg_dest);
                 
@@ -684,18 +690,15 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
                 bc_push_basic_block(bc, bc->curr_epilogue);
                 
                 if (bc->curr_return_dest.kind != BcOperand_None) {
-                    Bc_Operand result = bc_load(bc, bc->curr_return_dest, return_type);
-                    bc_unary(bc, Bytecode_ret, result);
+                    Bc_Operand return_op = bc_load(bc, bc->curr_return_dest, return_type);
+                    bc_unary(bc, Bytecode_ret, return_op);
                 } else {
                     bc_push_instruction(bc, Bytecode_ret);
                 }
             }
             
             // Save declaration
-            Value value;
-            value.type = Value_basic_block;
-            value.data.basic_block = bc->curr_basic_block;
-            map_put(bc->declarations, bc->curr_prologue, value);
+            map_put(bc->declarations, bc->curr_prologue, result);
         } break;
     }
 }
@@ -729,9 +732,14 @@ bc_analyze_top_level_declaration(Bc_Builder* bc, Ast* decl, string_id ident) {
             assert(expr && expr->kind == Ast_Value);
             Value value = expr->Value.value;
             
-            Bc_Label label = create_unique_bc_label(bc, ident);
-            Bc_Instruction* memory_insn = bc_push_instruction(bc, Bytecode_memory);
-            memory_insn->dest = bc_label_op(label);
+            
+            Bc_Decl decl = {};
+            decl.kind = BcDecl_Data;
+            decl.Data.first_instruction = bc->arena.curr_used;
+            
+            Bc_Decl bc_push_decl();
+            
+            Bc_Instruction* memory_insn = bc_push_instruction(bc, Bytecode_memory_alloc);
             memory_insn->src0 = bc_type_op(bc_build_type(bc, type));
             switch (value.type) {
                 case Value_signed_int: {
@@ -746,8 +754,6 @@ bc_analyze_top_level_declaration(Bc_Builder* bc, Ast* decl, string_id ident) {
                     memory_insn->src1 = bc_float_op(value.data.floating);
                 } break;
             }
-            
-            map_put(bc->declarations, label, value);
         } break;
     }
 }

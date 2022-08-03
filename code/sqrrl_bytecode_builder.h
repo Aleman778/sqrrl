@@ -1,7 +1,7 @@
 
 typedef map(Bc_Register, u64) Bc_Live_Length_Table;
 
-typedef map(Bc_Label, Value) Bc_Decl_Table;
+typedef map(Bc_Label, Bc_Decl) Bc_Decl_Table;
 
 struct Bc_Builder {
     Memory_Arena arena;
@@ -30,9 +30,29 @@ struct Bc_Builder {
     Bc_Decl_Table* declarations;
 };
 
+inline Bc_Basic_Block*
+get_first_basic_block(Bc_Builder* bc, Bc_Decl* decl) {
+    return (Bc_Basic_Block*) bc->arena.base + decl->first_basic_block;
+}
+
 void bc_build_from_ast(Bc_Builder* bc, Ast_File* ast_file);
 Bc_Basic_Block* bc_push_basic_block(Bc_Builder* bc, Bc_Register label = {});
 Bc_Instruction* bc_push_instruction(Bc_Builder* bc, Bc_Opcode opcode);
+
+inline Bc_Decl
+bc_push_declaration(Bc_Builder* bc, Bc_Decl_Kind kind, string_id ident) {
+    Bc_Decl decl = {};
+    decl.kind = kind;
+    decl.first_basic_block = bc->arena.curr_used;
+    decl.first_register = bc->next_register;
+    
+    Bc_Label label = create_unique_bc_label(bc, ident);
+    bc_push_basic_block(bc, label);
+    
+    map_put(bc->declarations, label, decl);
+    
+    return decl;
+}
 
 inline Bc_Operand
 create_unique_bc_register(Bc_Builder* bc) {
@@ -101,8 +121,8 @@ bc_label_op(Bc_Label label) {
 }
 
 inline Bc_Operand
-bc_alloca(Bc_Builder* bc, Bc_Type value_type) {
-    Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_alloca);
+bc_stack_alloc(Bc_Builder* bc, Bc_Type value_type) {
+    Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_stack_alloc);
     insn->dest = create_unique_bc_register(bc);
     insn->dest_type = value_type;
     insn->dest_type.ptr_depth++;

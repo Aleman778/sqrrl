@@ -2,8 +2,8 @@
 // BC(name, num_operands)
 #define DEF_BYTECODES \
 BC(noop, 0) \
-BC(alloca, 2) \
-BC(memory, 2) \
+BC(stack_alloc, 2) \
+BC(memory_alloc, 2) \
 BC(load, 2) \
 BC(store, 2) \
 BC(assign, 2) \
@@ -67,23 +67,6 @@ inline bool
 bc_opcode_is_conditional(Bc_Opcode opcode) {
     return opcode >= Bytecode_cmpeq && opcode <= Bytecode_cmpgt;
 }
-
-// NOTE(Alexander): forward declare
-struct Bc_Instruction;
-
-enum Bc_Decl_Kind {
-    BcDecl_Global,
-    BcDecl_Function,
-    BcDecl_Basic_Block,
-};
-
-struct Bc_Decl {
-    Bc_Decl_Kind kind;
-    union {
-        Bc_Instruction* Global;
-        
-    };
-};
 
 enum Bc_Type_Kind {
     BcType_void,
@@ -247,7 +230,6 @@ enum Bc_Operand_Kind {
     BcOperand_Unsigned_Int,
     BcOperand_Float,
     BcOperand_Label,
-    BcOperand_Basic_Block, // TODO: remove this
     BcOperand_Argument_List,
     BcOperand_Type
 };
@@ -258,6 +240,9 @@ is_bc_operand_value(Bc_Operand_Kind kind) {
             kind == BcOperand_Unsigned_Int ||
             kind == BcOperand_Float);
 }
+
+// NOTE(Alexander): forward declare
+struct Bc_Instruction;
 
 typedef u64 Bc_Register;
 
@@ -300,7 +285,6 @@ struct Bc_Operand {
         s64 Signed_Int;
         u64 Unsigned_Int;
         f64 Float;
-        Bc_Basic_Block* Basic_Block;
         array(Bc_Argument)* Argument_List;
         Bc_Type Type;
     };
@@ -318,6 +302,23 @@ struct Bc_Instruction {
     Bc_Operand src0;
     Bc_Operand src1;
 };
+
+enum Bc_Decl_Kind {
+    BcDecl_Data,
+    BcDecl_Procedure,
+};
+
+struct Bc_Decl {
+    Bc_Decl_Kind kind;
+    Bc_Register first_register;
+    umm first_basic_block;
+    union {
+        struct {
+            Bc_Register first_arg_reg;
+        } Procedure;
+    };
+};
+
 
 bool
 string_builder_push(String_Builder* sb, Bc_Type type) {
@@ -452,8 +453,7 @@ string_builder_push(String_Builder* sb, Bc_Operand* operand, Bc_Type type={}) {
 void
 string_builder_push(String_Builder* sb, Bc_Instruction* insn) {
     if (insn->opcode == Bytecode_label) {
-        Bc_Basic_Block* block = insn->dest.Basic_Block;
-        string_builder_push(sb, block->label);
+        string_builder_push(sb, insn->dest.Label);
         string_builder_push(sb, ":");
     } else {
         

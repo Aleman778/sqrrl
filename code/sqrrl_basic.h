@@ -684,6 +684,12 @@ arena_push_size(Memory_Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT, umm 
     return result;
 }
 
+inline Memory_String
+arena_push_flat_string(Memory_Arena* arena, string str) {
+    void* memory = arena_push_size(arena, sizeof(umm) + str.count, alignof(umm));
+    return string_copy_to_memory(str, memory);
+}
+
 #define arena_can_fit(arena, type) \
 arena_can_fit_size(arena, sizeof(type), alignof(type))
 
@@ -697,6 +703,12 @@ arena_can_fit_size(Memory_Arena* arena, umm size, umm align) {
 
 #define arena_push_struct(arena, type, ...) \
 (type*) arena_push_size(arena, (umm) sizeof(type), (umm) alignof(type), __VA_ARGS__)
+
+#define arena_get_data(arena, byte_offset) \
+(void*) ((arena)->base + (byte_offset))
+
+#define arena_get_struct(arena, type, byte_offset) \
+(type*) ((arena)->base + (byte_offset))
 
 inline void
 arena_rewind(Memory_Arena* arena) {

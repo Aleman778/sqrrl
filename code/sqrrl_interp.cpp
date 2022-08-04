@@ -1,32 +1,32 @@
 
 void
-interp_save_value(Interp* interp, Type* type, void* storage, Value_Data data) {
+interp_save_value(Type* type, void* dest, Value_Data src) {
     // TODO(Alexander): handle type errors here
     switch (type->kind) {
         case Type_Primitive: {
 #define PCASE(T, V) case PrimitiveType_##T: { \
-*((T*) storage) = (T) (V); \
+*((T*) dest) = (T) (V); \
 } break;
             switch (type->Primitive.kind) {
-                PCASE(int, data.signed_int);
-                PCASE(s8, data.signed_int);
-                PCASE(s16, data.signed_int);
-                PCASE(s32, data.signed_int);
-                PCASE(s64, data.signed_int);
-                PCASE(smm, data.signed_int);
-                PCASE(uint, data.unsigned_int);
-                PCASE(u8, data.unsigned_int);
-                PCASE(u16, data.unsigned_int);
-                PCASE(u32, data.unsigned_int);
-                PCASE(u64, data.unsigned_int);
-                PCASE(umm, data.unsigned_int);
-                PCASE(f32, data.floating);
-                PCASE(f64, data.floating);
+                PCASE(int, src.signed_int);
+                PCASE(s8, src.signed_int);
+                PCASE(s16, src.signed_int);
+                PCASE(s32, src.signed_int);
+                PCASE(s64, src.signed_int);
+                PCASE(smm, src.signed_int);
+                PCASE(uint, src.unsigned_int);
+                PCASE(u8, src.unsigned_int);
+                PCASE(u16, src.unsigned_int);
+                PCASE(u32, src.unsigned_int);
+                PCASE(u64, src.unsigned_int);
+                PCASE(umm, src.unsigned_int);
+                PCASE(f32, src.floating);
+                PCASE(f64, src.floating);
                 case PrimitiveType_char: {
-                    *((u8*) storage) = (u8) data.unsigned_int;
+                    *((u8*) dest) = (u8) src.unsigned_int;
                 } break;
-                PCASE(bool, data.boolean);
-                PCASE(b32, data.signed_int);
+                PCASE(bool, src.boolean);
+                PCASE(b32, src.signed_int);
                 default: {
                     assert(0 && "invalid primitive type");
                 } break;
@@ -36,20 +36,20 @@ interp_save_value(Interp* interp, Type* type, void* storage, Value_Data data) {
         
         case Type_Array: {
             // NOTE(Alexander): ugh little bit ugly hack to get this to work
-            smm* array_data = (smm*) storage;
-            *array_data++ = data.array.count;
+            smm* array_data = (smm*) dest;
+            *array_data++ = src.array.count;
             void** elements = (void**) array_data;
-            *elements = data.array.elements;
+            *elements = src.array.elements;
         } break;
         
         case Type_String: {
-            *((string*) storage) = data.str;
+            *((string*) dest) = src.str;
         } break;
         
         case Type_Pointer:
         case Type_Struct: 
         case Type_Union: {
-            *((smm*) storage) = data.pointer;
+            *((smm*) dest) = src.pointer;
         } break;
         
         default: {

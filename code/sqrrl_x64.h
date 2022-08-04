@@ -89,16 +89,18 @@ X64_OPCODE(setz, SETZ) \
 X64_OPCODE(call, CALL) \
 X64_OPCODE(ret, RET) \
 X64_OPCODE(label, LABEL) \
-X64_OPCODE(db, DB) \
-X64_OPCODE(dw, DW) \
-X64_OPCODE(dd, DD) \
-X64_OPCODE(dq, DQ)
+X64_DIRECTIVE(db, DB) \
+X64_DIRECTIVE(dw, DW) \
+X64_DIRECTIVE(dd, DD) \
+X64_DIRECTIVE(dq, DQ)
 // NOTE(Alexander): label is not a real opcode
 
 enum X64_Opcode {
 #define X64_OPCODE(mnemonic,...) X64Opcode_##mnemonic,
 #define X64_OPCODE_ALIAS(alias, mnemonic,...) X64Opcode_##mnemonic = X64Opcode_##alias,
+#define X64_DIRECTIVE(mnemonic, ...) X64Directive_##mnemonic,
     DEF_X64_OPCODES
+#undef X64_DIRECTIVE
 #undef X64_OPCODE_ALIAS
 #undef X64_OPCODE
 };
@@ -107,7 +109,9 @@ enum X64_Opcode {
 global const cstring x64_opcode_names[] = {
 #define X64_OPCODE(mnemonic,...) #mnemonic,
 #define X64_OPCODE_ALIAS(...)
+#define X64_DIRECTIVE(mnemonic, ...) #mnemonic,
     DEF_X64_OPCODES
+#undef X64_DIRECTIVE
 #undef X64_OPCODE_ALIAS
 #undef X64_OPCODE
 };

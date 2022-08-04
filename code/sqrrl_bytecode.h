@@ -305,15 +305,22 @@ struct Bc_Instruction {
 
 enum Bc_Decl_Kind {
     BcDecl_Data,
+    BcDecl_Global,
     BcDecl_Procedure,
 };
 
 struct Bc_Decl {
     Bc_Decl_Kind kind;
     Bc_Register first_register;
-    umm first_basic_block;
+    umm first_byte_offset;
     union {
         struct {
+            Bc_Type type;
+            Value_Data val;
+        } Data;
+        
+        struct {
+            Bc_Register first_return_reg;
             Bc_Register first_arg_reg;
         } Procedure;
     };

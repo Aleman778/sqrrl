@@ -654,7 +654,7 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
             bc->curr_epilogue = create_unique_bc_label(bc);
             bc->curr_return_dest = {};
             
-            result.Procedure.first_basic_block = bc->arena.curr_used;
+            result.first_basic_block = bc->arena.curr_used;
             bc->curr_basic_block = bc_push_basic_block(bc, bc->curr_prologue);
             
             // TODO(Alexander): we should use type checker function Type* instead
@@ -708,52 +708,18 @@ bc_analyze_top_level_declaration(Bc_Builder* bc, Ast* decl, string_id ident) {
     Bc_Instruction result = {};
     
     switch (decl->kind) {
-        case Ast_Decl_Stmt: {
-            
-            Type* type = decl->Decl_Stmt.type->type;
-            switch (type->kind) {
-                case Type_Function: {
-                    // TODO(Alexander): UPDATE: this has been done, do we still need this?
-                    // TODO(Alexander): for now we store only the return type here first
-                    // this should be done at type checking/ inference stage
-                    Type* return_type = type->Function.return_type;
-                    Bc_Operand return_type_op = {};
-                    return_type_op.kind = BcOperand_Type;
-                    return_type_op.Type = bc_build_type(bc, return_type);
-                    map_put(bc->local_variable_mapper, ident, return_type_op);
-                } break;
-            }
-        } break;
-        
         case Ast_Assign_Stmt: {
             
             Type* type = decl->type;
             Ast* expr = decl->Assign_Stmt.expr;
-            assert(expr && expr->kind == Ast_Value);
+            // TODO(Alexander): we also want to be able to create values from struct literals etc.
+            assert(expr && expr->kind == Ast_Value && "unimplemnted: only constant values supported in global scope");
             Value value = expr->Value.value;
             
-            
-            Bc_Decl decl = {};
-            decl.kind = BcDecl_Data;
-            decl.Data.first_instruction = bc->arena.curr_used;
-            
-            Bc_Decl bc_push_decl();
-            
-            Bc_Instruction* memory_insn = bc_push_instruction(bc, Bytecode_memory_alloc);
-            memory_insn->src0 = bc_type_op(bc_build_type(bc, type));
-            switch (value.type) {
-                case Value_signed_int: {
-                    memory_insn->src1 = bc_signed_int_op(value.data.signed_int);
-                } break;
-                
-                case Value_unsigned_int: {
-                    memory_insn->src1 = bc_unsigned_int_op(value.data.unsigned_int);
-                } break;
-                
-                case Value_floating: {
-                    memory_insn->src1 = bc_float_op(value.data.floating);
-                } break;
-            }
+            Bc_Decl decl = bc_push_declaration(bc, BcDecl_Data, ident);
+            decl.Data.type = bc_build_type(bc, decl->Assign_Stmt.type);
+            void* data = arena_push_size(&bc->arena, type->cached_size, type->cached_align);
+            interp_save_value(type, data, );
         } break;
     }
 }
@@ -780,22 +746,7 @@ bc_build_from_ast(Bc_Builder* bc, Ast_File* ast_file) {
     //pln("sizeof(Bc_Instruction) = %", f_umm(sizeof(Bc_Instruction)));
     //pln("sizeof(Bc_Operand) = %\n", f_umm(sizeof(Bc_Operand)));
     
-    
-    {
-        // Define global declarations
-        Bc_Label label = {};
-        label.ident = Kw_global;
-        Bc_Basic_Block* global_block = bc_push_basic_block(bc, label);
-        
-        Value decl = {};
-        decl.type = Value_basic_block;
-        decl.data.basic_block = global_block;
-        map_put(bc->declarations, global_block->label, decl);
-    }
-    
-    
-    // TODO(Alexander): this will likely get replacecd with the type checker later on
-    // Analyse the ast first
+    // Define global declarations
     for_map(ast_file->decls, it) {
         bc_analyze_top_level_declaration(bc, it->value, it->key);
     }

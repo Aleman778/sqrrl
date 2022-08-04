@@ -1015,9 +1015,7 @@ save_read_only_string(X64_Builder* x64, string str) {
     cstring cstr = string_to_cstring(str);
     
     string_map_get_index(x64->const_strings, cstr);
-    void* memory = arena_push_size(&x64->rodata_segment_arena, 
-                                   sizeof(umm) + str.count, alignof(umm));
-    Memory_String result = string_copy_to_memory(str, memory);
+    arena_push_flat_string(&x64->rodata_segment_arena, str);
     free((void*) cstr);
     
     return result;
@@ -1211,51 +1209,51 @@ x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
 }
 
 void
-x64_build_data_storage(X64_Builder* x64, Bc_Label label, Value_Data value, Type* type) {
+x64_build_data_storage(X64_Builder* x64, Bc_Label label, Value_Data value, Bc_Type type) {
     x64_push_basic_block(x64, label);
     
     X64_Operand value_operand = {};
     
-    if (type->kind == Type_Primitive) {
-        switch (type->Primitive.kind) {
-            case PrimitiveType_u8:
-            case PrimitiveType_s8: {
-                X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_db);
-                value_operand.kind = X64Operand_imm32;
-                value_operand.imm8 = (s8) value.signed_int;
-                insn->op0 = value_operand;
-            } break;
-            
-            case PrimitiveType_u16:
-            case PrimitiveType_s16: {
-                X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_dw);
-                value_operand.kind = X64Operand_imm32;
-                value_operand.imm16 = (s16) value.signed_int;
-                insn->op0 = value_operand;
-            } break;
-            
-            case PrimitiveType_int: // arch dep?
-            case PrimitiveType_uint: // arch dep?
-            case PrimitiveType_u32:
-            case PrimitiveType_s32:
-            case PrimitiveType_f32: {
-                X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_dd);
-                value_operand.kind = X64Operand_imm32;
-                value_operand.imm32 = (s32) value.signed_int;
-                insn->op0 = value_operand;
-            } break;
-            
-            case PrimitiveType_umm: // arch dep.
-            case PrimitiveType_u64:
-            case PrimitiveType_smm: // arch dep.
-            case PrimitiveType_s64:
-            case PrimitiveType_f64:{
-                X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_dq);
-                value_operand.kind = X64Operand_imm32;
-                value_operand.imm64 = (s64) value.signed_int;
-                insn->op0 = value_operand;
-            } break;
-        }
+    X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_db);
+    value_operand.kind = X64Operand_imm8;
+    value_operand.imm8 = (s8) value.signed_int;
+    insn->op0 = value_operand;
+    
+    switch (type.kind) {
+        case BcType_s1:
+        case BcType_s8:
+        case BcType_u8: {
+            X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_db);
+            value_operand.kind = X64Operand_imm8;
+            value_operand.imm8 = (s8) value.signed_int;
+            insn->op0 = value_operand;
+        } break;
+        
+        case BcType_u16:
+        case BcType_s16: {
+            X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_dw);
+            value_operand.kind = X64Operand_imm16;
+            value_operand.imm16 = (s16) value.signed_int;
+            insn->op0 = value_operand;
+        } break;
+        
+        case BcType_u32:
+        case BcType_s32:
+        case BcType_f32: {
+            X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_dd);
+            value_operand.kind = X64Operand_imm32;
+            value_operand.imm32 = (s32) value.signed_int;
+            insn->op0 = value_operand;
+        } break;
+        
+        case BcType_u64:
+        case BcType_s64:
+        case BcType_f64:{
+            X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_dq);
+            value_operand.kind = X64Operand_imm64;
+            value_operand.imm64 = (s64) value.signed_int;
+            insn->op0 = value_operand;
+        } break;
     }
 }
 

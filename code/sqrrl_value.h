@@ -125,7 +125,6 @@ enum Value_Type {
     
     // TODO(Alexander): these don't really belong here, should be moved.
     Value_ast_node,
-    Value_basic_block,
 };
 
 // NOTE(Alexander): forward declare

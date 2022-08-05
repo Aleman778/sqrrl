@@ -4,7 +4,8 @@ typedef map(Bc_Register, u64) Bc_Live_Length_Table;
 typedef map(Bc_Label, Bc_Decl) Bc_Decl_Table;
 
 struct Bc_Builder {
-    Memory_Arena arena;
+    Memory_Arena code_arena;
+    Memory_Arena data_arena;
     
     Bc_Basic_Block* global_block;
     
@@ -29,6 +30,9 @@ struct Bc_Builder {
     
     Bc_Decl_Table* declarations;
 };
+
+#define get_first_bc_basic_block(bc, decl) \
+arena_get_struct(&(bc)->code_arena, Bc_Basic_Block, (decl).first_byte_offset)
 
 void bc_build_from_ast(Bc_Builder* bc, Ast_File* ast_file);
 Bc_Basic_Block* bc_push_basic_block(Bc_Builder* bc, Bc_Label label = {});
@@ -58,21 +62,6 @@ create_unique_bc_label(Bc_Builder* bc, string_id ident) {
     result.index = map_get(bc->label_indices, result.ident);
     map_put(bc->label_indices, result.ident, result.index + 1);
     return result;
-}
-
-inline Bc_Decl
-bc_push_declaration(Bc_Builder* bc, Bc_Decl_Kind kind, string_id ident) {
-    Bc_Decl decl = {};
-    decl.kind = kind;
-    decl.first_byte_offset = bc->arena.curr_used;
-    decl.first_register = bc->next_register;
-    
-    Bc_Label label = create_unique_bc_label(bc, ident);
-    bc_push_basic_block(bc, label);
-    
-    map_put(bc->declarations, label, decl);
-    
-    return decl;
 }
 
 inline Bc_Operand

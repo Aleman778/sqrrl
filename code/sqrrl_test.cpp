@@ -82,7 +82,7 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
         
         if (decl->kind == BcDecl_Procedure) {
             pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
-            Bc_Basic_Block* first_basic_block = arena_get_struct(&bytecode_builder.arena, Bc_Basic_Block, 
+            Bc_Basic_Block* first_basic_block = arena_get_struct(&bytecode_builder.code_arena, Bc_Basic_Block, 
                                                                  decl->first_byte_offset);
             
             String_Builder test_sb = {};
@@ -92,7 +92,7 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
             x64_build_function(&x64_builder, first_basic_block);
         } else if (decl->kind == BcDecl_Data) {
             // TODO(Alexander): we need to store the actual value type in the declarations
-            x64_build_data_storage(&x64_builder, it->key, decl->Data.val, decl->Data.type);
+            x64_build_data_storage(&x64_builder, it->key, decl->Data.value, decl->Data.type);
         } else {
             assert(0 && "invalid bytecode declaration kind");
         }
@@ -185,8 +185,7 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
                 label.ident = test->ident;
                 Bc_Decl decl = map_get(bc_interp.declarations, label);
                 if (decl.kind == BcDecl_Procedure) {
-                    Bc_Basic_Block* first_basic_block = arena_get_struct(&bytecode_builder.arena, Bc_Basic_Block, 
-                                                                         decl.first_byte_offset);
+                    Bc_Basic_Block* first_basic_block = get_first_bc_basic_block(&bytecode_builder, decl);
                     string_builder_push(sb_failure_log, first_basic_block);
                 }
             }

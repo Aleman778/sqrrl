@@ -7,6 +7,7 @@ struct Bc_Interp_Scope {
 };
 
 struct Bc_Interp {
+    u8* bytecode;
     array(Bc_Interp_Scope)* scopes;
     Bc_Decl_Table* declarations;
     

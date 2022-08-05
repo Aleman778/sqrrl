@@ -705,10 +705,10 @@ arena_can_fit_size(Memory_Arena* arena, umm size, umm align) {
 (type*) arena_push_size(arena, (umm) sizeof(type), (umm) alignof(type), __VA_ARGS__)
 
 #define arena_get_data(arena, byte_offset) \
-(void*) ((arena)->base + (byte_offset))
+(void*) ((u8*) (arena)->base + (byte_offset))
 
 #define arena_get_struct(arena, type, byte_offset) \
-(type*) ((arena)->base + (byte_offset))
+(type*) ((u8*) (arena)->base + (byte_offset))
 
 inline void
 arena_rewind(Memory_Arena* arena) {

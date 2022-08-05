@@ -311,15 +311,15 @@ enum Bc_Decl_Kind {
 
 struct Bc_Decl {
     Bc_Decl_Kind kind;
-    Bc_Register first_register;
     umm first_byte_offset;
     union {
         struct {
             Bc_Type type;
-            Value_Data val;
+            Value_Data value;
         } Data;
         
         struct {
+            Bc_Register first_register;
             Bc_Register first_return_reg;
             Bc_Register first_arg_reg;
         } Procedure;

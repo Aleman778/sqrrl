@@ -20,7 +20,9 @@ bc_interp_load_register(Bc_Interp* interp, Bc_Register reg) {
         if (index != -1) {
             return scope->registers[index].value;
         } else {
-            return map_get(interp->declarations, reg).data;
+            Bc_Decl* decl = &map_get(interp->declarations, reg);
+            assert(decl && decl->kind == BcDecl_Data);
+            return decl->Data.value;
         }
     }
 }
@@ -37,7 +39,7 @@ bc_interp_alloc_register(Bc_Interp* interp, Bc_Register reg, Bc_Type type) {
     return data;
 }
 
-inline void
+void
 bc_interp_store_value(Bc_Interp* interp, Bc_Type type, void* dest, void* src) {
     if (type.ptr_depth > 0) {
         *((umm*) dest) = (umm) src;
@@ -76,7 +78,7 @@ bc_interp_store_value(Bc_Interp* interp, Bc_Type type, void* dest, void* src) {
     }
 }
 
-inline Value_Data
+Value_Data
 bc_interp_load_value(Bc_Interp* interp, Bc_Type type, void* data) {
     Value_Data result;
     if (type.ptr_depth > 0) {
@@ -123,10 +125,6 @@ bc_interp_operand_value(Bc_Interp* interp, Bc_Operand* operand) {
             result.floating = operand->Float;
         } break;
         
-        case BcOperand_Basic_Block: {
-            result.basic_block = operand->Basic_Block;
-        } break;
-        
         default: {
             assert(0 && "operand is not a value");
         } break;
@@ -138,10 +136,10 @@ bc_interp_operand_value(Bc_Interp* interp, Bc_Operand* operand) {
 void
 bc_interp_function_call(Bc_Interp* interp, string_id ident, Bc_Register return_register={}) {
     Bc_Label label = { ident, 0 }; // TODO(Alexander): might not always be 0
-    Value decl_value = map_get(interp->declarations, label);
-    assert(decl_value.type == Value_basic_block);
+    Bc_Decl* decl = &map_get(interp->declarations, label);
+    assert(decl && decl->kind == BcDecl_Procedure);
     
-    Bc_Basic_Block* target_block = decl_value.data.basic_block;
+    Bc_Basic_Block* target_block = (Bc_Basic_Block*) ((u8*) interp->bytecode + decl->first_byte_offset);
     assert(target_block && target_block->label.ident != Kw_invalid);
     
     if (array_count(interp->scopes)) {
@@ -418,9 +416,9 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
         
         case Bytecode_ret: {
             Value_Data value = {};
-            if (bc->op0.kind == BcOperand_Register) {
-                value = bc_interp_operand_value(interp, &bc->op0);
-                switch (bc->op0.type.kind) {
+            if (bc->dest.kind == BcOperand_Register) {
+                value = bc_interp_operand_value(interp, &bc->dest);
+                switch (bc->dest_type.kind) {
                     case BcType_s1:  value.unsigned_int = (u64) 1 & value.unsigned_int; break;
                     case BcType_s8:  value.signed_int = (s8) value.signed_int; break;
                     case BcType_s16: value.signed_int = (s16) value.signed_int; break;
@@ -440,9 +438,9 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
                 interp->return_value = value;
             } else  {
                 Bc_Interp_Scope* scope = &array_last(interp->scopes);
-                if (scope->return_register.index != 0) {
+                if (scope->return_register != 0) {
                     bc_interp_store_register(interp, scope->return_register, value);
-                    scope->return_register.index = 0;
+                    scope->return_register = 0;
                 }
             }
         } break;

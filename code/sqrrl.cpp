@@ -199,6 +199,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         
         // Interpret the bytecode
         Bc_Interp interp = {};
+        interp.bytecode = bytecode_builder,code_arena.base;
         interp.declarations = bytecode_builder.declarations;
         int interp_exit_code = (int) bc_interp_bytecode(&interp).signed_int;
         

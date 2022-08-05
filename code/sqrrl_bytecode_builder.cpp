@@ -16,12 +16,12 @@ bc_push_instruction(Bc_Builder* bc, Bc_Opcode opcode) {
     }
     
     
-    if (!arena_can_fit(&bc->arena, Bc_Instruction)) {
-        arena_reallocate(&bc->arena);
+    if (!arena_can_fit(&bc->code_arena, Bc_Instruction)) {
+        arena_reallocate(&bc->code_arena);
         bb = bc_push_basic_block(bc);
     }
     
-    Bc_Instruction* insn = arena_push_struct(&bc->arena, Bc_Instruction);
+    Bc_Instruction* insn = arena_push_struct(&bc->code_arena, Bc_Instruction);
     insn->opcode = opcode;
     
     bc->curr_instruction = insn;
@@ -38,7 +38,7 @@ bc_push_instruction(Bc_Builder* bc, Bc_Opcode opcode) {
 Bc_Basic_Block*
 bc_push_basic_block(Bc_Builder* bc, Bc_Label label) {
     
-    Bc_Basic_Block* block = arena_push_struct(&bc->arena, Bc_Basic_Block);
+    Bc_Basic_Block* block = arena_push_struct(&bc->code_arena, Bc_Basic_Block);
     if (bc->curr_basic_block) {
         bc->curr_basic_block->next = block;
     }
@@ -648,20 +648,19 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
             
             Bc_Decl result = {};
             result.kind = BcDecl_Procedure;
+            result.Procedure.first_register = bc->next_register;
             
             bc->curr_decl = ident;
             bc->curr_prologue = create_unique_bc_label(bc);
             bc->curr_epilogue = create_unique_bc_label(bc);
             bc->curr_return_dest = {};
-            
-            result.first_basic_block = bc->arena.curr_used;
             bc->curr_basic_block = bc_push_basic_block(bc, bc->curr_prologue);
             
             // TODO(Alexander): we should use type checker function Type* instead
             Bc_Type return_type = bc_build_type(bc, type->Function.return_type);
             if (return_type.kind  != BcType_void) {
                 bc->curr_return_dest = bc_stack_alloc(bc, return_type);
-                result.Procedure.return_reg = bc->curr_return_dest.Register;
+                result.Procedure.first_return_reg = bc->curr_return_dest.Register;
             }
             result.Procedure.first_arg_reg = bc->next_register;
             
@@ -716,10 +715,17 @@ bc_analyze_top_level_declaration(Bc_Builder* bc, Ast* decl, string_id ident) {
             assert(expr && expr->kind == Ast_Value && "unimplemnted: only constant values supported in global scope");
             Value value = expr->Value.value;
             
-            Bc_Decl decl = bc_push_declaration(bc, BcDecl_Data, ident);
-            decl.Data.type = bc_build_type(bc, decl->Assign_Stmt.type);
-            void* data = arena_push_size(&bc->arena, type->cached_size, type->cached_align);
-            interp_save_value(type, data, );
+            Bc_Decl bc_decl = {};
+            bc_decl.kind = BcDecl_Data;
+            bc_decl.first_byte_offset = bc->code_arena.curr_used;
+            bc_decl.Data.type = bc_build_type(bc, type);
+            
+            // TODO(Alexander): for data types with arbitrary size we need to push it on the data arena
+            //void* data = arena_push_size(&bc->code_arena, type->cached_size, type->cached_align);
+            //interp_save_value(type, data, value.data);
+            
+            Bc_Label label = create_unique_bc_label(bc, ident);
+            map_put(bc->declarations, label, bc_decl);
         } break;
     }
 }

@@ -82,8 +82,7 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
         
         if (decl->kind == BcDecl_Procedure) {
             pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
-            Bc_Basic_Block* first_basic_block = arena_get_struct(&bytecode_builder.code_arena, Bc_Basic_Block, 
-                                                                 decl->first_byte_offset);
+            Bc_Basic_Block* first_basic_block = get_first_bc_basic_block(&bytecode_builder, decl);
             
             String_Builder test_sb = {};
             string_builder_push(&test_sb, first_basic_block);
@@ -183,8 +182,8 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
             if (prev_num_failed != test->num_failed) {
                 Bc_Label label = {};
                 label.ident = test->ident;
-                Bc_Decl decl = map_get(bc_interp.declarations, label);
-                if (decl.kind == BcDecl_Procedure) {
+                Bc_Decl* decl = &map_get(bc_interp.declarations, label);
+                if (decl && decl->kind == BcDecl_Procedure) {
                     Bc_Basic_Block* first_basic_block = get_first_bc_basic_block(&bytecode_builder, decl);
                     string_builder_push(sb_failure_log, first_basic_block);
                 }

@@ -154,7 +154,7 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
                              X64_Basic_Block* basic_block) {
     
     // TODO(Alexander): we can build this in sqrrl_x64_builder.cpp instead
-    map(Bc_Register, X64_Basic_Block*)* named_basic_blocks = 0;
+    map(Bc_Label, X64_Basic_Block*)* named_basic_blocks = 0;
     {
         X64_Basic_Block* curr_block = basic_block; 
         while (curr_block) {

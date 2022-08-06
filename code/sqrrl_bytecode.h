@@ -226,8 +226,8 @@ enum Bc_Operand_Kind {
     BcOperand_None,
     BcOperand_Void, // do nothing
     BcOperand_Register,
-    BcOperand_Signed_Int,
-    BcOperand_Unsigned_Int,
+    BcOperand_Int,
+    BcOperand_String,
     BcOperand_Float,
     BcOperand_Label,
     BcOperand_Argument_List,
@@ -236,9 +236,7 @@ enum Bc_Operand_Kind {
 
 inline bool
 is_bc_operand_value(Bc_Operand_Kind kind) {
-    return (kind == BcOperand_Signed_Int ||
-            kind == BcOperand_Unsigned_Int ||
-            kind == BcOperand_Float);
+    return (kind == BcOperand_Int || kind == BcOperand_Float );
 }
 
 // NOTE(Alexander): forward declare
@@ -285,6 +283,7 @@ struct Bc_Operand {
         s64 Signed_Int;
         u64 Unsigned_Int;
         f64 Float;
+        Memory_String String;
         array(Bc_Argument)* Argument_List;
         Bc_Type Type;
     };
@@ -422,12 +421,8 @@ string_builder_push(String_Builder* sb, Bc_Operand* operand, Bc_Type type={}) {
             string_builder_push_format(sb, "r%", f_u64(operand->Register));
         } break;
         
-        case BcOperand_Signed_Int: {
+        case BcOperand_Int: {
             string_builder_push_format(sb, "%", f_s64(operand->Signed_Int));
-        } break;
-        
-        case BcOperand_Unsigned_Int: {
-            string_builder_push_format(sb, "%", f_u64(operand->Unsigned_Int));
         } break;
         
         case BcOperand_Float: {

@@ -113,12 +113,8 @@ bc_interp_operand_value(Bc_Interp* interp, Bc_Operand* operand) {
             result = bc_interp_load_register(interp, operand->Register);
         } break;
         
-        case BcOperand_Signed_Int: {
+        case BcOperand_Int: {
             result.signed_int = operand->Signed_Int;
-        } break;
-        
-        case BcOperand_Unsigned_Int: {
-            result.unsigned_int = operand->Unsigned_Int;
         } break;
         
         case BcOperand_Float: {

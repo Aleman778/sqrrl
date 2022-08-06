@@ -323,13 +323,13 @@ interp_expression(Interp* interp, Ast* ast) {
                         Interp_Entity entity = interp_load_entity_from_current_scope(interp, ident);
                         if (interp_entity_is_declared(interp, &entity, ident)) {
                             if (entity.data) {
-                                interp_save_value(interp, entity.type, entity.data, result.value.data);
+                                interp_save_value(entity.type, entity.data, result.value.data);
                             } else {
                                 entity.data = interp_push_value(interp, entity.type, result.value.data);
                             }
                         }
                     } else if (first_op.data && first_op.type.kind) {
-                        interp_save_value(interp, &first_op.type, first_op.data, first.data);
+                        interp_save_value(&first_op.type, first_op.data, first.data);
                         
                     } else {
                         interp_error(interp, string_lit("unexpected assignment"));
@@ -787,7 +787,7 @@ interp_statement(Interp* interp, Ast* ast) {
                                 Value field_value = value_cast(field->value, field_type->Primitive.kind);
                                 smm offset = map_get(type_table->ident_to_offset, field_ident);
                                 void* storage = (u8*) base_address + offset;
-                                interp_save_value(interp, field_type, storage, field_value.data);
+                                interp_save_value(field_type, storage, field_value.data);
                             }
                         } else {
                             // TODO(Alexander): no fields specified, should we clear the memory maybe?

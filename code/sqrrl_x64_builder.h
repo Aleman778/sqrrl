@@ -22,7 +22,6 @@ struct X64_Builder {
     s32 curr_stack_offset;
     
     Memory_Arena rodata_segment_arena;
-    string_map(Memory_String)* const_strings;
     
     u32 next_label_index;
     u64 next_free_virtual_register;

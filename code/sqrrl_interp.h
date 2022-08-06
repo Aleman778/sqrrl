@@ -139,7 +139,7 @@ interp_push_entity_to_current_scope(Interp* interp, string_id ident, void* data,
     }
 }
 
-void interp_save_value(Interp* interp, Type* type, void* storage, Value_Data data);
+void interp_save_value(Type* type, void* storage, Value_Data data);
 Interp_Value interp_load_value(Interp* interp, Type* type, void* data);
 
 inline void*
@@ -148,7 +148,7 @@ interp_push_value(Interp* interp, Type* type, Value_Data data) {
     assert(type->cached_align > 0 && "bad align");
     
     void* result = arena_push_size(&interp->stack, type->cached_size, type->cached_align);
-    interp_save_value(interp, type, result, data);
+    interp_save_value(type, result, data);
     
     return result;
 }

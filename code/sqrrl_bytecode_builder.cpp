@@ -254,6 +254,11 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                     result = bc_float_op(v);
                 } break;
                 
+                case Value_string: {
+                    Memory_String v = bc_save_string(bc, node->Value.value.data.str);
+                    result = bc_string_op(v);
+                }
+                
                 default: {
                     assert(0 && "unexpected value type");
                 } break;
@@ -302,7 +307,6 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
         } break;
         
         case Ast_Binary_Expr: {
-            
             Binary_Op binary_op = node->Binary_Expr.op;
             Bc_Type first_var_type = bc_build_type(bc, node->Binary_Expr.first->type);
             Bc_Operand first_var = bc_build_expression(bc, node->Binary_Expr.first);
@@ -680,6 +684,9 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
                 map_put(bc->local_variable_mapper, arg_ident, arg_dest);
                 
             }
+            Bc_Instruction* label_insn = bc->curr_basic_block->first;
+            label_insn->src0.kind = BcOperand_Argument_List;
+            label_insn->src0.Argument_List = actual_args;
             
             // Build the actual declaration
             bc_build_statement(bc, decl);

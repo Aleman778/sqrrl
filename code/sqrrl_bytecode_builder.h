@@ -29,14 +29,29 @@ struct Bc_Builder {
     Bc_Live_Length_Table* live_lengths;
     
     Bc_Decl_Table* declarations;
+    
+    string_map(Memory_String)* string_storage;
 };
 
 #define get_first_bc_basic_block(bc, decl) \
-arena_get_struct(&(bc)->code_arena, Bc_Basic_Block, (decl).first_byte_offset)
+arena_get_struct(&(bc)->code_arena, Bc_Basic_Block, (decl)->first_byte_offset)
 
 void bc_build_from_ast(Bc_Builder* bc, Ast_File* ast_file);
 Bc_Basic_Block* bc_push_basic_block(Bc_Builder* bc, Bc_Label label = {});
 Bc_Instruction* bc_push_instruction(Bc_Builder* bc, Bc_Opcode opcode);
+
+inline Memory_String
+bc_save_string(Bc_Builder* bc, string str) {
+    cstring cstr = string_to_cstring(str);// TODO(Alexander): can we get rid of this allocation?
+    Memory_String result = string_map_get(bc->string_storage, cstr);
+    if (!result) {
+        result = arena_push_flat_string(&bc->data_arena, str);
+        string_map_put(bc->string_storage, cstr, result);
+    }
+    cstring_free(cstr);
+    
+    return result;
+}
 
 inline Bc_Operand
 create_unique_bc_register(Bc_Builder* bc) {
@@ -75,7 +90,7 @@ bc_type_op(Bc_Type type) {
 inline Bc_Operand
 bc_signed_int_op(s64 value) {
     Bc_Operand result;
-    result.kind = BcOperand_Signed_Int;
+    result.kind = BcOperand_Int;
     result.Signed_Int = value;
     return result;
 }
@@ -83,7 +98,7 @@ bc_signed_int_op(s64 value) {
 inline Bc_Operand
 bc_unsigned_int_op(u64 value) {
     Bc_Operand result;
-    result.kind = BcOperand_Unsigned_Int;
+    result.kind = BcOperand_Int;
     result.Unsigned_Int = value;
     return result;
 }
@@ -93,6 +108,14 @@ bc_float_op(f64 value) {
     Bc_Operand result;
     result.kind = BcOperand_Float;
     result.Float = value;
+    return result;
+}
+
+inline Bc_Operand
+bc_string_op(Memory_String value) {
+    Bc_Operand result;
+    result.kind = BcOperand_String;
+    result.String = value;
     return result;
 }
 

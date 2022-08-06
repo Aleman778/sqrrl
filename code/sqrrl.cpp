@@ -174,7 +174,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         // Build bytecode representation of the AST
         Bc_Builder bytecode_builder = {};
         bc_build_from_ast(&bytecode_builder, &ast_file);
-        pln("Bytecode size (% bytes):\n", f_umm(bytecode_builder.arena.curr_used)); // TODO(Alexander): only counts last memory block
+        // TODO(Alexander): only counts last memory block
+        pln("Bytecode (code) size (% bytes):\n", f_umm(bytecode_builder.code_arena.curr_used));
         
         {
             String_Builder sb = {};
@@ -183,12 +184,15 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     continue;
                 }
                 
-                if (it->value.type == Value_basic_block) {
-                    string_builder_push(&sb, it->value.data.basic_block);
-                } else {
+                Bc_Decl* decl = &it->value;
+                if (decl->kind == BcDecl_Procedure) {
+                    Bc_Basic_Block* first_basic_block = get_first_bc_basic_block(&bytecode_builder, decl);
+                    string_builder_push(&sb, first_basic_block);
+                    
+                } else if (decl->kind == BcDecl_Data) {
                     string_builder_push_format(&sb, "%%% = %\n\n",
                                                f_string(vars_load_string(it->key.ident)),
-                                               f_value(&it->value));
+                                               f_s64(&decl->Data.value.signed_int));
                 }
             }
             
@@ -199,7 +203,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         
         // Interpret the bytecode
         Bc_Interp interp = {};
-        interp.bytecode = bytecode_builder,code_arena.base;
+        interp.bytecode = bytecode_builder.code_arena.base;
         interp.declarations = bytecode_builder.declarations;
         int interp_exit_code = (int) bc_interp_bytecode(&interp).signed_int;
         
@@ -208,11 +212,11 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         x64_builder.bc_register_live_lengths = bytecode_builder.live_lengths;
         
         // Make sure to compile entry point function first
-        Bc_Register entry_point_label = { Sym_main, 0 };
-        Value main_decl = map_get(bytecode_builder.declarations, entry_point_label);
-        assert(main_decl.type == Value_basic_block);
+        Bc_Label entry_point_label = { Sym_main, 0 };
+        Bc_Decl* main_decl = &map_get(bytecode_builder.declarations, entry_point_label);
+        assert(main_decl && main_decl->kind == BcDecl_Procedure);
         
-        Bc_Basic_Block* main_block = main_decl.data.basic_block;
+        Bc_Basic_Block* main_block = get_first_bc_basic_block(&bytecode_builder, main_decl);
         x64_build_function(&x64_builder, main_block);
         pln("compiling function `%`", f_string(vars_load_string(Sym_main)));
         
@@ -222,13 +226,15 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             }
             
             pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
-            
-            if (it->value.type == Value_basic_block) {
-                Bc_Basic_Block* function_block = it->value.data.basic_block;
-                x64_build_function(&x64_builder, function_block);
-            } else {
+            Bc_Decl* decl = &it->value;
+            if (decl->kind == BcDecl_Procedure) {
+                Bc_Basic_Block* proc_block = get_first_bc_basic_block(&bytecode_builder, main_decl);
+                x64_build_function(&x64_builder, proc_block);
+            } else if (decl->kind == BcDecl_Data) {
                 // TODO(Alexander): we need to store the actual value type in the declarations
-                x64_build_data_storage(&x64_builder, it->key, it->value.data, &global_primitive_types[PrimitiveType_int]);
+                x64_build_data_storage(&x64_builder, it->key, decl->Data.value, decl->Data.type);
+            } else {
+                assert(0 && "unsupported declaration");
             }
         }
         

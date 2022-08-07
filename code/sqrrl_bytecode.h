@@ -304,7 +304,7 @@ struct Bc_Instruction {
 
 enum Bc_Decl_Kind {
     BcDecl_Data,
-    BcDecl_Global,
+    BcDecl_Basic_Block,
     BcDecl_Procedure,
 };
 
@@ -344,6 +344,15 @@ string_builder_push(String_Builder* sb, Bc_Type type) {
         
         case BcType_f32: string_builder_push(sb, "f32"); break;
         case BcType_f64: string_builder_push(sb, "f64"); break;
+        
+        case BcType_Aggregate: {
+            assert(type.aggregate);
+            if (type.aggregate->kind == Type_Function) {
+                string_builder_push(sb, vars_load_string(type.aggregate->Function.ident));
+            } else {
+                string_builder_push(sb, type.aggregate);
+            }
+        } break;
     }
     
     
@@ -365,46 +374,8 @@ string_builder_push(String_Builder* sb, Bc_Label label) {
     }
 }
 
-// TODO(Alexander): we don't need this anymore
-#if 0
-void
-string_builder_push(String_Builder* sb, Value_Data value, Bc_Type type) {
-    if (type.ptr_depth == 0) {
-        switch (type.kind) {
-            case BcType_s1:  
-            case BcType_s8:  
-            case BcType_s16: 
-            case BcType_s32: 
-            case BcType_s64: {
-                string_builder_push_format(sb, "%", f_s64(value.signed_int));
-            } break;
-            
-            case BcType_u8:  
-            case BcType_u16: 
-            case BcType_u32: 
-            case BcType_u64: {
-                string_builder_push_format(sb, "%", f_u64(value.unsigned_int));
-            } break;
-            
-            case BcType_f32: 
-            case BcType_f64: {
-                string_builder_push_format(sb, "%", f_float(value.floating));
-            } break;
-            
-            case BcType_Aggregate: {
-                assert(type.aggregate);
-                switch (type.aggregate->kind) {
-                    case Type_String: {
-                        string_builder_push_format(sb, "\"%\"", f_string(value.str));
-                    } break;
-                }
-            } break;
-        }
-    } else {
-        string_builder_push_format(sb, "%", f_u64_HEX(value.unsigned_int));
-    }
-}
-#endif
+// NOTE(Alexander): forward declare below
+void string_builder_push(String_Builder* sb, array(Bc_Argument)* argument_list, bool show_types=false);
 
 bool
 string_builder_push(String_Builder* sb, Bc_Operand* operand, Bc_Type type={}) {
@@ -434,22 +405,29 @@ string_builder_push(String_Builder* sb, Bc_Operand* operand, Bc_Type type={}) {
         } break;
         
         case BcOperand_Argument_List: {
-            string_builder_push(sb, "[");
-            if (operand->Argument_List) {
-                for_array(operand->Argument_List, arg, arg_index) {
-                    string_builder_push(sb, arg->type);
-                    string_builder_push(sb, " ");
-                    string_builder_push(sb, &arg->src);
-                    if (arg_index < array_count(operand->Argument_List) - 1) {
-                        string_builder_push(sb, ", ");
-                    }
-                }
-            }
-            string_builder_push(sb, "]");
+            string_builder_push(sb, operand->Argument_List);
         } break;
     }
     
     return true;
+}
+
+void
+string_builder_push(String_Builder* sb, array(Bc_Argument)* argument_list, bool show_types) {
+    string_builder_push(sb, "(");
+    if (argument_list) {
+        for_array(argument_list, arg, arg_index) {
+            if (show_types) {
+                string_builder_push(sb, arg->type);
+                string_builder_push(sb, " ");
+            }
+            string_builder_push(sb, &arg->src);
+            if (arg_index < array_count(argument_list) - 1) {
+                string_builder_push(sb, ", ");
+            }
+        }
+    }
+    string_builder_push(sb, ")");
 }
 
 void
@@ -458,33 +436,33 @@ string_builder_push(String_Builder* sb, Bc_Instruction* insn) {
         string_builder_push(sb, insn->dest.Label);
         string_builder_push(sb, ":");
     } else {
-        
         string_builder_push(sb, "    ");
         
         bool has_assignment = string_builder_push(sb, insn->dest_type);
         
         if (has_assignment) {
+            string_builder_push(sb, " ");
             string_builder_push(sb, &insn->dest);
             string_builder_push(sb, " = ");
         }
         
         string_builder_push(sb, bytecode_opcode_names[insn->opcode]);
         
-        if (has_assignment) {
+        if (!has_assignment && insn->dest.kind != BcOperand_None) {
             string_builder_push(sb, " ");
-            if (string_builder_push(sb, &insn->dest)) {
-                if (insn->src1.kind) {
-                    string_builder_push(sb, ",");
-                }
-            }
+            string_builder_push(sb, &insn->dest);
         }
         
         if (insn->src0.kind) {
+            if (!has_assignment && insn->dest.kind != BcOperand_None) {
+                string_builder_push(sb, ",");
+            }
+            
             string_builder_push(sb, " ");
         }
         
         if (string_builder_push(sb, &insn->src0)) {
-            if (insn->src1.kind) {
+            if (insn->src1.kind && insn->opcode != Bytecode_call) {
                 string_builder_push(sb, ", ");
             }
         }

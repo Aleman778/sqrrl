@@ -157,26 +157,37 @@ bc_load(Bc_Builder* bc, Bc_Operand src, Bc_Type src_type) {
 }
 
 inline void
-bc_store(Bc_Builder* bc, Bc_Operand dest, Bc_Operand src) {
+bc_store(Bc_Builder* bc, Bc_Operand dest, Bc_Operand src, Bc_Type type) {
     assert(dest.kind == BcOperand_Register);
     
     Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_store);
+    insn->dest_type = type;
     insn->dest = dest;
     insn->src0 = src;
 }
 
 inline Bc_Operand
-bc_unary(Bc_Builder* bc, Bc_Opcode opcode, Bc_Operand first) {
+bc_ret(Bc_Builder* bc, Bc_Operand first, Bc_Type type) {
+    Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_ret);
+    insn->src0 = first;
+    insn->src1 = bc_type_op(type);
+    return insn->dest;
+}
+
+inline Bc_Operand
+bc_unary(Bc_Builder* bc, Bc_Opcode opcode, Bc_Operand first, Bc_Type type) {
     Bc_Instruction* insn = bc_push_instruction(bc, opcode);
     insn->dest = create_unique_bc_register(bc);
+    insn->dest_type = type;
     insn->src0 = first;
     return insn->dest;
 }
 
 inline Bc_Operand
-bc_binary(Bc_Builder* bc, Bc_Opcode opcode, Bc_Operand first, Bc_Operand second) {
+bc_binary(Bc_Builder* bc, Bc_Opcode opcode, Bc_Operand first, Bc_Operand second, Bc_Type type) {
     Bc_Instruction* insn = bc_push_instruction(bc, opcode);
     insn->dest = create_unique_bc_register(bc);
+    insn->dest_type = type;
     insn->src0 = first;
     insn->src1 = second;
     return insn->dest;
@@ -204,9 +215,10 @@ bc_branch(Bc_Builder* bc, Bc_Operand cond,
 }
 
 inline Bc_Operand
-bc_call(Bc_Builder* bc, Bc_Type proc_type, array(Bc_Argument)* args) {
+bc_call(Bc_Builder* bc, Bc_Type proc_type, array(Bc_Argument)* args, Bc_Type return_type) {
     Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_call);
     insn->dest = create_unique_bc_register(bc);
+    insn->dest_type = return_type;
     insn->src0 = bc_type_op(proc_type);
     insn->src1.kind = BcOperand_Argument_List;
     insn->src1.Argument_List = args;

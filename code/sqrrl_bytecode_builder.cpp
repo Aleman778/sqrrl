@@ -37,6 +37,9 @@ bc_push_instruction(Bc_Builder* bc, Bc_Opcode opcode) {
 
 Bc_Basic_Block*
 bc_push_basic_block(Bc_Builder* bc, Bc_Label label) {
+    Bc_Decl decl = {};
+    decl.kind = BcDecl_Basic_Block;
+    decl.first_byte_offset = bc->code_arena.curr_used;
     
     Bc_Basic_Block* block = arena_push_struct(&bc->code_arena, Bc_Basic_Block);
     if (bc->curr_basic_block) {
@@ -55,6 +58,7 @@ bc_push_basic_block(Bc_Builder* bc, Bc_Label label) {
     block->first = bc->curr_instruction;
     block->count = 1;
     
+    map_put(bc->declarations, label, decl);
     return block;
 }
 
@@ -192,7 +196,7 @@ bc_build_type_cast(Bc_Builder* bc,
         }
     }
     
-    return bc_binary(bc, opcode, *src, bc_type_op(dest_type));
+    return bc_binary(bc, opcode, *src, bc_type_op(dest_type), dest_type);
 }
 
 Bc_Operand
@@ -271,21 +275,21 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                     Bc_Type first_type = bc_build_type(bc, node->Unary_Expr.first->type);
                     Bc_Operand first = bc_build_expression(bc, node->Unary_Expr.first);
                     first = bc_load(bc, first, first_type);
-                    result = bc_unary(bc, Bytecode_neg, first);
+                    result = bc_unary(bc, Bytecode_neg, first, first_type);
                 } break;
                 
                 case UnaryOp_Logical_Not: {
                     Bc_Type first_type = bc_build_type(bc, node->Unary_Expr.first->type);
                     Bc_Operand first = bc_build_expression(bc, node->Unary_Expr.first);
                     first = bc_load(bc, first, first_type);
-                    result = bc_unary(bc, Bytecode_not, first);
+                    result = bc_unary(bc, Bytecode_not, first, first_type);
                 } break;
                 
                 case UnaryOp_Bitwise_Not: {
                     Bc_Type first_type = bc_build_type(bc, node->Unary_Expr.first->type);
                     Bc_Operand first = bc_build_expression(bc, node->Unary_Expr.first);
                     first = bc_load(bc, first, first_type);
-                    result = bc_binary(bc, Bytecode_xor, first, bc_signed_int_op(-1));
+                    result = bc_binary(bc, Bytecode_xor, first, bc_signed_int_op(-1), first_type);
                 } break;
                 
                 case UnaryOp_Address_Of: {
@@ -325,7 +329,7 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
             if (binary_op == BinaryOp_Logical_And) {
                 // Store the result in new local variable
                 Bc_Operand dest = bc_stack_alloc(bc, first_var_type);
-                bc_store(bc, dest, first);
+                bc_store(bc, dest, first, bc_type_s1);
                 
                 Bc_Operand cond = bc_build_type_cast(bc, &first, first_var_type, bc_type_s1);
                 Bc_Label cont_label = create_unique_bc_label(bc);
@@ -335,7 +339,7 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                 // Continue to evaluate second expression
                 bc_push_basic_block(bc, cont_label);
                 second = bc_build_expression(bc, node->Binary_Expr.second);
-                bc_store(bc, dest, second);
+                bc_store(bc, dest, second, bc_type_s1);
                 
                 // Exit or skipping second expression
                 bc_push_basic_block(bc, exit_label);
@@ -346,7 +350,7 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                 
                 // Store the result in new local variable
                 Bc_Operand dest = bc_stack_alloc(bc, first_var_type);
-                bc_store(bc, dest, first);
+                bc_store(bc, dest, first, bc_type_s1);
                 
                 Bc_Operand cond = bc_build_type_cast(bc, &first, first_var_type, bc_type_s1);
                 Bc_Label cont_label = create_unique_bc_label(bc);
@@ -355,7 +359,7 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                 
                 bc_push_basic_block(bc, cont_label);
                 second = bc_build_expression(bc, node->Binary_Expr.second);
-                bc_store(bc, dest, second);
+                bc_store(bc, dest, second, bc_type_s1);
                 
                 bc_push_basic_block(bc, exit_label);
                 first = bc_load(bc, dest, bc_type_s1);
@@ -373,9 +377,9 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                 result = second;
             } else {
                 // TODO(Alexander): conform to largest, maybe this will be done in type stage instead
-                bc_conform_to_larger_type(bc, 
-                                          &first, first_type, 
-                                          &second, second_type);
+                Bc_Type type = bc_conform_to_larger_type(bc, 
+                                                         &first, first_type, 
+                                                         &second, second_type);
                 
                 Bc_Opcode binary_opcode = Bytecode_noop;
                 switch (binary_op) {
@@ -385,12 +389,12 @@ case BinaryOp_##name: binary_opcode = Bytecode_##bc_mnemonic; break;
 #undef BINOP
                 }
                 
-                result = bc_binary(bc, binary_opcode, first, second);
+                result = bc_binary(bc, binary_opcode, first, second, type);
             }
             
             if (is_binary_assign(node->Binary_Expr.op)) {
                 Ast* assign = node->Binary_Expr.first;
-                bc_store(bc, first_var, result);
+                bc_store(bc, first_var, result, bc_build_type(bc, assign->type));
             }
         } break;
         
@@ -437,7 +441,7 @@ case BinaryOp_##name: binary_opcode = Bytecode_##bc_mnemonic; break;
                 arg_count++;
             }
             
-            result = bc_call(bc, proc_type, arguments);
+            result = bc_call(bc, proc_type, arguments, return_type);
         } break;
         
         case Ast_Field_Expr: {
@@ -517,7 +521,7 @@ bc_build_compare_expression(Bc_Builder* bc, Ast* node) {
         second = bc_load(bc, second, second_type);
     }
     
-    return bc_binary(bc, cmp_code, first, second);
+    return bc_binary(bc, cmp_code, first, second, bc_type_s1);
 }
 
 void
@@ -534,7 +538,7 @@ bc_build_statement(Bc_Builder* bc, Ast* node, bool last_statement=false) {
             Bc_Type source_type = bc_build_type(bc, node->Assign_Stmt.expr->type);
             Bc_Operand source = bc_build_expression(bc, node->Assign_Stmt.expr);
             source = bc_build_type_cast(bc, &source, source_type, type);
-            bc_store(bc, dest, source);
+            bc_store(bc, dest, source, type);
         } break;
         
         case Ast_Expr_Stmt: {
@@ -635,7 +639,7 @@ bc_build_statement(Bc_Builder* bc, Ast* node, bool last_statement=false) {
             Bc_Operand source = bc_build_expression(bc, node->Return_Stmt.expr);
             source = bc_load(bc, source, source_type);
             if (bc->curr_return_dest.kind != BcOperand_None) {
-                bc_store(bc, bc->curr_return_dest, source);
+                bc_store(bc, bc->curr_return_dest, source, source_type);
             }
             bc_branch(bc, bc->curr_epilogue);
         } break;
@@ -652,6 +656,7 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
             
             Bc_Decl result = {};
             result.kind = BcDecl_Procedure;
+            result.first_byte_offset = bc->code_arena.curr_used;
             result.Procedure.first_register = bc->next_register;
             
             bc->curr_decl = ident;
@@ -680,13 +685,15 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
                 array_push(actual_args, arg);
                 
                 Bc_Operand arg_dest = bc_stack_alloc(bc, arg.type);
-                bc_store(bc, arg_dest, arg.src);
+                bc_store(bc, arg_dest, arg.src, arg.type);
                 map_put(bc->local_variable_mapper, arg_ident, arg_dest);
                 
             }
             Bc_Instruction* label_insn = bc->curr_basic_block->first;
-            label_insn->src0.kind = BcOperand_Argument_List;
-            label_insn->src0.Argument_List = actual_args;
+            label_insn->src0.kind = BcOperand_Type;
+            label_insn->src0.Type = return_type;
+            label_insn->src1.kind = BcOperand_Argument_List;
+            label_insn->src1.Argument_List = actual_args;
             
             // Build the actual declaration
             bc_build_statement(bc, decl);
@@ -697,7 +704,7 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
                 
                 if (bc->curr_return_dest.kind != BcOperand_None) {
                     Bc_Operand return_op = bc_load(bc, bc->curr_return_dest, return_type);
-                    bc_unary(bc, Bytecode_ret, return_op);
+                    bc_ret(bc, return_op, return_type);
                 } else {
                     bc_push_instruction(bc, Bytecode_ret);
                 }
@@ -724,7 +731,7 @@ bc_analyze_top_level_declaration(Bc_Builder* bc, Ast* decl, string_id ident) {
             
             Bc_Decl bc_decl = {};
             bc_decl.kind = BcDecl_Data;
-            bc_decl.first_byte_offset = bc->code_arena.curr_used;
+            bc_decl.first_byte_offset = bc->data_arena.curr_used;
             bc_decl.Data.type = bc_build_type(bc, type);
             
             // TODO(Alexander): for data types with arbitrary size we need to push it on the data arena

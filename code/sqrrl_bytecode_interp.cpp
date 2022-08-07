@@ -264,19 +264,22 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
 #undef BINARY_CASE
         
         case Bytecode_branch: {
-            Value_Data branch;
+            Bc_Label target_label;
             if (bc->dest.kind == BcOperand_Label) {
                 // Unconditional branch
-                branch = bc_interp_operand_value(interp, &bc->dest);
+                target_label = bc->dest.Label;
             } else {
                 // Conditional branch
                 Value_Data cond = bc_interp_operand_value(interp, &bc->dest);
                 Bc_Operand* src = (cond.signed_int > 0) ? &bc->src0 : &bc->src1;
-                branch = bc_interp_operand_value(interp, src);
+                target_label = src->Label;
             }
             
+            Bc_Decl* target = &map_get(interp->declarations, target_label);
+            assert(target && target->kind == BcDecl_Basic_Block);
+            
             Bc_Interp_Scope* scope = &array_last(interp->scopes);
-            scope->curr_block = branch.basic_block;
+            scope->curr_block = (Bc_Basic_Block*) (interp->bytecode + target->first_byte_offset);
             scope->curr_block_insn = 0;
         } break;
         
@@ -449,6 +452,8 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
 
 Value_Data
 bc_interp_bytecode(Bc_Interp* interp, string_id entry_point) {
+    // TODO(Alexander): with data declarations do we still need this?
+#if 0
     // First analyse the globals
     bc_interp_function_call(interp, Kw_global);
     
@@ -467,6 +472,7 @@ bc_interp_bytecode(Bc_Interp* interp, string_id entry_point) {
         Bc_Instruction* insn = scope->curr_block->first + scope->curr_block_insn++;
         bc_interp_instruction(interp, insn);
     }
+#endif
     
     // Run the entry point
     bc_interp_function_call(interp, entry_point);

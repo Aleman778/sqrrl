@@ -187,10 +187,19 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 Bc_Decl* decl = &it->value;
                 if (decl->kind == BcDecl_Procedure) {
                     Bc_Basic_Block* first_basic_block = get_first_bc_basic_block(&bytecode_builder, decl);
+                    Bc_Instruction* label = first_basic_block->first;
+                    
+                    string_builder_push(&sb, "\n");
+                    string_builder_push(&sb, &label->src0);
+                    string_builder_push(&sb, " ");
+                    string_builder_push(&sb, vars_load_string(it->key.ident));
+                    string_builder_push(&sb, label->src1.Argument_List, true);
+                    string_builder_push(&sb, " {\n");
                     string_builder_push(&sb, first_basic_block);
+                    string_builder_push(&sb, "}\n");
                     
                 } else if (decl->kind == BcDecl_Data) {
-                    string_builder_push_format(&sb, "%%% = %\n\n",
+                    string_builder_push_format(&sb, "\n%%% = %\n",
                                                f_string(vars_load_string(it->key.ident)),
                                                f_s64(&decl->Data.value.signed_int));
                 }

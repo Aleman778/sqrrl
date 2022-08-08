@@ -237,13 +237,11 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
             Bc_Decl* decl = &it->value;
             if (decl->kind == BcDecl_Procedure) {
-                Bc_Basic_Block* proc_block = get_first_bc_basic_block(&bytecode_builder, main_decl);
+                Bc_Basic_Block* proc_block = get_first_bc_basic_block(&bytecode_builder, decl);
                 x64_build_function(&x64_builder, proc_block);
             } else if (decl->kind == BcDecl_Data) {
                 // TODO(Alexander): we need to store the actual value type in the declarations
                 x64_build_data_storage(&x64_builder, it->key, decl->Data.value, decl->Data.type);
-            } else {
-                assert(0 && "unsupported declaration");
             }
         }
         

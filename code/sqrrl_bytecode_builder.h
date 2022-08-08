@@ -169,8 +169,8 @@ bc_store(Bc_Builder* bc, Bc_Operand dest, Bc_Operand src, Bc_Type type) {
 inline Bc_Operand
 bc_ret(Bc_Builder* bc, Bc_Operand first, Bc_Type type) {
     Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_ret);
-    insn->src0 = first;
-    insn->src1 = bc_type_op(type);
+    insn->dest = first;
+    insn->dest_type = type;
     return insn->dest;
 }
 

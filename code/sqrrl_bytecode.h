@@ -433,12 +433,19 @@ string_builder_push(String_Builder* sb, array(Bc_Argument)* argument_list, bool 
 void
 string_builder_push(String_Builder* sb, Bc_Instruction* insn) {
     if (insn->opcode == Bytecode_label) {
+        string_builder_push(sb, "  ");
         string_builder_push(sb, insn->dest.Label);
         string_builder_push(sb, ":");
     } else {
+        bool is_opcode_assign = !(insn->opcode == Bytecode_store ||
+                                  insn->opcode == Bytecode_ret);
+        
         string_builder_push(sb, "    ");
         
-        bool has_assignment = string_builder_push(sb, insn->dest_type);
+        bool has_assignment = false;
+        if (is_opcode_assign) {
+            has_assignment = string_builder_push(sb, insn->dest_type);
+        }
         
         if (has_assignment) {
             string_builder_push(sb, " ");

@@ -199,9 +199,14 @@ bc_build_type_cast(Bc_Builder* bc,
     return bc_binary(bc, opcode, *src, bc_type_op(dest_type), dest_type);
 }
 
-Bc_Operand
+struct Bc_Expr_Result {
+    Bc_Operand data;
+    Bc_Type type;
+};
+
+Bc_Expr_Result
 bc_build_expression(Bc_Builder* bc, Ast* node) {
-    Bc_Operand result = {};
+    Bc_Expr_Result result = {};
     
     switch (node->kind) {
         case Ast_Ident: {
@@ -667,7 +672,7 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
             
             // TODO(Alexander): we should use type checker function Type* instead
             Bc_Type return_type = bc_build_type(bc, type->Function.return_type);
-            if (return_type.kind  != BcType_void) {
+            if (return_type.kind != BcType_void) {
                 bc->curr_return_dest = bc_stack_alloc(bc, return_type);
                 result.Procedure.first_return_reg = bc->curr_return_dest.Register;
             }
@@ -703,7 +708,9 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
                 bc_push_basic_block(bc, bc->curr_epilogue);
                 
                 if (bc->curr_return_dest.kind != BcOperand_None) {
-                    Bc_Operand return_op = bc_load(bc, bc->curr_return_dest, return_type);
+                    Bc_Type return_ptr_type = return_type;
+                    return_ptr_type.ptr_depth++;
+                    Bc_Operand return_op = bc_load(bc, bc->curr_return_dest, return_ptr_type);
                     bc_ret(bc, return_op, return_type);
                 } else {
                     bc_push_instruction(bc, Bytecode_ret);

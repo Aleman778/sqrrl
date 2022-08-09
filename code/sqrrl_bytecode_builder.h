@@ -131,6 +131,7 @@ inline Bc_Operand
 bc_stack_alloc(Bc_Builder* bc, Bc_Type value_type) {
     Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_stack_alloc);
     insn->dest = create_unique_bc_register(bc);
+    insn->dest.kind = BcOperand_Memory;
     insn->dest_type = value_type;
     insn->dest_type.ptr_depth++;
     insn->src0 = bc_type_op(value_type);
@@ -138,18 +139,19 @@ bc_stack_alloc(Bc_Builder* bc, Bc_Type value_type) {
 }
 
 inline Bc_Operand
-bc_load(Bc_Builder* bc, Bc_Operand src, Bc_Type src_type) {
+bc_load(Bc_Builder* bc, Bc_Operand src, Bc_Type value_type) {
     Bc_Operand result = src;
     
-    if (src_type.ptr_depth > 0) {
-        Bc_Type value_type = src_type;
-        value_type.ptr_depth--;
+    if (src.kind == BcOperand_Memory) {
         result = create_unique_bc_register(bc);
+        
+        Bc_Type memory_type = value_type;
+        memory_type.ptr_depth++;
         
         Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_load);
         insn->dest = result;
         insn->dest_type = value_type;
-        insn->src0 = bc_type_op(value_type);
+        insn->src0 = bc_type_op(memory_type);
         insn->src1 = src;
     }
     
@@ -158,7 +160,7 @@ bc_load(Bc_Builder* bc, Bc_Operand src, Bc_Type src_type) {
 
 inline void
 bc_store(Bc_Builder* bc, Bc_Operand dest, Bc_Operand src, Bc_Type type) {
-    assert(dest.kind == BcOperand_Register);
+    assert(dest.kind == BcOperand_Memory);
     
     Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_store);
     insn->dest_type = type;

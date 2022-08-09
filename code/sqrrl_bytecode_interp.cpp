@@ -109,7 +109,8 @@ bc_interp_operand_value(Bc_Interp* interp, Bc_Operand* operand) {
     Value_Data result = {};
     
     switch (operand->kind) {
-        case BcOperand_Register: {
+        case BcOperand_Register:
+        case BcOperand_Memory: {
             result = bc_interp_load_register(interp, operand->Register);
         } break;
         
@@ -129,7 +130,7 @@ bc_interp_operand_value(Bc_Interp* interp, Bc_Operand* operand) {
     return result;
 }
 
-void
+Bc_Basic_Block*
 bc_interp_function_call(Bc_Interp* interp, string_id ident, Bc_Register return_register={}) {
     Bc_Label label = { ident, 0 }; // TODO(Alexander): might not always be 0
     Bc_Decl* decl = &map_get(interp->declarations, label);
@@ -148,6 +149,8 @@ bc_interp_function_call(Bc_Interp* interp, string_id ident, Bc_Register return_r
     new_scope.curr_block = target_block;
     new_scope.curr_block_insn = 0;
     array_push(interp->scopes, new_scope);
+    
+    return target_block;
 }
 
 // TODO(Alexander): this is very silly to go from Type* -> Bc_Type -> Type*
@@ -182,7 +185,7 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
         case Bytecode_label: break;
         
         case Bytecode_stack_alloc: {
-            assert(bc->dest.kind == BcOperand_Register);
+            assert(bc->dest.kind == BcOperand_Memory);
             assert(bc->src0.kind == BcOperand_Type);
             assert(bc->src1.kind == BcOperand_None);
             
@@ -190,7 +193,7 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
         } break;
         
         case Bytecode_memory_alloc: {
-            assert(bc->dest.kind == BcOperand_Register);
+            assert(bc->dest.kind == BcOperand_Memory);
             assert(bc->src0.kind == BcOperand_Type);
             assert(is_bc_operand_value(bc->src1.kind));
             
@@ -199,22 +202,22 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
         } break;
         
         case Bytecode_store: {
-            assert(bc->dest.kind == BcOperand_Register);
+            assert(bc->dest.kind == BcOperand_Memory);
             assert(bc->src0.kind != BcOperand_None);
             assert(bc->src1.kind == BcOperand_None);
             
             Value_Data dest = bc_interp_operand_value(interp, &bc->dest);
             Value_Data src = bc_interp_operand_value(interp, &bc->src0);
-            bc_interp_store_value(interp, bc->src0.Type, dest.data, &src.signed_int);
+            bc_interp_store_value(interp, bc->dest_type, dest.data, &src.signed_int);
         } break;
         
         case Bytecode_load: {
             assert(bc->dest.kind == BcOperand_Register);
             assert(bc->src0.kind == BcOperand_Type);
-            assert(bc->src1.kind == BcOperand_Register);
+            assert(bc->src1.kind == BcOperand_Memory);
             
             Value_Data src = bc_interp_operand_value(interp, &bc->src1);
-            Value_Data value = bc_interp_load_value(interp, bc->src0.Type, src.data);
+            Value_Data value = bc_interp_load_value(interp, bc->dest_type, src.data);
             bc_interp_store_register(interp, bc->dest.Register, value);
         } break;
         
@@ -391,18 +394,23 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
                 type->Function.interp_intrinsic(&intrinsic_interp, variadic_args);
                 
             } else {
-                bc_interp_function_call(interp, type->Function.ident, bc->dest.Register);
+                Bc_Basic_Block* target_block =
+                    bc_interp_function_call(interp, type->Function.ident, bc->dest.Register);
+                
+                Bc_Instruction* label_insn = target_block->first;
+                assert(label_insn->src1.kind == BcOperand_Argument_List);
+                array(Bc_Argument*) formal_args = label_insn->src1.Argument_List;
                 
                 Bc_Interp_Scope* scope = &array_last(interp->scopes);
                 for_array(bc->src1.Argument_List, arg, arg_index) {
+                    Bc_Argument* formal_arg = formal_args + arg_index;
                     
                     if (arg_index < array_count(arg_types->idents)) {
                         string_id ident = arg_types->idents[arg_index];
                         Type* arg_type = map_get(arg_types->ident_to_type, ident);
                         
                         Value_Data arg_data = bc_interp_operand_value(interp, &arg->src);
-                        // TODO(Alexander): ARGUMENT registers
-                        Bc_Register reg = 0;
+                        Bc_Register reg = formal_arg->src.Register;
                         bc_interp_store_register(interp, reg, arg_data);
                     } else {
                         // Variadic argument
@@ -431,12 +439,11 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
             // Pop scope
             array_pop(interp->scopes);
             
-            // Store value in specific return register, specified by the caller instruction
-            // NOTE(Alexander): assumes top level scope is the global scope which has no return.
-            if (array_count(interp->scopes) == 1) {
+            if (array_count(interp->scopes) == 0) {
                 interp->return_value = value;
             } else  {
                 Bc_Interp_Scope* scope = &array_last(interp->scopes);
+                assert(scope->return_register);
                 if (scope->return_register != 0) {
                     bc_interp_store_register(interp, scope->return_register, value);
                     scope->return_register = 0;

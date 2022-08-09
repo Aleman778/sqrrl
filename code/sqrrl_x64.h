@@ -736,7 +736,7 @@ string_builder_push(String_Builder* sb, X64_Instruction* insn, bool show_virtual
             string_builder_push(sb, &insn->op2, show_virtual_registers);
         }
         
-#if BUILD_DEBUG
+#if 0 && BUILD_DEBUG
         if (insn->opcode != X64Opcode_invalid && insn->comment) {
             const s32 comment_offset = 35;
             

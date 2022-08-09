@@ -498,9 +498,9 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
         
         case Bytecode_load: {
             assert(bc->src0.kind == BcOperand_Type);
-            Bc_Type type = bc->src0.Type;
+            Bc_Type type = bc->dest_type;
             
-            if (bc->src1.kind == BcOperand_Register) {
+            if (bc->src1.kind == BcOperand_Memory) {
                 smm stack_offset = map_get(x64->stack_offsets, bc->src1.Register);
                 X64_Operand result = x64_build_stack_offset(x64, type, stack_offset);
                 map_put(x64->allocated_virtual_registers, bc->dest.Register, result);
@@ -508,7 +508,6 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
                 X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
                 insn->op0 = x64_build_operand(x64, &bc->dest, type);
                 insn->op1 = x64_build_data_target(x64, bc->src1.Label);
-                
             } else {
                 assert(0 && "load: invalid second operand");
             }
@@ -970,7 +969,7 @@ void
 x64_analyse_function(X64_Builder* x64, Bc_Instruction* bc) {
     switch (bc->opcode) {
         case Bytecode_stack_alloc: {
-            assert(bc->dest.kind == BcOperand_Register);
+            assert(bc->dest.kind == BcOperand_Memory);
             assert(bc->src0.kind == BcOperand_Type);
             assert(bc->src1.kind == BcOperand_None);
             

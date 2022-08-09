@@ -226,6 +226,7 @@ enum Bc_Operand_Kind {
     BcOperand_None,
     BcOperand_Void, // do nothing
     BcOperand_Register,
+    BcOperand_Memory,
     BcOperand_Int,
     BcOperand_String,
     BcOperand_Float,
@@ -388,7 +389,8 @@ string_builder_push(String_Builder* sb, Bc_Operand* operand, Bc_Type type={}) {
             string_builder_push(sb, operand->Label);
         } break;
         
-        case BcOperand_Register: {
+        case BcOperand_Register:
+        case BcOperand_Memory: {
             string_builder_push_format(sb, "r%", f_u64(operand->Register));
         } break;
         

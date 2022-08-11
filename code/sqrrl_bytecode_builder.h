@@ -3,8 +3,11 @@ typedef map(Bc_Register, u64) Bc_Live_Length_Table;
 
 typedef map(Bc_Label, Bc_Decl) Bc_Decl_Table;
 
+
 struct Bc_Builder {
+    Bytecode code;
     Memory_Arena code_arena;
+    
     Memory_Arena data_arena;
     
     Bc_Basic_Block* global_block;
@@ -32,9 +35,6 @@ struct Bc_Builder {
     
     string_map(Memory_String)* string_storage;
 };
-
-#define get_first_bc_basic_block(bc, decl) \
-arena_get_struct(&(bc)->code_arena, Bc_Basic_Block, (decl)->first_byte_offset)
 
 void bc_build_from_ast(Bc_Builder* bc, Ast_File* ast_file);
 Bc_Basic_Block* bc_push_basic_block(Bc_Builder* bc, Bc_Label label = {});
@@ -219,8 +219,10 @@ bc_branch(Bc_Builder* bc, Bc_Operand cond,
 inline Bc_Operand
 bc_call(Bc_Builder* bc, Bc_Type proc_type, array(Bc_Argument)* args, Bc_Type return_type) {
     Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_call);
-    insn->dest = create_unique_bc_register(bc);
-    insn->dest_type = return_type;
+    if (return_type.kind != BcType_void) {
+        insn->dest = create_unique_bc_register(bc);
+        insn->dest_type = return_type;
+    }
     insn->src0 = bc_type_op(proc_type);
     insn->src1.kind = BcOperand_Argument_List;
     insn->src1.Argument_List = args;

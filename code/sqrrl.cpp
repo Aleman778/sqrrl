@@ -174,6 +174,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         // Build bytecode representation of the AST
         Bc_Builder bytecode_builder = {};
         bc_build_from_ast(&bytecode_builder, &ast_file);
+        Bytecode* bytecode = &bytecode_builder.code;
+        
         // TODO(Alexander): only counts last memory block
         pln("Bytecode (code) size (% bytes):\n", f_umm(bytecode_builder.code_arena.curr_used));
         
@@ -186,8 +188,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 
                 Bc_Decl* decl = &it->value;
                 if (decl->kind == BcDecl_Procedure) {
-                    Bc_Basic_Block* first_basic_block = get_first_bc_basic_block(&bytecode_builder, decl);
-                    Bc_Instruction* label = first_basic_block->first;
+                    Bc_Basic_Block* first_basic_block = get_bc_basic_block(bytecode, decl->first_byte_offset);
+                    Bc_Instruction* label = get_first_bc_instruction(first_basic_block);
                     
                     string_builder_push(&sb, "\n");
                     string_builder_push(&sb, &label->src0);
@@ -195,7 +197,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     string_builder_push(&sb, vars_load_string(it->key.ident));
                     string_builder_push(&sb, label->src1.Argument_List, true);
                     string_builder_push(&sb, " {\n");
-                    string_builder_push(&sb, first_basic_block);
+                    string_builder_push(&sb, first_basic_block, bytecode);
                     string_builder_push(&sb, "}\n");
                     
                 } else if (decl->kind == BcDecl_Data) {
@@ -212,7 +214,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         
         // Interpret the bytecode
         Bc_Interp interp = {};
-        interp.bytecode = bytecode_builder.code_arena.base;
+        interp.code = &bytecode_builder.code;
         interp.declarations = bytecode_builder.declarations;
         int interp_exit_code = (int) bc_interp_bytecode(&interp).signed_int;
         
@@ -225,8 +227,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         Bc_Decl* main_decl = &map_get(bytecode_builder.declarations, entry_point_label);
         assert(main_decl && main_decl->kind == BcDecl_Procedure);
         
-        Bc_Basic_Block* main_block = get_first_bc_basic_block(&bytecode_builder, main_decl);
-        x64_build_function(&x64_builder, main_block);
+        Bc_Basic_Block* main_block =
+            get_bc_basic_block(bytecode, main_decl->first_byte_offset);
+        x64_build_function(&x64_builder, bytecode, main_block);
         pln("compiling function `%`", f_string(vars_load_string(Sym_main)));
         
         for_map (bytecode_builder.declarations, it) {
@@ -237,8 +240,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
             Bc_Decl* decl = &it->value;
             if (decl->kind == BcDecl_Procedure) {
-                Bc_Basic_Block* proc_block = get_first_bc_basic_block(&bytecode_builder, decl);
-                x64_build_function(&x64_builder, proc_block);
+                Bc_Basic_Block* proc_block =
+                    get_bc_basic_block(bytecode, decl->first_byte_offset);
+                x64_build_function(&x64_builder, bytecode, proc_block);
             } else if (decl->kind == BcDecl_Data) {
                 // TODO(Alexander): we need to store the actual value type in the declarations
                 x64_build_data_storage(&x64_builder, it->key, decl->Data.value, decl->Data.type);

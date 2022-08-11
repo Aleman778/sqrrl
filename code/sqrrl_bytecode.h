@@ -252,25 +252,46 @@ struct Bc_Label {
 
 struct Bc_Basic_Block {
     Bc_Label label;
-    Bc_Instruction* first;
-    umm count;
-    Bc_Basic_Block* next;
-    //array(u32)* args;
+    smm instruction_count;
+    smm next_byte_offset;
 };
 
-#define for_bc_basic_block(first_block, it, it_index, code) { \
+#define get_first_bc_instruction(block) \
+(Bc_Instruction*) ((block) + 1)
+
+#define for_bc_basic_block(bytecode, first_block, it, it_index, code) { \
 Bc_Basic_Block* it_block = first_block; \
-umm it_index = 0; \
+smm it_index = 0; \
 \
 while (it_block) { \
-while (it_index < it_block->count) { \
-Bc_Instruction* it = it_block->first + it_index; \
+while (it_index < it_block->instruction_count) { \
+Bc_Instruction* it = get_first_bc_instruction(it_block) + it_index; \
 code; \
 it_index++; \
 } \
-it_block = it_block->next; \
+it_block = get_bc_basic_block(bytecode, it_block->next_byte_offset); \
 it_index = 0; \
 } \
+}
+
+struct Bytecode {
+    array(u8*)* blocks;
+    umm block_size;
+};
+
+inline Bc_Basic_Block*
+get_bc_basic_block(Bytecode* code, smm offset) {
+    if (offset < 0) return 0;
+    
+    assert(code->block_size > 0);
+    // TODO(Alexander): maybe we can improve the % and / by using block sizes powers of two
+    smm block_index = offset / code->block_size;
+    smm block_offset = offset % code->block_size;
+    assert(block_index < array_count(code->blocks));
+    u8* block = code->blocks[block_index];
+    pln("get_first_bc_basic_block, %: % -> %", f_umm(offset), f_umm(block_index), f_umm(block_offset));
+    pln("num_blocks = %", f_umm(array_count(code->blocks)));
+    return (Bc_Basic_Block*) (block + block_offset);
 }
 
 // NOTE(Alexander): forward declare
@@ -481,15 +502,15 @@ string_builder_push(String_Builder* sb, Bc_Instruction* insn) {
 }
 
 void
-string_builder_push(String_Builder* sb, Bc_Basic_Block* block) {
+string_builder_push(String_Builder* sb, Bc_Basic_Block* block, Bytecode* code) {
     Bc_Basic_Block* curr_block = block;
     while (curr_block) {
-        Bc_Instruction* curr_insn = curr_block->first;
-        for (int i = 0; i < curr_block->count; i++) {
+        Bc_Instruction* curr_insn = (Bc_Instruction*) (curr_block + 1);
+        for (int i = 0; i < curr_block->instruction_count; i++) {
             string_builder_push(sb, curr_insn++);
             string_builder_push(sb, "\n");
         }
         
-        curr_block = curr_block->next;
+        curr_block = get_bc_basic_block(code, curr_block->next_byte_offset);
     }
 }

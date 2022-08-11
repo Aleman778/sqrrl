@@ -647,7 +647,7 @@ arena_initialize(Memory_Arena* arena, umm min_block_size) {
 
 
 inline void
-arena_reallocate(Memory_Arena* arena, umm block_size = 0) {
+arena_grow(Memory_Arena* arena, umm block_size = 0) {
     if (block_size == 0) {
         if (arena->min_block_size == 0) {
             arena->min_block_size = ARENA_DEFAULT_BLOCK_SIZE;
@@ -669,7 +669,7 @@ arena_push_size(Memory_Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT, umm 
     umm offset = align_forward(current, align) - (umm) arena->base;
     
     if (offset + size > arena->size) {
-        arena_reallocate(arena);
+        arena_grow(arena);
         
         current = (umm) arena->base + arena->curr_used;
         offset = align_forward(current, align) - (umm) arena->base;

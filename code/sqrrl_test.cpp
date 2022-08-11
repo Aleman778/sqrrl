@@ -82,13 +82,13 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
         
         if (decl->kind == BcDecl_Procedure) {
             pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
-            Bc_Basic_Block* first_basic_block = get_first_bc_basic_block(&bytecode_builder, decl);
+            Bc_Basic_Block* first_basic_block = get_bc_basic_block(&bytecode_builder.code, decl->first_byte_offset);
             
             String_Builder test_sb = {};
-            string_builder_push(&test_sb, first_basic_block);
+            string_builder_push(&test_sb, first_basic_block, &bytecode_builder.code);
             //pln("%", f_string(string_builder_to_string_nocopy(&test_sb)));
             string_builder_free(&test_sb);
-            x64_build_function(&x64_builder, first_basic_block);
+            x64_build_function(&x64_builder, &bytecode_builder.code, first_basic_block);
         } else if (decl->kind == BcDecl_Data) {
             // TODO(Alexander): we need to store the actual value type in the declarations
             x64_build_data_storage(&x64_builder, it->key, decl->Data.value, decl->Data.type);
@@ -184,8 +184,8 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
                 label.ident = test->ident;
                 Bc_Decl* decl = &map_get(bc_interp.declarations, label);
                 if (decl && decl->kind == BcDecl_Procedure) {
-                    Bc_Basic_Block* first_basic_block = get_first_bc_basic_block(&bytecode_builder, decl);
-                    string_builder_push(sb_failure_log, first_basic_block);
+                    Bc_Basic_Block* first_basic_block = get_bc_basic_block(&bytecode_builder.code, decl->first_byte_offset);
+                    string_builder_push(sb_failure_log, first_basic_block, &bytecode_builder.code);
                 }
             }
         }

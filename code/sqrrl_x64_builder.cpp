@@ -664,8 +664,8 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1, bc->dest_type); \
             if (cmp) {
                 // NOTE(Alexander): the dest type is actually the source
                 X64_Instruction* cmp_insn = x64_push_instruction(x64, X64Opcode_cmp);
-                cmp_insn->op0 = x64_build_operand(x64, &cmp->src0, bc->dest_type);
-                cmp_insn->op1 = x64_build_operand(x64, &cmp->src1, bc->dest_type);
+                cmp_insn->op0 = x64_build_operand(x64, &cmp->src0, cmp->dest_type);
+                cmp_insn->op1 = x64_build_operand(x64, &cmp->src1, cmp->dest_type);
                 
                 // NOTE(Alexander): we use inverted condition and so we only jump when condition is false
                 switch (cmp->opcode) {
@@ -1008,12 +1008,12 @@ x64_free_virtual_register_if_dead(X64_Builder* x64, Bc_Operand* operand, u32 cur
 }
 
 void
-x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
+x64_build_function(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_block) {
     array_free(x64->active_virtual_registers);
     map_free(x64->allocated_virtual_registers);
     
     x64->curr_stack_offset = 0;
-    for_bc_basic_block(first_block, insn, insn_index, x64_analyse_function(x64, insn));
+    for_bc_basic_block(bytecode, first_block, insn, insn_index, x64_analyse_function(x64, insn));
     s32 stack_offset = x64->curr_stack_offset;
     
     x64_push_basic_block(x64, first_block->label);
@@ -1036,7 +1036,7 @@ x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
     // TODO(Alexander): callee should save volatile registers
     
     // Setup argument registers
-    Bc_Instruction* label_insn = first_block->first;
+    Bc_Instruction* label_insn = get_first_bc_instruction(first_block);
     s32 param_stack_offset = stack_offset - 8; // NOTE(Alexander): - RSP size
     if (label_insn) {
         array(Bc_Argument*) args = label_insn->src1.Argument_List;
@@ -1106,8 +1106,8 @@ x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
     u32 curr_bc_instruction = 0;
     u32 curr_block_insn = 0;
     while (curr_block) {
-        while (curr_block_insn < curr_block->count) {
-            Bc_Instruction* insn = curr_block->first + curr_block_insn;
+        while (curr_block_insn < curr_block->instruction_count) {
+            Bc_Instruction* insn = get_first_bc_instruction(curr_block) + curr_block_insn;
             x64_build_instruction_from_bytecode(x64, insn);
             
             //pln("\n\nInstruction: %", f_u32(curr_bc_instruction));
@@ -1118,7 +1118,7 @@ x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block) {
             curr_block_insn++;
             curr_bc_instruction++;
         }
-        curr_block = curr_block->next;
+        curr_block = get_bc_basic_block(bytecode, curr_block->next_byte_offset);
         curr_block_insn = 0;
         
         if (curr_block) {

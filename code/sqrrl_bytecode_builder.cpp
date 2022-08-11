@@ -1,8 +1,8 @@
 
 Bc_Instruction*
 bc_push_instruction(Bc_Builder* bc, Bc_Opcode opcode) {
-    Bc_Basic_Block* bb = bc->curr_basic_block;
-    assert(bb);
+    Bc_Basic_Block* basic_block = bc->curr_basic_block;
+    assert(basic_block);
     
     Bc_Instruction* prev_insn = bc->curr_instruction;
     if (prev_insn) {
@@ -15,10 +15,11 @@ bc_push_instruction(Bc_Builder* bc, Bc_Opcode opcode) {
         }
     }
     
-    
     if (!arena_can_fit(&bc->code_arena, Bc_Instruction)) {
-        arena_reallocate(&bc->code_arena);
-        bb = bc_push_basic_block(bc);
+        arena_grow(&bc->code_arena);
+        array_push(bc->code.blocks, bc->code_arena.base);
+        bc->code.block_size = bc->code_arena.size;
+        basic_block = bc_push_basic_block(bc);
     }
     
     Bc_Instruction* insn = arena_push_struct(&bc->code_arena, Bc_Instruction);
@@ -27,10 +28,7 @@ bc_push_instruction(Bc_Builder* bc, Bc_Opcode opcode) {
     bc->curr_instruction = insn;
     bc->instruction_count++;
     
-    bb->count++;
-    if (!bb->first) {
-        bb->first = insn;
-    }
+    basic_block->instruction_count++;
     
     return insn;
 }
@@ -39,11 +37,26 @@ Bc_Basic_Block*
 bc_push_basic_block(Bc_Builder* bc, Bc_Label label) {
     Bc_Decl decl = {};
     decl.kind = BcDecl_Basic_Block;
-    decl.first_byte_offset = bc->code_arena.curr_used;
     
+    if (!arena_can_fit(&bc->code_arena, Bc_Basic_Block)) {
+        arena_grow(&bc->code_arena);
+        array_push(bc->code.blocks, bc->code_arena.base);
+        bc->code.block_size = bc->code_arena.size;
+    }
+    
+    // NOTE(Alexander): accumulated offset for preceding bytecode blocks
+    assert(array_count(bc->code.blocks) > 0);
     Bc_Basic_Block* block = arena_push_struct(&bc->code_arena, Bc_Basic_Block);
+    block->next_byte_offset = -1;
+    decl.first_byte_offset = (bc->code.block_size*(array_count(bc->code.blocks) - 1) + 
+                              bc->code_arena.curr_used - sizeof(Bc_Basic_Block));
+    pln("%", f_u64_HEX(decl.first_byte_offset));
+    if (decl.first_byte_offset == 0) {
+        pln("wtf");
+    }
+    
     if (bc->curr_basic_block) {
-        bc->curr_basic_block->next = block;
+        bc->curr_basic_block->next_byte_offset = decl.first_byte_offset;
     }
     bc->curr_basic_block = block;
     
@@ -54,9 +67,6 @@ bc_push_basic_block(Bc_Builder* bc, Bc_Label label) {
     }
     
     bc_label(bc, block->label);
-    
-    block->first = bc->curr_instruction;
-    block->count = 1;
     
     map_put(bc->declarations, label, decl);
     return block;
@@ -243,6 +253,7 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
         
         case Ast_Value: {
             switch (node->Value.value.type) {
+                case Value_boolean:
                 case Value_signed_int: {
                     s64 v = node->Value.value.data.signed_int;
                     result = bc_signed_int_op(v);
@@ -261,7 +272,7 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                 case Value_string: {
                     Memory_String v = bc_save_string(bc, node->Value.value.data.str);
                     result = bc_string_op(v);
-                }
+                } break;
                 
                 default: {
                     assert(0 && "unexpected value type");
@@ -452,7 +463,7 @@ case BinaryOp_##name: binary_opcode = Bytecode_##bc_mnemonic; break;
             Bc_Type src_type = bc_build_type(bc, node->Cast_Expr.expr->type);
             Bc_Operand src = bc_build_expression(bc, node->Cast_Expr.expr);
             src = bc_load(bc, src, src_type);
-            Bc_Type dest_type = bc_build_type(bc, node->Cast_Expr.type->type);
+            Bc_Type dest_type = bc_build_type(bc, node->type);
             result = bc_build_type_cast(bc, &src, src_type, dest_type);
         } break;
         
@@ -505,23 +516,26 @@ bc_build_compare_expression(Bc_Builder* bc, Ast* node) {
         }
     }
     
+    Bc_Type cmp_type = {};
     if (cmp_code == Bytecode_noop) {
         cmp_code = Bytecode_cmpneq;
         Bc_Type first_type = bc_build_type(bc, node->type);
         first = bc_build_expression(bc, node);
         first = bc_load(bc, first, first_type);
         second = bc_signed_int_op(0);
+        cmp_type = first_type;
     } else {
         Bc_Type first_type = bc_build_type(bc, node->Binary_Expr.first->type);
         first = bc_build_expression(bc, node->Binary_Expr.first);
         first = bc_load(bc, first, first_type);
+        cmp_type = first_type;
         
         Bc_Type second_type = bc_build_type(bc, node->Binary_Expr.second->type);
         second = bc_build_expression(bc, node->Binary_Expr.second);
         second = bc_load(bc, second, second_type);
     }
     
-    return bc_binary(bc, cmp_code, first, second, bc_type_s1);
+    return bc_binary(bc, cmp_code, first, second, cmp_type);
 }
 
 void
@@ -654,16 +668,15 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
         case Type_Function: {
             assert(decl->kind == Ast_Block_Stmt);
             
-            Bc_Decl result = {};
-            result.kind = BcDecl_Procedure;
-            result.first_byte_offset = bc->code_arena.curr_used;
-            result.Procedure.first_register = bc->next_register;
-            
             bc->curr_decl = ident;
             bc->curr_prologue = create_unique_bc_label(bc);
             bc->curr_epilogue = create_unique_bc_label(bc);
             bc->curr_return_dest = {};
             bc->curr_basic_block = bc_push_basic_block(bc, bc->curr_prologue);
+            
+            Bc_Decl result = map_get(bc->declarations, bc->curr_prologue);
+            result.kind = BcDecl_Procedure;
+            result.Procedure.first_register = bc->next_register;
             
             // TODO(Alexander): we should use type checker function Type* instead
             Bc_Type return_type = bc_build_type(bc, type->Function.return_type);
@@ -689,7 +702,7 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
                 map_put(bc->local_variable_mapper, arg_ident, arg_dest);
                 
             }
-            Bc_Instruction* label_insn = bc->curr_basic_block->first;
+            Bc_Instruction* label_insn = get_first_bc_instruction(bc->curr_basic_block);
             label_insn->src0.kind = BcOperand_Type;
             label_insn->src0.Type = return_type;
             label_insn->src1.kind = BcOperand_Argument_List;

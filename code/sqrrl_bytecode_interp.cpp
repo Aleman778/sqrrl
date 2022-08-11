@@ -136,7 +136,7 @@ bc_interp_function_call(Bc_Interp* interp, string_id ident, Bc_Register return_r
     Bc_Decl* decl = &map_get(interp->declarations, label);
     assert(decl && decl->kind == BcDecl_Procedure);
     
-    Bc_Basic_Block* target_block = (Bc_Basic_Block*) ((u8*) interp->bytecode + decl->first_byte_offset);
+    Bc_Basic_Block* target_block = get_bc_basic_block(interp->code, decl->first_byte_offset);
     assert(target_block && target_block->label.ident != Kw_invalid);
     
     if (array_count(interp->scopes)) {
@@ -282,7 +282,7 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
             assert(target && target->kind == BcDecl_Basic_Block);
             
             Bc_Interp_Scope* scope = &array_last(interp->scopes);
-            scope->curr_block = (Bc_Basic_Block*) (interp->bytecode + target->first_byte_offset);
+            scope->curr_block = get_bc_basic_block(interp->code, target->first_byte_offset);
             scope->curr_block_insn = 0;
         } break;
         
@@ -397,7 +397,7 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
                 Bc_Basic_Block* target_block =
                     bc_interp_function_call(interp, type->Function.ident, bc->dest.Register);
                 
-                Bc_Instruction* label_insn = target_block->first;
+                Bc_Instruction* label_insn = get_first_bc_instruction(target_block);
                 assert(label_insn->src1.kind == BcOperand_Argument_List);
                 array(Bc_Argument*) formal_args = label_insn->src1.Argument_List;
                 
@@ -495,13 +495,13 @@ bc_interp_bytecode(Bc_Interp* interp, string_id entry_point) {
             continue;
         }
         
-        if (scope->curr_block_insn >= scope->curr_block->count) {
-            scope->curr_block = scope->curr_block->next;
+        if (scope->curr_block_insn >= scope->curr_block->instruction_count) {
+            scope->curr_block = get_bc_basic_block(interp->code, scope->curr_block->next_byte_offset);
             scope->curr_block_insn = 0;
             continue;
         }
         
-        Bc_Instruction* insn = scope->curr_block->first + scope->curr_block_insn++;
+        Bc_Instruction* insn = get_first_bc_instruction(scope->curr_block) + scope->curr_block_insn++;
         bc_interp_instruction(interp, insn);
     }
     

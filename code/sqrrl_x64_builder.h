@@ -32,7 +32,7 @@ struct X64_Builder {
     Interference_Graph* interference_graph;
 };
 
-void x64_build_function(X64_Builder* x64, Bc_Basic_Block* first_block);
+void x64_build_function(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_block);
 
 void x64_build_data_storage(X64_Builder* x64, 
                             Bc_Label label, 

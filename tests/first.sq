@@ -1,4 +1,3 @@
-
 void
 @test_proc 
 unary_expressions() {

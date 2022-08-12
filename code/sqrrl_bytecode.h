@@ -289,8 +289,8 @@ get_bc_basic_block(Bytecode* code, smm offset) {
     smm block_offset = offset % code->block_size;
     assert(block_index < array_count(code->blocks));
     u8* block = code->blocks[block_index];
-    pln("get_first_bc_basic_block, %: % -> %", f_umm(offset), f_umm(block_index), f_umm(block_offset));
-    pln("num_blocks = %", f_umm(array_count(code->blocks)));
+    //pln("get_first_bc_basic_block, %: % -> %", f_umm(offset), f_umm(block_index), f_umm(block_offset));
+    //pln("num_blocks = %", f_umm(array_count(code->blocks)));
     return (Bc_Basic_Block*) (block + block_offset);
 }
 

@@ -50,10 +50,6 @@ bc_push_basic_block(Bc_Builder* bc, Bc_Label label) {
     block->next_byte_offset = -1;
     decl.first_byte_offset = (bc->code.block_size*(array_count(bc->code.blocks) - 1) + 
                               bc->code_arena.curr_used - sizeof(Bc_Basic_Block));
-    pln("%", f_u64_HEX(decl.first_byte_offset));
-    if (decl.first_byte_offset == 0) {
-        pln("wtf");
-    }
     
     if (bc->curr_basic_block) {
         bc->curr_basic_block->next_byte_offset = decl.first_byte_offset;
@@ -206,7 +202,7 @@ bc_build_type_cast(Bc_Builder* bc,
         }
     }
     
-    return bc_binary(bc, opcode, *src, bc_type_op(dest_type), dest_type);
+    return bc_binary(bc, opcode, *src, bc_type_op(src_type), dest_type);
 }
 
 Bc_Operand

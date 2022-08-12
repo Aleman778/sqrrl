@@ -24,7 +24,7 @@ void
 @test_proc
 truncating_integer() {
     s64 x = (s64) 140234230023;
-    assert(x == -1499690745);
+    assert((s32) x == -1499690745);
 }
 
 void

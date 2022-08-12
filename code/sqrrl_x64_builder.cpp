@@ -676,10 +676,10 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1, bc->dest_type); \
                     case Bytecode_cmpge:  jump_opcode = X64Opcode_jge; break;
                     case Bytecode_cmpgt:  jump_opcode = X64Opcode_jg;  break;
                 }
-            } else if (bc->dest_type.kind == BcType_s1) {
+            } else {
                 X64_Instruction* test_insn = x64_push_instruction(x64, X64Opcode_cmp);
-                test_insn->op0 = x64_build_operand(x64, &bc->dest, bc->dest_type);
-                test_insn->op1 = x64_build_immediate(x64, 1, bc->dest_type);
+                test_insn->op0 = x64_build_operand(x64, &bc->dest, bc_type_s1);
+                test_insn->op1 = x64_build_immediate(x64, 1, bc_type_s1);
                 jump_opcode = X64Opcode_je;
             }
             
@@ -916,7 +916,20 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1, bc->dest_type); \
         
         case Bytecode_ret: {
             if (bc->dest.kind == BcOperand_Register) { 
-                X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
+                X64_Opcode opcode;
+                if (bc_type_to_size(bc->dest_type) < 4) {
+                    if (is_bc_type_sint(bc->dest_type.kind)) {
+                        opcode = X64Opcode_movsx;
+                        bc->dest_type.kind = BcType_s32;
+                    } else {
+                        opcode = X64Opcode_movzx;
+                        bc->dest_type.kind = BcType_u32;
+                    }
+                } else {
+                    opcode = X64Opcode_mov;
+                }
+                
+                X64_Instruction* mov_insn = x64_push_instruction(x64, opcode);
                 X64_Operand_Kind operand_kind = x64_get_register_kind(bc->dest_type);
                 mov_insn->op0 = x64_build_physical_register(x64, X64Register_rax, operand_kind);
                 mov_insn->op1 = x64_build_operand(x64, &bc->dest, bc->dest_type);

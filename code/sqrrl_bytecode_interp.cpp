@@ -286,9 +286,10 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
             scope->curr_block_insn = 0;
         } break;
         
-        // TODO(Alexander): do we need this we should truncate when storing the value instead
         case Bytecode_truncate: {
-            Value_Data result = bc_interp_operand_value(interp, &bc->src0);
+            // NOTE(Alexander): we need to store and load the value to truncate the Value_Data
+            Value_Data src = bc_interp_operand_value(interp, &bc->src0);
+            Value_Data result = bc_interp_load_value(interp, bc->dest_type, &src.signed_int);
             bc_interp_store_register(interp, bc->dest.Register, result);
         } break;
         
@@ -300,13 +301,16 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
             Value_Data value = bc_interp_operand_value(interp, &bc->src0);
             Value_Data result = value;
             
-            u64 highest_bit_mask = (1ll << (u64) bc_type_to_bitsize(bc->src1.Type.kind));
-            bool high_bit_set = (value.unsigned_int & highest_bit_mask) > 0;
-            u64 mask = U64_MAX << (u64) bc_type_to_bitsize(bc->dest_type.kind);
-            if (high_bit_set) {
-                result.unsigned_int = result.unsigned_int | mask;
-            } else {
-                result.unsigned_int = result.unsigned_int & ~mask;
+            u64 dest_bits = bc_type_to_bitsize(bc->dest_type.kind);
+            if (dest_bits < 64) {
+                u64 highest_bit_mask = (1ll << (u64) (bc_type_to_bitsize(bc->src1.Type.kind) - 1));
+                bool high_bit_set = (value.unsigned_int & highest_bit_mask) > 0;
+                u64 mask = U64_MAX << dest_bits;
+                if (high_bit_set) {
+                    result.unsigned_int = result.unsigned_int | mask;
+                } else {
+                    result.unsigned_int = result.unsigned_int & ~mask;
+                }
             }
             
             bc_interp_store_register(interp, bc->dest.Register, result);
@@ -316,8 +320,11 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
             Value_Data value = bc_interp_operand_value(interp, &bc->src0);
             Value_Data result = value;
             
-            u64 mask = U64_MAX << (u64) bc_type_to_bitsize(bc->dest_type.kind);
-            result.unsigned_int = result.unsigned_int & ~mask;
+            u64 dest_bits = bc_type_to_bitsize(bc->dest_type.kind);
+            if (dest_bits < 64) {
+                u64 mask = U64_MAX << dest_bits;
+                result.unsigned_int = result.unsigned_int & ~mask;
+            }
             
             bc_interp_store_register(interp, bc->dest.Register, result);
         } break;

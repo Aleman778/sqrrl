@@ -486,6 +486,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         
         case Ast_Paren_Expr: {
             result = type_infer_expression(tcx, expr->Paren_Expr.expr, parent_type, report_error);
+            expr->type = result;
         } break;
         
         case Ast_Index_Expr: {

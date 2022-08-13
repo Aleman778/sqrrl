@@ -23,7 +23,7 @@ struct X64_Builder {
     
     Memory_Arena rodata_segment_arena;
     
-    u32 next_label_index;
+    Bc_Label_Index_Table* label_indices;
     u64 next_free_virtual_register;
     map(u64, X64_Operand)* allocated_virtual_registers; // TODO(Alexander): needs to be renamed
     Bc_Live_Length_Table* bc_register_live_lengths;

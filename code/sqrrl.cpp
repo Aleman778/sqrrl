@@ -220,6 +220,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         
         // Generate X64 machine code
         X64_Builder x64_builder = {};
+        x64_builder.label_indices = bytecode_builder.label_indices;
         x64_builder.bc_register_live_lengths = bytecode_builder.live_lengths;
         
         // Make sure to compile entry point function first
@@ -293,9 +294,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         X64_Assembler assembler = {};
         assembler.bytes = (u8*) asm_buffer;
         assembler.size = asm_size;
-        
-        // TODO(Alexander): int3 breakpoint for debugging
-        //push_u8(&assembler, 0xCC);
         
         x64_assemble_to_machine_code(&assembler,
                                      x64_instruction_definitions,

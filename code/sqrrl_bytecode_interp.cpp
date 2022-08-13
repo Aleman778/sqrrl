@@ -110,7 +110,7 @@ bc_interp_operand_value(Bc_Interp* interp, Bc_Operand* operand) {
     
     switch (operand->kind) {
         case BcOperand_Register:
-        case BcOperand_Memory: {
+        case BcOperand_Stack: {
             result = bc_interp_load_register(interp, operand->Register);
         } break;
         
@@ -185,7 +185,7 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
         case Bytecode_label: break;
         
         case Bytecode_stack_alloc: {
-            assert(bc->dest.kind == BcOperand_Memory);
+            assert(bc->dest.kind == BcOperand_Stack);
             assert(bc->src0.kind == BcOperand_Type);
             assert(bc->src1.kind == BcOperand_None);
             
@@ -193,7 +193,7 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
         } break;
         
         case Bytecode_memory_alloc: {
-            assert(bc->dest.kind == BcOperand_Memory);
+            assert(bc->dest.kind == BcOperand_Stack);
             assert(bc->src0.kind == BcOperand_Type);
             assert(is_bc_operand_value(bc->src1.kind));
             
@@ -202,7 +202,7 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
         } break;
         
         case Bytecode_store: {
-            assert(bc->dest.kind == BcOperand_Memory);
+            assert(bc->dest.kind == BcOperand_Stack);
             assert(bc->src0.kind != BcOperand_None);
             assert(bc->src1.kind == BcOperand_None);
             
@@ -213,15 +213,15 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
         
         case Bytecode_load: {
             assert(bc->dest.kind == BcOperand_Register);
-            assert(bc->src0.kind == BcOperand_Type);
-            assert(bc->src1.kind == BcOperand_Memory);
+            assert(bc->src0.kind == BcOperand_Stack);
+            assert(bc->src1.kind == BcOperand_None);
             
-            Value_Data src = bc_interp_operand_value(interp, &bc->src1);
+            Value_Data src = bc_interp_operand_value(interp, &bc->src0);
             Value_Data value = bc_interp_load_value(interp, bc->dest_type, src.data);
             bc_interp_store_register(interp, bc->dest.Register, value);
         } break;
         
-        case Bytecode_assign: {
+        case Bytecode_copy: {
             Value_Data result = bc_interp_operand_value(interp, &bc->src0);
             bc_interp_store_register(interp, bc->dest.Register, result); \
         } break;
@@ -329,27 +329,27 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
             bc_interp_store_register(interp, bc->dest.Register, result);
         } break;
         
-        case Bytecode_cast_fp_to_sint: {
+        case Bytecode_float_to_sint: {
             unimplemented;
         } break;
         
-        case Bytecode_cast_fp_to_uint: {
+        case Bytecode_float_to_uint: {
             unimplemented;
         } break;
         
-        case Bytecode_cast_sint_to_fp: {
+        case Bytecode_sint_to_float: {
             unimplemented;
         } break;
         
-        case Bytecode_cast_uint_to_fp: {
+        case Bytecode_uint_to_float: {
             unimplemented;
         } break;
         
-        case Bytecode_fp_extend: {
+        case Bytecode_float_extend: {
             unimplemented;
         } break;
         
-        case Bytecode_fp_truncate: {
+        case Bytecode_float_truncate: {
             unimplemented;
         } break;
         

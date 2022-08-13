@@ -157,7 +157,8 @@ x64_push_size(X64_Builder* x64, umm size, umm align, umm flags=0) {
         arena->size = arena->min_block_size;
         
         Bc_Label label = x64->curr_basic_block->label;
-        label.index = x64->next_label_index++;
+        label.index = map_get(x64->label_indices, label.ident);
+        map_put(x64->label_indices, label.ident, label.index + 1);
         x64_push_basic_block(x64, label);
         
         current = (umm) arena->base + arena->curr_used;
@@ -224,7 +225,16 @@ _x64_push_instruction(X64_Builder* x64, X64_Opcode opcode, cstring comment = 0) 
 
 X64_Basic_Block*
 x64_push_basic_block(X64_Builder* x64, Bc_Label label) {
+    //pln("x64_push_basic_block: label = %, %",
+    //f_string(vars_load_string(label.ident)), f_int(label.index));
+    
+    if (!arena_can_fit_size(&x64->arena, sizeof(X64_Basic_Block) + sizeof(X64_Instruction),
+                            max(alignof(X64_Basic_Block), alignof(X64_Instruction)))) {
+        arena_grow(&x64->arena);
+    }
+    
     X64_Basic_Block* block = arena_push_struct(&x64->arena, X64_Basic_Block);
+    block->label = label;
     if (x64->curr_basic_block) {
         x64->curr_basic_block->next = block;
     } else {
@@ -236,10 +246,9 @@ x64_push_basic_block(X64_Builder* x64, Bc_Label label) {
     insn->op0.kind = X64Operand_basic_block;
     insn->op0.basic_block = block;
     
-    
-    block->label = label;
     block->first = x64->curr_instruction;
     block->count = 1;
+    
     return block;
 }
 
@@ -350,7 +359,7 @@ x64_build_virtual_register(X64_Builder* x64, X64_Operand_Kind kind) {
 }
 
 // NOTE(Alexander): forward declare
-X64_Instruction* x64_build_set_conditional(X64_Builder* x64, Bc_Instruction* cmp);
+X64_Instruction* x64_build_setcc(X64_Builder* x64, Bc_Instruction* cmp);
 
 X64_Operand
 x64_build_operand(X64_Builder* x64, Bc_Operand* operand, Bc_Type type) {
@@ -371,7 +380,7 @@ x64_build_operand(X64_Builder* x64, Bc_Operand* operand, Bc_Type type) {
                         
                         Bc_Instruction* cmp = x64->curr_compare_insn;
                         x64->curr_compare_insn = 0;
-                        X64_Instruction* insn = x64_build_set_conditional(x64, cmp);
+                        X64_Instruction* insn = x64_build_setcc(x64, cmp);
                         insn->op0 = x64_build_operand(x64, cmp_dest, bc_type_s1);
                         result = map_get(x64->allocated_virtual_registers, operand->Register);
                     }
@@ -401,7 +410,7 @@ x64_build_operand(X64_Builder* x64, Bc_Operand* operand, Bc_Type type) {
 }
 
 X64_Instruction*
-x64_build_set_conditional(X64_Builder* x64, Bc_Instruction* cmp) {
+x64_build_setcc(X64_Builder* x64, Bc_Instruction* cmp) {
     assert(cmp->dest.kind == BcOperand_Register);
     
     X64_Instruction* cmp_insn = x64_push_instruction(x64, X64Opcode_cmp);
@@ -430,6 +439,7 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
         case Bytecode_noop: break;
         
         case Bytecode_store: {
+            
             smm stack_index = map_get_index(x64->stack_offsets, bc->dest.Register);
             
             if (stack_index == -1) {
@@ -443,52 +453,54 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
                 s32 stack_offset = x64->stack_offsets[stack_index].value;
                 // TODO(Alexander): should also support memory addresses
                 
-                X64_Operand source_operand = x64_build_operand(x64, &bc->src0, bc->dest_type);
+                X64_Operand source_operand;
                 
-                if (source_operand.kind == X64Operand_imm64) {
-                    // NOTE(Alexander): we can only move imm64 to register
+                if (bc->src0.kind == BcOperand_Stack) {
+                    
+                    assert(bc->dest_type.ptr_depth > 0);
+                    
+                    smm ptr_stack_index = map_get_index(x64->stack_offsets, bc->src0.Register);
+                    assert(ptr_stack_index != -1 && "not stored on stack");
+                    s32 ptr_stack_offset = x64->stack_offsets[ptr_stack_index].value;
                     
                     X64_Operand temp_reg = {};
                     temp_reg.virtual_register = x64_allocate_virtual_register(x64);
                     temp_reg.kind = x64_get_register_kind(bc->dest_type);
                     
-                    X64_Instruction* tmp_mov_insn = x64_push_instruction(x64, X64Opcode_mov);
-                    tmp_mov_insn->op0 = temp_reg;
-                    tmp_mov_insn->op1 = source_operand;
-                    
-                    source_operand = temp_reg;
-                }
-                
-                if (x64->curr_compare_insn && operand_is_register(source_operand.kind)) {
-                    Bc_Instruction* cmp = x64->curr_compare_insn;
-                    if (cmp->dest.kind == BcOperand_Register) {
-                        x64->curr_compare_insn = 0;
-                        X64_Instruction* insn = x64_build_set_conditional(x64, cmp);
-                        insn->op0 = x64_build_stack_offset(x64, bc->dest_type, stack_offset);
-                    }
-                }
-                
-#if 0 // TODO(Alexander): we need to store a type on the source as well
-                if (bc->src0.type.ptr_depth > 0 &&
-                    bc->dest.type.ptr_depth > bc->src0.type.ptr_depth) {
-                    
-                    smm ptr_stack_index = map_get_index(x64->stack_offsets, bc->src0.Register.index);
-                    assert(ptr_stack_index != -1 && "not stored on stack");
-                    s32 ptr_stack_offset = x64->stack_offsets[ptr_stack_index].value;
-                    
-                    assert(bc->dest.type.ptr_depth - bc->src0.type.ptr_depth == 1);
-                    
-                    X64_Operand temp_reg = {};
-                    temp_reg.virtual_register = x64_allocate_virtual_register(x64);
-                    temp_reg.kind = x64_get_register_kind(bc->src0.type);
-                    
                     X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_lea);
                     insn->op0 = temp_reg;
-                    insn->op1 = x64_build_stack_offset(x64, bc->src0.type, ptr_stack_offset);
+                    insn->op1 = x64_build_stack_offset(x64, bc->dest_type, ptr_stack_offset);
                     
                     source_operand = temp_reg;
+                } else {
+                    
+                    source_operand = x64_build_operand(x64, &bc->src0, bc->dest_type);
+                    
+                    if (source_operand.kind == X64Operand_imm64) {
+                        // NOTE(Alexander): we can only move imm64 to register
+                        
+                        X64_Operand temp_reg = {};
+                        temp_reg.virtual_register = x64_allocate_virtual_register(x64);
+                        temp_reg.kind = x64_get_register_kind(bc->dest_type);
+                        
+                        X64_Instruction* tmp_mov_insn = x64_push_instruction(x64, X64Opcode_mov);
+                        tmp_mov_insn->op0 = temp_reg;
+                        tmp_mov_insn->op1 = source_operand;
+                        
+                        source_operand = temp_reg;
+                    }
+                    
+                    if (x64->curr_compare_insn && operand_is_register(source_operand.kind)) {
+                        // NOTE(Alexander): source is from compare instruction
+                        
+                        Bc_Instruction* cmp = x64->curr_compare_insn;
+                        if (cmp->dest.kind == BcOperand_Register) {
+                            x64->curr_compare_insn = 0;
+                            X64_Instruction* insn = x64_build_setcc(x64, cmp);
+                            insn->op0 = x64_build_stack_offset(x64, bc->dest_type, stack_offset);
+                        }
+                    }
                 }
-#endif
                 
                 X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
                 insn->op0 = x64_build_stack_offset(x64, bc->dest_type, stack_offset);
@@ -497,23 +509,32 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
         } break;
         
         case Bytecode_load: {
-            assert(bc->src0.kind == BcOperand_Type);
             Bc_Type type = bc->dest_type;
             
-            if (bc->src1.kind == BcOperand_Memory) {
-                smm stack_offset = map_get(x64->stack_offsets, bc->src1.Register);
-                X64_Operand result = x64_build_stack_offset(x64, type, stack_offset);
-                map_put(x64->allocated_virtual_registers, bc->dest.Register, result);
-            } else if (bc->src1.kind == BcOperand_Label) {
+            if (bc->src0.kind == BcOperand_Stack) {
+                smm stack_index = map_get_index(x64->stack_offsets, bc->src0.Register);
+                
+                if (stack_index == -1) {
+                    X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
+                    insn->op0 = x64_build_operand(x64, &bc->dest, type);
+                    insn->op1 = x64_build_operand(x64, &bc->src0, type);
+                    insn->op1.kind = x64_get_memory_kind(type);
+                    
+                } else {
+                    smm stack_offset = x64->stack_offsets[stack_index].value;
+                    X64_Operand result = x64_build_stack_offset(x64, type, stack_offset);
+                    map_put(x64->allocated_virtual_registers, bc->dest.Register, result);
+                }
+            } else if (bc->src0.kind == BcOperand_Label) {
                 X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
                 insn->op0 = x64_build_operand(x64, &bc->dest, type);
-                insn->op1 = x64_build_data_target(x64, bc->src1.Label);
+                insn->op1 = x64_build_data_target(x64, bc->src0.Label);
             } else {
                 assert(0 && "load: invalid second operand");
             }
         } break;
         
-        case Bytecode_assign: {
+        case Bytecode_copy: {
             X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
             insn->op0 = x64_build_operand(x64, &bc->dest, bc->dest_type);
             insn->op1 = x64_build_operand(x64, &bc->src0, bc->dest_type);
@@ -655,6 +676,17 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1, bc->dest_type); \
             x64->curr_compare_insn = bc;
         } break;
         
+        case Bytecode_goto: {
+            Bc_Label jump_label = bc->dest.Label;
+            Bc_Basic_Block* next_block = (Bc_Basic_Block*) (bc + 1);
+            
+            if (next_block->label.index != jump_label.index) {
+                assert(jump_label.ident != Kw_invalid);
+                X64_Instruction* jump_insn = x64_push_instruction(x64, X64Opcode_jmp);
+                jump_insn->op0 = x64_build_jump_target(x64, jump_label);
+            }
+        } break;
+        
         case Bytecode_branch: {
             
             X64_Opcode jump_opcode = X64Opcode_jmp;
@@ -683,38 +715,27 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1, bc->dest_type); \
                 jump_opcode = X64Opcode_je;
             }
             
+            assert(bc->src0.kind == BcOperand_Label);
+            assert(bc->src1.kind == BcOperand_Label);
+            Bc_Label then_label = bc->src0.Label;
+            Bc_Label else_label = bc->src1.Label;
+            assert(then_label.ident == else_label.ident && "branches can't jump to another declaration");
             
-            if (bc->src0.kind != BcOperand_None && bc->src1.kind != BcOperand_None) {
-                // TODO(Alexander): for now we will assume that true_label is always following instruction
-                
-                Bc_Label then_label = bc->src0.Label;
-                Bc_Label else_label = bc->src1.Label;
-                assert(then_label.ident == else_label.ident && "branches can't jump to another declaration");
-                
-                Bc_Basic_Block* next_block = (Bc_Basic_Block*) (bc + 1);
-                assert(next_block->label.index == then_label.index ||
-                       next_block->label.index == else_label.index && 
-                       "assumes one block is next to this one");
-                
-                if (then_label.index > else_label.index) {
-                    jump_label = then_label;
-                } else {
-                    // swap the condition and branch to else block instead
-                    jump_label = else_label;
-                    jump_opcode = x64_opcode_invert_jump_condition(jump_opcode);
-                }
-                
-                x64->curr_compare_insn = 0;
-            } else if (jump_opcode == X64Opcode_jmp) {
-                
-                // Unconditional jump
-                jump_label = bc->dest.Label;
-                Bc_Basic_Block* next_block = (Bc_Basic_Block*) (bc + 1);
-                if (next_block->label.index == jump_label.index) {
-                    // NOTE(Alexander): we don't need to jump to next instruction
-                    jump_label.ident = Kw_invalid;
-                }
+            Bc_Basic_Block* next_block = (Bc_Basic_Block*) (bc + 1);
+            assert(next_block->label.index == then_label.index ||
+                   next_block->label.index == else_label.index && 
+                   "assumes one block is next to this one");
+            
+            if (then_label.index > else_label.index) {
+                jump_label = then_label;
+            } else {
+                // swap the condition and branch to else block instead
+                jump_label = else_label;
+                jump_opcode = x64_opcode_invert_jump_condition(jump_opcode);
             }
+            
+            x64->curr_compare_insn = 0;
+            
             
             if (jump_label.ident != Kw_invalid) {
                 X64_Instruction* jump_insn = x64_push_instruction(x64, jump_opcode);
@@ -757,7 +778,7 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1, bc->dest_type); \
                 
                 if (x64->curr_compare_insn && bc->src1.Type.kind == BcType_s1) {
                     Bc_Instruction* cmp = x64->curr_compare_insn;
-                    X64_Instruction* insn = x64_build_set_conditional(x64, cmp);
+                    X64_Instruction* insn = x64_build_setcc(x64, cmp);
                     
                     X64_Operand temp_reg = {};
                     temp_reg.virtual_register = x64_allocate_virtual_register(x64);
@@ -782,27 +803,27 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1, bc->dest_type); \
             }
         } break;
         
-        case Bytecode_cast_fp_to_sint: {
+        case Bytecode_float_to_sint: {
             unimplemented;
         } break;
         
-        case Bytecode_cast_fp_to_uint: {
+        case Bytecode_float_to_uint: {
             unimplemented;
         } break;
         
-        case Bytecode_cast_sint_to_fp: {
+        case Bytecode_sint_to_float: {
             unimplemented;
         } break;
         
-        case Bytecode_cast_uint_to_fp: {
+        case Bytecode_uint_to_float: {
             unimplemented;
         } break;
         
-        case Bytecode_fp_extend: {
+        case Bytecode_float_extend: {
             unimplemented;
         } break;
         
-        case Bytecode_fp_truncate: {
+        case Bytecode_float_truncate: {
             unimplemented;
         } break;
         
@@ -982,7 +1003,7 @@ void
 x64_analyse_function(X64_Builder* x64, Bc_Instruction* bc) {
     switch (bc->opcode) {
         case Bytecode_stack_alloc: {
-            assert(bc->dest.kind == BcOperand_Memory);
+            assert(bc->dest.kind == BcOperand_Stack);
             assert(bc->src0.kind == BcOperand_Type);
             assert(bc->src1.kind == BcOperand_None);
             

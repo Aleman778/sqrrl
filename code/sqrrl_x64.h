@@ -583,6 +583,27 @@ struct X64_Encoding {
     bool is_valid;
 };
 
+
+enum X64_Int_Register {
+    X64_RAX,
+    X64_RBX,
+    X64_RCX,
+    X64_RDX,
+    X64_RSI,
+    X64_RDI,
+    X64_RBP,
+    X64_RSP,
+    X64_R8,
+    X64_R9,
+    X64_R10,
+    X64_R11,
+    X64_R12,
+    X64_R13,
+    X64_R14,
+    X64_R15,
+    X64_RIP,
+};
+
 typedef map(X64_Instruction_Index, X64_Encoding) X64_Instruction_Def_Table;
 
 

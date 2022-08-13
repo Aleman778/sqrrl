@@ -123,6 +123,7 @@ bc_conform_to_larger_type(Bc_Builder* bc,
                           Bc_Operand* first, Bc_Type first_type,
                           Bc_Operand* second, Bc_Type second_type) {
     
+    Bc_Type smaller_type = first_type;
     Bc_Type larger_type = second_type;
     
     if (first_type.kind == second_type.kind) {
@@ -140,6 +141,7 @@ bc_conform_to_larger_type(Bc_Builder* bc,
     Bc_Operand* smaller = first;
     Bc_Operand* larger = second;
     if (first_bitsize > second_bitsize) {
+        smaller_type = second_type;
         larger_type = first_type;
         larger = first;
         smaller = second;
@@ -154,8 +156,9 @@ bc_conform_to_larger_type(Bc_Builder* bc,
         Bytecode_zero_extend : Bytecode_sign_extend;
     Bc_Instruction* insn = bc_push_instruction(bc, opcode);
     insn->dest = create_unique_bc_register(bc);
+    insn->dest_type = larger_type;
     insn->src0 = *smaller;
-    insn->src1 = bc_type_op(larger_type);
+    insn->src1 = bc_type_op(smaller_type);
     *smaller = insn->dest;
     
     return larger_type;
@@ -165,27 +168,33 @@ Bc_Operand
 bc_build_type_cast(Bc_Builder* bc, 
                    Bc_Operand* src, Bc_Type src_type,
                    Bc_Type dest_type) {
-    Bc_Opcode opcode = Bytecode_noop;
-    bool is_src_fp = is_bc_type_floating(src_type.kind);
-    bool is_dest_fp = is_bc_type_floating(dest_type.kind);
+    assert(src_type.kind != BcType_Aggregate);
+    assert(dest_type.kind != BcType_Aggregate);
+    if (src_type.kind == dest_type.kind) {
+        return *src;
+    }
     
-    if (is_src_fp && is_dest_fp) {
+    Bc_Opcode opcode = Bytecode_noop;
+    bool is_src_float = is_bc_type_floating(src_type.kind);
+    bool is_dest_float = is_bc_type_floating(dest_type.kind);
+    
+    if (is_src_float && is_dest_float) {
         if (dest_type.kind == BcType_f64)  {
-            opcode = Bytecode_fp_extend;
+            opcode = Bytecode_float_extend;
         } else {
-            opcode = Bytecode_fp_truncate;
+            opcode = Bytecode_float_truncate;
         }
-    } else if (is_src_fp) {
+    } else if (is_src_float) {
         if (is_bc_type_sint(dest_type.kind)) {
-            opcode = Bytecode_cast_fp_to_sint;
+            opcode = Bytecode_float_to_sint;
         } else {
-            opcode = Bytecode_cast_fp_to_uint;
+            opcode = Bytecode_float_to_uint;
         }
-    } else if (is_dest_fp) {
+    } else if (is_dest_float) {
         if (is_bc_type_sint(src_type.kind)) {
-            opcode = Bytecode_cast_sint_to_fp;
+            opcode = Bytecode_sint_to_float;
         } else {
-            opcode = Bytecode_cast_uint_to_fp;
+            opcode = Bytecode_uint_to_float;
         }
     } else {
         int src_size = bc_type_to_bitsize(src_type.kind);
@@ -308,7 +317,12 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                     string_id ident = ast_unwrap_ident(node->Unary_Expr.first);
                     Bc_Type first_type = bc_build_type(bc, node->Unary_Expr.first->type);
                     Bc_Operand first = map_get(bc->local_variable_mapper, ident);
-                    bc_load(bc, first, first_type);
+                    
+                    Bc_Type value_type = first_type;
+                    Bc_Operand value = bc_load(bc, first, first_type);
+                    value.kind = BcOperand_Stack;
+                    value_type.ptr_depth--;
+                    result = bc_load(bc, value, value_type);
                 } break;
                 
                 default: {
@@ -592,7 +606,7 @@ bc_build_statement(Bc_Builder* bc, Ast* node, bool last_statement=false) {
                     bc_build_statement(bc, node->If_Stmt.then_block);
                     
                     Bc_Label exit_label = create_unique_bc_label(bc);
-                    bc_branch(bc, exit_label);
+                    bc_goto(bc, exit_label);
                     bc_push_basic_block(bc, exit_label);
                 }
             }
@@ -617,7 +631,7 @@ bc_build_statement(Bc_Builder* bc, Ast* node, bool last_statement=false) {
                 bc_push_basic_block(bc, update_label);
                 bc_build_statement(bc, node->For_Stmt.block);
                 bc_build_expression(bc, node->For_Stmt.update);
-                bc_branch(bc, cont_label);
+                bc_goto(bc, cont_label);
             }
             
             bc_push_basic_block(bc, exit_label);
@@ -637,7 +651,7 @@ bc_build_statement(Bc_Builder* bc, Ast* node, bool last_statement=false) {
                 {
                     bc_push_basic_block(bc, update_label);
                     bc_build_statement(bc, node->While_Stmt.block);
-                    bc_branch(bc, cont_label);
+                    bc_goto(bc, cont_label);
                 }
             }
             
@@ -651,7 +665,7 @@ bc_build_statement(Bc_Builder* bc, Ast* node, bool last_statement=false) {
             if (bc->curr_return_dest.kind != BcOperand_None) {
                 bc_store(bc, bc->curr_return_dest, source, source_type);
             }
-            bc_branch(bc, bc->curr_epilogue);
+            bc_goto(bc, bc->curr_epilogue);
         } break;
         
         default: assert(0 && "bug: not an expression");

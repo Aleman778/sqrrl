@@ -1,49 +1,50 @@
 
 // BC(name, num_operands)
 #define DEF_BYTECODES \
-BC(noop, 0) \
-BC(stack_alloc, 2) \
-BC(memory_alloc, 2) \
-BC(load, 2) \
-BC(store, 2) \
-BC(assign, 2) \
-BC(neg, 2) \
-BC(not, 2) \
-BC(mul, 3) \
-BC(div, 3) \
-BC(mod, 3) \
-BC(add, 3) \
-BC(sub, 3) \
-BC(shl, 3) \
-BC(shr, 3) \
-BC(lt, 3) \
-BC(le, 3) \
-BC(gt, 3) \
-BC(ge, 3) \
-BC(eq, 3) \
-BC(neq, 3) \
-BC(and, 3) \
-BC(or, 3) \
-BC(xor, 3) \
-BC(cmpeq, 3) \
-BC(cmpneq, 3) \
-BC(cmple, 3) \
-BC(cmplt, 3) \
-BC(cmpge, 3) \
-BC(cmpgt, 3) \
-BC(branch, 3) \
-BC(label, 1) \
-BC(truncate, 3) \
-BC(sign_extend, 3) \
-BC(zero_extend, 3) \
-BC(cast_fp_to_sint, 3) \
-BC(cast_fp_to_uint, 3) \
-BC(cast_sint_to_fp, 3) \
-BC(cast_uint_to_fp, 3) \
-BC(fp_extend, 3) \
-BC(fp_truncate, 3) \
-BC(call, 1) \
-BC(ret, 1)
+BC(noop) \
+BC(stack_alloc) \
+BC(memory_alloc) \
+BC(copy) \
+BC(load) \
+BC(store) \
+BC(neg) \
+BC(not) \
+BC(mul) \
+BC(div) \
+BC(mod) \
+BC(add) \
+BC(sub) \
+BC(shl) \
+BC(shr) \
+BC(lt) \
+BC(le) \
+BC(gt) \
+BC(ge) \
+BC(eq) \
+BC(neq) \
+BC(and) \
+BC(or) \
+BC(xor) \
+BC(cmpeq) \
+BC(cmpneq) \
+BC(cmple) \
+BC(cmplt) \
+BC(cmpge) \
+BC(cmpgt) \
+BC(goto) \
+BC(branch) \
+BC(label) \
+BC(truncate) \
+BC(sign_extend) \
+BC(zero_extend) \
+BC(float_to_sint) \
+BC(float_to_uint) \
+BC(sint_to_float) \
+BC(uint_to_float) \
+BC(float_extend) \
+BC(float_truncate) \
+BC(call) \
+BC(ret)
 
 enum Bc_Opcode {
 #define BC(name, ...) Bytecode_##name,
@@ -53,12 +54,6 @@ enum Bc_Opcode {
 
 global cstring bytecode_opcode_names[] = {
 #define BC(name, ...) #name,
-    DEF_BYTECODES
-#undef BC
-};
-
-global u32 bytecode_num_operands[] = {
-#define BC(_, num_operands) num_operands,
     DEF_BYTECODES
 #undef BC
 };
@@ -226,7 +221,7 @@ enum Bc_Operand_Kind {
     BcOperand_None,
     BcOperand_Void, // do nothing
     BcOperand_Register,
-    BcOperand_Memory,
+    BcOperand_Stack,
     BcOperand_Int,
     BcOperand_String,
     BcOperand_Float,
@@ -411,7 +406,7 @@ string_builder_push(String_Builder* sb, Bc_Operand* operand, Bc_Type type={}) {
         } break;
         
         case BcOperand_Register:
-        case BcOperand_Memory: {
+        case BcOperand_Stack: {
             string_builder_push_format(sb, "r%", f_u64(operand->Register));
         } break;
         

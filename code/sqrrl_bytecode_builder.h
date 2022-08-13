@@ -1,8 +1,7 @@
 
 typedef map(Bc_Register, u64) Bc_Live_Length_Table;
-
 typedef map(Bc_Label, Bc_Decl) Bc_Decl_Table;
-
+typedef map(string_id, u32) Bc_Label_Index_Table;
 
 struct Bc_Builder {
     Bytecode code;
@@ -18,7 +17,7 @@ struct Bc_Builder {
     Bc_Label curr_epilogue;
     Bc_Label curr_bb;
     
-    map(string_id, u32)* label_indices;
+    Bc_Label_Index_Table* label_indices;
     
     Bc_Instruction* curr_instruction;
     Bc_Basic_Block* curr_basic_block;
@@ -131,7 +130,7 @@ inline Bc_Operand
 bc_stack_alloc(Bc_Builder* bc, Bc_Type value_type) {
     Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_stack_alloc);
     insn->dest = create_unique_bc_register(bc);
-    insn->dest.kind = BcOperand_Memory;
+    insn->dest.kind = BcOperand_Stack;
     insn->dest_type = value_type;
     insn->dest_type.ptr_depth++;
     insn->src0 = bc_type_op(value_type);
@@ -142,17 +141,13 @@ inline Bc_Operand
 bc_load(Bc_Builder* bc, Bc_Operand src, Bc_Type value_type) {
     Bc_Operand result = src;
     
-    if (src.kind == BcOperand_Memory) {
+    if (src.kind == BcOperand_Stack) {
         result = create_unique_bc_register(bc);
-        
-        Bc_Type memory_type = value_type;
-        memory_type.ptr_depth++;
         
         Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_load);
         insn->dest = result;
         insn->dest_type = value_type;
-        insn->src0 = bc_type_op(memory_type);
-        insn->src1 = src;
+        insn->src0 = src;
     }
     
     return result;
@@ -160,7 +155,7 @@ bc_load(Bc_Builder* bc, Bc_Operand src, Bc_Type value_type) {
 
 inline void
 bc_store(Bc_Builder* bc, Bc_Operand dest, Bc_Operand src, Bc_Type type) {
-    assert(dest.kind == BcOperand_Memory);
+    assert(dest.kind == BcOperand_Stack);
     
     Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_store);
     insn->dest_type = type;
@@ -202,8 +197,8 @@ bc_label(Bc_Builder* bc, Bc_Label label) {
 }
 
 inline void
-bc_branch(Bc_Builder* bc, Bc_Label label) {
-    Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_branch);
+bc_goto(Bc_Builder* bc, Bc_Label label) {
+    Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_goto);
     insn->dest = bc_label_op(label);
 }
 

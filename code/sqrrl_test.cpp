@@ -67,10 +67,12 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
     
     // Prepare bytecode interpreter
     Bc_Interp bc_interp = {};
+    bc_interp.code = &bytecode_builder.code;
     bc_interp.declarations = bytecode_builder.declarations;
     
     // Compile to X64 instructions
     X64_Builder x64_builder = {};
+    x64_builder.label_indices = bytecode_builder.label_indices;
     x64_builder.bc_register_live_lengths = bytecode_builder.live_lengths;
     
     for_map (bytecode_builder.declarations, it) {
@@ -163,6 +165,9 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
         Test_Result* test = &it->value;
         curr_test = test;
         
+        const umm test_name_max_count = 50;
+        string test_name = vars_load_string(test->ident);
+        
         // Interpreter
         if (is_bitflag_set(test->modes, TestExecutionMode_Interp)) {
             interp_function_call(&interp, test->ident, 0, test->ast->type);
@@ -178,10 +183,15 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
             u32 prev_num_failed = test->num_failed;
             bc_interp_bytecode(&bc_interp, test->ident);
             if (prev_num_failed != test->num_failed) {
+                // Log the error and bytecode
                 Bc_Label label = {};
                 label.ident = test->ident;
                 Bc_Decl* decl = &map_get(bc_interp.declarations, label);
                 if (decl && decl->kind == BcDecl_Procedure) {
+                    string_builder_push(sb_failure_log, "\n\xE2\x9D\x8C ");
+                    string_builder_push_format(sb_failure_log, 
+                                               "Bytecode interpreter failed procedure `%`\n",
+                                               f_string(test_name));
                     Bc_Basic_Block* first_basic_block = get_bc_basic_block(&bytecode_builder.code, decl->first_byte_offset);
                     string_builder_push(sb_failure_log, first_basic_block, &bytecode_builder.code);
                 }
@@ -201,8 +211,7 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
             }
         }
         
-        const umm test_name_max_count = 50;
-        string test_name = vars_load_string(test->ident);
+        // Log test result overview
         if (test_name.count > test_name_max_count) {
             test_name.count = test_name_max_count;
         }

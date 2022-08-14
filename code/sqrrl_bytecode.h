@@ -300,6 +300,7 @@ struct Bc_Operand {
         s64 Signed_Int;
         u64 Unsigned_Int;
         f64 Float;
+        Value_Data Const;
         Memory_String String;
         array(Bc_Argument)* Argument_List;
         Bc_Type Type;

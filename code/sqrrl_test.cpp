@@ -171,11 +171,19 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
         
         // Interpreter
         if (is_bitflag_set(test->modes, TestExecutionMode_Interp)) {
+            u32 prev_num_failed = test->num_failed;
             interp_function_call(&interp, test->ident, 0, test->ast->type);
             if (interp.error_count > 0) {
                 test->num_failed += interp.error_count;
                 test->num_tests +=  interp.error_count;
                 interp.error_count = 0;
+            }
+            
+            if (prev_num_failed != test->num_failed) {
+                string_builder_push(sb_failure_log, "\n\xE2\x9D\x8C ");
+                string_builder_push_format(sb_failure_log, 
+                                           "AST interpreter failed procedure `%`\n",
+                                           f_string(test_name));
             }
         }
         
@@ -208,7 +216,10 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
             asm_test* test_func = (asm_test*) ((u8*) asm_buffer + offset);
             test_func();
             if (prev_num_failed != test->num_failed) {
-                // TODO(Alexander): add some diagnostics
+                string_builder_push(sb_failure_log, "\n\xE2\x9D\x8C ");
+                string_builder_push_format(sb_failure_log, 
+                                           "X64 JIT failed procedure `%`\n",
+                                           f_string(test_name));
             }
         }
         

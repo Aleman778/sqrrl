@@ -14,16 +14,6 @@ unary_expressions() {
     assert(flag == true);
 }
 
-
-void
-@test_proc
-basic_referencing() {
-    int x = 10;
-    int* y = &x;
-    int* z = &x;
-    assert(y == z);
-}
-
 void
 @test_proc
 truncating_integer() {
@@ -71,6 +61,24 @@ equals_operator() {
     int x = 10;
     int y = x == 10;
     assert(y);
+}
+
+void
+@test_proc
+ref_operator() {
+    int x = 10;
+    int* y = &x;
+    int* z = &x;
+    assert(y == z);
+}
+
+void
+@test_proc
+ref_and_deref_operator() {
+    int x = 10;
+    int* y = &x;
+    int z = *y;
+    assert(x == z);
 }
 
 int

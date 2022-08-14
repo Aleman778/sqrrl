@@ -40,31 +40,31 @@ bc_interp_alloc_register(Bc_Interp* interp, Bc_Register reg, Bc_Type type) {
 }
 
 void
-bc_interp_store_value(Bc_Interp* interp, Bc_Type type, void* dest, void* src) {
+bc_interp_store_value(Bc_Interp* interp, Bc_Type type, void* dest, Value_Data src) {
     if (type.ptr_depth > 0) {
-        *((umm*) dest) = (umm) src;
+        *((umm*) dest) = (umm) src.data;
         return;
     }
     
     switch (type.kind) {
         case BcType_s1:
-        case BcType_s8:   *((s8*) dest) = *((s8*) src); break;
-        case BcType_s16: *((s16*) dest) = *((s16*) src); break;
-        case BcType_s32: *((s32*) dest) = *((s32*) src); break;
-        case BcType_s64: *((s64*) dest) = *((s64*) src); break;
-        case BcType_u8:   *((u8*) dest) = *((u8*)  src); break;
-        case BcType_u16: *((u16*) dest) = *((u16*) src); break;
-        case BcType_u32: *((u32*) dest) = *((u32*) src); break;
-        case BcType_u64: *((u64*) dest) = *((u64*) src); break;
-        case BcType_f32: *((f32*) dest) = *((f32*) src); break;
-        case BcType_f64: *((f64*) dest) = *((f64*) src); break;
+        case BcType_s8:   *((s8*) dest) = (s8)  src.signed_int; break;
+        case BcType_s16: *((s16*) dest) = (s16) src.signed_int; break;
+        case BcType_s32: *((s32*) dest) = (s32) src.signed_int; break;
+        case BcType_s64: *((s64*) dest) = (s64) src.signed_int; break;
+        case BcType_u8:   *((u8*) dest) = (u8)  src.unsigned_int; break;
+        case BcType_u16: *((u16*) dest) = (u16) src.unsigned_int; break;
+        case BcType_u32: *((u32*) dest) = (u32) src.unsigned_int; break;
+        case BcType_u64: *((u64*) dest) = (u64) src.unsigned_int; break;
+        case BcType_f32: *((f32*) dest) = (f32) src.floating; break;
+        case BcType_f64: *((f64*) dest) = (f64) src.floating; break;
         
         case BcType_Aggregate: {
             assert(type.aggregate);
             
             switch (type.aggregate->kind) {
                 case Type_String: {
-                    *((string*) dest) = *((string*) src);
+                    *((string*) dest) = src.str;
                 } break;
                 
                 default: {
@@ -82,7 +82,7 @@ Value_Data
 bc_interp_load_value(Bc_Interp* interp, Bc_Type type, void* data) {
     Value_Data result;
     if (type.ptr_depth > 0) {
-        result.signed_int = *((umm*) data);
+        result.unsigned_int = *((umm*) data);
         return result;
     }
     
@@ -198,7 +198,7 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             assert(is_bc_operand_value(bc->src1.kind));
             
             void* data = bc_interp_alloc_register(interp, bc->dest.Register, bc->src0.Type);
-            bc_interp_store_value(interp, bc->src0.Type, data, &bc->src1.Signed_Int);
+            bc_interp_store_value(interp, bc->src0.Type, data, bc->src1.Const);
         } break;
         
         case Bytecode_store: {
@@ -208,7 +208,7 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             
             Value_Data dest = bc_interp_operand_value(interp, &bc->dest);
             Value_Data src = bc_interp_operand_value(interp, &bc->src0);
-            bc_interp_store_value(interp, bc->dest_type, dest.data, &src.signed_int);
+            bc_interp_store_value(interp, bc->dest_type, dest.data, src);
         } break;
         
         case Bytecode_load: {

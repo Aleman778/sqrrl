@@ -100,6 +100,15 @@ x64_allocate_specific_register(X64_Builder* x64, X64_Register physical_register)
     return virtual_register;
 }
 
+X64_Operand
+x64_temporary_register(X64_Builder* x64, Bc_Type type) {
+    X64_Operand result = {};
+    result.virtual_register = x64_allocate_virtual_register(x64);
+    result.kind = x64_get_register_kind(type);
+    return result;
+}
+
+
 inline void
 x64_free_virtual_register(X64_Builder* x64, u64 virtual_register) {
     s32 found_index = -1;
@@ -467,9 +476,7 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
                     assert(ptr_stack_index != -1 && "not stored on stack");
                     s32 ptr_stack_offset = x64->stack_offsets[ptr_stack_index].value;
                     
-                    X64_Operand temp_reg = {};
-                    temp_reg.virtual_register = x64_allocate_virtual_register(x64);
-                    temp_reg.kind = x64_get_register_kind(bc->dest_type);
+                    X64_Operand temp_reg = x64_temporary_register(x64, bc->dest_type);
                     
                     X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_lea);
                     insn->op0 = temp_reg;
@@ -483,9 +490,7 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
                     if (source_operand.kind == X64Operand_imm64) {
                         // NOTE(Alexander): we can only move imm64 to register
                         
-                        X64_Operand temp_reg = {};
-                        temp_reg.virtual_register = x64_allocate_virtual_register(x64);
-                        temp_reg.kind = x64_get_register_kind(bc->dest_type);
+                        X64_Operand temp_reg = x64_temporary_register(x64, bc->dest_type);
                         
                         X64_Instruction* tmp_mov_insn = x64_push_instruction(x64, X64Opcode_mov);
                         tmp_mov_insn->op0 = temp_reg;
@@ -519,9 +524,20 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
                 smm stack_index = map_get_index(x64->stack_offsets, bc->src0.Register);
                 
                 if (stack_index == -1) {
+                    X64_Operand src = map_get(x64->allocated_virtual_registers, bc->src0.Register);
+                    if (operand_is_memory(src.kind)) {
+                        // TODO(Alexander): this is hard coded for now, should match target architecture
+                        Bc_Type ptr_type = { BcType_s64, 0 };
+                        X64_Operand temp_reg = x64_temporary_register(x64, ptr_type);
+                        X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
+                        insn->op0 = temp_reg;
+                        insn->op1 = src;
+                        src = temp_reg;
+                    }
+                    
                     X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
                     insn->op0 = x64_build_operand(x64, &bc->dest, type);
-                    insn->op1 = x64_build_operand(x64, &bc->src0, type);
+                    insn->op1 = src;
                     insn->op1.kind = x64_get_memory_kind(type);
                     
                 } else {
@@ -649,10 +665,7 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1, bc->dest_type); \
             
             X64_Operand divisor = x64_build_operand(x64, &bc->src1, bc->dest_type);
             if (operand_is_immediate(divisor.kind)) {
-                X64_Operand temp_reg = {};
-                temp_reg.virtual_register = x64_allocate_virtual_register(x64);
-                temp_reg.kind = x64_get_register_kind(bc->dest_type);
-                
+                X64_Operand temp_reg = x64_temporary_register(x64, bc->dest_type);
                 X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
                 mov_insn->op0 = temp_reg;
                 mov_insn->op1 = divisor;
@@ -794,10 +807,7 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1, bc->dest_type); \
                     Bc_Instruction* cmp = x64->curr_compare_insn;
                     X64_Instruction* insn = x64_build_setcc(x64, cmp);
                     
-                    X64_Operand temp_reg = {};
-                    temp_reg.virtual_register = x64_allocate_virtual_register(x64);
-                    temp_reg.kind = x64_get_register_kind(bc->src1.Type);
-                    
+                    X64_Operand temp_reg = x64_temporary_register(x64, bc->dest_type);
                     insn->op0 = temp_reg;
                     x64->curr_compare_insn = 0;
                     
@@ -1171,7 +1181,6 @@ x64_build_function(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_b
         // NOTE(Alexander): Make sure we aren't reading and writing to memory at once
         X64_Instruction* insn = x64->curr_instruction;
         x64_fix_memory_to_memory_instruction(x64, insn);
-        x64->curr_instruction = 0;
         
         curr_block = get_bc_basic_block(bytecode, curr_block->next_byte_offset);
         curr_block_insn = 0;

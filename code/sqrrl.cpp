@@ -222,6 +222,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         X64_Builder x64_builder = {};
         x64_builder.label_indices = bytecode_builder.label_indices;
         x64_builder.bc_register_live_lengths = bytecode_builder.live_lengths;
+        x64_builder.bytecode = &bytecode_builder.code;
         
         // Make sure to compile entry point function first
         Bc_Label entry_point_label = { Sym_main, 0 };

@@ -38,7 +38,9 @@ bc_push_basic_block(Bc_Builder* bc, Bc_Label label) {
     Bc_Decl decl = {};
     decl.kind = BcDecl_Basic_Block;
     
-    if (!arena_can_fit(&bc->code_arena, Bc_Basic_Block)) {
+    if (!arena_can_fit_size(&bc->code_arena, 
+                            sizeof (Bc_Basic_Block) + sizeof(Bc_Instruction),
+                            max(alignof (Bc_Basic_Block), alignof(Bc_Instruction)))) {
         arena_grow(&bc->code_arena);
         array_push(bc->code.blocks, bc->code_arena.base);
         bc->code.block_size = bc->code_arena.size;
@@ -148,7 +150,7 @@ bc_conform_to_larger_type(Bc_Builder* bc,
     }
     
     // NOTE(Alexander): we don't need to cast constant values
-    if (is_bc_operand_value(larger->kind)) {
+    if (is_bc_operand_value(smaller->kind)) {
         return larger_type;
     }
     

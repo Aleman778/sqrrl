@@ -74,6 +74,7 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
     X64_Builder x64_builder = {};
     x64_builder.label_indices = bytecode_builder.label_indices;
     x64_builder.bc_register_live_lengths = bytecode_builder.live_lengths;
+    x64_builder.bytecode = &bytecode_builder.code;
     
     for_map (bytecode_builder.declarations, it) {
         if (it->key.ident == Kw_global || it->key.index != 0) {
@@ -83,7 +84,7 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
         Bc_Decl* decl = &it->value;
         
         if (decl->kind == BcDecl_Procedure) {
-            pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
+            //pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
             Bc_Basic_Block* first_basic_block = get_bc_basic_block(&bytecode_builder.code, decl->first_byte_offset);
             
             String_Builder test_sb = {};

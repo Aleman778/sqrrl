@@ -4,10 +4,14 @@ unary_expressions() {
     int x = 42;
     int y = -x;
     assert(y == -42);
+    y = -y;
+    assert(y == 42);
     
     bool flag = true;
     flag = !flag;
     assert(flag == false);
+    flag = !flag;
+    assert(flag == true);
 }
 
 

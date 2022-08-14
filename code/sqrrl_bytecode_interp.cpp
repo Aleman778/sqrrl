@@ -266,17 +266,21 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
         BINARY_CASE(Bytecode_cmpgt, >);
 #undef BINARY_CASE
         
+        
+        case Bytecode_goto: {
+            Bc_Label target_label = bc->dest.Label;
+            Bc_Decl* target = &map_get(interp->declarations, target_label);
+            assert(target && target->kind == BcDecl_Basic_Block);
+            
+            Bc_Interp_Scope* scope = &array_last(interp->scopes);
+            scope->curr_block = get_bc_basic_block(interp->code, target->first_byte_offset);
+            scope->curr_block_insn = 0;
+        } break;
+        
         case Bytecode_branch: {
-            Bc_Label target_label;
-            if (bc->dest.kind == BcOperand_Label) {
-                // Unconditional branch
-                target_label = bc->dest.Label;
-            } else {
-                // Conditional branch
-                Value_Data cond = bc_interp_operand_value(interp, &bc->dest);
-                Bc_Operand* src = (cond.signed_int > 0) ? &bc->src0 : &bc->src1;
-                target_label = src->Label;
-            }
+            Value_Data cond = bc_interp_operand_value(interp, &bc->dest);
+            Bc_Operand* src = (cond.signed_int > 0) ? &bc->src0 : &bc->src1;
+            Bc_Label target_label = src->Label;
             
             Bc_Decl* target = &map_get(interp->declarations, target_label);
             assert(target && target->kind == BcDecl_Basic_Block);

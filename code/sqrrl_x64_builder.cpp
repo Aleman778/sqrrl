@@ -171,6 +171,36 @@ x64_push_size(X64_Builder* x64, umm size, umm align, umm flags=0) {
     return result;
 }
 
+void
+x64_fix_memory_to_memory_instruction(X64_Builder* x64, X64_Instruction* insn) {
+    if (operand_is_memory(insn->op0.kind) && operand_is_memory(insn->op1.kind)) {
+        
+        X64_Operand_Kind reg_kind = X64Operand_r64;
+        switch (insn->op1.kind) {
+            case X64Operand_m8: reg_kind = X64Operand_r8; break;
+            case X64Operand_m16: reg_kind = X64Operand_r16; break;
+            case X64Operand_m32: reg_kind = X64Operand_r32; break;
+            case X64Operand_m64: reg_kind = X64Operand_r64; break;
+        }
+        
+        // We push a new instruction and copy over the old one onto that
+        X64_Instruction* mov_insn = insn;
+        insn = x64_push_struct(x64, X64_Instruction);
+        x64->curr_basic_block->count++;
+        x64->instruction_count++;
+        *insn = *mov_insn;
+#if BUILD_DEBUG
+        insn->comment = 0;
+#endif
+        
+        mov_insn->opcode = X64Opcode_mov;
+        mov_insn->op0 = x64_build_virtual_register(x64, reg_kind);
+        mov_insn->op1 = insn->op1;
+        
+        insn->op1 = mov_insn->op0;
+    }
+}
+
 
 X64_Instruction*
 _x64_push_instruction(X64_Builder* x64, X64_Opcode opcode, cstring comment = 0) {
@@ -179,32 +209,7 @@ _x64_push_instruction(X64_Builder* x64, X64_Opcode opcode, cstring comment = 0) 
     if (x64->curr_instruction) {
         // NOTE(Alexander): Make sure we aren't reading and writing to memory at once
         X64_Instruction* insn = x64->curr_instruction;
-        if (operand_is_memory(insn->op0.kind) && operand_is_memory(insn->op1.kind)) {
-            
-            X64_Operand_Kind reg_kind = X64Operand_r64;
-            switch (insn->op1.kind) {
-                case X64Operand_m8: reg_kind = X64Operand_r8; break;
-                case X64Operand_m16: reg_kind = X64Operand_r16; break;
-                case X64Operand_m32: reg_kind = X64Operand_r32; break;
-                case X64Operand_m64: reg_kind = X64Operand_r64; break;
-            }
-            
-            // We push a new instruction and copy over the old one onto that
-            X64_Instruction* mov_insn = insn;
-            insn = x64_push_struct(x64, X64_Instruction);
-            x64->curr_basic_block->count++;
-            x64->instruction_count++;
-            *insn = *mov_insn;
-#if BUILD_DEBUG
-            insn->comment = 0;
-#endif
-            
-            mov_insn->opcode = X64Opcode_mov;
-            mov_insn->op0 = x64_build_virtual_register(x64, reg_kind);
-            mov_insn->op1 = insn->op1;
-            
-            insn->op1 = mov_insn->op0;
-        }
+        x64_fix_memory_to_memory_instruction(x64, insn);
     }
     
     X64_Instruction* insn = x64_push_struct(x64, X64_Instruction);
@@ -439,7 +444,6 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
         case Bytecode_noop: break;
         
         case Bytecode_store: {
-            
             smm stack_index = map_get_index(x64->stack_offsets, bc->dest.Register);
             
             if (stack_index == -1) {
@@ -545,12 +549,22 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             mov_insn->op0 = x64_build_operand(x64, &bc->dest, bc->dest_type); 
             mov_insn->op1 = x64_build_operand(x64, &bc->src0, bc->dest_type);
             
-            X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_neg);
-            insn->op0 = mov_insn->op0;
+            X64_Instruction* neg_insn = x64_push_instruction(x64, X64Opcode_neg);
+            neg_insn->op0 = mov_insn->op0;
         } break;
         
         case Bytecode_not: {
+            X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov); 
+            mov_insn->op0 = x64_build_operand(x64, &bc->dest, bc->dest_type); 
+            mov_insn->op1 = x64_build_operand(x64, &bc->src0, bc->dest_type);
             
+            X64_Instruction* xor_insn = x64_push_instruction(x64, X64Opcode_xor);
+            xor_insn->op0 = mov_insn->op0;
+            xor_insn->op1 = x64_build_immediate(x64, -1, bc->dest_type);
+            
+            X64_Instruction* and_insn = x64_push_instruction(x64, X64Opcode_and);
+            and_insn->op0 = xor_insn->op0;
+            and_insn->op1 = x64_build_immediate(x64, 1, bc->dest_type);
         } break;
         
 #define BINARY_CASE(opcode) \
@@ -678,7 +692,7 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1, bc->dest_type); \
         
         case Bytecode_goto: {
             Bc_Label jump_label = bc->dest.Label;
-            Bc_Basic_Block* next_block = (Bc_Basic_Block*) (bc + 1);
+            Bc_Basic_Block* next_block = get_bc_basic_block(x64->bytecode, x64->curr_bc_basic_block->next_byte_offset);
             
             if (next_block->label.index != jump_label.index) {
                 assert(jump_label.ident != Kw_invalid);
@@ -721,7 +735,7 @@ add_insn->op1 = x64_build_operand(x64, &bc->src1, bc->dest_type); \
             Bc_Label else_label = bc->src1.Label;
             assert(then_label.ident == else_label.ident && "branches can't jump to another declaration");
             
-            Bc_Basic_Block* next_block = (Bc_Basic_Block*) (bc + 1);
+            Bc_Basic_Block* next_block = get_bc_basic_block(x64->bytecode, x64->curr_bc_basic_block->next_byte_offset);
             assert(next_block->label.index == then_label.index ||
                    next_block->label.index == else_label.index && 
                    "assumes one block is next to this one");
@@ -1018,7 +1032,7 @@ x64_analyse_function(X64_Builder* x64, Bc_Instruction* bc) {
             map_put(x64->stack_offsets, bc->dest.Register, -stack_offset);
             x64->curr_stack_offset = stack_offset;
             
-            //pln("stack_offset(size = %, align = %, %) = %", f_umm(type->cached_size), f_umm(type->cached_align), f_u32(bc->dest.Register.index), f_s64(stack_offset));
+            //pln("stack_offset(size = %, align = %, %) = %", f_umm(size), f_umm(align), f_u32(bc->dest.Register), f_s64(stack_offset));
         } break;
         
         case Bytecode_memory_alloc: {
@@ -1140,6 +1154,7 @@ x64_build_function(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_b
     u32 curr_bc_instruction = 0;
     u32 curr_block_insn = 0;
     while (curr_block) {
+        x64->curr_bc_basic_block = curr_block;
         while (curr_block_insn < curr_block->instruction_count) {
             Bc_Instruction* insn = get_first_bc_instruction(curr_block) + curr_block_insn;
             x64_build_instruction_from_bytecode(x64, insn);
@@ -1152,6 +1167,12 @@ x64_build_function(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_b
             curr_block_insn++;
             curr_bc_instruction++;
         }
+        
+        // NOTE(Alexander): Make sure we aren't reading and writing to memory at once
+        X64_Instruction* insn = x64->curr_instruction;
+        x64_fix_memory_to_memory_instruction(x64, insn);
+        x64->curr_instruction = 0;
+        
         curr_block = get_bc_basic_block(bytecode, curr_block->next_byte_offset);
         curr_block_insn = 0;
         

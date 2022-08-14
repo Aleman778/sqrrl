@@ -4,8 +4,10 @@ X64_OPCODE(invalid, INVALID) \
 X64_OPCODE(noop, NOOP) \
 X64_OPCODE(int3, INT3) \
 X64_OPCODE(neg, NEG) \
+X64_OPCODE(not, NOT) \
 X64_OPCODE(and, AND) \
 X64_OPCODE(or, OR) \
+X64_OPCODE(xor, XOR) \
 X64_OPCODE(add, ADD) \
 X64_OPCODE(sub, SUB) \
 X64_OPCODE(mul, MUL) \

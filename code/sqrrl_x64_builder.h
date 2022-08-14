@@ -15,6 +15,7 @@ struct X64_Builder {
     
     umm instruction_count;
     X64_Instruction* curr_instruction;
+    Bc_Basic_Block* curr_bc_basic_block;
     X64_Basic_Block* curr_basic_block;
     Bc_Instruction* curr_compare_insn;
     
@@ -28,6 +29,7 @@ struct X64_Builder {
     map(u64, X64_Operand)* allocated_virtual_registers; // TODO(Alexander): needs to be renamed
     Bc_Live_Length_Table* bc_register_live_lengths;
     array(u64)* active_virtual_registers;
+    Bytecode* bytecode;
     
     Interference_Graph* interference_graph;
 };

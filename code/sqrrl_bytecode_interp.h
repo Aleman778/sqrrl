@@ -2,13 +2,16 @@
 struct Bc_Interp_Scope {
     map(Bc_Register, Value_Data)* registers;
     Bc_Basic_Block* curr_block;
-    umm curr_block_insn;
+    smm curr_block_insn;
     Bc_Register return_register;
 };
 
 struct Bc_Interp {
+    // TODO(Alexander): we shouldn't need the builder, we need to extract only the bytecode 
+    Bytecode* code;
+    
     array(Bc_Interp_Scope)* scopes;
-    Bc_Label_To_Value_Table* declarations;
+    Bc_Decl_Table* declarations;
     
     Memory_Arena stack;
     smm base_pointer;

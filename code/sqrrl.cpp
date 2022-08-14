@@ -174,7 +174,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         // Build bytecode representation of the AST
         Bc_Builder bytecode_builder = {};
         bc_build_from_ast(&bytecode_builder, &ast_file);
-        pln("Bytecode size (% bytes):\n", f_umm(bytecode_builder.arena.curr_used)); // TODO(Alexander): only counts last memory block
+        Bytecode* bytecode = &bytecode_builder.code;
+        
+        // TODO(Alexander): only counts last memory block
+        pln("Bytecode (code) size (% bytes):\n", f_umm(bytecode_builder.code_arena.curr_used));
         
         {
             String_Builder sb = {};
@@ -183,12 +186,24 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     continue;
                 }
                 
-                if (it->value.type == Value_basic_block) {
-                    string_builder_push(&sb, it->value.data.basic_block);
-                } else {
-                    string_builder_push_format(&sb, "%%% = %\n\n",
+                Bc_Decl* decl = &it->value;
+                if (decl->kind == BcDecl_Procedure) {
+                    Bc_Basic_Block* first_basic_block = get_bc_basic_block(bytecode, decl->first_byte_offset);
+                    Bc_Instruction* label = get_first_bc_instruction(first_basic_block);
+                    
+                    string_builder_push(&sb, "\n");
+                    string_builder_push(&sb, &label->src0);
+                    string_builder_push(&sb, " ");
+                    string_builder_push(&sb, vars_load_string(it->key.ident));
+                    string_builder_push(&sb, label->src1.Argument_List, true);
+                    string_builder_push(&sb, " {\n");
+                    string_builder_push(&sb, first_basic_block, bytecode);
+                    string_builder_push(&sb, "}\n");
+                    
+                } else if (decl->kind == BcDecl_Data) {
+                    string_builder_push_format(&sb, "\n%%% = %\n",
                                                f_string(vars_load_string(it->key.ident)),
-                                               f_value(&it->value));
+                                               f_s64(&decl->Data.value.signed_int));
                 }
             }
             
@@ -199,20 +214,24 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         
         // Interpret the bytecode
         Bc_Interp interp = {};
+        interp.code = &bytecode_builder.code;
         interp.declarations = bytecode_builder.declarations;
         int interp_exit_code = (int) bc_interp_bytecode(&interp).signed_int;
         
         // Generate X64 machine code
         X64_Builder x64_builder = {};
+        x64_builder.label_indices = bytecode_builder.label_indices;
         x64_builder.bc_register_live_lengths = bytecode_builder.live_lengths;
+        x64_builder.bytecode = &bytecode_builder.code;
         
         // Make sure to compile entry point function first
-        Bc_Register entry_point_label = { Sym_main, 0 };
-        Value main_decl = map_get(bytecode_builder.declarations, entry_point_label);
-        assert(main_decl.type == Value_basic_block);
+        Bc_Label entry_point_label = { Sym_main, 0 };
+        Bc_Decl* main_decl = &map_get(bytecode_builder.declarations, entry_point_label);
+        assert(main_decl && main_decl->kind == BcDecl_Procedure);
         
-        Bc_Basic_Block* main_block = main_decl.data.basic_block;
-        x64_build_function(&x64_builder, main_block);
+        Bc_Basic_Block* main_block =
+            get_bc_basic_block(bytecode, main_decl->first_byte_offset);
+        x64_build_function(&x64_builder, bytecode, main_block);
         pln("compiling function `%`", f_string(vars_load_string(Sym_main)));
         
         for_map (bytecode_builder.declarations, it) {
@@ -221,13 +240,14 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             }
             
             pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
-            
-            if (it->value.type == Value_basic_block) {
-                Bc_Basic_Block* function_block = it->value.data.basic_block;
-                x64_build_function(&x64_builder, function_block);
-            } else {
+            Bc_Decl* decl = &it->value;
+            if (decl->kind == BcDecl_Procedure) {
+                Bc_Basic_Block* proc_block =
+                    get_bc_basic_block(bytecode, decl->first_byte_offset);
+                x64_build_function(&x64_builder, bytecode, proc_block);
+            } else if (decl->kind == BcDecl_Data) {
                 // TODO(Alexander): we need to store the actual value type in the declarations
-                x64_build_data_storage(&x64_builder, it->key, it->value.data, &global_primitive_types[PrimitiveType_int]);
+                x64_build_data_storage(&x64_builder, it->key, decl->Data.value, decl->Data.type);
             }
         }
         
@@ -275,9 +295,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         X64_Assembler assembler = {};
         assembler.bytes = (u8*) asm_buffer;
         assembler.size = asm_size;
-        
-        // TODO(Alexander): int3 breakpoint for debugging
-        //push_u8(&assembler, 0xCC);
         
         x64_assemble_to_machine_code(&assembler,
                                      x64_instruction_definitions,

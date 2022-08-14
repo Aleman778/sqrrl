@@ -20,33 +20,11 @@ bc_interp_load_register(Bc_Interp* interp, Bc_Register reg) {
         if (index != -1) {
             return scope->registers[index].value;
         } else {
-            return map_get(interp->declarations, reg).data;
+            Bc_Decl* decl = &map_get(interp->declarations, reg);
+            assert(decl && decl->kind == BcDecl_Data);
+            return decl->Data.value;
         }
     }
-}
-
-// TODO(Alexander): this is kind of silly to go from Type* -> Bc_Type -> Type*
-Type*
-bc_type_to_type(Bc_Type type) {
-    Type* result = 0;
-    
-    switch (type.kind) {
-        case BcType_s1:  result = &global_primitive_types[PrimitiveType_s8]; break;
-        case BcType_s8:  result = &global_primitive_types[PrimitiveType_s8]; break;
-        case BcType_s16: result = &global_primitive_types[PrimitiveType_s16]; break;
-        case BcType_s32: result = &global_primitive_types[PrimitiveType_s32]; break;
-        case BcType_s64: result = &global_primitive_types[PrimitiveType_s64]; break;
-        case BcType_u8:  result = &global_primitive_types[PrimitiveType_u8]; break;
-        case BcType_u16: result = &global_primitive_types[PrimitiveType_u16]; break;
-        case BcType_u32: result = &global_primitive_types[PrimitiveType_u32]; break;
-        case BcType_u64: result = &global_primitive_types[PrimitiveType_u64]; break;
-        case BcType_f32: result = &global_primitive_types[PrimitiveType_f32]; break;
-        case BcType_f64: result = &global_primitive_types[PrimitiveType_f64]; break;
-        case BcType_Aggregate: result = type.aggregate; break;
-        default: assert(0 && "bug: provided type is not valid"); break;
-    }
-    
-    return result;
 }
 
 inline void*
@@ -61,32 +39,32 @@ bc_interp_alloc_register(Bc_Interp* interp, Bc_Register reg, Bc_Type type) {
     return data;
 }
 
-inline void
-bc_interp_store_value(Bc_Interp* interp, Bc_Type type, void* data, Value_Data value) {
+void
+bc_interp_store_value(Bc_Interp* interp, Bc_Type type, void* dest, void* src) {
     if (type.ptr_depth > 0) {
-        *((umm*) data) = (umm) value.unsigned_int;
+        *((umm*) dest) = (umm) src;
         return;
     }
     
     switch (type.kind) {
-        case BcType_s1:   *((s8*) data) = (s8)  value.signed_int; break;
-        case BcType_s8:   *((s8*) data) = (s8)  value.signed_int; break;
-        case BcType_s16: *((s16*) data) = (s16) value.signed_int; break;
-        case BcType_s32: *((s32*) data) = (s32) value.signed_int; break;
-        case BcType_s64: *((s64*) data) = (s64) value.signed_int; break;
-        case BcType_u8:   *((u8*) data) = (u8)  value.unsigned_int; break;
-        case BcType_u16: *((u16*) data) = (u16) value.unsigned_int; break;
-        case BcType_u32: *((u32*) data) = (u32) value.unsigned_int; break;
-        case BcType_u64: *((u64*) data) = (u64) value.unsigned_int; break;
-        case BcType_f32: *((f32*) data) = (f32) value.floating; break;
-        case BcType_f64: *((f64*) data) = (f64) value.floating; break;
+        case BcType_s1:
+        case BcType_s8:   *((s8*) dest) = *((s8*) src); break;
+        case BcType_s16: *((s16*) dest) = *((s16*) src); break;
+        case BcType_s32: *((s32*) dest) = *((s32*) src); break;
+        case BcType_s64: *((s64*) dest) = *((s64*) src); break;
+        case BcType_u8:   *((u8*) dest) = *((u8*)  src); break;
+        case BcType_u16: *((u16*) dest) = *((u16*) src); break;
+        case BcType_u32: *((u32*) dest) = *((u32*) src); break;
+        case BcType_u64: *((u64*) dest) = *((u64*) src); break;
+        case BcType_f32: *((f32*) dest) = *((f32*) src); break;
+        case BcType_f64: *((f64*) dest) = *((f64*) src); break;
         
         case BcType_Aggregate: {
             assert(type.aggregate);
             
             switch (type.aggregate->kind) {
                 case Type_String: {
-                    *((string*) data) = value.str;
+                    *((string*) dest) = *((string*) src);
                 } break;
                 
                 default: {
@@ -100,7 +78,7 @@ bc_interp_store_value(Bc_Interp* interp, Bc_Type type, void* data, Value_Data va
     }
 }
 
-inline Value_Data
+Value_Data
 bc_interp_load_value(Bc_Interp* interp, Bc_Type type, void* data) {
     Value_Data result;
     if (type.ptr_depth > 0) {
@@ -131,17 +109,17 @@ bc_interp_operand_value(Bc_Interp* interp, Bc_Operand* operand) {
     Value_Data result = {};
     
     switch (operand->kind) {
-        case BcOperand_Register: {
+        case BcOperand_Register:
+        case BcOperand_Stack: {
             result = bc_interp_load_register(interp, operand->Register);
         } break;
         
-        case BcOperand_Value: {
-            bc_interp_store_value(interp, operand->type, &result.signed_int, operand->Value);
-            result = bc_interp_load_value(interp, operand->type, &result.signed_int);
+        case BcOperand_Int: {
+            result.signed_int = operand->Signed_Int;
         } break;
         
-        case BcOperand_Basic_Block: {
-            result.basic_block = operand->Basic_Block;
+        case BcOperand_Float: {
+            result.floating = operand->Float;
         } break;
         
         default: {
@@ -152,13 +130,13 @@ bc_interp_operand_value(Bc_Interp* interp, Bc_Operand* operand) {
     return result;
 }
 
-void
+Bc_Basic_Block*
 bc_interp_function_call(Bc_Interp* interp, string_id ident, Bc_Register return_register={}) {
-    Bc_Register label = { ident, 0 };
-    Value decl_value = map_get(interp->declarations, label);
-    assert(decl_value.type == Value_basic_block);
+    Bc_Label label = { ident, 0 }; // TODO(Alexander): might not always be 0
+    Bc_Decl* decl = &map_get(interp->declarations, label);
+    assert(decl && decl->kind == BcDecl_Procedure);
     
-    Bc_Basic_Block* target_block = decl_value.data.basic_block;
+    Bc_Basic_Block* target_block = get_bc_basic_block(interp->code, decl->first_byte_offset);
     assert(target_block && target_block->label.ident != Kw_invalid);
     
     if (array_count(interp->scopes)) {
@@ -171,6 +149,32 @@ bc_interp_function_call(Bc_Interp* interp, string_id ident, Bc_Register return_r
     new_scope.curr_block = target_block;
     new_scope.curr_block_insn = 0;
     array_push(interp->scopes, new_scope);
+    
+    return target_block;
+}
+
+// TODO(Alexander): this is very silly to go from Type* -> Bc_Type -> Type*
+Type*
+bc_type_to_type(Bc_Type type) {
+    Type* result = 0;
+    
+    switch (type.kind) {
+        case BcType_s1:  result = &global_primitive_types[PrimitiveType_s8]; break;
+        case BcType_s8:  result = &global_primitive_types[PrimitiveType_s8]; break;
+        case BcType_s16: result = &global_primitive_types[PrimitiveType_s16]; break;
+        case BcType_s32: result = &global_primitive_types[PrimitiveType_s32]; break;
+        case BcType_s64: result = &global_primitive_types[PrimitiveType_s64]; break;
+        case BcType_u8:  result = &global_primitive_types[PrimitiveType_u8]; break;
+        case BcType_u16: result = &global_primitive_types[PrimitiveType_u16]; break;
+        case BcType_u32: result = &global_primitive_types[PrimitiveType_u32]; break;
+        case BcType_u64: result = &global_primitive_types[PrimitiveType_u64]; break;
+        case BcType_f32: result = &global_primitive_types[PrimitiveType_f32]; break;
+        case BcType_f64: result = &global_primitive_types[PrimitiveType_f64]; break;
+        case BcType_Aggregate: result = type.aggregate; break;
+        default: assert(0 && "bug: provided type is not valid"); break;
+    }
+    
+    return result;
 }
 
 void
@@ -181,48 +185,43 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
         case Bytecode_label: break;
         
         case Bytecode_stack_alloc: {
-            assert(bc->dest.kind == BcOperand_Register);
+            assert(bc->dest.kind == BcOperand_Stack);
             assert(bc->src0.kind == BcOperand_Type);
             assert(bc->src1.kind == BcOperand_None);
             
-            bc_interp_alloc_register(interp, bc->dest.Register, bc->src0.type);
+            bc_interp_alloc_register(interp, bc->dest.Register, bc->src0.Type);
         } break;
         
         case Bytecode_memory_alloc: {
-            assert(bc->dest.kind == BcOperand_Register);
+            assert(bc->dest.kind == BcOperand_Stack);
             assert(bc->src0.kind == BcOperand_Type);
-            assert(bc->src1.kind == BcOperand_Value);
+            assert(is_bc_operand_value(bc->src1.kind));
             
-            void* data = bc_interp_alloc_register(interp, bc->dest.Register, bc->src0.type);
-            bc_interp_store_value(interp, bc->src0.type, data, bc->src1.Value);
+            void* data = bc_interp_alloc_register(interp, bc->dest.Register, bc->src0.Type);
+            bc_interp_store_value(interp, bc->src0.Type, data, &bc->src1.Signed_Int);
         } break;
         
         case Bytecode_store: {
-            assert(bc->dest.kind == BcOperand_Register);
+            assert(bc->dest.kind == BcOperand_Stack);
             assert(bc->src0.kind != BcOperand_None);
             assert(bc->src1.kind == BcOperand_None);
             
             Value_Data dest = bc_interp_operand_value(interp, &bc->dest);
             Value_Data src = bc_interp_operand_value(interp, &bc->src0);
-            bc_interp_store_value(interp, bc->src0.type, dest.data, src);
+            bc_interp_store_value(interp, bc->dest_type, dest.data, &src.signed_int);
         } break;
         
         case Bytecode_load: {
             assert(bc->dest.kind == BcOperand_Register);
-            assert(bc->src0.kind == BcOperand_Type);
-            assert(bc->src1.kind == BcOperand_Register);
+            assert(bc->src0.kind == BcOperand_Stack);
+            assert(bc->src1.kind == BcOperand_None);
             
-            Value_Data src = bc_interp_operand_value(interp, &bc->src1);
-            Value_Data value = bc_interp_load_value(interp, bc->src0.type, src.data);
+            Value_Data src = bc_interp_operand_value(interp, &bc->src0);
+            Value_Data value = bc_interp_load_value(interp, bc->dest_type, src.data);
             bc_interp_store_register(interp, bc->dest.Register, value);
-            
-            if (bc->src0.type.ptr_depth > 0) {
-                //bc_interp_store_register(interp, bc->dest.Register, src);
-                //bc_interp_alloc_register(interp, bc->dest.Register, bc->src0.type);
-            }
         } break;
         
-        case Bytecode_assign: {
+        case Bytecode_copy: {
             Value_Data result = bc_interp_operand_value(interp, &bc->src0);
             bc_interp_store_register(interp, bc->dest.Register, result); \
         } break;
@@ -267,40 +266,55 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
         BINARY_CASE(Bytecode_cmpgt, >);
 #undef BINARY_CASE
         
-        case Bytecode_branch: {
-            Value_Data branch;
-            if (bc->dest.type.kind == BcType_s1) {
-                // Conditional branch
-                Value_Data cond = bc_interp_operand_value(interp, &bc->dest);
-                Bc_Operand* src = (cond.signed_int > 0) ? &bc->src0 : &bc->src1;
-                branch = bc_interp_operand_value(interp, src);
-            } else {
-                // Unconditional branch
-                branch = bc_interp_operand_value(interp, &bc->dest);
-            }
+        
+        case Bytecode_goto: {
+            Bc_Label target_label = bc->dest.Label;
+            Bc_Decl* target = &map_get(interp->declarations, target_label);
+            assert(target && target->kind == BcDecl_Basic_Block);
             
             Bc_Interp_Scope* scope = &array_last(interp->scopes);
-            scope->curr_block = branch.basic_block;
+            scope->curr_block = get_bc_basic_block(interp->code, target->first_byte_offset);
             scope->curr_block_insn = 0;
         } break;
         
-        // TODO(Alexander): do we need this we should truncate when storing the value instead
+        case Bytecode_branch: {
+            Value_Data cond = bc_interp_operand_value(interp, &bc->dest);
+            Bc_Operand* src = (cond.signed_int > 0) ? &bc->src0 : &bc->src1;
+            Bc_Label target_label = src->Label;
+            
+            Bc_Decl* target = &map_get(interp->declarations, target_label);
+            assert(target && target->kind == BcDecl_Basic_Block);
+            
+            Bc_Interp_Scope* scope = &array_last(interp->scopes);
+            scope->curr_block = get_bc_basic_block(interp->code, target->first_byte_offset);
+            scope->curr_block_insn = 0;
+        } break;
+        
         case Bytecode_truncate: {
-            Value_Data result = bc_interp_operand_value(interp, &bc->src0);
+            // NOTE(Alexander): we need to store and load the value to truncate the Value_Data
+            Value_Data src = bc_interp_operand_value(interp, &bc->src0);
+            Value_Data result = bc_interp_load_value(interp, bc->dest_type, &src.signed_int);
             bc_interp_store_register(interp, bc->dest.Register, result);
         } break;
         
         case Bytecode_sign_extend: {
+            assert(bc->dest.kind == BcOperand_Register);
+            assert(bc->src0.kind != BcOperand_None);
+            assert(bc->src1.kind == BcOperand_Type);
+            
             Value_Data value = bc_interp_operand_value(interp, &bc->src0);
             Value_Data result = value;
             
-            bool high_bit_set = (value.unsigned_int & 
-                                 (1ll << (u64) bc_type_to_bitsize(bc->src0.type.kind))) > 0;
-            u64 mask = U64_MAX << (u64) bc_type_to_bitsize(bc->src1.type.kind);
-            if (high_bit_set) {
-                result.unsigned_int = result.unsigned_int | mask;
-            } else {
-                result.unsigned_int = result.unsigned_int & ~mask;
+            u64 dest_bits = bc_type_to_bitsize(bc->dest_type.kind);
+            if (dest_bits < 64) {
+                u64 highest_bit_mask = (1ll << (u64) (bc_type_to_bitsize(bc->src1.Type.kind) - 1));
+                bool high_bit_set = (value.unsigned_int & highest_bit_mask) > 0;
+                u64 mask = U64_MAX << dest_bits;
+                if (high_bit_set) {
+                    result.unsigned_int = result.unsigned_int | mask;
+                } else {
+                    result.unsigned_int = result.unsigned_int & ~mask;
+                }
             }
             
             bc_interp_store_register(interp, bc->dest.Register, result);
@@ -310,39 +324,46 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
             Value_Data value = bc_interp_operand_value(interp, &bc->src0);
             Value_Data result = value;
             
-            u64 mask = U64_MAX << (u64) bc_type_to_bitsize(bc->src1.type.kind);
-            result.unsigned_int = result.unsigned_int & ~mask;
+            u64 dest_bits = bc_type_to_bitsize(bc->dest_type.kind);
+            if (dest_bits < 64) {
+                u64 mask = U64_MAX << dest_bits;
+                result.unsigned_int = result.unsigned_int & ~mask;
+            }
             
             bc_interp_store_register(interp, bc->dest.Register, result);
         } break;
         
-        case Bytecode_cast_fp_to_sint: {
+        case Bytecode_float_to_sint: {
             unimplemented;
         } break;
         
-        case Bytecode_cast_fp_to_uint: {
+        case Bytecode_float_to_uint: {
             unimplemented;
         } break;
         
-        case Bytecode_cast_sint_to_fp: {
+        case Bytecode_sint_to_float: {
             unimplemented;
         } break;
         
-        case Bytecode_cast_uint_to_fp: {
+        case Bytecode_uint_to_float: {
             unimplemented;
         } break;
         
-        case Bytecode_fp_extend: {
+        case Bytecode_float_extend: {
             unimplemented;
         } break;
         
-        case Bytecode_fp_truncate: {
+        case Bytecode_float_truncate: {
             unimplemented;
         } break;
         
         case Bytecode_call: {
-            assert(bc->src0.type.kind == BcType_Aggregate);
-            Type* type = bc->src0.type.aggregate;
+            assert(bc->src0.kind == BcOperand_Type);
+            assert(bc->src1.kind == BcOperand_Argument_List);
+            assert(bc->src0.Type.kind == BcType_Aggregate);
+            
+            
+            Type* type = bc->src0.Type.aggregate;
             assert(type->kind == Type_Function);
             
             Type_Table* arg_types = &type->Function.arguments;
@@ -352,8 +373,7 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
                 
                 for_array(bc->src1.Argument_List, arg, arg_index) {
                     
-                    Value value = {};
-                    value.data = bc_interp_operand_value(interp, arg);
+                    Value_Data arg_value = bc_interp_operand_value(interp, &arg->src);
                     
                     if (arg_index < array_count(arg_types->idents)) {
                         // Normal argument
@@ -361,7 +381,7 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
                         Type* arg_type = map_get(arg_types->ident_to_type, ident);
                         
                         if (arg_type) {
-                            void* data = interp_push_value(&intrinsic_interp, arg_type, value);
+                            void* data = interp_push_value(&intrinsic_interp, arg_type, arg_value);
                             interp_push_entity_to_current_scope(&intrinsic_interp, ident, data, arg_type);
                         } else {
                             assert(0 && "argument type was not found");
@@ -370,9 +390,9 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
                     } else {
                         // Variadic argument
                         Interp_Value interp_value = {};
-                        interp_value.value = value;
+                        interp_value.value.data = arg_value;
                         
-                        Type* arg_type = bc_type_to_type(arg->type);
+                        Type* arg_type = bc_type_to_type(arg->type); // Improve our type system
                         if (arg_type) {
                             interp_value.type = *arg_type;
                             array_push(variadic_args, interp_value);
@@ -385,18 +405,23 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
                 type->Function.interp_intrinsic(&intrinsic_interp, variadic_args);
                 
             } else {
-                bc_interp_function_call(interp, bc->src0.Register.ident, bc->dest.Register);
+                Bc_Basic_Block* target_block =
+                    bc_interp_function_call(interp, type->Function.ident, bc->dest.Register);
+                
+                Bc_Instruction* label_insn = get_first_bc_instruction(target_block);
+                assert(label_insn->src1.kind == BcOperand_Argument_List);
+                array(Bc_Argument*) formal_args = label_insn->src1.Argument_List;
                 
                 Bc_Interp_Scope* scope = &array_last(interp->scopes);
                 for_array(bc->src1.Argument_List, arg, arg_index) {
+                    Bc_Argument* formal_arg = formal_args + arg_index;
                     
                     if (arg_index < array_count(arg_types->idents)) {
                         string_id ident = arg_types->idents[arg_index];
                         Type* arg_type = map_get(arg_types->ident_to_type, ident);
                         
-                        Value_Data arg_data = bc_interp_operand_value(interp, arg);
-                        Bc_Register reg = {};
-                        reg.ident = ident;
+                        Value_Data arg_data = bc_interp_operand_value(interp, &arg->src);
+                        Bc_Register reg = formal_arg->src.Register;
                         bc_interp_store_register(interp, reg, arg_data);
                     } else {
                         // Variadic argument
@@ -409,9 +434,9 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
         
         case Bytecode_ret: {
             Value_Data value = {};
-            if (bc->op0.kind == BcOperand_Register) {
-                value = bc_interp_operand_value(interp, &bc->op0);
-                switch (bc->op0.type.kind) {
+            if (bc->dest.kind == BcOperand_Register) {
+                value = bc_interp_operand_value(interp, &bc->dest);
+                switch (bc->dest_type.kind) {
                     case BcType_s1:  value.unsigned_int = (u64) 1 & value.unsigned_int; break;
                     case BcType_s8:  value.signed_int = (s8) value.signed_int; break;
                     case BcType_s16: value.signed_int = (s16) value.signed_int; break;
@@ -425,15 +450,14 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
             // Pop scope
             array_pop(interp->scopes);
             
-            // Store value in specific return register, specified by the caller instruction
-            // NOTE(Alexander): assumes top level scope is the global scope which has no return.
-            if (array_count(interp->scopes) == 1) {
+            if (array_count(interp->scopes) == 0) {
                 interp->return_value = value;
             } else  {
                 Bc_Interp_Scope* scope = &array_last(interp->scopes);
-                if (scope->return_register.index != 0) {
+                assert(scope->return_register);
+                if (scope->return_register != 0) {
                     bc_interp_store_register(interp, scope->return_register, value);
-                    scope->return_register.index = 0;
+                    scope->return_register = 0;
                 }
             }
         } break;
@@ -446,6 +470,8 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
 
 Value_Data
 bc_interp_bytecode(Bc_Interp* interp, string_id entry_point) {
+    // TODO(Alexander): with data declarations do we still need this?
+#if 0
     // First analyse the globals
     bc_interp_function_call(interp, Kw_global);
     
@@ -464,6 +490,7 @@ bc_interp_bytecode(Bc_Interp* interp, string_id entry_point) {
         Bc_Instruction* insn = scope->curr_block->first + scope->curr_block_insn++;
         bc_interp_instruction(interp, insn);
     }
+#endif
     
     // Run the entry point
     bc_interp_function_call(interp, entry_point);
@@ -479,13 +506,13 @@ bc_interp_bytecode(Bc_Interp* interp, string_id entry_point) {
             continue;
         }
         
-        if (scope->curr_block_insn >= scope->curr_block->count) {
-            scope->curr_block = scope->curr_block->next;
+        if (scope->curr_block_insn >= scope->curr_block->instruction_count) {
+            scope->curr_block = get_bc_basic_block(interp->code, scope->curr_block->next_byte_offset);
             scope->curr_block_insn = 0;
             continue;
         }
         
-        Bc_Instruction* insn = scope->curr_block->first + scope->curr_block_insn++;
+        Bc_Instruction* insn = get_first_bc_instruction(scope->curr_block) + scope->curr_block_insn++;
         bc_interp_instruction(interp, insn);
     }
     

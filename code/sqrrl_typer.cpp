@@ -486,6 +486,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         
         case Ast_Paren_Expr: {
             result = type_infer_expression(tcx, expr->Paren_Expr.expr, parent_type, report_error);
+            expr->type = result;
         } break;
         
         case Ast_Index_Expr: {
@@ -746,7 +747,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                                                                 ast->Function_Type.return_type,
                                                                 report_error);
             assert(ast->Function_Type.ident && ast->Function_Type.ident->kind == Ast_Ident);
-            result->Function.ident = ast->Function_Type.ident->Ident;
+            result->Function.ident = ast_unwrap_ident(ast->Function_Type.ident);
             result->cached_size = sizeof(smm);
             result->cached_align = alignof(smm);
         } break;

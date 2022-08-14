@@ -1,168 +1,73 @@
 
-// TODO(Alexander): we might want to use this approach, but keep it simple for now
-// This approach essentially only allocates the number of operands that are actually needed
-// given the opcode.
-#if 0
-Bc_Instruction
-push_instruction(Bc_Builder* bc, Bc_Opcode opcode) {
-    Bc_Instruction result = {};
-    
-    Bc_Basic_Block* bb = bc->curr_basic_block;
-    
-    Bc_Opcode* opcode = push_size(&bc->arena, sizeof(Bc_Opcode), alignof(Bc_Opcode));
-    
-    u32 num_operands = bytecode_num_operands[opcode];
-    if (num_operands > 0) {
-        u32 size =  + num_operands * sizeof(Bc_Operand);
-        Bc_Operands* operands = push_size(&bc->arena, sizeof(Bc_Opcode), alignof(Bc_Opcode));
-    }
-    
-    array_push(bb->instructions, result);
-    return result;
-}
-#endif
-
-
-
-void
+Bc_Instruction*
 bc_push_instruction(Bc_Builder* bc, Bc_Opcode opcode) {
-    Bc_Basic_Block* bb = bc->curr_basic_block;
-    assert(bb);
+    Bc_Basic_Block* basic_block = bc->curr_basic_block;
+    assert(basic_block);
     
-    if (!arena_can_fit_size(&bc->arena, sizeof(Bc_Instruction), alignof(Bc_Instruction))) {
-        arena_reallocate(&bc->arena);
-        bb = bc_push_basic_block(bc);
+    Bc_Instruction* prev_insn = bc->curr_instruction;
+    if (prev_insn) {
+        // Record live lengths of temporary registers
+        if (prev_insn->src0.kind == BcOperand_Register) {
+            map_put(bc->live_lengths, prev_insn->src0.Register, bc->instruction_count - 1);
+        }
+        if (prev_insn->src1.kind == BcOperand_Register) {
+            map_put(bc->live_lengths, prev_insn->src1.Register, bc->instruction_count - 1);
+        }
     }
     
-    Bc_Instruction* insn = arena_push_struct(&bc->arena, Bc_Instruction);
+    if (!arena_can_fit(&bc->code_arena, Bc_Instruction)) {
+        arena_grow(&bc->code_arena);
+        array_push(bc->code.blocks, bc->code_arena.base);
+        bc->code.block_size = bc->code_arena.size;
+        basic_block = bc_push_basic_block(bc);
+    }
+    
+    Bc_Instruction* insn = arena_push_struct(&bc->code_arena, Bc_Instruction);
     insn->opcode = opcode;
     
     bc->curr_instruction = insn;
     bc->instruction_count++;
     
-    bb->count++;
-    if (!bb->first) {
-        bb->first = insn;
-    }
+    basic_block->instruction_count++;
     
-#if 0
-    else {
-        if (bb->first + (bb->count - 1) != insn) {
-            // NOTE(Alexander): special case, instruction is not stored contigously
-            
-            
-            
-            pln("\ncurr_block: %\n", f_string(vars_load_string(bb->label.ident)));
-            assert(0);
-        }
-    }
-#endif
-}
-
-void
-bc_push_operand(Bc_Builder* bc, Bc_Operand operand) {
-    Bc_Instruction* insn = bc->curr_instruction;
-    if (!insn) {
-        assert(0 && "no current instruction, forgot to bc_push_instruction() first?");
-        return;
-    }
-    
-    if (operand.kind == BcOperand_Register) {
-        map_put(bc->live_lengths, operand.Register, bc->instruction_count - 1);
-    }
-    
-    // HACK(Alexander): this is not really pushing at the moment
-    // we are just inserting the next slot available
-    if (!insn->dest.kind) {
-        insn->dest = operand;
-    } else if (!insn->src0.kind) {
-        insn->src0 = operand;
-    } else if (!insn->src1.kind) {
-        insn->src1 = operand;
-    } else {
-        assert(0 && "reached maximum allowed operands per instruction");
-    }
+    return insn;
 }
 
 Bc_Basic_Block*
-bc_push_basic_block(Bc_Builder* bc, Bc_Register label) {
+bc_push_basic_block(Bc_Builder* bc, Bc_Label label) {
+    Bc_Decl decl = {};
+    decl.kind = BcDecl_Basic_Block;
     
-    Bc_Basic_Block* block = arena_push_struct(&bc->arena, Bc_Basic_Block);
+    if (!arena_can_fit_size(&bc->code_arena, 
+                            sizeof (Bc_Basic_Block) + sizeof(Bc_Instruction),
+                            max(alignof (Bc_Basic_Block), alignof(Bc_Instruction)))) {
+        arena_grow(&bc->code_arena);
+        array_push(bc->code.blocks, bc->code_arena.base);
+        bc->code.block_size = bc->code_arena.size;
+    }
+    
+    // NOTE(Alexander): accumulated offset for preceding bytecode blocks
+    assert(array_count(bc->code.blocks) > 0);
+    Bc_Basic_Block* block = arena_push_struct(&bc->code_arena, Bc_Basic_Block);
+    block->next_byte_offset = -1;
+    decl.first_byte_offset = (bc->code.block_size*(array_count(bc->code.blocks) - 1) + 
+                              bc->code_arena.curr_used - sizeof(Bc_Basic_Block));
+    
     if (bc->curr_basic_block) {
-        bc->curr_basic_block->next = block;
+        bc->curr_basic_block->next_byte_offset = decl.first_byte_offset;
     }
     bc->curr_basic_block = block;
     
     if (label.ident != 0) {
         block->label = label;
     } else {
-        block->label = bc_get_unique_register(bc);
+        block->label = create_unique_bc_label(bc);
     }
     
-    Bc_Operand block_operand = {};
-    block_operand.kind = BcOperand_Basic_Block;
-    block_operand.Basic_Block = block;
-    bc_push_instruction(bc, Bytecode_label);
-    bc_push_operand(bc, block_operand);
+    bc_label(bc, block->label);
     
-    block->first = bc->curr_instruction;
-    block->count = 1;
-    
-    // TODO(Alexander): maybe we need this later, but right now this makes x64 backend compile the same function multiple times.
-    //Value decl = {};
-    //decl.type = Value_basic_block;
-    //decl.data.basic_block = block;
-    //map_put(bc->declarations, block->label, decl);
-    
+    map_put(bc->declarations, label, decl);
     return block;
-}
-
-// TODO(Alexander): this is a temporary solution to get the types from the frontend
-// later on the type checker will do this for us
-Bc_Type
-bc_build_type(Bc_Builder* bc, Ast* type) {
-    Bc_Type result = {};
-    
-    switch (type->kind) {
-        case Ast_Named_Type: {
-            string_id ident = ast_unwrap_ident(type->Named_Type);
-            
-            if (ident == Kw_string) {
-                // TODO(Alexander): string type
-            } else if (is_builtin_type_keyword(ident)) {
-                // HACK(Alexander): this is a little bit hack of trying to convert between enums
-                
-                switch (ident) {
-                    case Kw_int:  result.kind = BcType_s32; break; // Arch dep?
-                    case Kw_s8:   result.kind = BcType_s8; break;
-                    case Kw_s16:  result.kind = BcType_s16; break;
-                    case Kw_s32:  result.kind = BcType_s32; break;
-                    case Kw_s64:  result.kind = BcType_s64; break;
-                    case Kw_smm:  result.kind = BcType_s64; break; // Arch dep.
-                    case Kw_uint: result.kind = BcType_u32; break; // Arch dep?
-                    case Kw_u8:   result.kind = BcType_u8; break;
-                    case Kw_u16:  result.kind = BcType_u16; break;
-                    case Kw_u32:  result.kind = BcType_u32; break;
-                    case Kw_u64:  result.kind = BcType_u64; break;
-                    case Kw_umm:  result.kind = BcType_u64; break; // Arch dep.
-                    case Kw_f32:  result.kind = BcType_f32; break;
-                    case Kw_f64:  result.kind = BcType_f64; break;
-                    case Kw_char: result.kind = BcType_u8; break;
-                    case Kw_bool: result.kind = BcType_s8; break;
-                    case Kw_b32:  result.kind = BcType_s32; break;
-                    case Kw_void: result.kind = BcType_void; break;
-                    default: assert(0 && "invalid primitive type");
-                }
-            }
-        } break;
-        
-        case Ast_Pointer_Type: {
-            result = bc_build_type(bc, type->Pointer_Type);
-            result.ptr_depth++;
-        } break;
-    }
-    
-    return result;
 }
 
 Bc_Type
@@ -215,157 +120,100 @@ bc_build_type(Bc_Builder* bc, Type* type) {
     return result;
 }
 
-void
-bc_conform_highest_type(Bc_Builder* bc, Bc_Operand* first, Bc_Operand* second) {
-    if (first->type.kind != second->type.kind) {
-        s32 first_bitsize = bc_type_to_bitsize(first->type.kind);
-        s32 second_bitsize = bc_type_to_bitsize(second->type.kind);
-        
-        // If they are the same size then we are done
-        if (first_bitsize == second_bitsize) {
-            return;
-        }
-        
-        Bc_Operand* smaller = first;
-        Bc_Operand* larger = second;
-        if (first_bitsize > second_bitsize) {
-            larger = first;
-            smaller = second;
-        }
-        
-        // Values don't need to be casted
-        if (smaller->kind == BcOperand_Value) {
-            smaller->type = larger->type;
-            return;
-        }
-        
-        bc_push_instruction(bc, is_bc_type_uint(larger->type.kind) ?
-                            Bytecode_zero_extend : Bytecode_sign_extend);
-        
-        Bc_Operand new_operand = bc_get_unique_register_operand(bc, larger->type);
-        bc_push_operand(bc, new_operand);
-        bc_push_operand(bc, *smaller);
-        
-        Bc_Operand type_operand = {};
-        type_operand.kind = BcOperand_Type;
-        type_operand.type = larger->type;
-        bc_push_operand(bc, type_operand);
-        
-        *smaller = new_operand;
+Bc_Type
+bc_conform_to_larger_type(Bc_Builder* bc, 
+                          Bc_Operand* first, Bc_Type first_type,
+                          Bc_Operand* second, Bc_Type second_type) {
+    
+    Bc_Type smaller_type = first_type;
+    Bc_Type larger_type = second_type;
+    
+    if (first_type.kind == second_type.kind) {
+        return larger_type;
     }
+    
+    s32 first_bitsize = bc_type_to_bitsize(first_type.kind);
+    s32 second_bitsize = bc_type_to_bitsize(second_type.kind);
+    
+    // If they are the same size then we are done
+    if (first_bitsize == second_bitsize) {
+        return larger_type;
+    }
+    
+    Bc_Operand* smaller = first;
+    Bc_Operand* larger = second;
+    if (first_bitsize > second_bitsize) {
+        smaller_type = second_type;
+        larger_type = first_type;
+        larger = first;
+        smaller = second;
+    }
+    
+    // NOTE(Alexander): we don't need to cast constant values
+    if (is_bc_operand_value(smaller->kind)) {
+        return larger_type;
+    }
+    
+    Bc_Opcode opcode = is_bc_type_uint(larger_type.kind) ?
+        Bytecode_zero_extend : Bytecode_sign_extend;
+    Bc_Instruction* insn = bc_push_instruction(bc, opcode);
+    insn->dest = create_unique_bc_register(bc);
+    insn->dest_type = larger_type;
+    insn->src0 = *smaller;
+    insn->src1 = bc_type_op(smaller_type);
+    *smaller = insn->dest;
+    
+    return larger_type;
 }
 
 Bc_Operand
-bc_build_type_cast(Bc_Builder* bc, Bc_Operand* expr, Bc_Type dest_type) {
-    Bc_Operand result = {};
+bc_build_type_cast(Bc_Builder* bc, 
+                   Bc_Operand* src, Bc_Type src_type,
+                   Bc_Type dest_type) {
+    assert(src_type.kind != BcType_Aggregate);
+    assert(dest_type.kind != BcType_Aggregate);
+    if (src_type.kind == dest_type.kind) {
+        return *src;
+    }
     
-    Bc_Type src_type = expr->type;
-    if (expr->kind == BcOperand_Value) {
-        Value value;
-        value.data = expr->Value;
-        value.type = bc_type_to_value_type(src_type.kind);
-        
-        Primitive_Type_Kind dest_primitive_type = bc_type_to_primitive_type_kind(dest_type.kind);
-        result.Value = value_cast(value, dest_primitive_type).data;
-        result.kind = BcOperand_Value;
-        result.type = dest_type;
-        
-    } else {
-        if (src_type.kind == dest_type.kind) {
-            result = *expr;
+    Bc_Opcode opcode = Bytecode_noop;
+    bool is_src_float = is_bc_type_floating(src_type.kind);
+    bool is_dest_float = is_bc_type_floating(dest_type.kind);
+    
+    if (is_src_float && is_dest_float) {
+        if (dest_type.kind == BcType_f64)  {
+            opcode = Bytecode_float_extend;
         } else {
-            Bc_Opcode opcode = Bytecode_noop;
-            bool is_src_fp = is_bc_type_floating(src_type.kind);
-            bool is_dest_fp = is_bc_type_floating(dest_type.kind);
-            
-            if (is_src_fp && is_dest_fp) {
-                if (dest_type.kind == BcType_f64)  {
-                    opcode = Bytecode_fp_extend;
-                } else {
-                    opcode = Bytecode_fp_truncate;
-                }
-            } else if (is_src_fp) {
-                if (is_bc_type_sint(dest_type.kind)) {
-                    opcode = Bytecode_cast_fp_to_sint;
-                } else {
-                    opcode = Bytecode_cast_fp_to_uint;
-                }
-            } else if (is_dest_fp) {
-                if (is_bc_type_sint(src_type.kind)) {
-                    opcode = Bytecode_cast_sint_to_fp;
-                } else {
-                    opcode = Bytecode_cast_uint_to_fp;
-                }
+            opcode = Bytecode_float_truncate;
+        }
+    } else if (is_src_float) {
+        if (is_bc_type_sint(dest_type.kind)) {
+            opcode = Bytecode_float_to_sint;
+        } else {
+            opcode = Bytecode_float_to_uint;
+        }
+    } else if (is_dest_float) {
+        if (is_bc_type_sint(src_type.kind)) {
+            opcode = Bytecode_sint_to_float;
+        } else {
+            opcode = Bytecode_uint_to_float;
+        }
+    } else {
+        int src_size = bc_type_to_bitsize(src_type.kind);
+        int dest_size = bc_type_to_bitsize(dest_type.kind);
+        
+        if (src_size > dest_size) {
+            opcode = Bytecode_truncate;
+        } else {
+            if (is_bc_type_sint(src_type.kind)) {
+                opcode = Bytecode_sign_extend;
             } else {
-                int src_size = bc_type_to_bitsize(src_type.kind);
-                int dest_size = bc_type_to_bitsize(dest_type.kind);
-                
-                if (src_size > dest_size) {
-                    opcode = Bytecode_truncate;
-                } else {
-                    if (is_bc_type_sint(src_type.kind)) {
-                        opcode = Bytecode_sign_extend;
-                    } else {
-                        opcode = Bytecode_zero_extend;
-                    }
-                }
+                opcode = Bytecode_zero_extend;
             }
-            
-            Bc_Operand dest_type_operand = {};
-            dest_type_operand.kind = BcOperand_Type;
-            dest_type_operand.type = dest_type;
-            
-            Bc_Operand dest = bc_get_unique_register_operand(bc, dest_type);
-            bc_push_instruction(bc, opcode);
-            bc_push_operand(bc, dest);
-            bc_push_operand(bc, *expr);
-            bc_push_operand(bc, dest_type_operand);
-            
-            result = dest;
         }
     }
     
-    
-    return result;
-}
-
-inline Bc_Operand
-bc_build_stack_alloc(Bc_Builder* bc, Bc_Type value_type) {
-    Bc_Operand dest = bc_get_unique_register_operand(bc, value_type);
-    
-    Bc_Operand alloc_type_op = dest;
-    alloc_type_op.kind = BcOperand_Type;
-    alloc_type_op.type = value_type;
-    dest.type.ptr_depth++;
-    
-    bc_push_instruction(bc, Bytecode_stack_alloc);
-    bc_push_operand(bc, dest);
-    bc_push_operand(bc, alloc_type_op);
-    // TODO(Alexander): we should maybe also push the allignment 
-    
-    return dest;
-}
-
-inline Bc_Operand
-bc_build_load_value(Bc_Builder* bc, Bc_Operand variable) {
-    Bc_Operand result = variable;
-    
-    if (variable.type.ptr_depth > 0) {
-        Bc_Type value_type = variable.type;
-        value_type.ptr_depth--;
-        result = bc_get_unique_register_operand(bc, value_type);
-        Bc_Operand type_operand = {};
-        type_operand.kind = BcOperand_Type;
-        type_operand.type = value_type;
-        
-        bc_push_instruction(bc, Bytecode_load);
-        bc_push_operand(bc, result);
-        bc_push_operand(bc, type_operand);
-        bc_push_operand(bc, variable);
-        
-    }
-    
-    return result;
+    return bc_binary(bc, opcode, *src, bc_type_op(src_type), dest_type);
 }
 
 Bc_Operand
@@ -374,15 +222,20 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
     
     switch (node->kind) {
         case Ast_Ident: {
-            result = map_get(bc->ident_to_operand, node->Ident);
+            result = map_get(bc->local_variable_mapper, node->Ident);
             if (!result.kind) {
+                // TODO(Alexander): handle global variables in a better way
+                // using real declarations with real type info!!!
+#if 0
                 Bc_Register reg = {};
                 reg.ident = ast_unwrap_ident(node);
                 Value value = map_get(bc->declarations, reg);
                 if (value.type != Value_void) {
-                    Bc_Operand type_operand = {};
-                    type_operand.kind = BcOperand_Type;
-                    type_operand.type = bc_build_type(bc, node->type);
+                    
+                    Type* value_type = bc_build_type(bc, node->type);
+                    result = bc_load(bc, );
+                    
+                    Bc_Type type = bc_build_type(bc, node->type);
                     
                     Bc_Operand variable = {};
                     variable.kind = BcOperand_Register;
@@ -392,11 +245,13 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                     
                     result = bc_get_unique_register_operand(bc, type_operand.type);
                     
-                    bc_push_instruction(bc, Bytecode_load);
-                    bc_push_operand(bc, result);
-                    bc_push_operand(bc, type_operand);
-                    bc_push_operand(bc, variable);
+                    bc_load(result, type_
+                            bc_push_instruction(bc, Bytecode_load);
+                            bc_push_operand(bc, result);
+                            bc_push_operand(bc, type_operand);
+                            bc_push_operand(bc, variable);
                 }
+#endif
             }
             
             
@@ -404,106 +259,72 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
         } break;
         
         case Ast_Value: {
-            result.kind = BcOperand_Value;
-            result.type = bc_build_type(bc, node->type);
-            result.Value = node->Value.value.data;
+            switch (node->Value.value.type) {
+                case Value_boolean:
+                case Value_signed_int: {
+                    s64 v = node->Value.value.data.signed_int;
+                    result = bc_signed_int_op(v);
+                } break;
+                
+                case Value_unsigned_int: {
+                    u64 v = node->Value.value.data.unsigned_int;
+                    result = bc_unsigned_int_op(v);
+                } break;
+                
+                case Value_floating: {
+                    f64 v = node->Value.value.data.floating;
+                    result = bc_float_op(v);
+                } break;
+                
+                case Value_string: {
+                    Memory_String v = bc_save_string(bc, node->Value.value.data.str);
+                    result = bc_string_op(v);
+                } break;
+                
+                default: {
+                    assert(0 && "unexpected value type");
+                } break;
+            }
         } break;
         
         case Ast_Unary_Expr: {
             switch (node->Unary_Expr.op) {
-                
                 case UnaryOp_Negate: {
+                    Bc_Type first_type = bc_build_type(bc, node->Unary_Expr.first->type);
                     Bc_Operand first = bc_build_expression(bc, node->Unary_Expr.first);
-                    if (first.kind == BcOperand_Value) {
-                        result = first;
-                        if (is_bc_type_sint(first.type.kind) || is_bc_type_uint(first.type.kind)) {
-                            result.Value.signed_int = -first.Value.signed_int;
-                        } else if (is_bc_type_floating(first.type.kind)) {
-                            result.Value.floating = -first.Value.floating;
-                        } else {
-                            assert(0 && "invalid literal type for neg (-) unary");
-                        }
-                    } else {
-                        first = bc_build_load_value(bc, first);
-                        bc_push_instruction(bc, Bytecode_neg);
-                        result = bc_get_unique_register_operand(bc, first.type);
-                        bc_push_operand(bc, result);
-                        bc_push_operand(bc, first);
-                    }
+                    first = bc_load(bc, first, first_type);
+                    result = bc_unary(bc, Bytecode_neg, first, first_type);
                 } break;
                 
                 case UnaryOp_Logical_Not: {
+                    Bc_Type first_type = bc_build_type(bc, node->Unary_Expr.first->type);
                     Bc_Operand first = bc_build_expression(bc, node->Unary_Expr.first);
-                    if (first.kind == BcOperand_Value) {
-                        result = first;
-                        if (is_bc_type_sint(first.type.kind) || is_bc_type_uint(first.type.kind)) {
-                            result.Value.signed_int = !first.Value.signed_int;
-                        } else {
-                            assert(0 && "invalid literal type for neg (!) unary");
-                        }
-                    } else {
-                        first = bc_build_load_value(bc, first);
-                        bc_push_instruction(bc, Bytecode_not);
-                        result = bc_get_unique_register_operand(bc, first.type);
-                        bc_push_operand(bc, result);
-                        bc_push_operand(bc, first);
-                    }
+                    first = bc_load(bc, first, first_type);
+                    result = bc_unary(bc, Bytecode_not, first, first_type);
                 } break;
                 
                 case UnaryOp_Bitwise_Not: {
+                    Bc_Type first_type = bc_build_type(bc, node->Unary_Expr.first->type);
                     Bc_Operand first = bc_build_expression(bc, node->Unary_Expr.first);
-                    if (first.kind == BcOperand_Value) {
-                        result = first;
-                        if (is_bc_type_sint(first.type.kind) || is_bc_type_uint(first.type.kind)) {
-                            result.Value.signed_int = ~first.Value.signed_int;
-                        } else {
-                            assert(0 && "invalid literal type for bitwise not (~) unary");
-                        }
-                    } else {
-                        Bc_Operand second = first;
-                        second.kind = BcOperand_Value;
-                        second.Value.signed_int = -1;
-                        
-                        first = bc_build_load_value(bc, first);
-                        bc_push_instruction(bc, Bytecode_xor);
-                        result = bc_get_unique_register_operand(bc, first.type);
-                        bc_push_operand(bc, result);
-                        bc_push_operand(bc, first);
-                        bc_push_operand(bc, second);
-                    } 
+                    first = bc_load(bc, first, first_type);
+                    result = bc_binary(bc, Bytecode_xor, first, bc_signed_int_op(-1), first_type);
                 } break;
                 
                 case UnaryOp_Address_Of: {
                     string_id ident = ast_unwrap_ident(node->Unary_Expr.first);
-                    result = map_get(bc->ident_to_operand, ident);
+                    result = map_get(bc->local_variable_mapper, ident);
                 } break;
                 
                 case UnaryOp_Dereference: {
                     string_id ident = ast_unwrap_ident(node->Unary_Expr.first);
-                    Bc_Operand first = map_get(bc->ident_to_operand, ident);
-                    Bc_Type deref_type = first.type;
-                    assert(deref_type.ptr_depth > 0);
-                    deref_type.ptr_depth--;
+                    Bc_Type first_type = bc_build_type(bc, node->Unary_Expr.first->type);
+                    Bc_Operand first = map_get(bc->local_variable_mapper, ident);
                     
-                    Bc_Operand deref_type_op = {};
-                    deref_type_op.kind = BcOperand_Type;
-                    deref_type_op.type = deref_type;
-                    
-                    bc_push_instruction(bc, Bytecode_load);
-                    result = bc_get_unique_register_operand(bc, deref_type);
-                    bc_push_operand(bc, result);
-                    bc_push_operand(bc, deref_type_op);
-                    bc_push_operand(bc, first);
-                    //
-                    //deref_type.ptr_depth--;
-                    //deref_type_op.type = deref_type;
-                    //
-                    //bc_push_instruction(bc, Bytecode_load);
-                    //first = result;
-                    //result = bc_get_unique_register_operand(bc, deref_type);
-                    //bc_push_operand(bc, result);
-                    //bc_push_operand(bc, deref_type_op);
-                    //bc_push_operand(bc, first);
+                    Bc_Type value_type = first_type;
+                    Bc_Operand value = bc_load(bc, first, first_type);
+                    value.kind = BcOperand_Stack;
+                    value_type.ptr_depth--;
+                    result = bc_load(bc, value, value_type);
                 } break;
                 
                 default: {
@@ -513,100 +334,75 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
         } break;
         
         case Ast_Binary_Expr: {
-            
             Binary_Op binary_op = node->Binary_Expr.op;
+            Bc_Type first_var_type = bc_build_type(bc, node->Binary_Expr.first->type);
             Bc_Operand first_var = bc_build_expression(bc, node->Binary_Expr.first);
-            Bc_Operand first = first_var;
-            Bc_Operand second;
             
+            Bc_Operand first = first_var;
+            Bc_Type first_type = first_var_type;
+            
+            Bc_Operand second;
+            Bc_Type second_type;
+            
+            // NOTE(Alexander): load value only when needed
             if (node->Binary_Expr.op != BinaryOp_Assign) {
-                // NOTE(Alexander): we don't need to load value if it's an assignment
-                first = bc_build_load_value(bc, first_var);
+                first = bc_load(bc, first_var, first_var_type);
             }
             
-            if (node->Binary_Expr.op == BinaryOp_Logical_And && first.kind != BcOperand_Value) {
+            if (binary_op == BinaryOp_Logical_And) {
                 // Store the result in new local variable
-                Bc_Operand dest = bc_build_stack_alloc(bc, first.type);
-                bc_push_instruction(bc, Bytecode_store);
-                bc_push_operand(bc, dest);
-                bc_push_operand(bc, first);
+                Bc_Operand dest = bc_stack_alloc(bc, first_var_type);
+                bc_store(bc, dest, first, bc_type_s1);
                 
-                Bc_Type type = {};
-                type.kind = BcType_s1;
-                Bc_Operand cond = bc_build_type_cast(bc, &first, bc_type_s1);
-                Bc_Instruction* branch = bc_push_branch(bc, &cond);
+                Bc_Operand cond = bc_build_type_cast(bc, &first, first_var_type, bc_type_s1);
+                Bc_Label cont_label = create_unique_bc_label(bc);
+                Bc_Label exit_label = create_unique_bc_label(bc);
+                bc_branch(bc, cond, cont_label, exit_label);
                 
-                branch->true_block.Basic_Block = bc_push_basic_block(bc);
-                
+                // Continue to evaluate second expression
+                bc_push_basic_block(bc, cont_label);
                 second = bc_build_expression(bc, node->Binary_Expr.second);
-                bc_push_instruction(bc, Bytecode_store);
-                bc_push_operand(bc, dest);
-                bc_push_operand(bc, second);
+                bc_store(bc, dest, second, bc_type_s1);
                 
-                branch->false_block.Basic_Block = bc_push_basic_block(bc);
+                // Exit or skipping second expression
+                bc_push_basic_block(bc, exit_label);
+                second = bc_load(bc, dest, bc_type_s1);
+                second_type = bc_type_s1;
                 
-                
-                // Load the result
-                Bc_Operand temp_register = bc_get_unique_register_operand(bc, bc_type_s1);
-                Bc_Operand type_op = {};
-                type_op.kind = BcOperand_Type;
-                type_op.type = bc_type_s1;
-                bc_push_instruction(bc, Bytecode_load);
-                bc_push_operand(bc, temp_register);
-                bc_push_operand(bc, type_op);
-                bc_push_operand(bc, dest);
-                second = temp_register;
-                
-            } else if (node->Binary_Expr.op == BinaryOp_Logical_Or && first.kind != BcOperand_Value) {
+            } else if (binary_op == BinaryOp_Logical_Or) {
                 
                 // Store the result in new local variable
-                Bc_Operand dest = bc_build_stack_alloc(bc, first.type);
-                bc_push_instruction(bc, Bytecode_store);
-                bc_push_operand(bc, dest);
-                bc_push_operand(bc, first);
+                Bc_Operand dest = bc_stack_alloc(bc, first_var_type);
+                bc_store(bc, dest, first, bc_type_s1);
                 
-                // Branch
-                Bc_Operand cond = bc_build_type_cast(bc, &first, bc_type_s1);
-                Bc_Instruction* branch = bc_push_branch(bc, &cond);
+                Bc_Operand cond = bc_build_type_cast(bc, &first, first_var_type, bc_type_s1);
+                Bc_Label cont_label = create_unique_bc_label(bc);
+                Bc_Label exit_label = create_unique_bc_label(bc);
+                bc_branch(bc, cond, exit_label, cont_label);
                 
-                branch->false_block.Basic_Block = bc_push_basic_block(bc);
-                
+                bc_push_basic_block(bc, cont_label);
                 second = bc_build_expression(bc, node->Binary_Expr.second);
-                bc_push_instruction(bc, Bytecode_store);
-                bc_push_operand(bc, dest);
-                bc_push_operand(bc, second);
+                bc_store(bc, dest, second, bc_type_s1);
                 
-                branch->true_block.Basic_Block = bc_push_basic_block(bc);
-                
-                // Load the result
-                Bc_Operand temp_register = bc_get_unique_register_operand(bc, bc_type_s1);
-                Bc_Operand type_op = {};
-                type_op.kind = BcOperand_Type;
-                type_op.type = bc_type_s1;
-                bc_push_instruction(bc, Bytecode_load);
-                bc_push_operand(bc, temp_register);
-                bc_push_operand(bc, type_op);
-                bc_push_operand(bc, dest);
-                
-                // Perform and on the result
-                // TODO(Alexander): is this necessary?
-                first = temp_register;
-                second.kind = BcOperand_Value;
-                second.Value.signed_int = 1;
-                second.type = bc_type_s1;
-                result = temp_register;
+                bc_push_basic_block(bc, exit_label);
+                first = bc_load(bc, dest, bc_type_s1);
+                second = bc_signed_int_op(-1);
+                second_type = bc_type_s1;
                 binary_op = BinaryOp_Logical_And;
                 
             } else {
+                second_type = bc_build_type(bc, node->Binary_Expr.second->type);
                 second = bc_build_expression(bc, node->Binary_Expr.second);
-                second = bc_build_load_value(bc, second);
+                second = bc_load(bc, second, second_type);
             }
             
             if (node->Binary_Expr.op == BinaryOp_Assign) {
                 result = second;
             } else {
                 // TODO(Alexander): conform to largest, maybe this will be done in type stage instead
-                bc_conform_highest_type(bc, &first, &second);
+                Bc_Type type = bc_conform_to_larger_type(bc, 
+                                                         &first, first_type, 
+                                                         &second, second_type);
                 
                 Bc_Opcode binary_opcode = Bytecode_noop;
                 switch (binary_op) {
@@ -616,26 +412,12 @@ case BinaryOp_##name: binary_opcode = Bytecode_##bc_mnemonic; break;
 #undef BINOP
                 }
                 
-                // Figure out the type of the result
-                Bc_Type result_type;
-                if (binary_is_comparator_table[node->Binary_Expr.op]) {
-                    result_type = { BcType_s1, 0 };
-                } else {
-                    result_type = first.type;
-                }
-                
-                result = bc_get_unique_register_operand(bc, result_type);
-                bc_push_instruction(bc, binary_opcode);
-                bc_push_operand(bc, result);
-                bc_push_operand(bc, first);
-                bc_push_operand(bc, second);
+                result = bc_binary(bc, binary_opcode, first, second, type);
             }
             
             if (is_binary_assign(node->Binary_Expr.op)) {
                 Ast* assign = node->Binary_Expr.first;
-                bc_push_instruction(bc, Bytecode_store);
-                bc_push_operand(bc, first_var);
-                bc_push_operand(bc, result);
+                bc_store(bc, first_var, result, bc_build_type(bc, assign->type));
             }
         } break;
         
@@ -645,32 +427,24 @@ case BinaryOp_##name: binary_opcode = Bytecode_##bc_mnemonic; break;
         
         case Ast_Call_Expr: {
             string_id ident = ast_unwrap_ident(node->Call_Expr.ident); 
-            //Bc_Operand function = map_get(bc->ident_to_operand, ident);
+            //Bc_Operand function = map_get(bc->local_variable_mapper, ident);
             
             Type* function_type = node->Call_Expr.function_type;
             assert(function_type->kind == Type_Function);
             
             Bc_Type return_type = bc_build_type(bc, function_type->Function.return_type);
-            Bc_Operand return_operand = {};
-            if (return_type.kind) {
-                return_operand = bc_get_unique_register_operand(bc, return_type);
-            } else {
-                return_operand.kind = BcOperand_Void;
-            }
+            Bc_Type proc_type = bc_build_type(bc, function_type);
             
-            Bc_Operand target_label = {};
-            target_label.kind = BcOperand_Register;
-            target_label.Register = { ident, 0 };
-            target_label.type = bc_build_type(bc, function_type);
-            
-            Bc_Operand function_args = {};
-            
-            function_args.kind = BcOperand_Argument_List;
             int arg_count = 0;
+            array(Bc_Argument)* arguments = 0;
             for_compound(node->Call_Expr.args, arg) {
                 Ast* arg_expr = arg->Argument.assign;
-                Bc_Operand bc_arg = bc_build_expression(bc, arg_expr);
-                bc_arg = bc_build_load_value(bc, bc_arg);
+                
+                Bc_Argument bc_arg;
+                bc_arg.type = bc_build_type(bc, arg_expr->type);
+                bc_arg.src = bc_build_expression(bc, arg_expr);
+                bc_arg.src = bc_load(bc, bc_arg.src, bc_arg.type);
+                array_push(arguments, bc_arg);
                 
                 // HACK(Alexander): for now print_format pushes the format type first then the value 
                 if (arg_count > 0 && function_type->Function.intrinsic == &print_format) {
@@ -681,24 +455,16 @@ case BinaryOp_##name: binary_opcode = Bytecode_##bc_mnemonic; break;
                         fmt_type = FormatType_memory_string;
                     }
                     
-                    Bc_Operand bc_arg_type = {};
-                    bc_arg_type.kind = BcOperand_Value;
-                    bc_arg_type.type.kind = BcType_s32;
-                    bc_arg_type.Value.signed_int = fmt_type;
-                    array_push(function_args.Argument_List, bc_arg_type);
+                    Bc_Argument fmt_arg;
+                    fmt_arg.type = create_bc_type(BcType_s32);
+                    fmt_arg.src = bc_signed_int_op(fmt_type);
+                    array_push(arguments, fmt_arg);
                 }
                 
-                array_push(function_args.Argument_List, bc_arg);
                 arg_count++;
             }
             
-            //result = bc_push_instruction(bc, Bytecode_call, target_label, function_args);
-            
-            bc_push_instruction(bc, Bytecode_call);
-            bc_push_operand(bc, return_operand);
-            bc_push_operand(bc, target_label);
-            bc_push_operand(bc, function_args);
-            result = return_operand;
+            result = bc_call(bc, proc_type, arguments, return_type);
         } break;
         
         case Ast_Field_Expr: {
@@ -706,10 +472,11 @@ case BinaryOp_##name: binary_opcode = Bytecode_##bc_mnemonic; break;
         } break;
         
         case Ast_Cast_Expr: {
-            Bc_Operand expr = bc_build_expression(bc, node->Cast_Expr.expr);
-            expr = bc_build_load_value(bc, expr);
-            Bc_Type dest_type = bc_build_type(bc, node->Cast_Expr.type);
-            result = bc_build_type_cast(bc, &expr, dest_type);
+            Bc_Type src_type = bc_build_type(bc, node->Cast_Expr.expr->type);
+            Bc_Operand src = bc_build_expression(bc, node->Cast_Expr.expr);
+            src = bc_load(bc, src, src_type);
+            Bc_Type dest_type = bc_build_type(bc, node->type);
+            result = bc_build_type_cast(bc, &src, src_type, dest_type);
         } break;
         
         case Ast_Paren_Expr: {
@@ -761,31 +528,26 @@ bc_build_compare_expression(Bc_Builder* bc, Ast* node) {
         }
     }
     
-    Bc_Operand dest;
-    Bc_Type dest_type = {};
-    dest_type.kind = BcType_s1;
-    
+    Bc_Type cmp_type = {};
     if (cmp_code == Bytecode_noop) {
         cmp_code = Bytecode_cmpneq;
+        Bc_Type first_type = bc_build_type(bc, node->type);
         first = bc_build_expression(bc, node);
-        first = bc_build_load_value(bc, first);
-        second.kind = BcOperand_Value;
-        second.Value.signed_int = 0;
-        second.type = first.type;
+        first = bc_load(bc, first, first_type);
+        second = bc_signed_int_op(0);
+        cmp_type = first_type;
     } else {
+        Bc_Type first_type = bc_build_type(bc, node->Binary_Expr.first->type);
         first = bc_build_expression(bc, node->Binary_Expr.first);
-        first = bc_build_load_value(bc, first);
+        first = bc_load(bc, first, first_type);
+        cmp_type = first_type;
+        
+        Bc_Type second_type = bc_build_type(bc, node->Binary_Expr.second->type);
         second = bc_build_expression(bc, node->Binary_Expr.second);
-        second = bc_build_load_value(bc, second);
+        second = bc_load(bc, second, second_type);
     }
     
-    dest = bc_get_unique_register_operand(bc, dest_type);
-    bc_push_instruction(bc, cmp_code);
-    bc_push_operand(bc, dest);
-    bc_push_operand(bc, first);
-    bc_push_operand(bc, second);
-    
-    return dest;
+    return bc_binary(bc, cmp_code, first, second, cmp_type);
 }
 
 void
@@ -793,17 +555,16 @@ bc_build_statement(Bc_Builder* bc, Ast* node, bool last_statement=false) {
     
     switch (node->kind) {
         case Ast_Assign_Stmt: {
+            
             Bc_Type type = bc_build_type(bc, node->type);
-            Bc_Operand dest = bc_build_stack_alloc(bc, type);
+            Bc_Operand dest = bc_stack_alloc(bc, type);
             string_id ident = ast_unwrap_ident(node->Assign_Stmt.ident);
-            map_put(bc->ident_to_operand, ident, dest);
+            map_put(bc->local_variable_mapper, ident, dest);
             
+            Bc_Type source_type = bc_build_type(bc, node->Assign_Stmt.expr->type);
             Bc_Operand source = bc_build_expression(bc, node->Assign_Stmt.expr);
-            source = bc_build_type_cast(bc, &source, type);
-            
-            bc_push_instruction(bc, Bytecode_store);
-            bc_push_operand(bc, dest);
-            bc_push_operand(bc, source);
+            source = bc_build_type_cast(bc, &source, source_type, type);
+            bc_store(bc, dest, source, type);
         } break;
         
         case Ast_Expr_Stmt: {
@@ -830,88 +591,83 @@ bc_build_statement(Bc_Builder* bc, Ast* node, bool last_statement=false) {
         } break;
         
         case Ast_If_Stmt: {
+            Bc_Label then_label = create_unique_bc_label(bc);
+            Bc_Label else_label = create_unique_bc_label(bc);
+            
             Bc_Operand cond = bc_build_compare_expression(bc, node->If_Stmt.cond);
-            Bc_Instruction* branch = bc_push_branch(bc, &cond);
+            bc_branch(bc, cond, then_label, else_label);
             
-            branch->src0.Basic_Block = bc_push_basic_block(bc);
+            {
+                bc_push_basic_block(bc, then_label);
+                bc_build_statement(bc, node->If_Stmt.then_block);
+            }
             
-            bc_build_statement(bc, node->If_Stmt.then_block);
-            
-            Bc_Instruction* exit = bc_push_branch(bc, 0);
-            
-            if (is_ast_none(node->If_Stmt.else_block)) {
-                Bc_Basic_Block* exit_block = bc_push_basic_block(bc);
-                branch->src1.Basic_Block = exit_block;
-                exit->dest.Basic_Block = exit_block;
-                
-            } else {
-                
-                branch->src1.Basic_Block = bc_push_basic_block(bc);
-                bc_build_statement(bc, node->If_Stmt.else_block);
-                
-                Bc_Instruction* exit2 = bc_push_branch(bc, 0);
-                Bc_Basic_Block* exit_block = bc_push_basic_block(bc);
-                exit->dest.Basic_Block = exit_block;
-                exit2->dest.Basic_Block = exit_block;
+            {
+                bc_push_basic_block(bc, else_label);
+                if (is_ast_none(node->If_Stmt.else_block)) {
+                    bc_build_statement(bc, node->If_Stmt.then_block);
+                    
+                    Bc_Label exit_label = create_unique_bc_label(bc);
+                    bc_goto(bc, exit_label);
+                    bc_push_basic_block(bc, exit_label);
+                }
             }
             
         } break;
         
         case Ast_For_Stmt: {
+            Bc_Label cont_label = create_unique_bc_label(bc);
+            Bc_Label update_label = create_unique_bc_label(bc);
+            Bc_Label exit_label = create_unique_bc_label(bc);
+            
             // TODO(Alexander): we need to use the For_Stmt.label if specified
             bc_build_statement(bc, node->For_Stmt.init);
             
-            // Condition
-            Bc_Basic_Block* entry_block = bc_push_basic_block(bc);
-            Bc_Operand cond = bc_build_compare_expression(bc, node->For_Stmt.cond);
-            Bc_Instruction* branch = bc_push_branch(bc, &cond);
-            branch->true_block.Basic_Block = bc_push_basic_block(bc);
+            {
+                bc_push_basic_block(bc, cont_label);
+                Bc_Operand cond = bc_build_compare_expression(bc, node->For_Stmt.cond);
+                bc_branch(bc, cond, update_label, exit_label);
+            }
             
-            // Update and block
-            bc_build_statement(bc, node->For_Stmt.block);
-            bc_build_expression(bc, node->For_Stmt.update);
+            {
+                bc_push_basic_block(bc, update_label);
+                bc_build_statement(bc, node->For_Stmt.block);
+                bc_build_expression(bc, node->For_Stmt.update);
+                bc_goto(bc, cont_label);
+            }
             
-            // Next iteration
-            Bc_Instruction* next_it = bc_push_branch(bc, 0);
-            next_it->dest.Basic_Block = entry_block;
-            
-            branch->false_block.Basic_Block = bc_push_basic_block(bc);
+            bc_push_basic_block(bc, exit_label);
         } break;
         
         case Ast_While_Stmt: {
             // TODO(Alexander): we need to use the While_Stmt.label if specified
-            // Condition
-            Bc_Basic_Block* cond_block = bc_push_basic_block(bc);
-            Bc_Operand cond = bc_build_compare_expression(bc, node->While_Stmt.cond);
-            Bc_Instruction* branch = bc_push_branch(bc, &cond);
-            branch->src0.Basic_Block = bc_push_basic_block(bc);
+            Bc_Label cont_label = create_unique_bc_label(bc);
+            Bc_Label update_label = create_unique_bc_label(bc);
+            Bc_Label exit_label = create_unique_bc_label(bc);
             
-            // Update and block
-            bc_build_statement(bc, node->While_Stmt.block);
+            {
+                bc_push_basic_block(bc, cont_label);
+                Bc_Operand cond = bc_build_compare_expression(bc, node->While_Stmt.cond);
+                bc_branch(bc, cond, update_label, exit_label);
+                
+                {
+                    bc_push_basic_block(bc, update_label);
+                    bc_build_statement(bc, node->While_Stmt.block);
+                    bc_goto(bc, cont_label);
+                }
+            }
             
-            // Next iteration
-            Bc_Instruction* next_it = bc_push_branch(bc, 0);
-            next_it->op0.Basic_Block = cond_block;
-            
-            branch->src1.Basic_Block = bc_push_basic_block(bc);
+            bc_push_basic_block(bc, exit_label);
         } break;
         
         case Ast_Return_Stmt: {
+            Bc_Type source_type = bc_build_type(bc, node->Return_Stmt.expr->type);
             Bc_Operand source = bc_build_expression(bc, node->Return_Stmt.expr);
-            source = bc_build_load_value(bc, source);
-            
-            bc_push_instruction(bc, Bytecode_store);
-            bc_push_operand(bc, bc->curr_return_dest);
-            bc_push_operand(bc, source);
-            
-            //bc_push_instruction(bc, Bytecode_ret);
-            // HACK(Alexander): we can't set the operands directly
-            //bc->curr_instruction->src0 = source;
-            
-            // Need to branch to the epilogue of the current function
-            Bc_Instruction* branch = bc_push_branch(bc, 0);
-            branch->dest.Basic_Block = bc->curr_declaration_epilogue;
-            
+            source = bc_load(bc, source, source_type);
+            if (bc->curr_return_dest.kind != BcOperand_None) {
+                bc_store(bc, bc->curr_return_dest, source, source_type);
+            }
+            bc_goto(bc, bc->curr_epilogue);
         } break;
         
         default: assert(0 && "bug: not an expression");
@@ -919,100 +675,68 @@ bc_build_statement(Bc_Builder* bc, Ast* node, bool last_statement=false) {
 }
 
 void
-bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* type, Ast* decl) {
+bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) {
     switch (type->kind) {
-        case Ast_Function_Type: {
+        case Type_Function: {
             assert(decl->kind == Ast_Block_Stmt);
             
-            Bc_Register label = { ident, 0 };
-            Bc_Basic_Block* block_epilogue = bc_push_basic_block(bc);
-            block_epilogue->label = label;
+            bc->curr_decl = ident;
+            bc->curr_prologue = create_unique_bc_label(bc);
+            bc->curr_epilogue = create_unique_bc_label(bc);
+            bc->curr_return_dest = {};
+            bc->curr_basic_block = bc_push_basic_block(bc, bc->curr_prologue);
             
-            Bc_Basic_Block* block = bc_push_basic_block(bc);
-            block->label = label;
-            block_epilogue->next = 0; // NOTE(Alexander): don't not create a cycle to the start
-            
-            bc->curr_declaration = block;
-            bc->curr_declaration_epilogue = block_epilogue;
-            bc->curr_local_count = 1;
+            Bc_Decl result = map_get(bc->declarations, bc->curr_prologue);
+            result.kind = BcDecl_Procedure;
+            result.Procedure.first_register = bc->next_register;
             
             // TODO(Alexander): we should use type checker function Type* instead
-            Bc_Type return_type = bc_build_type(bc, type->Function_Type.return_type);
-            if (return_type.kind  != BcType_void) {
-                bc->curr_return_dest = bc_build_stack_alloc(bc, return_type);
+            Bc_Type return_type = bc_build_type(bc, type->Function.return_type);
+            if (return_type.kind != BcType_void) {
+                bc->curr_return_dest = bc_stack_alloc(bc, return_type);
+                result.Procedure.first_return_reg = bc->curr_return_dest.Register;
             }
+            result.Procedure.first_arg_reg = bc->next_register;
             
             // Allocate arguments
-            Bc_Instruction* label_insn = block->first;
-            label_insn->op1.kind = BcOperand_Argument_List;
-            for_compound(type->Function_Type.arguments, it) {
-                string_id arg_ident = ast_unwrap_ident(it->Argument.ident);
-                Bc_Type arg_type = bc_build_type(bc, it->Argument.type);
+            array(Bc_Argument)* actual_args = 0;
+            Type_Table* formal_args = &type->Function.arguments;
+            for_array_v(formal_args->idents, arg_ident, arg_index) {
                 
-                Bc_Operand arg = {};//bc_get_unique_register_operand(bc, arg_type);
-                arg.kind = BcOperand_Register;
-                arg.type = arg_type;
-                arg.Register.ident = arg_ident;
-                array_push(label_insn->op1.Argument_List, arg);
+                Type* arg_type = map_get(formal_args->ident_to_type, arg_ident);
+                Bc_Argument arg = {};
+                arg.type = bc_build_type(bc, arg_type);
+                arg.src = create_unique_bc_register(bc);
+                array_push(actual_args, arg);
+                
+                Bc_Operand arg_dest = bc_stack_alloc(bc, arg.type);
+                bc_store(bc, arg_dest, arg.src, arg.type);
+                map_put(bc->local_variable_mapper, arg_ident, arg_dest);
+                
             }
-            
-            // Allocate and store arguments
-            array(Bc_Operand*) args = label_insn->op1.Argument_List;
-            for_array(args, arg, _) {
-                Bc_Operand arg_dest = bc_build_stack_alloc(bc, arg->type);
-                
-                bc_push_instruction(bc, Bytecode_store);
-                bc_push_operand(bc, arg_dest);
-                bc_push_operand(bc, *arg);
-                
-                map_put(bc->ident_to_operand, arg->Register.ident, arg_dest);
-                //array_push(block->args, arg_dest.Register.index);
-            }
+            Bc_Instruction* label_insn = get_first_bc_instruction(bc->curr_basic_block);
+            label_insn->src0.kind = BcOperand_Type;
+            label_insn->src0.Type = return_type;
+            label_insn->src1.kind = BcOperand_Argument_List;
+            label_insn->src1.Argument_List = actual_args;
             
             // Build the actual declaration
             bc_build_statement(bc, decl);
             
             {
                 // Epilogue
-                block_epilogue->label.index = bc->curr_local_count++;
-                block_epilogue->count = 0;
-                if (bc->curr_basic_block) {
-                    bc->curr_basic_block->next = block_epilogue;
-                } else {
-                    block->next = block_epilogue;
-                }
-                bc->curr_basic_block = block_epilogue;
+                bc_push_basic_block(bc, bc->curr_epilogue);
                 
-                // We have to repush the block because it is currently at the at top of memory block
-                Bc_Operand block_operand = {};
-                block_operand.kind = BcOperand_Basic_Block;
-                block_operand.Basic_Block = block;
-                block_epilogue->first = 0;
-                bc_push_instruction(bc, Bytecode_label);
-                bc_push_operand(bc, block_operand);
-                
-                if (return_type.kind != BcType_void) {
-                    Bc_Operand return_value_op = bc_get_unique_register_operand(bc, return_type);
-                    Bc_Operand return_type_op = {};
-                    return_type_op.kind = BcOperand_Type;
-                    return_type_op.type = return_type;
-                    bc_push_instruction(bc, Bytecode_load);
-                    bc_push_operand(bc, return_value_op);
-                    bc_push_operand(bc, return_type_op);
-                    bc_push_operand(bc, bc->curr_return_dest);
-                    
-                    bc_push_instruction(bc, Bytecode_ret);
-                    bc_push_operand(bc, return_value_op);
+                if (bc->curr_return_dest.kind != BcOperand_None) {
+                    Bc_Operand return_op = bc_load(bc, bc->curr_return_dest, return_type);
+                    bc_ret(bc, return_op, return_type);
                 } else {
                     bc_push_instruction(bc, Bytecode_ret);
                 }
             }
             
             // Save declaration
-            Value value;
-            value.type = Value_basic_block;
-            value.data.basic_block = block;
-            map_put(bc->declarations, label, value);
+            map_put(bc->declarations, bc->curr_prologue, result);
         } break;
     }
 }
@@ -1022,60 +746,25 @@ bc_analyze_top_level_declaration(Bc_Builder* bc, Ast* decl, string_id ident) {
     Bc_Instruction result = {};
     
     switch (decl->kind) {
-        case Ast_Decl_Stmt: {
-            Ast* type = decl->Decl_Stmt.type;
-            
-            switch (type->kind) {
-                case Ast_Function_Type: {
-                    // TODO(Alexander): for now we store only the return type here first
-                    // this should be done at type checking/ inference stage
-                    Ast* return_type = type->Function_Type.return_type;
-                    Bc_Operand return_type_op = {};
-                    return_type_op.kind = BcOperand_Type;
-                    return_type_op.type = bc_build_type(bc, return_type);
-                    map_put(bc->ident_to_operand, ident, return_type_op);
-                } break;
-            }
-        } break;
-        
         case Ast_Assign_Stmt: {
-            Bc_Register reg = {};
-            reg.ident = ident;
             
-            bc_push_instruction(bc, Bytecode_memory_alloc);
-            
-            Bc_Operand dest_op = {};
-            dest_op.kind = BcOperand_Register;
-            dest_op.Register = reg;
-            bc_push_operand(bc, dest_op);
-            
+            Type* type = decl->type;
             Ast* expr = decl->Assign_Stmt.expr;
-            Value value = {};
-            if (expr && expr->kind == Ast_Value) {
-                value = expr->Value.value;
-            } else {
-                value.type = Value_signed_int;
-                unimplemented;
-                // TODO(Alexander): we need to implement initialization code for this
-                // EDIT: although we should probably just pre compute at compile time in prev. stage
-            }
+            // TODO(Alexander): we also want to be able to create values from struct literals etc.
+            assert(expr && expr->kind == Ast_Value && "unimplemnted: only constant values supported in global scope");
+            Value value = expr->Value.value;
             
-            Bc_Operand type_op = {};
-            type_op.kind = BcOperand_Type;
-            type_op.type = bc_build_type(bc, decl->type);
-            bc_push_operand(bc, type_op);
+            Bc_Decl bc_decl = {};
+            bc_decl.kind = BcDecl_Data;
+            bc_decl.first_byte_offset = bc->data_arena.curr_used;
+            bc_decl.Data.type = bc_build_type(bc, type);
             
-            Bc_Operand value_op = {};
-            value_op.kind = BcOperand_Value;
-            value_op.Value = value.data;
-            bc_push_operand(bc, value_op);
+            // TODO(Alexander): for data types with arbitrary size we need to push it on the data arena
+            //void* data = arena_push_size(&bc->code_arena, type->cached_size, type->cached_align);
+            //interp_save_value(type, data, value.data);
             
-            // TODO(Alexander): we should do this if we have const assignment
-            // e.g. const int x = 10;
-            // we currently don't store const info in the types yet.
-            //map_put(bc->ident_to_operand, ident, value_op);
-            
-            map_put(bc->declarations, reg, value);
+            Bc_Label label = create_unique_bc_label(bc, ident);
+            map_put(bc->declarations, label, bc_decl);
         } break;
     }
 }
@@ -1088,9 +777,9 @@ bc_build_from_top_level_declaration(Bc_Builder* bc, Ast* decl) {
         case Ast_Decl_Stmt: {
             string_id ident = ast_unwrap_ident(decl->Decl_Stmt.ident);
             
-            Ast* type = decl->Decl_Stmt.type;
+            Type* type = decl->Decl_Stmt.type->type;
             Ast* stmt = decl->Decl_Stmt.stmt;
-            bc_register_declaration(bc, ident, type, stmt);
+            bc_register_declaration(bc, ident, stmt, type);
         } break;
     }
 }
@@ -1102,22 +791,7 @@ bc_build_from_ast(Bc_Builder* bc, Ast_File* ast_file) {
     //pln("sizeof(Bc_Instruction) = %", f_umm(sizeof(Bc_Instruction)));
     //pln("sizeof(Bc_Operand) = %\n", f_umm(sizeof(Bc_Operand)));
     
-    
-    {
-        // Define global declarations
-        Bc_Register reg = {};
-        reg.ident = Kw_global;
-        Bc_Basic_Block* global_block = bc_push_basic_block(bc, reg);
-        
-        Value decl = {};
-        decl.type = Value_basic_block;
-        decl.data.basic_block = global_block;
-        map_put(bc->declarations, global_block->label, decl);
-    }
-    
-    
-    // TODO(Alexander): this will likely get replacecd with the type checker later on
-    // Analyse the ast first
+    // Define global declarations
     for_map(ast_file->decls, it) {
         bc_analyze_top_level_declaration(bc, it->value, it->key);
     }

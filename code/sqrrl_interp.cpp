@@ -1,32 +1,32 @@
 
 void
-interp_save_value(Interp* interp, Type* type, void* storage, Value value) {
+interp_save_value(Type* type, void* dest, Value_Data src) {
     // TODO(Alexander): handle type errors here
     switch (type->kind) {
         case Type_Primitive: {
 #define PCASE(T, V) case PrimitiveType_##T: { \
-*((T*) storage) = (T) (V); \
+*((T*) dest) = (T) (V); \
 } break;
             switch (type->Primitive.kind) {
-                PCASE(int, value.data.signed_int);
-                PCASE(s8, value.data.signed_int);
-                PCASE(s16, value.data.signed_int);
-                PCASE(s32, value.data.signed_int);
-                PCASE(s64, value.data.signed_int);
-                PCASE(smm, value.data.signed_int);
-                PCASE(uint, value.data.unsigned_int);
-                PCASE(u8, value.data.unsigned_int);
-                PCASE(u16, value.data.unsigned_int);
-                PCASE(u32, value.data.unsigned_int);
-                PCASE(u64, value.data.unsigned_int);
-                PCASE(umm, value.data.unsigned_int);
-                PCASE(f32, value.data.floating);
-                PCASE(f64, value.data.floating);
+                PCASE(int, src.signed_int);
+                PCASE(s8, src.signed_int);
+                PCASE(s16, src.signed_int);
+                PCASE(s32, src.signed_int);
+                PCASE(s64, src.signed_int);
+                PCASE(smm, src.signed_int);
+                PCASE(uint, src.unsigned_int);
+                PCASE(u8, src.unsigned_int);
+                PCASE(u16, src.unsigned_int);
+                PCASE(u32, src.unsigned_int);
+                PCASE(u64, src.unsigned_int);
+                PCASE(umm, src.unsigned_int);
+                PCASE(f32, src.floating);
+                PCASE(f64, src.floating);
                 case PrimitiveType_char: {
-                    *((u8*) storage) = (u8) value.data.unsigned_int;
+                    *((u8*) dest) = (u8) src.unsigned_int;
                 } break;
-                PCASE(bool, value.data.boolean);
-                PCASE(b32, value.data.signed_int);
+                PCASE(bool, src.boolean);
+                PCASE(b32, src.signed_int);
                 default: {
                     assert(0 && "invalid primitive type");
                 } break;
@@ -36,20 +36,20 @@ interp_save_value(Interp* interp, Type* type, void* storage, Value value) {
         
         case Type_Array: {
             // NOTE(Alexander): ugh little bit ugly hack to get this to work
-            smm* data = (smm*) storage;
-            *data++ = value.data.array.count;
-            void** elements = (void**) data;
-            *elements = value.data.array.elements;
+            smm* array_data = (smm*) dest;
+            *array_data++ = src.array.count;
+            void** elements = (void**) array_data;
+            *elements = src.array.elements;
         } break;
         
         case Type_String: {
-            *((string*) storage) = value.data.str;
+            *((string*) dest) = src.str;
         } break;
         
         case Type_Pointer:
         case Type_Struct: 
         case Type_Union: {
-            *((smm*) storage) = value.data.pointer;
+            *((smm*) dest) = src.pointer;
         } break;
         
         default: {
@@ -323,13 +323,13 @@ interp_expression(Interp* interp, Ast* ast) {
                         Interp_Entity entity = interp_load_entity_from_current_scope(interp, ident);
                         if (interp_entity_is_declared(interp, &entity, ident)) {
                             if (entity.data) {
-                                interp_save_value(interp, entity.type, entity.data, result.value);
+                                interp_save_value(entity.type, entity.data, result.value.data);
                             } else {
-                                entity.data = interp_push_value(interp, entity.type, result.value);
+                                entity.data = interp_push_value(interp, entity.type, result.value.data);
                             }
                         }
                     } else if (first_op.data && first_op.type.kind) {
-                        interp_save_value(interp, &first_op.type, first_op.data, first);
+                        interp_save_value(&first_op.type, first_op.data, first.data);
                         
                     } else {
                         interp_error(interp, string_lit("unexpected assignment"));
@@ -552,7 +552,7 @@ interp_function_call(Interp* interp, string_id ident, Ast* args, Type* function_
                         
                         // NOTE(Alexander): we need to allocate it in order to pass it to the function
                         // Currently we only pass variables to functions through references
-                        arg.data = interp_push_value(interp, formal_type, arg.value);
+                        arg.data = interp_push_value(interp, formal_type, arg.value.data);
                         interp_push_entity_to_scope(&new_scope, arg_ident, arg.data, formal_type);
                         
                     } else if (type->Function.is_variadic) {
@@ -712,7 +712,7 @@ interp_statement(Interp* interp, Ast* ast) {
                                 
                                 Value elem_value = interp_expression(interp, element).value;
                                 if (!is_void(elem_value)) {
-                                    void* elem = interp_push_value(interp, elem_type, elem_value);
+                                    void* elem = interp_push_value(interp, elem_type, elem_value.data);
                                     array.count++;
                                     if (!array.elements) {
                                         array.elements = elem;
@@ -733,7 +733,7 @@ interp_statement(Interp* interp, Ast* ast) {
                     Value value;
                     value.type = Value_array;
                     value.data.array = array;
-                    void* data = interp_push_value(interp, type, value);
+                    void* data = interp_push_value(interp, type, value.data);
                     interp_push_entity_to_current_scope(interp, ident, data, type);
                 } break;
                 
@@ -787,7 +787,7 @@ interp_statement(Interp* interp, Ast* ast) {
                                 Value field_value = value_cast(field->value, field_type->Primitive.kind);
                                 smm offset = map_get(type_table->ident_to_offset, field_ident);
                                 void* storage = (u8*) base_address + offset;
-                                interp_save_value(interp, field_type, storage, field_value);
+                                interp_save_value(field_type, storage, field_value.data);
                             }
                         } else {
                             // TODO(Alexander): no fields specified, should we clear the memory maybe?
@@ -805,12 +805,12 @@ interp_statement(Interp* interp, Ast* ast) {
                     Value value;
                     value.type = Value_pointer;
                     value.data.data = base_address;
-                    void* data = interp_push_value(interp, type, value);
+                    void* data = interp_push_value(interp, type, value.data);
                     interp_push_entity_to_current_scope(interp, ident, data, type);
                 } break;
                 
                 default: {
-                    void* data = interp_push_value(interp, type, expr.value);
+                    void* data = interp_push_value(interp, type, expr.value.data);
                     interp_push_entity_to_current_scope(interp, ident, data, type);
                 } break;
             }
@@ -1127,7 +1127,7 @@ interp_ast_declarations(Interp* interp, Ast_Decl_Table* decls) {
         if (is_ast_stmt(stmt) && stmt->kind != Ast_Decl_Stmt) {
             Interp_Value interp_result = interp_statement(interp, stmt);
             if (!is_void(interp_result.value)) {
-                void* data = interp_push_value(interp, &interp_result.type, interp_result.value);
+                void* data = interp_push_value(interp, &interp_result.type, interp_result.value.data);
                 if (!data) {
                     interp_push_entity_to_current_scope(interp, decl->key, data, &interp_result.type);
                 }

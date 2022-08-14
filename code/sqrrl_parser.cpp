@@ -451,13 +451,16 @@ parse_atom(Parser* parser, bool report_error) {
         case Token_Open_Paren: {
             next_token(parser);
             result = push_ast_node(parser, &token);
+            
+            // TODO(Alexander): tuple parsing should maybe not be considered a atom, since we are doing 
+            //                  parse_expression, atoms should be leaf nodes only.
             Ast* inner_expr = parse_expression(parser, false);
             if (inner_expr && inner_expr->kind == Ast_None) {
                 
                 result->kind = Ast_Cast_Expr;
                 result->Cast_Expr.type = parse_type(parser, true);
                 next_token_if_matched(parser, Token_Close_Paren);
-                result->Cast_Expr.expr = parse_expression(parser, true);
+                result->Cast_Expr.expr = parse_atom(parser, true);
             } else {
                 
                 Token peek = peek_token(parser);

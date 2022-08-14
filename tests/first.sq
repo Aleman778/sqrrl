@@ -1,14 +1,17 @@
-
 void
 @test_proc 
 unary_expressions() {
     int x = 42;
     int y = -x;
     assert(y == -42);
+    y = -y;
+    assert(y == 42);
     
     bool flag = true;
     flag = !flag;
     assert(flag == false);
+    flag = !flag;
+    assert(flag == true);
 }
 
 
@@ -21,14 +24,12 @@ basic_referencing() {
     assert(y == z);
 }
 
-#if 0
 void
 @test_proc
 truncating_integer() {
     s64 x = (s64) 140234230023;
-    assert(x == -1499690745);
+    assert((s32) x == -1499690745);
 }
-#endif
 
 void
 @test_proc

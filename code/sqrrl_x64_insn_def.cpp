@@ -64,7 +64,9 @@ parse_x86_64_definitions() {
     string_map(X64_Opcode)* opcode_table = 0;
 #define X64_OPCODE(mnemonic, uc_mnemonic) string_map_put(opcode_table, #uc_mnemonic, X64Opcode_##mnemonic);
 #define X64_OPCODE_ALIAS(...)
+#define X64_DIRECTIVE(...)
     DEF_X64_OPCODES
+#undef X64_DIRECTIVE
 #undef X64_OPCODE_ALIAS
 #undef X64_OPCODE
     
@@ -311,22 +313,22 @@ parse_x86_64_definitions() {
         encoding.is_valid = true;
         encoding.imm_op = 0;
         
-        index.opcode = X64Opcode_db;
+        index.opcode = X64Directive_db;
         index.op0 = X64Operand_imm8;
         encoding.imm_size = 1;
         map_put(result, index, encoding);
         
-        index.opcode = X64Opcode_dw;
+        index.opcode = X64Directive_dw;
         index.op0 = X64Operand_imm16;
         encoding.imm_size = 2;
         map_put(result, index, encoding);
         
-        index.opcode = X64Opcode_dd;
+        index.opcode = X64Directive_dd;
         index.op0 = X64Operand_imm32;
         encoding.imm_size = 4;
         map_put(result, index, encoding);
         
-        index.opcode = X64Opcode_dq;
+        index.opcode = X64Directive_dq;
         index.op0 = X64Operand_imm64;
         encoding.imm_size = 8;
         map_put(result, index, encoding);

@@ -4,8 +4,10 @@ X64_OPCODE(invalid, INVALID) \
 X64_OPCODE(noop, NOOP) \
 X64_OPCODE(int3, INT3) \
 X64_OPCODE(neg, NEG) \
+X64_OPCODE(not, NOT) \
 X64_OPCODE(and, AND) \
 X64_OPCODE(or, OR) \
+X64_OPCODE(xor, XOR) \
 X64_OPCODE(add, ADD) \
 X64_OPCODE(sub, SUB) \
 X64_OPCODE(mul, MUL) \
@@ -89,16 +91,18 @@ X64_OPCODE(setz, SETZ) \
 X64_OPCODE(call, CALL) \
 X64_OPCODE(ret, RET) \
 X64_OPCODE(label, LABEL) \
-X64_OPCODE(db, DB) \
-X64_OPCODE(dw, DW) \
-X64_OPCODE(dd, DD) \
-X64_OPCODE(dq, DQ)
+X64_DIRECTIVE(db, DB) \
+X64_DIRECTIVE(dw, DW) \
+X64_DIRECTIVE(dd, DD) \
+X64_DIRECTIVE(dq, DQ)
 // NOTE(Alexander): label is not a real opcode
 
 enum X64_Opcode {
 #define X64_OPCODE(mnemonic,...) X64Opcode_##mnemonic,
 #define X64_OPCODE_ALIAS(alias, mnemonic,...) X64Opcode_##mnemonic = X64Opcode_##alias,
+#define X64_DIRECTIVE(mnemonic, ...) X64Directive_##mnemonic,
     DEF_X64_OPCODES
+#undef X64_DIRECTIVE
 #undef X64_OPCODE_ALIAS
 #undef X64_OPCODE
 };
@@ -107,7 +111,9 @@ enum X64_Opcode {
 global const cstring x64_opcode_names[] = {
 #define X64_OPCODE(mnemonic,...) #mnemonic,
 #define X64_OPCODE_ALIAS(...)
+#define X64_DIRECTIVE(mnemonic, ...) #mnemonic,
     DEF_X64_OPCODES
+#undef X64_DIRECTIVE
 #undef X64_OPCODE_ALIAS
 #undef X64_OPCODE
 };
@@ -356,6 +362,8 @@ register_is_gpr(X64_Register reg) {
 // NOTE(Alexander): forward declare
 struct X64_Basic_Block;
 
+typedef Bc_Label X64_Label;
+
 struct X64_Operand {
     X64_Operand_Kind kind;
     union {
@@ -365,8 +373,8 @@ struct X64_Operand {
         s32 imm32;
         s64 imm64;
         X64_Basic_Block* basic_block;
-        Bc_Register jump_target;
-        u32 virtual_register;
+        X64_Label jump_target;
+        u64 virtual_register;
     };
     union {
         s8 disp8;
@@ -512,7 +520,7 @@ struct X64_Machine_Code {
 };
 
 struct X64_Basic_Block {
-    Bc_Register label;
+    X64_Label label;
     X64_Instruction* first;
     umm count;
     X64_Basic_Block* next;
@@ -575,6 +583,27 @@ struct X64_Encoding {
     u8 imm_op;
     
     bool is_valid;
+};
+
+
+enum X64_Int_Register {
+    X64_RAX,
+    X64_RBX,
+    X64_RCX,
+    X64_RDX,
+    X64_RSI,
+    X64_RDI,
+    X64_RBP,
+    X64_RSP,
+    X64_R8,
+    X64_R9,
+    X64_R10,
+    X64_R11,
+    X64_R12,
+    X64_R13,
+    X64_R14,
+    X64_R15,
+    X64_RIP,
 };
 
 typedef map(X64_Instruction_Index, X64_Encoding) X64_Instruction_Def_Table;
@@ -730,7 +759,7 @@ string_builder_push(String_Builder* sb, X64_Instruction* insn, bool show_virtual
             string_builder_push(sb, &insn->op2, show_virtual_registers);
         }
         
-#if BUILD_DEBUG
+#if 0 && BUILD_DEBUG
         if (insn->opcode != X64Opcode_invalid && insn->comment) {
             const s32 comment_offset = 35;
             

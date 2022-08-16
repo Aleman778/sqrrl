@@ -7,7 +7,7 @@ AST(Value,             "value", struct {        \
 Value value;                                    \
 })                                              \
 AST(Ident,             "identifier", string_id) \
-AST(Ident_Data,      "identifier", struct {     \
+AST(Ident_Data,        "identifier", struct {   \
 string_id ident;                                \
 string contents;                                \
 })                                              \
@@ -16,7 +16,7 @@ Ast* type;                                      \
 Ast* ident;                                     \
 Ast* assign;                                    \
 })                                              \
-AST(Attribute,         "attribute", struct {     \
+AST(Attribute,         "attribute", struct {    \
 Ast* ident;                                     \
 Ast* expr;                                      \
 })                                              \

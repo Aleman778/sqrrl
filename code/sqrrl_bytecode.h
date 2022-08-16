@@ -107,8 +107,12 @@ is_bc_type_sint(Bc_Type_Kind kind) {
 }
 
 inline s32
-bc_type_to_bitsize(Bc_Type_Kind kind) {
-    switch (kind) {
+bc_type_to_bitsize(Bc_Type type) {
+    if (type.ptr_depth) {
+        return 64; // TODO(Alexander): arch dep!
+    }
+    
+    switch (type.kind) {
         case BcType_s1: return 1;
         case BcType_s8: return 8;
         case BcType_s16: return 16;
@@ -130,7 +134,7 @@ bc_type_to_bitsize(Bc_Type_Kind kind) {
 inline s32
 bc_type_to_size(Bc_Type type) {
     if (type.ptr_depth > 0) {
-        return 8; // arch dep!
+        return 8; // TODO(Alexander): arch dep!
     }
     
     switch (type.kind) {

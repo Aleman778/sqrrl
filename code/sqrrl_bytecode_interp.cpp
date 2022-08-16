@@ -202,7 +202,7 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
         } break;
         
         case Bytecode_store: {
-            assert(bc->dest.kind == BcOperand_Stack);
+            assert(bc->dest.kind == BcOperand_Stack || bc->dest.kind == BcOperand_Register);
             assert(bc->src0.kind != BcOperand_None);
             assert(bc->src1.kind == BcOperand_None);
             
@@ -305,9 +305,9 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
             Value_Data value = bc_interp_operand_value(interp, &bc->src0);
             Value_Data result = value;
             
-            u64 dest_bits = bc_type_to_bitsize(bc->dest_type.kind);
+            u64 dest_bits = bc_type_to_bitsize(bc->dest_type);
             if (dest_bits < 64) {
-                u64 highest_bit_mask = (1ll << (u64) (bc_type_to_bitsize(bc->src1.Type.kind) - 1));
+                u64 highest_bit_mask = (1ll << (u64) (bc_type_to_bitsize(bc->src1.Type) - 1));
                 bool high_bit_set = (value.unsigned_int & highest_bit_mask) > 0;
                 u64 mask = U64_MAX << dest_bits;
                 if (high_bit_set) {
@@ -324,7 +324,7 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
             Value_Data value = bc_interp_operand_value(interp, &bc->src0);
             Value_Data result = value;
             
-            u64 dest_bits = bc_type_to_bitsize(bc->dest_type.kind);
+            u64 dest_bits = bc_type_to_bitsize(bc->dest_type);
             if (dest_bits < 64) {
                 u64 mask = U64_MAX << dest_bits;
                 result.unsigned_int = result.unsigned_int & ~mask;
@@ -402,7 +402,7 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
                     }
                 }
                 
-                type->Function.interp_intrinsic(&intrinsic_interp, variadic_args);
+                //type->Function.interp_intrinsic(&intrinsic_interp, variadic_args);
                 
             } else {
                 Bc_Basic_Block* target_block =

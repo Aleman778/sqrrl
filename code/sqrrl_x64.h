@@ -586,24 +586,8 @@ struct X64_Encoding {
 };
 
 
-enum X64_Int_Register {
-    X64_RAX,
-    X64_RBX,
-    X64_RCX,
-    X64_RDX,
-    X64_RSI,
-    X64_RDI,
-    X64_RBP,
-    X64_RSP,
-    X64_R8,
-    X64_R9,
-    X64_R10,
-    X64_R11,
-    X64_R12,
-    X64_R13,
-    X64_R14,
-    X64_R15,
-    X64_RIP,
+struct X64_Int_Register {
+    u64 virtual_register;
 };
 
 typedef map(X64_Instruction_Index, X64_Encoding) X64_Instruction_Def_Table;
@@ -759,7 +743,7 @@ string_builder_push(String_Builder* sb, X64_Instruction* insn, bool show_virtual
             string_builder_push(sb, &insn->op2, show_virtual_registers);
         }
         
-#if 0 && BUILD_DEBUG
+#if BUILD_DEBUG
         if (insn->opcode != X64Opcode_invalid && insn->comment) {
             const s32 comment_offset = 35;
             

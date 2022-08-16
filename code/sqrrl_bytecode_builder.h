@@ -155,7 +155,7 @@ bc_load(Bc_Builder* bc, Bc_Operand src, Bc_Type value_type) {
 
 inline void
 bc_store(Bc_Builder* bc, Bc_Operand dest, Bc_Operand src, Bc_Type type) {
-    assert(dest.kind == BcOperand_Stack);
+    //assert(dest.kind == BcOperand_Stack);
     
     Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_store);
     insn->dest_type = type;

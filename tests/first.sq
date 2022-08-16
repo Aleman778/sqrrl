@@ -59,8 +59,11 @@ void
 @test_proc
 equals_operator() {
     int x = 10;
-    int y = x == 10;
+    bool y = x == 10;
     assert(y);
+    
+    y = x == 11;
+    assert(!y);
 }
 
 void
@@ -79,6 +82,15 @@ ref_and_deref_operator() {
     int* y = &x;
     int z = *y;
     assert(x == z);
+}
+
+void
+@test_proc
+ref_and_assign_operator() {
+    s32 x = 10;
+    s32* z = &x;
+    *z = 20;
+    assert(x == 20);
 }
 
 int

@@ -128,12 +128,13 @@ bc_conform_to_larger_type(Bc_Builder* bc,
     Bc_Type smaller_type = first_type;
     Bc_Type larger_type = second_type;
     
-    if (first_type.kind == second_type.kind) {
+    if (first_type.kind == second_type.kind &&
+        first_type.ptr_depth == second_type.ptr_depth) {
         return larger_type;
     }
     
-    s32 first_bitsize = bc_type_to_bitsize(first_type.kind);
-    s32 second_bitsize = bc_type_to_bitsize(second_type.kind);
+    s32 first_bitsize = bc_type_to_bitsize(first_type);
+    s32 second_bitsize = bc_type_to_bitsize(second_type);
     
     // If they are the same size then we are done
     if (first_bitsize == second_bitsize) {
@@ -199,8 +200,8 @@ bc_build_type_cast(Bc_Builder* bc,
             opcode = Bytecode_uint_to_float;
         }
     } else {
-        int src_size = bc_type_to_bitsize(src_type.kind);
-        int dest_size = bc_type_to_bitsize(dest_type.kind);
+        int src_size = bc_type_to_bitsize(src_type);
+        int dest_size = bc_type_to_bitsize(dest_type);
         
         if (src_size > dest_size) {
             opcode = Bytecode_truncate;
@@ -321,10 +322,11 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                     Bc_Operand first = map_get(bc->local_variable_mapper, ident);
                     
                     Bc_Type value_type = first_type;
-                    Bc_Operand value = bc_load(bc, first, first_type);
-                    value.kind = BcOperand_Stack;
-                    value_type.ptr_depth--;
-                    result = bc_load(bc, value, value_type);
+                    result = bc_load(bc, first, first_type);
+                    //value.kind = BcOperand_Stack;
+                    //value_type.ptr_depth--;
+                    //result = value;
+                    //result = bc_load(bc, value, value_type);
                 } break;
                 
                 default: {

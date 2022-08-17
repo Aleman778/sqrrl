@@ -110,6 +110,7 @@ bc_interp_operand_value(Bc_Interp* interp, Bc_Operand* operand) {
     
     switch (operand->kind) {
         case BcOperand_Register:
+        case BcOperand_Memory:
         case BcOperand_Stack: {
             result = bc_interp_load_register(interp, operand->Register);
         } break;
@@ -201,19 +202,18 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             bc_interp_store_value(interp, bc->src0.Type, data, bc->src1.Const);
         } break;
         
-        case Bytecode_store: {
-            assert(bc->dest.kind == BcOperand_Stack || bc->dest.kind == BcOperand_Register);
-            assert(bc->src0.kind != BcOperand_None);
-            assert(bc->src1.kind == BcOperand_None);
-            
-            Value_Data dest = bc_interp_operand_value(interp, &bc->dest);
-            Value_Data src = bc_interp_operand_value(interp, &bc->src0);
-            bc_interp_store_value(interp, bc->dest_type, dest.data, src);
+        case Bytecode_copy: {
+            Value_Data result = bc_interp_operand_value(interp, &bc->src0);
+            bc_interp_store_register(interp, bc->dest.Register, result); \
         } break;
         
-        case Bytecode_load: {
+        case Bytecode_copy_from_ref: {
+            unimplemented;
+        } break;
+        
+        case Bytecode_copy_from_deref: {
             assert(bc->dest.kind == BcOperand_Register);
-            assert(bc->src0.kind == BcOperand_Stack);
+            assert(bc->src0.kind == BcOperand_Stack || bc->src0.kind == BcOperand_Memory);
             assert(bc->src1.kind == BcOperand_None);
             
             Value_Data src = bc_interp_operand_value(interp, &bc->src0);
@@ -221,9 +221,14 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             bc_interp_store_register(interp, bc->dest.Register, value);
         } break;
         
-        case Bytecode_copy: {
-            Value_Data result = bc_interp_operand_value(interp, &bc->src0);
-            bc_interp_store_register(interp, bc->dest.Register, result); \
+        case Bytecode_copy_to_deref: {
+            assert(bc->dest.kind == BcOperand_Stack || bc->dest.kind == BcOperand_Register);
+            assert(bc->src0.kind != BcOperand_None);
+            assert(bc->src1.kind == BcOperand_None);
+            
+            Value_Data dest = bc_interp_operand_value(interp, &bc->dest);
+            Value_Data src = bc_interp_operand_value(interp, &bc->src0);
+            bc_interp_store_value(interp, bc->dest_type, dest.data, src);
         } break;
         
         case Bytecode_neg: {

@@ -618,7 +618,12 @@ return X64Register_##mnemonic;
         DEF_X64_REGISTERS
 #undef X64_REGISTER
         default: {
-            assert(0 && "no valid register for given operand");
+            switch (kind) {
+                case X64Operand_r8: return X64Register_unallocated_r8;
+                case X64Operand_r16: return X64Register_unallocated_r16;
+                case X64Operand_r32: return X64Register_unallocated_r32;
+                case X64Operand_r64: return X64Register_unallocated_r64;
+            }
         } break;
     }
     
@@ -745,7 +750,7 @@ string_builder_push(String_Builder* sb, X64_Instruction* insn, bool show_virtual
         
 #if BUILD_DEBUG
         if (insn->opcode != X64Opcode_invalid && insn->comment) {
-            const s32 comment_offset = 35;
+            const s32 comment_offset = 50;
             
             // Find line length by going back to previous newline character
             u32 line_length = 0;

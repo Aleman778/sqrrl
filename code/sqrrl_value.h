@@ -30,7 +30,7 @@ BINOP(Bitwise_Or,         |,  5,  Assoc_Left,  false, or) \
 BINOP(Bitwise_Xor,        ^,  4,  Assoc_Left,  false, xor) \
 BINOP(Logical_And,        &&, 3,  Assoc_Left,  false, and) \
 BINOP(Logical_Or,         ||, 2,  Assoc_Left,  false, or) \
-BINOP(Assign,             =,  1,  Assoc_Right, false, store) \
+BINOP(Assign,             =,  1,  Assoc_Right, false, copy) \
 BINOP(Add_Assign,         +=, 1,  Assoc_Right, false, add) \
 BINOP(Subtract_Assign,    -=, 1,  Assoc_Right, false, sub) \
 BINOP(Multiply_Assign,    *=, 1,  Assoc_Right, false, mul) \

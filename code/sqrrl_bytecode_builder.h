@@ -140,6 +140,14 @@ bc_stack_alloc(Bc_Builder* bc, Bc_Type value_type) {
 }
 
 inline void
+bc_copy_to_deref(Bc_Builder* bc, Bc_Operand dest, Bc_Operand src, Bc_Type type) {
+    Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_copy_to_deref);
+    insn->dest_type = type;
+    insn->dest = dest;
+    insn->src0 = src;
+}
+
+inline void
 bc_copy(Bc_Builder* bc, Bc_Operand dest, Bc_Operand src, Bc_Type type) {
     Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_copy);
     insn->dest_type = type;

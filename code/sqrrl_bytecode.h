@@ -466,9 +466,11 @@ string_builder_push(String_Builder* sb, Bc_Instruction* insn) {
         string_builder_push(sb, insn->dest.Label);
         string_builder_push(sb, ":");
     } else {
+        
+        //insn->opcode == Bytecode_copy_from_ref ||
+        //insn->opcode == Bytecode_copy_from_deref ||
+        
         bool is_opcode_assign = !(insn->opcode == Bytecode_copy ||
-                                  insn->opcode == Bytecode_copy_from_ref ||
-                                  insn->opcode == Bytecode_copy_from_deref ||
                                   insn->opcode == Bytecode_copy_to_deref ||
                                   insn->opcode == Bytecode_ret);
         

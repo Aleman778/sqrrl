@@ -310,19 +310,16 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                 
                 case UnaryOp_Address_Of: {
                     string_id ident = ast_unwrap_ident(node->Unary_Expr.first);
-                    result = map_get(bc->local_variable_mapper, ident);
+                    Bc_Operand first = map_get(bc->local_variable_mapper, ident);
+                    Bc_Type type = bc_build_type(bc, node->type);
+                    result = bc_unary(bc, Bytecode_copy_from_ref, first, type);
                 } break;
                 
                 case UnaryOp_Dereference: {
                     string_id ident = ast_unwrap_ident(node->Unary_Expr.first);
                     Bc_Type first_type = bc_build_type(bc, node->Unary_Expr.first->type);
                     Bc_Operand first = map_get(bc->local_variable_mapper, ident);
-                    
-                    result.kind = BcOperand_Memory;
-                    //value.kind = BcOperand_Stack;
-                    //value_type.ptr_depth--;
-                    //result = value;
-                    //result = bc_load(bc, value, value_type);
+                    result = bc_unary(bc, Bytecode_copy_from_deref, first, first_type);
                 } break;
                 
                 default: {
@@ -333,64 +330,75 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
         
         case Ast_Binary_Expr: {
             Binary_Op binary_op = node->Binary_Expr.op;
-            Bc_Type first_var_type = bc_build_type(bc, node->Binary_Expr.first->type);
-            Bc_Operand first_var = bc_build_expression(bc, node->Binary_Expr.first);
-            
-            Bc_Operand first = first_var;
-            Bc_Type first_type = first_var_type;
-            
-            Bc_Operand second;
-            Bc_Type second_type;
             
             if (binary_op == BinaryOp_Logical_And) {
+                Bc_Type first_type = bc_build_type(bc, node->Binary_Expr.first->type);
+                Bc_Operand first = bc_build_expression(bc, node->Binary_Expr.first);
+                
                 // Store the result in new local variable
-                Bc_Operand dest = bc_stack_alloc(bc, first_var_type);
+                Bc_Operand dest = bc_stack_alloc(bc, first_type);
                 bc_copy(bc, dest, first, bc_type_s1);
                 
-                Bc_Operand cond = bc_build_type_cast(bc, &first, first_var_type, bc_type_s1);
+                Bc_Operand cond = bc_build_type_cast(bc, &first, first_type, bc_type_s1);
                 Bc_Label cont_label = create_unique_bc_label(bc);
                 Bc_Label exit_label = create_unique_bc_label(bc);
                 bc_branch(bc, cond, cont_label, exit_label);
                 
                 // Continue to evaluate second expression
                 bc_push_basic_block(bc, cont_label);
-                second = bc_build_expression(bc, node->Binary_Expr.second);
+                Bc_Operand second = bc_build_expression(bc, node->Binary_Expr.second);
                 bc_copy(bc, dest, second, bc_type_s1);
                 
                 // Exit or skipping second expression
                 bc_push_basic_block(bc, exit_label);
-                second = dest;
-                second_type = bc_type_s1;
+                result = bc_binary(bc, Bytecode_and, first, dest, bc_type_s1);
                 
             } else if (binary_op == BinaryOp_Logical_Or) {
+                Bc_Type first_type = bc_build_type(bc, node->Binary_Expr.first->type);
+                Bc_Operand first = bc_build_expression(bc, node->Binary_Expr.first);
                 
                 // Store the result in new local variable
-                Bc_Operand dest = bc_stack_alloc(bc, first_var_type);
+                Bc_Operand dest = bc_stack_alloc(bc, first_type);
                 bc_copy(bc, dest, first, bc_type_s1);
                 
-                Bc_Operand cond = bc_build_type_cast(bc, &first, first_var_type, bc_type_s1);
+                Bc_Operand cond = bc_build_type_cast(bc, &first, first_type, bc_type_s1);
                 Bc_Label cont_label = create_unique_bc_label(bc);
                 Bc_Label exit_label = create_unique_bc_label(bc);
                 bc_branch(bc, cond, exit_label, cont_label);
                 
                 bc_push_basic_block(bc, cont_label);
-                second = bc_build_expression(bc, node->Binary_Expr.second);
+                Bc_Operand second = bc_build_expression(bc, node->Binary_Expr.second);
                 bc_copy(bc, dest, second, bc_type_s1);
                 
                 bc_push_basic_block(bc, exit_label);
                 first = dest;
                 second = bc_signed_int_op(-1);
-                second_type = bc_type_s1;
-                binary_op = BinaryOp_Logical_And;
+                result = bc_binary(bc, Bytecode_or, first, second, bc_type_s1);
+                
+            } else if (binary_op == BinaryOp_Assign) {
+                Ast* first_ast = node->Binary_Expr.first;
+                Bc_Operand second = bc_build_expression(bc, node->Binary_Expr.second);
+                Bc_Type second_type = bc_build_type(bc, node->Binary_Expr.second->type);
+                
+                if (first_ast->kind == Ast_Unary_Expr && first_ast->Unary_Expr.op == UnaryOp_Dereference) {
+                    Bc_Operand first = bc_build_expression(bc, first_ast->Unary_Expr.first);
+                    bc_copy_to_deref(bc, first, second, second_type);
+                    
+                } else {
+                    Bc_Type first_type = bc_build_type(bc, node->Binary_Expr.first->type);
+                    Bc_Operand first = bc_build_expression(bc, node->Binary_Expr.first);
+                    bc_copy(bc, first, second, first_type);
+                }
                 
             } else {
-                second_type = bc_build_type(bc, node->Binary_Expr.second->type);
-                second = bc_build_expression(bc, node->Binary_Expr.second);
-            }
-            
-            if (node->Binary_Expr.op == BinaryOp_Assign) {
+                Bc_Type first_type = bc_build_type(bc, node->Binary_Expr.first->type);
+                Bc_Operand first = bc_build_expression(bc, node->Binary_Expr.first);
+                
+                Bc_Type second_type = bc_build_type(bc, node->Binary_Expr.second->type);
+                Bc_Operand second = bc_build_expression(bc, node->Binary_Expr.second);
+                
                 result = second;
-            } else {
+                
                 // TODO(Alexander): conform to largest, maybe this will be done in type stage instead
                 Bc_Type type = bc_conform_to_larger_type(bc, 
                                                          &first, first_type, 
@@ -405,11 +413,6 @@ case BinaryOp_##name: binary_opcode = Bytecode_##bc_mnemonic; break;
                 }
                 
                 result = bc_binary(bc, binary_opcode, first, second, type);
-            }
-            
-            if (is_binary_assign(node->Binary_Expr.op)) {
-                Ast* assign = node->Binary_Expr.first;
-                bc_copy(bc, first_var, result, bc_build_type(bc, assign->type));
             }
         } break;
         

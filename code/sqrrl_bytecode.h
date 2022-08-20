@@ -53,10 +53,16 @@ enum Bc_Opcode {
 #undef BC
 };
 
-global cstring bytecode_opcode_names[] = {
+global const cstring bytecode_opcode_names[] = {
 #define BC(name, ...) #name,
     DEF_BYTECODES
 #undef BC
+};
+
+global const Bc_Opcode binary_op_to_bc_opcode_table[] = {
+#define BINOP(name, op, prec, assoc, is_comparator, bc_mnemonic) Bytecode_##bc_mnemonic,
+    DEF_BINARY_OPS
+#undef BINOP
 };
 
 inline bool
@@ -398,11 +404,41 @@ string_builder_push(String_Builder* sb, Bc_Label label) {
     }
 }
 
+struct Bc_Regiter_Mapper {
+    map(Bc_Register, u64)* table;
+    u64 next_register;
+    
+    ~Bc_Regiter_Mapper() {
+        map_free(table);
+    }
+};
+
+u64
+bc_map_register(Bc_Regiter_Mapper* mapper, Bc_Register reg) {
+    u64 result;
+    smm index = map_get_index(mapper->table, reg);
+    if (index == -1) {
+        result = mapper->next_register++;
+        map_put(mapper->table, reg, result);
+    } else {
+        result = mapper->table[index].value;
+    }
+    return result;
+}
+
+
 // NOTE(Alexander): forward declare below
-void string_builder_push(String_Builder* sb, array(Bc_Argument)* argument_list, bool show_types=false);
+void string_builder_push(String_Builder* sb, 
+                         Bc_Regiter_Mapper* mapper,
+                         array(Bc_Argument)* argument_list, 
+                         bool show_types=false);
 
 bool
-string_builder_push(String_Builder* sb, Bc_Operand* operand, Bc_Type type={}) {
+string_builder_push(String_Builder* sb, 
+                    Bc_Regiter_Mapper* mapper, 
+                    Bc_Operand* operand, 
+                    Bc_Type type={}) {
+    
     switch (operand->kind) {
         case BcOperand_None:
         case BcOperand_Void: return false;
@@ -413,12 +449,18 @@ string_builder_push(String_Builder* sb, Bc_Operand* operand, Bc_Type type={}) {
         } break;
         
         case BcOperand_Register: {
-            string_builder_push_format(sb, "r%", f_u64(operand->Register));
+            u64 reg = bc_map_register(mapper, operand->Register);
+            string_builder_push_format(sb, "r%", f_u64(reg));
         } break;
         
-        case BcOperand_Memory:
+        case BcOperand_Memory: {
+            u64 reg = bc_map_register(mapper, operand->Register);
+            string_builder_push_format(sb, "memory[r%]", f_u64(reg));
+        } break;
+        
         case BcOperand_Stack: {
-            string_builder_push_format(sb, "[r%]", f_u64(operand->Register));
+            u64 reg = bc_map_register(mapper, operand->Register);
+            string_builder_push_format(sb, "stack[r%]", f_u64(reg));
         } break;
         
         case BcOperand_Int: {
@@ -434,7 +476,7 @@ string_builder_push(String_Builder* sb, Bc_Operand* operand, Bc_Type type={}) {
         } break;
         
         case BcOperand_Argument_List: {
-            string_builder_push(sb, operand->Argument_List);
+            string_builder_push(sb, mapper, operand->Argument_List);
         } break;
     }
     
@@ -442,7 +484,11 @@ string_builder_push(String_Builder* sb, Bc_Operand* operand, Bc_Type type={}) {
 }
 
 void
-string_builder_push(String_Builder* sb, array(Bc_Argument)* argument_list, bool show_types) {
+string_builder_push(String_Builder* sb,
+                    Bc_Regiter_Mapper* mapper,
+                    array(Bc_Argument)* argument_list, 
+                    bool show_types) {
+    
     string_builder_push(sb, "(");
     if (argument_list) {
         for_array(argument_list, arg, arg_index) {
@@ -450,7 +496,7 @@ string_builder_push(String_Builder* sb, array(Bc_Argument)* argument_list, bool 
                 string_builder_push(sb, arg->type);
                 string_builder_push(sb, " ");
             }
-            string_builder_push(sb, &arg->src);
+            string_builder_push(sb, mapper, &arg->src);
             if (arg_index < array_count(argument_list) - 1) {
                 string_builder_push(sb, ", ");
             }
@@ -460,16 +506,12 @@ string_builder_push(String_Builder* sb, array(Bc_Argument)* argument_list, bool 
 }
 
 void
-string_builder_push(String_Builder* sb, Bc_Instruction* insn) {
+string_builder_push(String_Builder* sb, Bc_Regiter_Mapper* mapper, Bc_Instruction* insn) {
     if (insn->opcode == Bytecode_label) {
         string_builder_push(sb, "  ");
         string_builder_push(sb, insn->dest.Label);
         string_builder_push(sb, ":");
     } else {
-        
-        //insn->opcode == Bytecode_copy_from_ref ||
-        //insn->opcode == Bytecode_copy_from_deref ||
-        
         bool is_opcode_assign = !(insn->opcode == Bytecode_copy ||
                                   insn->opcode == Bytecode_copy_to_deref ||
                                   insn->opcode == Bytecode_ret);
@@ -483,7 +525,7 @@ string_builder_push(String_Builder* sb, Bc_Instruction* insn) {
         
         if (has_assignment) {
             string_builder_push(sb, " ");
-            string_builder_push(sb, &insn->dest);
+            string_builder_push(sb, mapper, &insn->dest);
             string_builder_push(sb, " = ");
         }
         
@@ -491,7 +533,7 @@ string_builder_push(String_Builder* sb, Bc_Instruction* insn) {
         
         if (!has_assignment && insn->dest.kind != BcOperand_None) {
             string_builder_push(sb, " ");
-            string_builder_push(sb, &insn->dest);
+            string_builder_push(sb, mapper, &insn->dest);
         }
         
         if (insn->src0.kind) {
@@ -502,23 +544,27 @@ string_builder_push(String_Builder* sb, Bc_Instruction* insn) {
             string_builder_push(sb, " ");
         }
         
-        if (string_builder_push(sb, &insn->src0)) {
+        if (string_builder_push(sb, mapper, &insn->src0)) {
             if (insn->src1.kind && insn->opcode != Bytecode_call) {
                 string_builder_push(sb, ", ");
             }
         }
         
-        string_builder_push(sb, &insn->src1);
+        string_builder_push(sb, mapper, &insn->src1);
     }
 }
 
 void
-string_builder_push(String_Builder* sb, Bc_Basic_Block* block, Bytecode* code) {
+string_builder_push(String_Builder* sb, 
+                    Bc_Regiter_Mapper* mapper, 
+                    Bc_Basic_Block* block, 
+                    Bytecode* code) {
+    
     Bc_Basic_Block* curr_block = block;
     while (curr_block) {
         Bc_Instruction* curr_insn = (Bc_Instruction*) (curr_block + 1);
         for (int i = 0; i < curr_block->instruction_count; i++) {
-            string_builder_push(sb, curr_insn++);
+            string_builder_push(sb, mapper, curr_insn++);
             string_builder_push(sb, "\n");
         }
         

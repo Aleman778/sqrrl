@@ -250,6 +250,7 @@ DEBUG_read_entire_file(cstring filename) {
 bool
 DEBUG_write_entire_file(cstring filename, void* data, u32 size) {
     Read_File_Result result = {};
+    DeleteFileA(filename);
     HANDLE file_handle = CreateFileA(filename, GENERIC_WRITE, FILE_SHARE_WRITE, 0, OPEN_ALWAYS, 0, 0);
     
     if (file_handle != INVALID_HANDLE_VALUE) {

@@ -19,6 +19,7 @@ X64_OPCODE_ALIAS(cwd, cwo, CWO) \
 X64_OPCODE(lea, LEA) \
 X64_OPCODE(mov, MOV) \
 X64_OPCODE(movsx, MOVSX) \
+X64_OPCODE(movsxd, MOVSXD) \
 X64_OPCODE(movzx, MOVZX) \
 X64_OPCODE(push, PUSH) \
 X64_OPCODE(pop, POP) \
@@ -643,6 +644,15 @@ string_builder_push(String_Builder* sb, X64_Operand* operand, bool show_virtual_
             } else {
                 if (show_virtual_registers) {
                     string_builder_push_format(sb, "r%", f_u32(operand->virtual_register));
+#if 0
+                    string_builder_push(sb, "%");
+                    string_builder_push_format(sb, "%", f_u32(operand->virtual_register));
+                    switch (operand->kind) {
+                        case X64Operand_r8: string_builder_push(sb, "b"); break;
+                        case X64Operand_r16: string_builder_push(sb, "w"); break;
+                        case X64Operand_r32: string_builder_push(sb, "d"); break;
+                    }
+#endif
                 } else {
                     string_builder_push(sb, "???");
                 }

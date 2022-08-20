@@ -79,6 +79,31 @@ bc_interp_store_value(Bc_Interp* interp, Bc_Type type, void* dest, Value_Data sr
 }
 
 Value_Data
+bc_interp_cast_value(Value_Data src, Bc_Type type) {
+    Value_Data dest = {};
+    
+    switch (type.kind) {
+        case BcType_s1:
+        case BcType_s8:   dest.signed_int = (s8)  src.signed_int; break;
+        case BcType_s16:  dest.signed_int = (s16) src.signed_int; break;
+        case BcType_s32:  dest.signed_int = (s32) src.signed_int; break;
+        case BcType_s64:  dest.signed_int = (s64) src.signed_int; break;
+        case BcType_u8:   dest.unsigned_int = (u8)  src.unsigned_int; break;
+        case BcType_u16:  dest.unsigned_int = (u16) src.unsigned_int; break;
+        case BcType_u32:  dest.unsigned_int = (u32) src.unsigned_int; break;
+        case BcType_u64:  dest.unsigned_int = (u64) src.unsigned_int; break;
+        case BcType_f32:  dest.floating = (f32) src.floating; break;
+        case BcType_f64:  dest.floating = (f64) src.floating; break;
+        
+        default: {
+            assert(0 && "incompatible type");
+        } break;
+    }
+    
+    return dest;
+}
+
+Value_Data
 bc_interp_load_value(Bc_Interp* interp, Bc_Type type, void* data) {
     Value_Data result;
     if (type.ptr_depth > 0) {
@@ -313,9 +338,8 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
         } break;
         
         case Bytecode_truncate: {
-            // NOTE(Alexander): we need to store and load the value to truncate the Value_Data
             Value_Data src = bc_interp_operand_value(interp, bc->src0, bc->dest_type);
-            Value_Data result = bc_interp_load_value(interp, bc->dest_type, &src.signed_int);
+            Value_Data result = bc_interp_cast_value(src, bc->dest_type);
             bc_interp_store_register(interp, bc->dest.Register, result);
         } break;
         
@@ -324,7 +348,8 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
             assert(bc->src0.kind != BcOperand_None);
             assert(bc->src1.kind == BcOperand_Type);
             
-            Value_Data value = bc_interp_operand_value(interp, bc->src0, bc->dest_type);
+            Bc_Type src_type = bc->src1.Type;
+            Value_Data value = bc_interp_operand_value(interp, bc->src0, src_type);
             Value_Data result = value;
             
             u64 dest_bits = bc_type_to_bitsize(bc->dest_type);
@@ -447,15 +472,22 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
         } break;
         
         case Bytecode_ret: {
-            Value_Data value = bc_interp_operand_value(interp, bc->dest, bc->dest_type);
-            switch (bc->dest_type.kind) {
-                case BcType_s1:  value.unsigned_int = (u64) 1 & value.unsigned_int; break;
-                case BcType_s8:  value.signed_int = (s8) value.signed_int; break;
-                case BcType_s16: value.signed_int = (s16) value.signed_int; break;
-                case BcType_s32: value.signed_int = (s32) value.signed_int; break;
-                case BcType_u8:  value.unsigned_int = (u8) value.unsigned_int; break;
-                case BcType_u16: value.unsigned_int = (u16) value.unsigned_int; break;
-                case BcType_u32: value.unsigned_int = (u32) value.unsigned_int; break;
+            Value_Data value = {};
+            if (bc->dest.kind != BcOperand_None) {
+                value = bc_interp_operand_value(interp, bc->dest, bc->dest_type);
+                value = bc_interp_load_value(interp, bc->dest_type, &value.signed_int);
+                
+#if 0 // TODO(Alexander): don't think we need this!
+                switch (bc->dest_type.kind) {
+                    case BcType_s1:  value.unsigned_int = (u64) 1 & value.unsigned_int; break;
+                    case BcType_s8:  value.signed_int = (s8) value.signed_int; break;
+                    case BcType_s16: value.signed_int = (s16) value.signed_int; break;
+                    case BcType_s32: value.signed_int = (s32) value.signed_int; break;
+                    case BcType_u8:  value.unsigned_int = (u8) value.unsigned_int; break;
+                    case BcType_u16: value.unsigned_int = (u16) value.unsigned_int; break;
+                    case BcType_u32: value.unsigned_int = (u32) value.unsigned_int; break;
+                }
+#endif
             }
             
             // Pop scope
@@ -465,7 +497,7 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
                 interp->return_value = value;
             } else  {
                 Bc_Interp_Scope* scope = &array_last(interp->scopes);
-                assert(scope->return_register);
+                //assert(scope->return_register);
                 if (scope->return_register != 0) {
                     bc_interp_store_register(interp, scope->return_register, value);
                     scope->return_register = 0;

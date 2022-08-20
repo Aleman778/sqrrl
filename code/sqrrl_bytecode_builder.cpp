@@ -375,44 +375,39 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                 second = bc_signed_int_op(-1);
                 result = bc_binary(bc, Bytecode_or, first, second, bc_type_s1);
                 
-            } else if (binary_op == BinaryOp_Assign) {
-                Ast* first_ast = node->Binary_Expr.first;
+            } else {
                 Bc_Operand second = bc_build_expression(bc, node->Binary_Expr.second);
                 Bc_Type second_type = bc_build_type(bc, node->Binary_Expr.second->type);
                 
-                if (first_ast->kind == Ast_Unary_Expr && first_ast->Unary_Expr.op == UnaryOp_Dereference) {
-                    Bc_Operand first = bc_build_expression(bc, first_ast->Unary_Expr.first);
-                    bc_copy_to_deref(bc, first, second, second_type);
-                    
-                } else {
+                if (binary_op != BinaryOp_Assign) {
                     Bc_Type first_type = bc_build_type(bc, node->Binary_Expr.first->type);
                     Bc_Operand first = bc_build_expression(bc, node->Binary_Expr.first);
-                    bc_copy(bc, first, second, first_type);
+                    
+                    // TODO(Alexander): conform to largest, maybe this will be done in type stage instead
+                    Bc_Type type = bc_conform_to_larger_type(bc, 
+                                                             &first, first_type, 
+                                                             &second, second_type);
+                    
+                    Bc_Opcode binary_opcode = binary_op_to_bc_opcode_table[binary_op];
+                    second = bc_binary(bc, binary_opcode, first, second, type);
+                    second_type = type;
+                    result = second;
                 }
                 
-            } else {
-                Bc_Type first_type = bc_build_type(bc, node->Binary_Expr.first->type);
-                Bc_Operand first = bc_build_expression(bc, node->Binary_Expr.first);
                 
-                Bc_Type second_type = bc_build_type(bc, node->Binary_Expr.second->type);
-                Bc_Operand second = bc_build_expression(bc, node->Binary_Expr.second);
-                
-                result = second;
-                
-                // TODO(Alexander): conform to largest, maybe this will be done in type stage instead
-                Bc_Type type = bc_conform_to_larger_type(bc, 
-                                                         &first, first_type, 
-                                                         &second, second_type);
-                
-                Bc_Opcode binary_opcode = Bytecode_noop;
-                switch (binary_op) {
-#define BINOP(name, op, prec, assoc, is_comparator, bc_mnemonic) \
-case BinaryOp_##name: binary_opcode = Bytecode_##bc_mnemonic; break;
-                    DEF_BINARY_OPS
-#undef BINOP
+                if (is_binary_assign(binary_op)) {
+                    Ast* first_ast = node->Binary_Expr.first;
+                    
+                    if (first_ast->kind == Ast_Unary_Expr && first_ast->Unary_Expr.op == UnaryOp_Dereference) {
+                        Bc_Operand first = bc_build_expression(bc, first_ast->Unary_Expr.first);
+                        bc_copy_to_deref(bc, first, second, second_type);
+                        
+                    } else {
+                        Bc_Type first_type = bc_build_type(bc, node->Binary_Expr.first->type);
+                        Bc_Operand first = bc_build_expression(bc, node->Binary_Expr.first);
+                        bc_copy(bc, first, second, first_type);
+                    }
                 }
-                
-                result = bc_binary(bc, binary_opcode, first, second, type);
             }
         } break;
         
@@ -651,10 +646,9 @@ bc_build_statement(Bc_Builder* bc, Ast* node, bool last_statement=false) {
         } break;
         
         case Ast_Return_Stmt: {
-            Bc_Type source_type = bc_build_type(bc, node->Return_Stmt.expr->type);
             Bc_Operand source = bc_build_expression(bc, node->Return_Stmt.expr);
             if (bc->curr_return_dest.kind != BcOperand_None) {
-                bc_copy(bc, bc->curr_return_dest, source, source_type);
+                bc_copy(bc, bc->curr_return_dest, source, bc->curr_return_type);
             }
             bc_goto(bc, bc->curr_epilogue);
         } break;
@@ -683,6 +677,7 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
             Bc_Type return_type = bc_build_type(bc, type->Function.return_type);
             if (return_type.kind != BcType_void) {
                 bc->curr_return_dest = bc_stack_alloc(bc, return_type);
+                bc->curr_return_type = return_type;
                 result.Procedure.first_return_reg = bc->curr_return_dest.Register;
             }
             result.Procedure.first_arg_reg = bc->next_register;

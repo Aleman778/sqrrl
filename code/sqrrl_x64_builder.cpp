@@ -50,14 +50,6 @@ operand.is_allocated = true; \
                             ALLOC_REG(insn->op2);});
 }
 
-inline void
-x64_add_interference(X64_Builder* x64, u64 a, u64 b) {
-    X64_Register_Node* node_a = &map_get(x64->interference_graph, a);
-    X64_Register_Node* node_b = &map_get(x64->interference_graph, b);
-    array_push(node_a->interference, b);
-    array_push(node_b->interference, a);
-}
-
 
 // NOTE(Alexander): makes sure that when memory gets fragmented that we start a new block
 // TODO(Alexander): introduce allocators so we can reuse arena_push_size (mostly copypasta)
@@ -282,21 +274,40 @@ x64_build_operand(X64_Builder* x64, Bc_Operand operand, Bc_Type type) {
     
     switch (operand.kind) {
         case BcOperand_Register: {
-            // Check if our result is from compare instruction
-            if (x64->curr_compare_insn) {
-                Bc_Operand cmp_dest = x64->curr_compare_insn->dest;
-                if (cmp_dest.Register == operand.Register) {
-                    Bc_Instruction* cmp = x64->curr_compare_insn;
-                    x64->curr_compare_insn = 0;
-                    X64_Instruction* insn = x64_build_setcc(x64, cmp);
-                    insn->op0 = x64_build_operand(x64, cmp_dest, bc_type_s1);
+            
+            smm vreg_index = map_get_index(x64->allocated_virtual_registers, operand.Register);
+            if (vreg_index != -1) {
+                // TODO(Alexander): this is a hack: currently we need this to store the arguments passed to us
+                result = x64->allocated_virtual_registers[vreg_index].value;
+                return result;
+            } else {
+                // Check if our result is from compare instruction
+                if (x64->curr_compare_insn) {
+                    Bc_Operand cmp_dest = x64->curr_compare_insn->dest;
+                    if (cmp_dest.Register == operand.Register) {
+                        Bc_Instruction* cmp = x64->curr_compare_insn;
+                        x64->curr_compare_insn = 0;
+                        X64_Instruction* insn = x64_build_setcc(x64, cmp);
+                        insn->op0 = x64_build_operand(x64, cmp_dest, bc_type_s1);
+                    }
+                }
+                
+                result.virtual_register = operand.Register;
+                result.kind = x64_get_register_kind(type);
+                x64_allocate_virtual_register(x64, result.virtual_register);
+                
+                bool is_active = false;
+                for_array_v(x64->active_virtual_registers, vreg, _) { 
+                    if (vreg == result.virtual_register) {
+                        is_active = true;
+                        break;
+                    }
+                }
+                
+                if (!is_active) {
+                    array_push(x64->active_virtual_registers, result.virtual_register);
                 }
             }
-            
-            result.virtual_register = operand.Register;
-            result.kind = x64_get_register_kind(type);
-            x64_allocate_virtual_register(x64, result.virtual_register);
-            array_push(x64->active_virtual_registers, result.virtual_register);
         } break;
         
         
@@ -304,7 +315,18 @@ x64_build_operand(X64_Builder* x64, Bc_Operand operand, Bc_Type type) {
             result.virtual_register = operand.Register;
             result.kind = x64_get_memory_kind(type);
             x64_allocate_virtual_register(x64, result.virtual_register);
-            array_push(x64->active_virtual_registers, result.virtual_register);
+            
+            bool is_active = false;
+            for_array_v(x64->active_virtual_registers, vreg, _) { 
+                if (vreg == result.virtual_register) {
+                    is_active = true;
+                    break;
+                }
+            }
+            
+            if (!is_active) {
+                array_push(x64->active_virtual_registers, result.virtual_register);
+            }
         } break;
         
         case BcOperand_Stack: {
@@ -313,8 +335,17 @@ x64_build_operand(X64_Builder* x64, Bc_Operand operand, Bc_Type type) {
         } break;
         
         case BcOperand_Int: {
-            // NOTE(Alexander): signed/ unsigned constants are the same just different interpretation
             result = x64_build_immediate(x64, operand.Signed_Int, type);
+            if (result.kind == X64Operand_imm64) {
+                // NOTE(Alexander): we can only move imm64 to register
+                X64_Operand temp_reg = x64_allocate_temporary_register(x64, type);
+                
+                X64_Instruction* tmp_mov_insn = x64_push_instruction(x64, X64Opcode_mov);
+                tmp_mov_insn->op0 = temp_reg;
+                tmp_mov_insn->op1 = result;
+                result = temp_reg;
+            }
+            
         } break;
         
         case BcOperand_Float: {
@@ -358,16 +389,6 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
         case Bytecode_copy: {
             X64_Operand src = x64_build_operand(x64, bc->src0, bc->dest_type);
             
-            if (src.kind == X64Operand_imm64) {
-                // NOTE(Alexander): we can only move imm64 to register
-                X64_Operand temp_reg = x64_allocate_temporary_register(x64, bc->dest_type);
-                
-                X64_Instruction* tmp_mov_insn = x64_push_instruction(x64, X64Opcode_mov);
-                tmp_mov_insn->op0 = temp_reg;
-                tmp_mov_insn->op1 = src;
-                
-                src= temp_reg;
-            }
             
             X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
             insn->op0 = x64_build_operand(x64, bc->dest, bc->dest_type);
@@ -641,25 +662,11 @@ add_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type); \
             s32 dest_size = bc_type_to_size(bc->dest_type);
             s32 src_size = bc_type_to_size(bc->src1.Type);
             
-            if (dest_size != src_size) {
-                assert(dest_size < src_size);
-                
-                if (is_bc_operand_value(bc->src0.kind)) {
-                    X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
-                    mov_insn->op0 = x64_build_operand(x64, bc->dest, bc->dest_type);
-                    mov_insn->op1 = x64_build_operand(x64, bc->src0, bc->dest_type);
-                } else {
-                    X64_Operand src = {}; // TODO(Alexander): fix this:
-                    //map_get(x64->allocated_virtual_registers, bc->src0.Register);
-                    src = x64_operand_type_cast(src, bc->dest_type);
-                    //map_put(x64->allocated_virtual_registers, bc->dest.Register, src);
-                }
-            } else {
-                X64_Operand dest = x64_build_operand(x64, bc->src0, bc->dest_type);
-                if (bc->dest.kind == BcOperand_Register) {
-                    //map_put(x64->allocated_virtual_registers, bc->dest.Register, dest);
-                }
-            }
+            assert(dest_size <= src_size);
+            
+            X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
+            mov_insn->op0 = x64_build_operand(x64, bc->dest, bc->dest_type);
+            mov_insn->op1 = x64_build_operand(x64, bc->src0, bc->dest_type);
         } break;
         
         case Bytecode_sign_extend:
@@ -668,7 +675,7 @@ add_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type); \
             s32 src_size = bc_type_to_size(bc->src1.Type);
             
             if (dest_size != src_size) {
-                assert(dest_size > src_size);
+                assert(dest_size >= src_size);
                 X64_Operand source_operand = x64_build_operand(x64, bc->src0, bc->src1.Type);
                 
                 if (x64->curr_compare_insn && bc->src1.Type.kind == BcType_s1) {
@@ -684,6 +691,12 @@ add_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type); \
                 
                 X64_Opcode opcode = (bc->opcode == Bytecode_sign_extend) ? 
                     X64Opcode_movsx : X64Opcode_movzx;
+                
+                // NOTE(Alexander): for some reason we have to different instructions for movsx
+                if (opcode == X64Opcode_movsx && src_size >= 4) {
+                    opcode = X64Opcode_movsxd;
+                }
+                
                 X64_Instruction* mov_insn = x64_push_instruction(x64, opcode);
                 mov_insn->op0 = x64_build_operand(x64, bc->dest, bc->dest_type);
                 mov_insn->op1 = source_operand;
@@ -797,30 +810,19 @@ add_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type); \
             
             // Make sure we setup the result as RAX
             if (function_type->Function.return_type->kind != Type_Void) {
+                x64_allocate_specific_register(x64, X64Register_rax, bc->dest.Register);
+                
                 X64_Operand dest = {};
                 dest.kind = x64_get_register_kind(bc->dest_type);
                 dest.is_allocated = true;
                 dest.reg = X64Register_rax;
-                //map_put(x64->allocated_virtual_registers, bc->dest.Register, dest);
+                map_put(x64->allocated_virtual_registers, bc->dest.Register, dest);
             }
         } break;
         
         case Bytecode_ret: {
-            if (bc->dest.kind == BcOperand_Register) { 
-                X64_Opcode opcode;
-                if (bc_type_to_size(bc->dest_type) < 4) {
-                    if (is_bc_type_sint(bc->dest_type.kind)) {
-                        opcode = X64Opcode_movsx;
-                        bc->dest_type.kind = BcType_s32;
-                    } else {
-                        opcode = X64Opcode_movzx;
-                        bc->dest_type.kind = BcType_u32;
-                    }
-                } else {
-                    opcode = X64Opcode_mov;
-                }
-                
-                X64_Instruction* mov_insn = x64_push_instruction(x64, opcode);
+            if (bc->dest.kind != BcOperand_None) {
+                X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
                 X64_Operand_Kind operand_kind = x64_get_register_kind(bc->dest_type);
                 mov_insn->op0 = x64_build_physical_register(x64, X64Register_rax, operand_kind);
                 mov_insn->op1 = x64_build_operand(x64, bc->dest, bc->dest_type);
@@ -944,13 +946,10 @@ x64_build_function(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_b
             if (arg_index < fixed_array_count(gpr_registers)) {
                 X64_Operand_Kind type_kind = x64_get_register_kind(arg->type);
                 X64_Operand value = x64_build_physical_register(x64, gpr_registers[arg_index], type_kind);
-                
+                map_put(x64->allocated_virtual_registers, arg->src.Register, value);
             } else {
-                
-                
-                // TODO(Alexander): s32 is hardcoded for now, we need to store the argument types
                 X64_Operand value = x64_build_stack_offset(x64, arg->type, param_stack_offset);
-                
+                map_put(x64->allocated_virtual_registers, arg->src.Register, value);
                 
                 s32 size = bc_type_to_size(arg->type);
                 s32 align = (s32) align_forward(size, 8);
@@ -958,7 +957,6 @@ x64_build_function(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_b
             }
         }
     }
-    
     
 #if 0
     // Push registers in order
@@ -1014,6 +1012,11 @@ x64_build_function(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_b
             x64_free_virtual_register_if_dead(x64, insn->src0, curr_bc_instruction);
             x64_free_virtual_register_if_dead(x64, insn->src1, curr_bc_instruction);
             
+            for_array_v(x64->temp_registers, vreg, _) {
+                x64_free_virtual_register(x64, vreg);
+            }
+            array_free(x64->temp_registers);
+            
             curr_block_insn++;
             curr_bc_instruction++;
         }
@@ -1032,6 +1035,12 @@ x64_build_function(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_b
     
     // Epilogue
     x64_push_epilogue(x64, stack_offset);
+    
+    // Check if we forgot to free any registers
+    int allocated_count = (int) array_count(x64->active_virtual_registers);
+    if (allocated_count > 0) {
+        pln("Warning: x64 backend forgot to free `%` virtual registers", f_int(allocated_count));
+    }
 }
 
 void

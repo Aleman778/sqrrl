@@ -430,7 +430,11 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 if (binary_is_comparator_table[expr->Binary_Expr.op]) {
                     result = &global_primitive_types[PrimitiveType_bool];
                 } else {
-                    result = first_type;
+                    if (first_type->cached_size > second_type->cached_size) {
+                        result = first_type;
+                    } else {
+                        result = second_type;
+                    }
                 }
                 
                 expr->type = result;

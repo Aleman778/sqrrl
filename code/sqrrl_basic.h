@@ -82,6 +82,13 @@ typedef const char*  cstring;
 
 void DEBUG_log_backtrace();
 
+#if BUILD_DEBUG
+#define ptrace() \
+DEBUG_log_backtrace();
+#else
+#define ptrace()
+#endif
+
 // NOTE(Alexander): define assestion macro on debug mode
 #ifdef assert
 #undef assert

@@ -190,14 +190,15 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 if (decl->kind == BcDecl_Procedure) {
                     Bc_Basic_Block* first_basic_block = get_bc_basic_block(bytecode, decl->first_byte_offset);
                     Bc_Instruction* label = get_first_bc_instruction(first_basic_block);
+                    Bc_Regiter_Mapper register_mapper = {};
                     
                     string_builder_push(&sb, "\n");
-                    string_builder_push(&sb, &label->src0);
+                    string_builder_push(&sb, &register_mapper, &label->src0);
                     string_builder_push(&sb, " ");
                     string_builder_push(&sb, vars_load_string(it->key.ident));
-                    string_builder_push(&sb, label->src1.Argument_List, true);
+                    string_builder_push(&sb, &register_mapper, label->src1.Argument_List, true);
                     string_builder_push(&sb, " {\n");
-                    string_builder_push(&sb, first_basic_block, bytecode);
+                    string_builder_push(&sb, &register_mapper, first_basic_block, bytecode);
                     string_builder_push(&sb, "}\n");
                     
                 } else if (decl->kind == BcDecl_Data) {
@@ -223,6 +224,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         x64_builder.label_indices = bytecode_builder.label_indices;
         x64_builder.bc_register_live_lengths = bytecode_builder.live_lengths;
         x64_builder.bytecode = &bytecode_builder.code;
+        x64_builder.next_free_virtual_register = bytecode_builder.next_register;
         
         // Make sure to compile entry point function first
         Bc_Label entry_point_label = { Sym_main, 0 };
@@ -302,8 +304,14 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         
         pln("\nX64 Machine Code (% bytes):", f_umm(assembler.curr_used));
         for (int byte_index = 0; byte_index < assembler.curr_used; byte_index++) {
-            printf("0x%hhX ", (u8) assembler.bytes[byte_index]);
-            if (byte_index % 10 == 9) {
+            u8 byte = assembler.bytes[byte_index];
+            if (byte > 0xF) {
+                printf("%hhX ", byte);
+            } else {
+                printf("0%hhX ", byte);
+            }
+            
+            if (byte_index % 16 == 15) {
                 printf("\n");
             }
         }

@@ -22,6 +22,7 @@ struct Bc_Builder {
     Bc_Instruction* curr_instruction;
     Bc_Basic_Block* curr_basic_block;
     Bc_Operand curr_return_dest;
+    Bc_Type curr_return_type;
     Bc_Register next_register;
     u64 instruction_count;
     u32 curr_declaration_index;

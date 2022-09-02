@@ -26,8 +26,7 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
     
     is_test_mode = true;
     
-    // Setup string interning of variables
-    vars_initialize();
+    vars_initialize_keywords_and_symbols();
     
     // Load source code
     Loaded_Source_File file = read_entire_source_file(filename);

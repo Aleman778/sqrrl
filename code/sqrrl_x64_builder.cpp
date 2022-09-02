@@ -351,6 +351,10 @@ x64_build_operand(X64_Builder* x64, Bc_Operand operand, Bc_Type type) {
         case BcOperand_Float: {
             unimplemented;
         } break;
+        
+        case BcOperand_Label: {
+            result = x64_build_data_target(x64, operand.Label);
+        } break;
     }
     
     return result;

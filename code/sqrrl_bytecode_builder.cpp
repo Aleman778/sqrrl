@@ -70,6 +70,29 @@ bc_push_basic_block(Bc_Builder* bc, Bc_Label label) {
     return block;
 }
 
+inline Bc_Operand
+bc_save_string(Bc_Builder* bc, string str) {
+    // TODO(Alexander): we should use string interner to avoid storing many of these
+    
+    cstring cstr = string_to_cstring(str); // TODO(Alexander): can we get rid of this allocation?
+    Memory_String mstr = string_map_get(bc->string_storage, cstr);
+    if (!mstr) {
+        mstr = arena_push_flat_string(&bc->data_arena, str);
+        string_map_put(bc->string_storage, cstr, mstr);
+    }
+    cstring_free(cstr);
+    
+    Bc_Decl bc_decl = {};
+    bc_decl.kind = BcDecl_Data;
+    bc_decl.first_byte_offset = (umm) mstr - (umm) bc->data_arena.base;
+    bc_decl.Data.type = bc_build_type(bc, &global_string_type);
+    bc_decl.Data.value.mstr = mstr;
+    Bc_Label label = create_unique_bc_label(bc, Sym___string);
+    map_put(bc->declarations, label, bc_decl);
+    
+    return bc_label_op(label);
+}
+
 Bc_Type
 bc_build_type(Bc_Builder* bc, Type* type) {
     Bc_Type result = {};
@@ -278,8 +301,7 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                 } break;
                 
                 case Value_string: {
-                    Memory_String v = bc_save_string(bc, node->Value.value.data.str);
-                    result = bc_string_op(v);
+                    result = bc_save_string(bc, node->Value.value.data.str);
                 } break;
                 
                 default: {

@@ -381,7 +381,7 @@ interp_expression(Interp* interp, Ast* ast) {
                     // NOTE(Alexander): meta programming yeah, less typing more confusing!
 #define PCASE(T, V) case PrimitiveType_##T: { \
 result.value.type = Value_##V; \
-result.value.data.##V = (T) (value.data.##PVALUE); \
+result.value.data. V = (T) (value.data.##PVALUE); \
 } break;
 #define PTYPECONV switch (type->Primitive.kind) { \
 PCASE(int, signed_int); \

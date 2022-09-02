@@ -471,6 +471,10 @@ string_builder_push(String_Builder* sb,
             string_builder_push_format(sb, "%", f_u64(operand->Float));
         } break;
         
+        case BcOperand_String: {
+            string_builder_push_format(sb, "\"%\"", f_mstring(operand->String));
+        } break;
+        
         case BcOperand_Type: {
             string_builder_push(sb, operand->Type);
         } break;

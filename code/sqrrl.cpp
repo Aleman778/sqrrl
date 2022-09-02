@@ -80,8 +80,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     //pln("working directory: %", f_string(working_directory));
     
-    // Setup string interning of variables
-    vars_initialize();
+    vars_initialize_keywords_and_symbols();
     
     // Read entire source file
     Loaded_Source_File file = read_entire_source_file(filename);
@@ -241,9 +240,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 continue;
             }
             
-            pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
             Bc_Decl* decl = &it->value;
             if (decl->kind == BcDecl_Procedure) {
+                pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
                 Bc_Basic_Block* proc_block =
                     get_bc_basic_block(bytecode, decl->first_byte_offset);
                 x64_build_function(&x64_builder, bytecode, proc_block);

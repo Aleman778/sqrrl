@@ -1,7 +1,11 @@
 #!/bin/bash
 
-code="$PWD"
-opts=-g
+project_dir="$PWD"
 pushd build > /dev/null
-g++ $opts $code/code/main.cpp -o sqrrl.exe
+
+# Common Compiler Options
+options=-g
+
+g++ $compiler_flags $project_dir/code/platform_windows.cpp -o sqrrl.exe
+
 popd > /dev/null

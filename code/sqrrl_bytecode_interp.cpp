@@ -152,6 +152,11 @@ bc_interp_operand_value(Bc_Interp* interp, Bc_Operand operand, Bc_Type value_typ
             result.floating = operand.Float;
         } break;
         
+        case BcOperand_Label: {
+            Bc_Decl decl = map_get(interp->declarations, operand.Label);
+            result = decl.Data.value;
+        } break;
+        
         default: {
             assert(0 && "operand is not a value");
         } break;

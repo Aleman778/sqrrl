@@ -439,6 +439,7 @@ enum Format_Type { // TODO(Alexander): add more types
 #define f_float(x) FormatType_f64, (double) (x)
 #define f_var(x) FormatType_string, (string) vars_load_string(x)
 #define f_string(x) FormatType_string, (string) (x)
+#define f_mstring(x) FormatType_memory_string, (Memory_String) (x)
 #define f_cstring(x) FormatType_cstring, (cstring) (x)
 #define f_ast(x) FormatType_ast, (Ast*) (x)
 #define f_value(x) FormatType_value, (Value*) (x)
@@ -448,7 +449,7 @@ void print_format(cstring format...);
 string string_format(cstring format...);
 
 // NOTE(Alexander): print formatted string with new line
-#define pln(format, ...) print_format(format##"\n", __VA_ARGS__)
+#define pln(format, ...) print_format(format##"\n", ##__VA_ARGS__)
 //#define pln(...)
 
 
@@ -709,7 +710,7 @@ arena_can_fit_size(Memory_Arena* arena, umm size, umm align) {
 
 
 #define arena_push_struct(arena, type, ...) \
-(type*) arena_push_size(arena, (umm) sizeof(type), (umm) alignof(type), __VA_ARGS__)
+(type*) arena_push_size(arena, (umm) sizeof(type), (umm) alignof(type), ##__VA_ARGS__)
 
 #define arena_get_data(arena, byte_offset) \
 (void*) ((u8*) (arena)->base + (byte_offset))

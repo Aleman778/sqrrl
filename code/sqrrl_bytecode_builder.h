@@ -8,6 +8,7 @@ struct Bc_Builder {
     Memory_Arena code_arena;
     
     Memory_Arena data_arena;
+    String_Interner stored_strings;
     
     Bc_Basic_Block* global_block;
     
@@ -16,9 +17,7 @@ struct Bc_Builder {
     Bc_Label curr_prologue;
     Bc_Label curr_epilogue;
     Bc_Label curr_bb;
-    
     Bc_Label_Index_Table* label_indices;
-    
     Bc_Instruction* curr_instruction;
     Bc_Basic_Block* curr_basic_block;
     Bc_Operand curr_return_dest;
@@ -37,21 +36,10 @@ struct Bc_Builder {
 };
 
 void bc_build_from_ast(Bc_Builder* bc, Ast_File* ast_file);
+Bc_Type bc_build_type(Bc_Builder* bc, Type* type);
+
 Bc_Basic_Block* bc_push_basic_block(Bc_Builder* bc, Bc_Label label = {});
 Bc_Instruction* bc_push_instruction(Bc_Builder* bc, Bc_Opcode opcode);
-
-inline Memory_String
-bc_save_string(Bc_Builder* bc, string str) {
-    cstring cstr = string_to_cstring(str);// TODO(Alexander): can we get rid of this allocation?
-    Memory_String result = string_map_get(bc->string_storage, cstr);
-    if (!result) {
-        result = arena_push_flat_string(&bc->data_arena, str);
-        string_map_put(bc->string_storage, cstr, result);
-    }
-    cstring_free(cstr);
-    
-    return result;
-}
 
 inline Bc_Operand
 create_unique_bc_register(Bc_Builder* bc) {

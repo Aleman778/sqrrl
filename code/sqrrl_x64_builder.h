@@ -25,7 +25,6 @@ struct X64_Builder {
     array(u64)* active_virtual_registers;
     array(u64)* temp_registers;
     
-    
     Memory_Arena rodata_segment_arena;
     
     Bc_Label_Index_Table* label_indices;

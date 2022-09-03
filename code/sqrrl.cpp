@@ -92,6 +92,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     Preprocessor preprocessor = {};
     string preprocessed_source = preprocess_file(&preprocessor, file.source, file.filename, file.index);
     
+    bool flag_print_ast = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_AST));
+    bool flag_print_bc  = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_BYTECODE));
+    bool flag_print_asm = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_ASM));
     
     // TODO(alexander): temp printing source
     //pln("Preprocessed source:\n%", f_string(preprocessed_source));
@@ -123,35 +126,31 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     parser.tokenizer = &tokenizer;
     Ast_File ast_file = parse_file(&parser);
     
-#if BUILD_MAX_DEBUG
-    // NOTE(Alexander): Print the AST
-    pln("AST before types:");
-    for_map(ast_file.decls, decl) {
-        print_ast(decl->value, &tokenizer);
-    }
-#endif
-    
     if (ast_file.error_count > 0) {
+        if (flag_print_ast) {
+            pln("AST before typer:");
+            for_map(ast_file.decls, decl) {
+                print_ast(decl->value, &tokenizer);
+            }
+        }
+        
         pln("\nErrors found during parsing, exiting...\n");
         return 1;
     }
     
-#if 1
     // Typecheck the AST
     if (type_check_ast_file(&ast_file) != 0) {
         pln("\nErrors found during type checking, exiting...\n");
         return 1;
     }
     
-    
-#if BUILD_MAX_DEBUG
-    // NOTE(Alexander): Print the AST
-    pln("AST after types:");
-    for_map(ast_file.decls, decl) {
-        print_ast(decl->value, &tokenizer);
+    if (flag_print_ast) {
+        pln("AST:");
+        for_map(ast_file.decls, decl) {
+            print_ast(decl->value, &tokenizer);
+        }
     }
-#endif
-#endif
+    
 #if 1
     {
         // Interpret the AST
@@ -175,10 +174,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         bc_build_from_ast(&bytecode_builder, &ast_file);
         Bytecode* bytecode = &bytecode_builder.code;
         
-        // TODO(Alexander): only counts last memory block
-        pln("Bytecode (code) size (% bytes):\n", f_umm(bytecode_builder.code_arena.curr_used));
-        
-        {
+        if (flag_print_bc) {
+            // TODO(Alexander): only counts last memory block
+            pln("Bytecode (code) size (% bytes):\n", f_umm(bytecode_builder.code_arena.curr_used));
+            
             String_Builder sb = {};
             for_map (bytecode_builder.declarations, it) {
                 if (it->key.ident == Kw_global) {
@@ -259,7 +258,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                                 interference_graph.data, 
                                 (u32) interference_graph.count);
         
-        {
+        if (flag_print_asm) {
             // Print the human readable x64 assembly code (before register allocation)
             String_Builder sb = {};
             string_builder_push(&sb, x64_builder.first_basic_block, true);
@@ -279,7 +278,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                                 interference_graph.data, 
                                 (u32) interference_graph.count);
         
-        {
+        if (flag_print_asm) {
             // Print the human readable x64 assembly code
             String_Builder sb = {};
             string_builder_push(&sb, x64_builder.first_basic_block, false);
@@ -301,6 +300,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                                      x64_instruction_definitions,
                                      x64_builder.first_basic_block);
         
+#if 0
         pln("\nX64 Machine Code (% bytes):", f_umm(assembler.curr_used));
         for (int byte_index = 0; byte_index < assembler.curr_used; byte_index++) {
             u8 byte = assembler.bytes[byte_index];
@@ -314,13 +314,12 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 printf("\n");
             }
         }
-        
-        pln("\n\nRunning JIT:");
+#endif
         
         asm_make_executable(asm_buffer, asm_size);
         asm_main* func = (asm_main*) asm_buffer;
         int jit_exit_code = (int) func();
-        pln("\n\nInterpreter exited with code: %", f_int(interp_exit_code));
+        pln("Interpreter exited with code: %", f_int(interp_exit_code));
         pln("        JIT exited with code: %", f_int(jit_exit_code));
     }
     

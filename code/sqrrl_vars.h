@@ -62,6 +62,9 @@ VAR(__COUNTER__) \
 VAR(__FILE__) \
 VAR(__FUNCTION__) \
 VAR(__LINE__) \
+VAR(PRINT_AST) \
+VAR(PRINT_BYTECODE) \
+VAR(PRINT_ASM) \
 VAR(define)   \
 VAR(defined)  \
 VAR(elif)     \

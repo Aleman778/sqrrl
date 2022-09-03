@@ -1,7 +1,7 @@
 
 // TODO(Alexander): add custom string interner to avoid bloating the global one.
 
-internal bool
+internal Value
 preprocess_parse_and_eval_constant_expression(Preprocessor* preprocessor, Tokenizer* t) {
     u8* base = t->curr;
     
@@ -22,7 +22,8 @@ preprocess_parse_and_eval_constant_expression(Preprocessor* preprocessor, Tokeni
     
     if (parser.error_count > 0) {
         pln("\nFailed while parsing source:\n`%`", f_string(tokenizer.source));
-        return false;
+        Value value = {};
+        return value;
     }
     
     // TODO(Alexander): interpreter needs to be able to access macro definitions
@@ -50,7 +51,21 @@ preprocess_parse_and_eval_constant_expression(Preprocessor* preprocessor, Tokeni
     
     string_builder_free(&sb);
     
-    return value_to_bool(result.value);
+    return result.value;
+}
+
+Value
+preprocess_eval_macro(Preprocessor* preprocessor, string_id ident) {
+    Value result = {};
+    
+    Preprocessor_Macro macro = map_get(preprocessor->macros, ident);
+    if (macro.is_valid) {
+        Tokenizer tokenizer = {};
+        tokenizer_set_source(&tokenizer, macro.source, string_lit("<eval>"));
+        result = preprocess_parse_and_eval_constant_expression(preprocessor, &tokenizer);
+    }
+    
+    return result;
 }
 
 internal void
@@ -296,8 +311,8 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
             
             case Kw_if: {
                 if (preprocessor->curr_branch_taken) {
-                    bool value = preprocess_parse_and_eval_constant_expression(preprocessor, t);
-                    array_push(preprocessor->if_result_stack, value);
+                    Value value = preprocess_parse_and_eval_constant_expression(preprocessor, t);
+                    array_push(preprocessor->if_result_stack, value_to_bool(value));
                     
                     preprocessor->curr_branch_taken =
                         check_if_curr_branch_is_taken(preprocessor->if_result_stack);
@@ -313,8 +328,8 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                         preprocessor->curr_branch_taken = false;
                     } else {
                         
-                        bool value = preprocess_parse_and_eval_constant_expression(preprocessor, t);
-                        array_last(preprocessor->if_result_stack) = value;
+                        Value value = preprocess_parse_and_eval_constant_expression(preprocessor, t);
+                        array_last(preprocessor->if_result_stack) = value_to_bool(value);
                         
                         preprocessor->curr_branch_taken =
                             check_if_curr_branch_is_taken(preprocessor->if_result_stack);

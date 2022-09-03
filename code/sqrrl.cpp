@@ -80,8 +80,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     //pln("working directory: %", f_string(working_directory));
     
-    // Setup string interning of variables
-    vars_initialize();
+    vars_initialize_keywords_and_symbols();
     
     // Read entire source file
     Loaded_Source_File file = read_entire_source_file(filename);
@@ -93,6 +92,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     Preprocessor preprocessor = {};
     string preprocessed_source = preprocess_file(&preprocessor, file.source, file.filename, file.index);
     
+    bool flag_print_ast = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_AST));
+    bool flag_print_bc  = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_BYTECODE));
+    bool flag_print_asm = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_ASM));
     
     // TODO(alexander): temp printing source
     //pln("Preprocessed source:\n%", f_string(preprocessed_source));
@@ -124,35 +126,31 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     parser.tokenizer = &tokenizer;
     Ast_File ast_file = parse_file(&parser);
     
-#if BUILD_MAX_DEBUG
-    // NOTE(Alexander): Print the AST
-    pln("AST before types:");
-    for_map(ast_file.decls, decl) {
-        print_ast(decl->value, &tokenizer);
-    }
-#endif
-    
     if (ast_file.error_count > 0) {
+        if (flag_print_ast) {
+            pln("AST before typer:");
+            for_map(ast_file.decls, decl) {
+                print_ast(decl->value, &tokenizer);
+            }
+        }
+        
         pln("\nErrors found during parsing, exiting...\n");
         return 1;
     }
     
-#if 1
     // Typecheck the AST
     if (type_check_ast_file(&ast_file) != 0) {
         pln("\nErrors found during type checking, exiting...\n");
         return 1;
     }
     
-    
-#if BUILD_MAX_DEBUG
-    // NOTE(Alexander): Print the AST
-    pln("AST after types:");
-    for_map(ast_file.decls, decl) {
-        print_ast(decl->value, &tokenizer);
+    if (flag_print_ast) {
+        pln("AST:");
+        for_map(ast_file.decls, decl) {
+            print_ast(decl->value, &tokenizer);
+        }
     }
-#endif
-#endif
+    
 #if 1
     {
         // Interpret the AST
@@ -176,10 +174,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         bc_build_from_ast(&bytecode_builder, &ast_file);
         Bytecode* bytecode = &bytecode_builder.code;
         
-        // TODO(Alexander): only counts last memory block
-        pln("Bytecode (code) size (% bytes):\n", f_umm(bytecode_builder.code_arena.curr_used));
-        
-        {
+        if (flag_print_bc) {
+            // TODO(Alexander): only counts last memory block
+            pln("Bytecode (code) size (% bytes):\n", f_umm(bytecode_builder.code_arena.curr_used));
+            
             String_Builder sb = {};
             for_map (bytecode_builder.declarations, it) {
                 if (it->key.ident == Kw_global) {
@@ -190,14 +188,15 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 if (decl->kind == BcDecl_Procedure) {
                     Bc_Basic_Block* first_basic_block = get_bc_basic_block(bytecode, decl->first_byte_offset);
                     Bc_Instruction* label = get_first_bc_instruction(first_basic_block);
+                    Bc_Regiter_Mapper register_mapper = {};
                     
                     string_builder_push(&sb, "\n");
-                    string_builder_push(&sb, &label->src0);
+                    string_builder_push(&sb, &register_mapper, &label->src0);
                     string_builder_push(&sb, " ");
                     string_builder_push(&sb, vars_load_string(it->key.ident));
-                    string_builder_push(&sb, label->src1.Argument_List, true);
+                    string_builder_push(&sb, &register_mapper, label->src1.Argument_List, true);
                     string_builder_push(&sb, " {\n");
-                    string_builder_push(&sb, first_basic_block, bytecode);
+                    string_builder_push(&sb, &register_mapper, first_basic_block, bytecode);
                     string_builder_push(&sb, "}\n");
                     
                 } else if (decl->kind == BcDecl_Data) {
@@ -223,6 +222,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         x64_builder.label_indices = bytecode_builder.label_indices;
         x64_builder.bc_register_live_lengths = bytecode_builder.live_lengths;
         x64_builder.bytecode = &bytecode_builder.code;
+        x64_builder.next_free_virtual_register = bytecode_builder.next_register;
         
         // Make sure to compile entry point function first
         Bc_Label entry_point_label = { Sym_main, 0 };
@@ -239,9 +239,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 continue;
             }
             
-            pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
             Bc_Decl* decl = &it->value;
             if (decl->kind == BcDecl_Procedure) {
+                pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
                 Bc_Basic_Block* proc_block =
                     get_bc_basic_block(bytecode, decl->first_byte_offset);
                 x64_build_function(&x64_builder, bytecode, proc_block);
@@ -258,7 +258,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                                 interference_graph.data, 
                                 (u32) interference_graph.count);
         
-        {
+        if (flag_print_asm) {
             // Print the human readable x64 assembly code (before register allocation)
             String_Builder sb = {};
             string_builder_push(&sb, x64_builder.first_basic_block, true);
@@ -278,7 +278,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                                 interference_graph.data, 
                                 (u32) interference_graph.count);
         
-        {
+        if (flag_print_asm) {
             // Print the human readable x64 assembly code
             String_Builder sb = {};
             string_builder_push(&sb, x64_builder.first_basic_block, false);
@@ -300,20 +300,26 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                                      x64_instruction_definitions,
                                      x64_builder.first_basic_block);
         
+#if 0
         pln("\nX64 Machine Code (% bytes):", f_umm(assembler.curr_used));
         for (int byte_index = 0; byte_index < assembler.curr_used; byte_index++) {
-            printf("0x%hhX ", (u8) assembler.bytes[byte_index]);
-            if (byte_index % 10 == 9) {
+            u8 byte = assembler.bytes[byte_index];
+            if (byte > 0xF) {
+                printf("%hhX ", byte);
+            } else {
+                printf("0%hhX ", byte);
+            }
+            
+            if (byte_index % 16 == 15) {
                 printf("\n");
             }
         }
-        
-        pln("\n\nRunning JIT:");
+#endif
         
         asm_make_executable(asm_buffer, asm_size);
         asm_main* func = (asm_main*) asm_buffer;
         int jit_exit_code = (int) func();
-        pln("\n\nInterpreter exited with code: %", f_int(interp_exit_code));
+        pln("Interpreter exited with code: %", f_int(interp_exit_code));
         pln("        JIT exited with code: %", f_int(jit_exit_code));
     }
     

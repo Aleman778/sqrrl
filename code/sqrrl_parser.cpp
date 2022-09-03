@@ -409,7 +409,7 @@ parse_atom(Parser* parser, bool report_error) {
                     Ast* type = parse_type(parser);
                     next_token_if_matched(parser, Token_Close_Paren);
                     
-                    Ast* inner_expr = parse_expression(parser);
+                    Ast* inner_expr = parse_expression(parser, report_error, 13);
                     Ast* node = push_ast_node(parser);
                     node->kind = Ast_Cast_Expr;
                     node->Cast_Expr.type = type;
@@ -460,7 +460,7 @@ parse_atom(Parser* parser, bool report_error) {
                 result->kind = Ast_Cast_Expr;
                 result->Cast_Expr.type = parse_type(parser, true);
                 next_token_if_matched(parser, Token_Close_Paren);
-                result->Cast_Expr.expr = parse_atom(parser, true);
+                result->Cast_Expr.expr = parse_expression(parser, true, 13);
             } else {
                 
                 Token peek = peek_token(parser);

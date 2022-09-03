@@ -8,6 +8,7 @@ struct Bc_Builder {
     Memory_Arena code_arena;
     
     Memory_Arena data_arena;
+    String_Interner stored_strings;
     
     Bc_Basic_Block* global_block;
     
@@ -16,12 +17,11 @@ struct Bc_Builder {
     Bc_Label curr_prologue;
     Bc_Label curr_epilogue;
     Bc_Label curr_bb;
-    
     Bc_Label_Index_Table* label_indices;
-    
     Bc_Instruction* curr_instruction;
     Bc_Basic_Block* curr_basic_block;
     Bc_Operand curr_return_dest;
+    Bc_Type curr_return_type;
     Bc_Register next_register;
     u64 instruction_count;
     u32 curr_declaration_index;
@@ -36,21 +36,10 @@ struct Bc_Builder {
 };
 
 void bc_build_from_ast(Bc_Builder* bc, Ast_File* ast_file);
+Bc_Type bc_build_type(Bc_Builder* bc, Type* type);
+
 Bc_Basic_Block* bc_push_basic_block(Bc_Builder* bc, Bc_Label label = {});
 Bc_Instruction* bc_push_instruction(Bc_Builder* bc, Bc_Opcode opcode);
-
-inline Memory_String
-bc_save_string(Bc_Builder* bc, string str) {
-    cstring cstr = string_to_cstring(str);// TODO(Alexander): can we get rid of this allocation?
-    Memory_String result = string_map_get(bc->string_storage, cstr);
-    if (!result) {
-        result = arena_push_flat_string(&bc->data_arena, str);
-        string_map_put(bc->string_storage, cstr, result);
-    }
-    cstring_free(cstr);
-    
-    return result;
-}
 
 inline Bc_Operand
 create_unique_bc_register(Bc_Builder* bc) {
@@ -130,18 +119,37 @@ inline Bc_Operand
 bc_stack_alloc(Bc_Builder* bc, Bc_Type value_type) {
     Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_stack_alloc);
     insn->dest = create_unique_bc_register(bc);
-    insn->dest.kind = BcOperand_Stack;
     insn->dest_type = value_type;
     insn->dest_type.ptr_depth++;
     insn->src0 = bc_type_op(value_type);
-    return insn->dest;
+    
+    Bc_Operand result = insn->dest;
+    result.kind = BcOperand_Stack;
+    return result;
 }
 
+inline void
+bc_copy_to_deref(Bc_Builder* bc, Bc_Operand dest, Bc_Operand src, Bc_Type type) {
+    Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_copy_to_deref);
+    insn->dest_type = type;
+    insn->dest = dest;
+    insn->src0 = src;
+}
+
+inline void
+bc_copy(Bc_Builder* bc, Bc_Operand dest, Bc_Operand src, Bc_Type type) {
+    Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_copy);
+    insn->dest_type = type;
+    insn->dest = dest;
+    insn->src0 = src;
+}
+
+#if 0
 inline Bc_Operand
 bc_load(Bc_Builder* bc, Bc_Operand src, Bc_Type value_type) {
     Bc_Operand result = src;
     
-    if (src.kind == BcOperand_Stack) {
+    if (src.kind == BcOperand_Stack || src.kind == BcOperand_Memory) {
         result = create_unique_bc_register(bc);
         
         Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_load);
@@ -162,6 +170,7 @@ bc_store(Bc_Builder* bc, Bc_Operand dest, Bc_Operand src, Bc_Type type) {
     insn->dest = dest;
     insn->src0 = src;
 }
+#endif
 
 inline Bc_Operand
 bc_ret(Bc_Builder* bc, Bc_Operand first, Bc_Type type) {

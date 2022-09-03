@@ -235,7 +235,7 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
                         index.op1 = (u8) X64Operand_m64;
                         insn->op1.reg = X64Register_rip;
                         asm_label_target.operand = X64Operand_rel32;
-                        asm_label_target.address_align = 7;
+                        asm_label_target.address_align = 8;
                     } break;
                     
                     default: {

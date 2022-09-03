@@ -62,6 +62,9 @@ VAR(__COUNTER__) \
 VAR(__FILE__) \
 VAR(__FUNCTION__) \
 VAR(__LINE__) \
+VAR(PRINT_AST) \
+VAR(PRINT_BYTECODE) \
+VAR(PRINT_ASM) \
 VAR(define)   \
 VAR(defined)  \
 VAR(elif)     \
@@ -74,6 +77,7 @@ VAR(once)     \
 VAR(line)     \
 VAR(undef)    \
 VAR(main)     \
+VAR(__string) \
 VAR(test_proc) \
 VAR(unsigned) \
 VAR(signed)   \
@@ -92,46 +96,67 @@ VAR(pack)     \
 VAR(push)     \
 VAR(pop)      \
 
-// NOTE(alexander): interning strings into ids
+
 typedef u32 string_id;
-global string_map(string_id)* vars_str_to_id = 0; // stb_ds hashmap maps strings to ids
-global string* vars_id_to_str = 0; // stb_ds array of strings where the index is the string id
-global u32 vars_id_counter = 0;
+
+struct String_Interner {
+    string_map(string_id)* str_to_id = 0;
+    string* id_to_str = 0;
+    u32 id_counter = 0;
+};
+
+global String_Interner global_vars;
+
 
 string_id
-vars_save_cstring(cstring s) {
-    string_id id = string_map_get(vars_str_to_id, s);
+save_cstring(String_Interner* interner, cstring s) {
+    string_id id = string_map_get(interner->str_to_id, s);
     if (!id) {
-        id = vars_id_counter++;
-        string_map_put(vars_str_to_id, s, id);
-        array_push(vars_id_to_str, string_lit(s));
+        id = interner->id_counter++;
+        string_map_put(interner->str_to_id, s, id);
+        array_push(interner->id_to_str, string_lit(s));
     }
     return id;
 }
 
 inline string_id
-vars_save_string(string s) {
+vars_save_cstring(cstring s) {
+    return save_cstring(&global_vars, s);
+}
+
+inline string_id
+save_string(String_Interner* interner, string s) {
     cstring cs = string_to_cstring(s);
-    return vars_save_cstring(cs);
+    return save_cstring(interner, cs);
+}
+
+inline string_id
+vars_save_string(string s) {
+    return save_string(&global_vars, s);
 }
 
 string
-vars_load_string(string_id id) {
+load_string(String_Interner* interner, string_id id) {
     string result = {};
-    if (id < array_count(vars_id_to_str)) {
-        result = vars_id_to_str[id];
+    if (id < array_count(interner->id_to_str)) {
+        result = interner->id_to_str[id];
     }
     return result;
 }
 
+inline string
+vars_load_string(string_id id) {
+    return load_string(&global_vars, id);
+}
+
 void
-vars_initialize() {
-    if (vars_id_counter != 0) {
+initialize_keywords_and_symbols(String_Interner* interner) {
+    if (interner->id_counter != 0) {
         return;
     }
     
-    string_map_new_arena(vars_str_to_id);
-#define VAR(symbol) vars_save_cstring(#symbol);
+    string_map_new_arena(interner->str_to_id);
+#define VAR(symbol) save_cstring(interner, #symbol);
 #define VAR_GROUP(symbol) VAR(symbol)
     DEF_KEYWORDS DEF_TYPE_KEYWORDS DEF_SYMBOLS
 #undef VAR_GROUP
@@ -150,6 +175,12 @@ enum {
 #undef VAR
 #undef VAR_GROUP
 };
+
+
+inline void
+vars_initialize_keywords_and_symbols() {
+    initialize_keywords_and_symbols(&global_vars);
+}
 
 inline bool
 is_builtin_keyword(string_id id) {

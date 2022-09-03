@@ -199,6 +199,12 @@ format_sprintf(char* dst, umm dst_size, Format_Type type, va_list args) {
             result.count = snprintf(dst, dst_size, "%.*s", (int) str.count, (char*) str.data);
         } break;
         
+        case FormatType_memory_string: {
+            Memory_String str = va_arg(args, Memory_String);
+            umm count = memory_string_count(str);
+            result.count = snprintf(dst, dst_size, "%.*s", (int) count, (char*) str);
+        } break;
+        
         case FormatType_cstring: {
             char* cstr = va_arg(args, char*);
             result.count = snprintf(dst, dst_size, "%s", cstr);

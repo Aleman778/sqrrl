@@ -69,8 +69,6 @@ read_entire_source_file(string filename, Loaded_Source_File* current_file = 0) {
     // TODO(Alexander): hackish way to join two paths!!! Use OS service for this later.
     //string filepath = string_concat(working_directory, filename);
     
-    
-    
     cstring curr_file_path = 0;
     if (current_file) {
         curr_file_path = string_to_cstring(current_file->filedir);

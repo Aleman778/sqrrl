@@ -26,8 +26,7 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
     
     is_test_mode = true;
     
-    // Setup string interning of variables
-    vars_initialize();
+    vars_initialize_keywords_and_symbols();
     
     // Load source code
     Loaded_Source_File file = read_entire_source_file(filename);
@@ -75,6 +74,7 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
     x64_builder.label_indices = bytecode_builder.label_indices;
     x64_builder.bc_register_live_lengths = bytecode_builder.live_lengths;
     x64_builder.bytecode = &bytecode_builder.code;
+    x64_builder.next_free_virtual_register = bytecode_builder.next_register;
     
     for_map (bytecode_builder.declarations, it) {
         if (it->key.ident == Kw_global || it->key.index != 0) {
@@ -87,8 +87,9 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
             //pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
             Bc_Basic_Block* first_basic_block = get_bc_basic_block(&bytecode_builder.code, decl->first_byte_offset);
             
+            Bc_Regiter_Mapper register_mapper = {};
             String_Builder test_sb = {};
-            string_builder_push(&test_sb, first_basic_block, &bytecode_builder.code);
+            string_builder_push(&test_sb, &register_mapper, first_basic_block, &bytecode_builder.code);
             //pln("%", f_string(string_builder_to_string_nocopy(&test_sb)));
             string_builder_free(&test_sb);
             x64_build_function(&x64_builder, &bytecode_builder.code, first_basic_block);
@@ -201,8 +202,11 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
                     string_builder_push_format(sb_failure_log, 
                                                "Bytecode interpreter failed procedure `%`\n",
                                                f_string(test_name));
+                    
+                    Bc_Regiter_Mapper register_mapper = {};
                     Bc_Basic_Block* first_basic_block = get_bc_basic_block(&bytecode_builder.code, decl->first_byte_offset);
-                    string_builder_push(sb_failure_log, first_basic_block, &bytecode_builder.code);
+                    string_builder_push(sb_failure_log, &register_mapper, 
+                                        first_basic_block, &bytecode_builder.code);
                 }
             }
         }

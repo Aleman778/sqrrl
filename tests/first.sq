@@ -178,3 +178,19 @@ while_loop() {
     }
     assert(x == 25);
 }
+
+
+u8
+combine_bytes(s32 a, s32 b, s32 c, s64 d, s64 x) {
+    return (u8) x + a + b + c + d;
+}
+
+int
+@test_proc
+many_arguments_including_s64_number() {
+    int x = (int) combine_bytes(1, 2, 3, 4, 1423423458093845);
+    assert(x == 31);
+    
+    x = (int) combine_bytes(1, 2, 3, 1423423458093845, 4);
+    assert(x == 31);
+}

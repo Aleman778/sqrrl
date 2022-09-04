@@ -1,3 +1,7 @@
+struct Ast;
+struct Type;
+struct Bc_Basic_Block;
+
 
 // BINOP(name, op precedence, associativiy
 #define DEF_UNARY_OPS \
@@ -101,12 +105,6 @@ enum Ternary_Op {
     TernaryOp_Conditional, // expr ? true : false
 };
 
-// Forward declare type
-struct Type;
-
-// NOTE(alexander): forward declare.
-struct Value;
-
 struct Array_Value {
     void* elements;
     smm count;
@@ -127,10 +125,6 @@ enum Value_Type {
     Value_ast_node,
 };
 
-// NOTE(Alexander): forward declare
-struct Ast;
-struct Bc_Basic_Block;
-
 union Value_Data {
     bool boolean;
     s64 signed_int;
@@ -149,6 +143,11 @@ struct Value {
     Value_Type type;
     Value_Data data;
 };
+
+
+void value_store_in_memory(Type* type, void* dest, Value_Data src);
+Value value_load_from_memory(Type* type, void* data);
+Value_Type value_type_from_basic_flags(u32 flags);
 
 inline Value
 create_boolean_value(bool value) {

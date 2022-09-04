@@ -70,163 +70,53 @@ bc_opcode_is_conditional(Bc_Opcode opcode) {
     return opcode >= Bytecode_cmpeq && opcode <= Bytecode_cmpgt;
 }
 
-enum Bc_Type_Kind {
-    BcType_void,
-    
-    BcType_s1,
-    BcType_s8,
-    BcType_s16,
-    BcType_s32,
-    BcType_s64,
-    
-    BcType_u8,
-    BcType_u16,
-    BcType_u32,
-    BcType_u64,
-    
-    BcType_f32,
-    BcType_f64,
-    
-    BcType_Aggregate,
-};
-
-struct Bc_Type {
-    Bc_Type_Kind kind;
-    Type* aggregate;
-    u32 ptr_depth;
-};
+typedef Type* Bc_Type;
 
 inline Bc_Type
-create_bc_type(Bc_Type_Kind type_kind) {
-    Bc_Type result = {};
-    result.kind = type_kind;
-    return result;
+create_basic_type(Basic_Type type_kind) {
+    return &basic_type_definitions[type_kind];
 }
 
 inline bool
-is_bc_type_floating(Bc_Type_Kind kind) {
-    return kind == BcType_f32 || kind == BcType_f64;
+is_bc_type_floating(Basic_Type basic_type) {
+    u32 flags = basic_type_definitions[basic_type].Basic.flags;
+    return is_bitflag_set(flags, BasicFlag_Floating);
 }
 
 inline bool
-is_bc_type_sint(Bc_Type_Kind kind) {
-    return kind >= BcType_s1 && kind <= BcType_s64;
+is_bc_type_uint(Basic_Type basic_type) {
+    u32 flags = basic_type_definitions[basic_type].Basic.flags;
+    return (is_bitflag_set(flags, BasicFlag_Integer) &&
+            is_bitflag_set(flags, BasicFlag_Unsigned));
+}
+
+inline bool
+is_bc_type_sint(Basic_Type basic_type) {
+    u32 flags = basic_type_definitions[basic_type].Basic.flags;
+    return (is_bitflag_set(flags, BasicFlag_Integer) &&
+            !is_bitflag_set(flags, BasicFlag_Unsigned));
+}
+
+Value_Type
+bc_type_to_value_type(Basic_Type basic_type) {
+    u32 flags = basic_type_definitions[basic_type].Basic.flags;
+    return value_type_from_basic_flags(flags);
 }
 
 inline s32
 bc_type_to_bitsize(Bc_Type type) {
-    if (type.ptr_depth) {
-        return 64; // TODO(Alexander): arch dep!
-    }
-    
-    switch (type.kind) {
-        case BcType_s1: return 1;
-        case BcType_s8: return 8;
-        case BcType_s16: return 16;
-        case BcType_s32: return 32;
-        case BcType_s64: return 64;
-        
-        case BcType_u8: return 8;
-        case BcType_u16: return 16;
-        case BcType_u32: return 32;
-        case BcType_u64: return 64;
-        
-        case BcType_f32: return 32;
-        case BcType_f64: return 64;
-    }
-    
-    return 0;
+    return type->size * 8;
 }
 
 inline s32
 bc_type_to_size(Bc_Type type) {
-    if (type.ptr_depth > 0) {
-        return 8; // TODO(Alexander): arch dep!
-    }
-    
-    switch (type.kind) {
-        case BcType_s1: return 1;
-        case BcType_s8: return 1;
-        case BcType_s16: return 2;
-        case BcType_s32: return 4;
-        case BcType_s64: return 8;
-        
-        case BcType_u8: return 1;
-        case BcType_u16: return 2;
-        case BcType_u32: return 4;
-        case BcType_u64: return 8;
-        
-        case BcType_f32: return 4;
-        case BcType_f64: return 8;
-        
-        case BcType_Aggregate: {
-            return type.aggregate->cached_size;
-        } break;
-    }
-    
-    return 0;
+    return type->size;
 }
 
 inline s32
 bc_type_to_align(Bc_Type type) {
-    if (type.ptr_depth > 0) {
-        return 8; // arch dep!
-    }
-    
-    switch (type.kind) {
-        case BcType_s1: return 1;
-        case BcType_s8: return 1;
-        case BcType_s16: return 2;
-        case BcType_s32: return 4;
-        case BcType_s64: return 8;
-        
-        case BcType_u8: return 1;
-        case BcType_u16: return 2;
-        case BcType_u32: return 4;
-        case BcType_u64: return 8;
-        
-        case BcType_f32: return 4;
-        case BcType_f64: return 8;
-        
-        case BcType_Aggregate: {
-            return type.aggregate->cached_align;
-        } break;
-    }
-    
-    return 0;
+    return type->align;
 }
-
-Value_Type
-bc_type_to_value_type(Bc_Type_Kind kind) {
-    switch (kind) {
-        case BcType_s1:
-        case BcType_s8:
-        case BcType_s16:
-        case BcType_s32:
-        case BcType_s64: return Value_signed_int;
-        
-        case BcType_u8:
-        case BcType_u16:
-        case BcType_u32:
-        case BcType_u64: return Value_unsigned_int;
-        
-        case BcType_f32:
-        case BcType_f64: return Value_floating;
-        
-        default: {
-            assert(0 && "unsupprted bytecode type");
-        } break;
-    }
-    
-    return Value_void;
-}
-
-inline bool
-is_bc_type_uint(Bc_Type_Kind kind) {
-    return kind >= BcType_u8 && kind <= BcType_u64;
-}
-
-global const Bc_Type bc_type_s1 = { BcType_s1, 0 };
 
 enum Bc_Operand_Kind {
     BcOperand_None,
@@ -354,44 +244,6 @@ struct Bc_Decl {
         } Procedure;
     };
 };
-
-
-bool
-string_builder_push(String_Builder* sb, Bc_Type type) {
-    switch (type.kind) {
-        case BcType_void: return false;
-        
-        case BcType_s1: string_builder_push(sb, "s1"); break;
-        case BcType_s8: string_builder_push(sb, "s8"); break;
-        case BcType_s16: string_builder_push(sb, "s16"); break;
-        case BcType_s32: string_builder_push(sb, "s32"); break;
-        case BcType_s64: string_builder_push(sb, "s64"); break;
-        
-        case BcType_u8: string_builder_push(sb, "u8"); break;
-        case BcType_u16: string_builder_push(sb, "u16"); break;
-        case BcType_u32: string_builder_push(sb, "u32"); break;
-        case BcType_u64: string_builder_push(sb, "u64"); break;
-        
-        case BcType_f32: string_builder_push(sb, "f32"); break;
-        case BcType_f64: string_builder_push(sb, "f64"); break;
-        
-        case BcType_Aggregate: {
-            assert(type.aggregate);
-            if (type.aggregate->kind == Type_Function) {
-                string_builder_push(sb, vars_load_string(type.aggregate->Function.ident));
-            } else {
-                string_builder_push(sb, type.aggregate);
-            }
-        } break;
-    }
-    
-    
-    for (u32 i = 0; i < type.ptr_depth; i++) {
-        string_builder_push(sb, "*");
-    }
-    
-    return true;
-}
 
 inline void
 string_builder_push(String_Builder* sb, Bc_Label label) {
@@ -523,8 +375,9 @@ string_builder_push(String_Builder* sb, Bc_Regiter_Mapper* mapper, Bc_Instructio
         string_builder_push(sb, "    ");
         
         bool has_assignment = false;
-        if (is_opcode_assign) {
-            has_assignment = string_builder_push(sb, insn->dest_type);
+        if (is_opcode_assign && insn->dest_type) {
+            string_builder_push(sb, insn->dest_type);
+            has_assignment = true;
         }
         
         if (has_assignment) {

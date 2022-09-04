@@ -97,10 +97,65 @@ parse_escape_character(Parser* parser, u8*& curr, u8* end, bool byte) {
     return 0;
 }
 
+internal Type*
+parse_type_from_value_suffix(Parser* parser, Type* default_type, s32 flags) {
+    Token token = parser->current_token;
+    Type* result = default_type;
+    
+    if (token.suffix_start != token.source.count) {
+        string suffix = string_view(token.source.data + token.suffix_start, 
+                                    token.source.data + token.source.count);
+        
+        string_id sym = vars_save_string(suffix);
+        switch (sym) {
+#define BASIC(ident, flags, keyword, ...) case keyword: result = t_##ident; break;
+            DEF_BASIC_TYPES
+#undef BASIC
+            
+            default: {
+                if (suffix.count == 1 && *suffix.data == 'f') {
+                    result = t_f32;
+                    
+                } else if (is_bitflag_set(token.c_int_type, CIntType_Unsigned)) {
+                    if (is_bitflag_set(token.c_int_type, CIntType_Long_Long)) {
+                        result = t_u64;
+                    } else if (is_bitflag_set(token.c_int_type, CIntType_Long)) {
+                        result = t_u32;
+                    } else {
+                        result = t_u32;
+                    }
+                    
+                } else {
+                    if (is_bitflag_set(token.c_int_type, CIntType_Long_Long)) {
+                        result = t_s64;
+                    } else if (is_bitflag_set(token.c_int_type, CIntType_Long)) {
+                        result = t_s32;
+                    } else {
+                        result = t_int;
+                    }
+                }
+            } break;
+        }
+        
+        if (is_bitflag_set(flags, result->Basic.flags)) {
+            if (is_bitflag_set(flags, BasicFlag_Integer)) {
+                parse_error(parser, token, 
+                            string_format("expected integer literal suffix, found `%`", f_string(suffix)));
+            } else if (is_bitflag_set(flags, BasicFlag_Floating)) {
+                parse_error(parser, token, 
+                            string_format("expected float literal suffix, found `%`", f_string(suffix)));
+            }
+        }
+    }
+    
+    return result;
+}
+
 internal Ast*
 parse_char(Parser* parser) {
     assert(parser->current_token.type == Token_Char);
     
+    Type* type = parse_type_from_value_suffix(parser, t_u8, BasicFlag_Integer);
     string str = parser->current_token.source;
     u8* curr = str.data;
     u8* end = str.data + str.count;
@@ -125,7 +180,7 @@ parse_char(Parser* parser) {
     }
     
     // TODO(alexander): should we create a char value type?
-    return push_ast_value(parser, create_unsigned_int_value(character), &global_primitive_types[Kw_char]);
+    return push_ast_value(parser, create_unsigned_int_value(character), t_u8);
 }
 
 internal Ast*
@@ -174,7 +229,7 @@ parse_string(Parser* parser) {
     
     string result = string_builder_to_string(&sb);
     string_builder_free(&sb);
-    return push_ast_value(parser, create_string_value(result), &global_string_type);
+    return push_ast_value(parser, create_string_value(result), t_string);
 }
 
 
@@ -238,56 +293,7 @@ parse_int(Parser* parser) {
     Token token = parser->current_token;
     assert(token.type == Token_Int);
     
-    Type* type = &global_primitive_types[PrimitiveType_int];
-    
-    if (token.suffix_start != token.source.count) {
-        string suffix = string_view(token.source.data + token.suffix_start, 
-                                    token.source.data + token.source.count);
-        
-        string_id sym = vars_save_string(suffix);
-        switch (sym) {
-#define PRIMITIVE(name, ...) \
-case Kw_##name: type = &global_primitive_types[PrimitiveType_##name]; break;
-            DEF_PRIMITIVE_TYPES
-#undef PRIMITIVE
-            default: {
-                if (suffix.count == 1 && *suffix.data == 'f') {
-                    type = &global_primitive_types[PrimitiveType_f32];
-                    
-                } else if (is_bitflag_set(token.c_int_type, CIntType_Unsigned)) {
-                    type = &global_primitive_types[PrimitiveType_f32];
-                    if (is_bitflag_set(token.c_int_type, CIntType_Long_Long)) {
-                        type = &global_primitive_types[PrimitiveType_u64];
-                        
-                    } else if (is_bitflag_set(token.c_int_type, CIntType_Long)) {
-                        type = &global_primitive_types[PrimitiveType_u32];
-                        
-                    } else {
-                        type = &global_primitive_types[PrimitiveType_uint];
-                    }
-                    
-                } else {
-                    if (is_bitflag_set(token.c_int_type, CIntType_Long_Long)) {
-                        type = &global_primitive_types[PrimitiveType_s64];
-                        
-                    } else if (is_bitflag_set(token.c_int_type, CIntType_Long)) {
-                        type = &global_primitive_types[PrimitiveType_s32];
-                        
-                    } else {
-                        parse_error(parser, token, 
-                                    string_format("invalid float literal suffix `%s`, expected primitive type", f_string(suffix)));
-                    }
-                }
-            } break;
-        }
-        
-        if (type->Primitive.kind == PrimitiveType_f32 &&
-            type->Primitive.kind == PrimitiveType_f64) {
-            
-            parse_error(parser, token, 
-                        string_format("expected integer literal suffix, found `%`", f_string(suffix)));
-        }
-    }
+    Type* type = parse_type_from_value_suffix(parser, t_int, BasicFlag_Integer);
     
     Parse_U64_Value_Result parsed_result = parse_u64_value(token);
     if (parsed_result.is_too_large) {
@@ -308,37 +314,7 @@ parse_float(Parser* parser) {
         return 0;
     }
     
-    Type* type = &global_primitive_types[PrimitiveType_f64];
-    
-    if (token.suffix_start != token.source.count) {
-        string suffix = string_view(token.source.data + token.suffix_start, 
-                                    token.source.data + token.source.count);
-        
-        if (suffix.count == 1 && *suffix.data == 'f') {
-            type = &global_primitive_types[PrimitiveType_f32];
-        } else {
-            Var sym = vars_save_string(suffix);
-            
-            switch (sym) {
-                
-#define PRIMITIVE(symbol, ...) case Kw_##symbol: type = &global_primitive_types[PrimitiveType_##symbol]; break;
-                DEF_PRIMITIVE_TYPES
-#undef PRIMITIVE
-                
-                default: {
-                    parse_error(parser, token, 
-                                string_format("invalid float literal suffix `%`, expected primitive type", f_string(suffix)));
-                } break;
-            }
-        }
-        
-        if (type->Primitive.kind != PrimitiveType_f32 &&
-            type->Primitive.kind != PrimitiveType_f64) {
-            
-            parse_error(parser, token, 
-                        string_format("invalid float literal suffix `%`, expected primitive type", f_string(suffix)));
-        }
-    }
+    Type* type = parse_type_from_value_suffix(parser, t_f64, BasicFlag_Floating);
     
     u32 curr_index = 0;
     f64 value = 0.0;
@@ -393,14 +369,12 @@ parse_atom(Parser* parser, bool report_error) {
             switch (sym) {
                 case Kw_false: {
                     next_token(parser);
-                    result = push_ast_value(parser, create_boolean_value(false),
-                                            &global_primitive_types[PrimitiveType_bool]);
+                    result = push_ast_value(parser, create_boolean_value(false), t_s1);
                 } break;
                 
                 case Kw_true: {
                     next_token(parser);
-                    result = push_ast_value(parser, create_boolean_value(true),
-                                            &global_primitive_types[PrimitiveType_bool]);
+                    result = push_ast_value(parser, create_boolean_value(true), t_s1);
                 } break;
                 
                 case Kw_cast: {
@@ -1139,7 +1113,7 @@ parse_type(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
                 unimplemented;
             }
             
-        } else if (parse_keyword(parser, Kw_char, false)) {
+        } else if (parse_keyword(parser, Sym_char, false)) {
             base->Named_Type->Ident = is_unsigned ? Kw_u8 : Kw_s8;
             
         } else if (parse_keyword(parser, Kw_int, false)) {

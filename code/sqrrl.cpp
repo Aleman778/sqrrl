@@ -10,7 +10,7 @@
 #include "sqrrl_tokenizer.cpp"
 #include "sqrrl_preprocessor.cpp"
 #include "sqrrl_parser.cpp"
-#include "sqrrl_typer.cpp"
+#include "sqrrl_type_checker.cpp"
 #include "sqrrl_interp.cpp"
 #include "sqrrl_bytecode_builder.cpp"
 #include "sqrrl_bytecode_interp.cpp"

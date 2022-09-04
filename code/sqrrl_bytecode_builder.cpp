@@ -85,7 +85,7 @@ bc_save_string(Bc_Builder* bc, string str) {
     Bc_Decl bc_decl = {};
     bc_decl.kind = BcDecl_Data;
     bc_decl.first_byte_offset = (umm) mstr - (umm) bc->data_arena.base;
-    bc_decl.Data.type = bc_build_type(bc, &global_string_type);
+    bc_decl.Data.type = bc_build_type(bc, t_string);
     bc_decl.Data.value.mstr = mstr;
     Bc_Label label = create_unique_bc_label(bc, Sym___string);
     map_put(bc->declarations, label, bc_decl);
@@ -93,6 +93,7 @@ bc_save_string(Bc_Builder* bc, string str) {
     return bc_label_op(label);
 }
 
+#if 0
 Bc_Type
 bc_build_type(Bc_Builder* bc, Type* type) {
     Bc_Type result = {};
@@ -142,6 +143,7 @@ bc_build_type(Bc_Builder* bc, Type* type) {
     
     return result;
 }
+#endif
 
 Bc_Type
 bc_conform_to_larger_type(Bc_Builder* bc, 
@@ -442,7 +444,7 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
             //Bc_Operand function = map_get(bc->local_variable_mapper, ident);
             
             Type* function_type = node->Call_Expr.function_type;
-            assert(function_type->kind == Type_Function);
+            assert(function_type->kind == TypeKind_Function);
             
             Bc_Type return_type = bc_build_type(bc, function_type->Function.return_type);
             Bc_Type proc_type = bc_build_type(bc, function_type);
@@ -682,7 +684,7 @@ bc_build_statement(Bc_Builder* bc, Ast* node, bool last_statement=false) {
 void
 bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) {
     switch (type->kind) {
-        case Type_Function: {
+        case TypeKind_Function: {
             assert(decl->kind == Ast_Block_Stmt);
             
             bc->curr_decl = ident;
@@ -706,10 +708,13 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
             
             // Allocate arguments
             array(Bc_Argument)* actual_args = 0;
-            Type_Table* formal_args = &type->Function.arguments;
-            for_array_v(formal_args->idents, arg_ident, arg_index) {
+            Type_Function* t_func = &type->Function;
+            for (int arg_index = 0;
+                 arg_index < array_count(t_func->arg_types);
+                 ++arg_index) {
                 
-                Type* arg_type = map_get(formal_args->ident_to_type, arg_ident);
+                string_id arg_ident = t_func->arg_idents[arg_ident];
+                Type* arg_type = t_func->arg_types[arg_ident];
                 Bc_Argument arg = {};
                 arg.type = bc_build_type(bc, arg_type);
                 arg.src = create_unique_bc_register(bc);
@@ -718,7 +723,6 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
                 Bc_Operand arg_dest = bc_stack_alloc(bc, arg.type);
                 bc_copy(bc, arg_dest, arg.src, arg.type);
                 map_put(bc->local_variable_mapper, arg_ident, arg_dest);
-                
             }
             Bc_Instruction* label_insn = get_first_bc_instruction(bc->curr_basic_block);
             label_insn->src0.kind = BcOperand_Type;

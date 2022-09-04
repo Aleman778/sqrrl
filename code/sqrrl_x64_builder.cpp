@@ -813,7 +813,7 @@ add_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type); \
             }
             
             // Make sure we setup the result as RAX
-            if (function_type->Function.return_type->kind != Type_Void) {
+            if (function_type->Function.return_type->kind != TypeKind_Void) {
                 x64_allocate_specific_register(x64, X64Register_rax, bc->dest.Register);
                 
                 X64_Operand dest = {};

@@ -1,44 +1,198 @@
 
+void
+value_store_in_memory(Type* type, void* dest, Value_Data src) {
+    switch (type->kind) {
+        case TypeKind_Basic: {
+            switch (type->Basic.kind) {
+                case Basic_s1:
+                case Basic_s8:   *((s8*) dest) = (s8)  src.signed_int; break;
+                case Basic_s16: *((s16*) dest) = (s16) src.signed_int; break;
+                case Basic_s32: *((s32*) dest) = (s32) src.signed_int; break;
+                case Basic_s64: *((s64*) dest) = (s64) src.signed_int; break;
+                
+                case Basic_u8:   *((u8*) dest) = (u8)  src.unsigned_int; break;
+                case Basic_u16: *((u16*) dest) = (u16) src.unsigned_int; break;
+                case Basic_u32: *((u32*) dest) = (u32) src.unsigned_int; break;
+                case Basic_u64: *((u64*) dest) = (u64) src.unsigned_int; break;
+                
+                case Basic_f32: *((f32*) dest) = (f32) src.floating; break;
+                case Basic_f64: *((f64*) dest) = (f64) src.floating; break;
+                
+                case Basic_string: *((string*) dest) = src.str; break;
+                case Basic_cstring: *((smm*) dest) = src.pointer; break;
+                
+                default: {
+                    // TODO(Alexander): we probably shouldn't even store these in the first place!!!
+                    assert("cannot use architecture or context dependant type");
+                } break;
+            }
+            
+            case TypeKind_Array: {
+                // NOTE(Alexander): ugh little bit ugly hack to get this to work
+                smm* array_data = (smm*) dest;
+                *array_data++ = src.array.count;
+                void** elements = (void**) array_data;
+                *elements = src.array.elements;
+            } break;
+            
+            
+            case TypeKind_Function: 
+            case TypeKind_Pointer:
+            case TypeKind_Struct: 
+            case TypeKind_Union: {
+                *((smm*) dest) = src.pointer;
+            } break;
+            
+            default: {
+                assert(0 && "invalid type"); 
+            } break;
+        }
+    }
+}
+
+Value_Type 
+value_type_from_basic_flags(u32 flags) {
+    Value_Type result = Value_void;
+    if (is_bitflag_set(flags, BasicFlag_Integer)) {
+        if (is_bitflag_set(flags, BasicFlag_Unsigned)) {
+            result = Value_unsigned_int;
+        } else {
+            result = Value_signed_int;
+        }
+    } else if (is_bitflag_set(flags, BasicFlag_Floating)) {
+        result = Value_floating;
+    }
+    return result;
+}
+
 Value
-value_cast(Value value, Primitive_Type_Kind type_kind) {
-    // TODO(Alexander): handle type errors here
+value_load_from_memory(Type* type, void* data) {
     Value result = {};
     
-    switch (type_kind) {
-        case PrimitiveType_int:
-        case PrimitiveType_s8:
-        case PrimitiveType_s16:
-        case PrimitiveType_s32:
-        case PrimitiveType_b32:
-        case PrimitiveType_s64:
-        case PrimitiveType_smm: {
-            result.data.signed_int = value_to_s64(value);
-            result.type = Value_signed_int;
+    switch (type->kind) {
+        case TypeKind_Basic: {
+            result.type = value_type_from_basic_flags(type->Basic.flags);
+            
+            switch (type->Basic.kind) {
+                case Basic_s1:  result.data.signed_int =  *((s8*) data); break;
+                case Basic_s8:  result.data.signed_int =  *((s8*) data); break;
+                case Basic_s16: result.data.signed_int = *((s16*) data); break;
+                case Basic_s32: result.data.signed_int = *((s32*) data); break;
+                case Basic_s64: result.data.signed_int = *((s64*) data); break;
+                
+                case Basic_u8:  result.data.unsigned_int =  *((u8*) data); break;
+                case Basic_u16: result.data.unsigned_int = *((u16*) data); break;
+                case Basic_u32: result.data.unsigned_int = *((u32*) data); break;
+                case Basic_u64: result.data.unsigned_int = *((u64*) data); break;
+                
+                case Basic_f32: result.data.floating = *((f32*) data); break;
+                case Basic_f64: result.data.floating = *((f64*) data); break;
+                
+                case Basic_string: {
+                    result.data.str = *((string*) data);
+                    result.type = Value_string;
+                } break;
+                case Basic_cstring: {
+                    result.data.mstr = (Memory_String) data;
+                    result.type = Value_memory_string;
+                } break;
+                
+                default: {
+                    // TODO(Alexander): we probably shouldn't even store these in the first place!!!
+                    assert("cannot use architecture or context dependant type");
+                } break;
+            }
+        }
+        
+        case TypeKind_Array: {
+            result.type = Value_array;
+            
+            if (type->Array.capacity <= 0) {
+                smm* mdata = (smm*) data;
+                result.data.array.count = *mdata++;
+                result.data.array.elements = *((void**) mdata);
+            } else {
+                result.data.array.count = type->Array.capacity;
+                result.data.array.elements = data;
+            }
         } break;
         
-        case PrimitiveType_uint:
-        case PrimitiveType_u8:
-        case PrimitiveType_u16:
-        case PrimitiveType_u32:
-        case PrimitiveType_u64:
-        case PrimitiveType_umm: {
-            result.data.unsigned_int = value_to_u64(value);
-            result.type = Value_unsigned_int;
+        case TypeKind_Function:
+        case TypeKind_Pointer:
+        case TypeKind_Struct:
+        case TypeKind_Union: {
+            result.data.pointer = *((smm*) data);
+            result.type = Value_pointer;
         } break;
-        
-        case PrimitiveType_f32:
-        case PrimitiveType_f64: {
-            result.data.floating = value_to_f64(value);
-            result.type = Value_floating;
-        } break;
-        
-        case PrimitiveType_bool: {
+    }
+    
+    return result;
+}
+
+Value
+value_cast(Value value, Basic_Type type) {
+    Value result = {};
+    
+    u32 flags = basic_type_definitions[type].Basic.flags;;
+    result.type = value_type_from_basic_flags(flags);
+    
+    switch (type) {
+        case Basic_s1: {
             result.data.boolean = value_to_bool(value);
-            result.type = Value_boolean;
+        } break;
+        
+        case Basic_s8: {
+            result.data.signed_int = (s8) value_to_s64(value);
+        } break;
+        
+        case Basic_s16: {
+            result.data.signed_int = (s16) value_to_s64(value);
+        } break;
+        
+        case Basic_s32:
+        case Basic_int: {
+            result.data.signed_int = (s32) value_to_s64(value);
+        } break;
+        
+        case Basic_s64: {
+            result.data.signed_int = value_to_s64(value);
+        } break;
+        
+        case Basic_smm: {
+            result.data.signed_int = value_to_s64(value);
+        } break;
+        
+        case Basic_u8: {
+            result.data.unsigned_int = (u8) value_to_u64(value);
+        } break;
+        
+        case Basic_u16: {
+            result.data.unsigned_int = (u16) value_to_u64(value);
+        } break;
+        
+        case Basic_u32:
+        case Basic_uint: {
+            result.data.unsigned_int = (u32) value_to_u64(value);
+        } break;
+        
+        case Basic_u64: {
+            result.data.unsigned_int = value_to_u64(value);
+        } break;
+        
+        case Basic_umm: {
+            result.data.unsigned_int = value_to_u64(value);
+        } break;
+        
+        case Basic_f32: {
+            result.data.floating = (f32) value_to_f64(value);
+        } break;
+        
+        case Basic_f64: {
+            result.data.floating = value_to_f64(value);
         } break;
         
         default: {
-            assert(0 && "invalid primitive type");
+            assert(0 && "invalid type");
         } break;
     }
     

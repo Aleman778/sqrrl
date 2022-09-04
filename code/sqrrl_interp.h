@@ -144,10 +144,10 @@ Interp_Value interp_load_value(Interp* interp, Type* type, void* data);
 
 inline void*
 interp_push_value(Interp* interp, Type* type, Value_Data data) {
-    assert(type->cached_size > 0 && "bad size");
-    assert(type->cached_align > 0 && "bad align");
+    assert(type->size > 0 && "bad size");
+    assert(type->align > 0 && "bad align");
     
-    void* result = arena_push_size(&interp->stack, type->cached_size, type->cached_align);
+    void* result = arena_push_size(&interp->stack, type->size, type->align);
     interp_save_value(type, result, data);
     
     return result;
@@ -159,7 +159,7 @@ interp_entity_is_assigned(Interp* interp, Interp_Entity* entity, string_id ident
         if (entity->type) {
             
             // HACK(Alexander): maybe need to rethink what is legal to do here.
-            if (entity->type->kind == Type_Enum) {
+            if (entity->type->kind == TypeKind_Enum) {
                 return true;
             }
             

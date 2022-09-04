@@ -403,30 +403,28 @@ operand_is_immediate(X64_Operand_Kind kind) {
 
 X64_Operand_Kind
 x64_get_register_kind(Bc_Type type) {
-    if (type.ptr_depth > 0) {
+    if (type.kind != TypeKind_Basic) {
         return X64Operand_r64;
     }
     
-    switch (type.kind) {
-        case BcType_s1:
-        case BcType_s8:
-        case BcType_u8: return X64Operand_r8;
+    switch (type->Basic.kind) {
+        case Basic_s1:
+        case Basic_s8:
+        case Basic_u8: return X64Operand_r8;
         
-        case BcType_s16:
-        case BcType_u16: return X64Operand_r16;
+        case Basic_s16:
+        case Basic_u16: return X64Operand_r16;
         
-        case BcType_s32:
-        case BcType_u32: return X64Operand_r32;
+        case Basic_s32:
+        case Basic_u32: return X64Operand_r32;
         
-        case BcType_s64:
-        case BcType_u64: return X64Operand_r64;
+        case Basic_s64:
+        case Basic_u64: return X64Operand_r64;
         
-        case BcType_f32:
-        case BcType_f64: return X64Operand_mm;
+        case Basic_f32:
+        case Basic_f64: return X64Operand_mm;
         
-        case BcType_Aggregate: return X64Operand_r64;
-        
-        default: assert(0 && "invalid bytecode type kind");
+        default: return X64Operand_r64;
     }
     
     return X64Operand_None;
@@ -439,18 +437,18 @@ x64_get_memory_kind(Bc_Type type) {
     }
     
     switch (type.kind) {
-        case BcType_s1:
-        case BcType_s8:
-        case BcType_u8: return X64Operand_m8;
+        case Basic_s1:
+        case Basic_s8:
+        case Basic_u8: return X64Operand_m8;
         
-        case BcType_s16:
-        case BcType_u16: return X64Operand_m16;
+        case Basic_s16:
+        case Basic_u16: return X64Operand_m16;
         
-        case BcType_s32:
-        case BcType_u32: return X64Operand_m32;
+        case Basic_s32:
+        case Basic_u32: return X64Operand_m32;
         
-        case BcType_s64:
-        case BcType_u64: return X64Operand_m64;
+        case Basic_s64:
+        case Basic_u64: return X64Operand_m64;
         
         // TODO(Alexander): floating point
         default: assert(0 && "invalid bytecode type kind");
@@ -466,18 +464,18 @@ x64_get_immediate_kind(Bc_Type type) {
     }
     
     switch (type.kind) {
-        case BcType_s1:
-        case BcType_s8:
-        case BcType_u8: return X64Operand_imm8;
+        case Basic_s1:
+        case Basic_s8:
+        case Basic_u8: return X64Operand_imm8;
         
-        case BcType_s16:
-        case BcType_u16: return X64Operand_imm16;
+        case Basic_s16:
+        case Basic_u16: return X64Operand_imm16;
         
-        case BcType_s32:
-        case BcType_u32: return X64Operand_imm32;
+        case Basic_s32:
+        case Basic_u32: return X64Operand_imm32;
         
-        case BcType_s64:
-        case BcType_u64: return X64Operand_imm64;
+        case Basic_s64:
+        case Basic_u64: return X64Operand_imm64;
         
         // TODO(Alexander): floating point
         default: assert(0 && "invalid bytecode type kind");

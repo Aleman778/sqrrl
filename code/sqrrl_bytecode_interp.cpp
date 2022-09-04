@@ -39,96 +39,6 @@ bc_stack_allocate_type(Bc_Interp* interp, Bc_Register reg, Bc_Type type) {
     return data;
 }
 
-void
-bc_interp_store_value(Bc_Interp* interp, Bc_Type type, void* dest, Value_Data src) {
-    if (type.ptr_depth > 0) {
-        *((umm*) dest) = (umm) src.data;
-        return;
-    }
-    
-    switch (type.kind) {
-        case BcType_s1:
-        case BcType_s8:   *((s8*) dest) = (s8)  src.signed_int; break;
-        case BcType_s16: *((s16*) dest) = (s16) src.signed_int; break;
-        case BcType_s32: *((s32*) dest) = (s32) src.signed_int; break;
-        case BcType_s64: *((s64*) dest) = (s64) src.signed_int; break;
-        case BcType_u8:   *((u8*) dest) = (u8)  src.unsigned_int; break;
-        case BcType_u16: *((u16*) dest) = (u16) src.unsigned_int; break;
-        case BcType_u32: *((u32*) dest) = (u32) src.unsigned_int; break;
-        case BcType_u64: *((u64*) dest) = (u64) src.unsigned_int; break;
-        case BcType_f32: *((f32*) dest) = (f32) src.floating; break;
-        case BcType_f64: *((f64*) dest) = (f64) src.floating; break;
-        
-        case BcType_Aggregate: {
-            assert(type.aggregate);
-            
-            switch (type.aggregate->kind) {
-                case Type_String: {
-                    *((string*) dest) = src.str;
-                } break;
-                
-                default: {
-                    unimplemented;
-                } break;
-            }
-            
-        } break;
-        
-        default: assert(0 && "invalid type"); break;
-    }
-}
-
-Value_Data
-bc_interp_cast_value(Value_Data src, Bc_Type type) {
-    Value_Data dest = {};
-    
-    switch (type.kind) {
-        case BcType_s1:
-        case BcType_s8:   dest.signed_int = (s8)  src.signed_int; break;
-        case BcType_s16:  dest.signed_int = (s16) src.signed_int; break;
-        case BcType_s32:  dest.signed_int = (s32) src.signed_int; break;
-        case BcType_s64:  dest.signed_int = (s64) src.signed_int; break;
-        case BcType_u8:   dest.unsigned_int = (u8)  src.unsigned_int; break;
-        case BcType_u16:  dest.unsigned_int = (u16) src.unsigned_int; break;
-        case BcType_u32:  dest.unsigned_int = (u32) src.unsigned_int; break;
-        case BcType_u64:  dest.unsigned_int = (u64) src.unsigned_int; break;
-        case BcType_f32:  dest.floating = (f32) src.floating; break;
-        case BcType_f64:  dest.floating = (f64) src.floating; break;
-        
-        default: {
-            assert(0 && "incompatible type");
-        } break;
-    }
-    
-    return dest;
-}
-
-Value_Data
-bc_interp_load_value(Bc_Interp* interp, Bc_Type type, void* data) {
-    Value_Data result;
-    if (type.ptr_depth > 0) {
-        result.unsigned_int = *((umm*) data);
-        return result;
-    }
-    
-    switch (type.kind) {
-        case BcType_s1:  result.signed_int   =  *((s8*) data); break;
-        case BcType_s8:  result.signed_int   =  *((s8*) data); break;
-        case BcType_s16: result.signed_int   = *((s16*) data); break;
-        case BcType_s32: result.signed_int   = *((s32*) data); break;
-        case BcType_s64: result.signed_int   = *((s64*) data); break;
-        case BcType_u8:  result.unsigned_int =  *((u8*) data); break;
-        case BcType_u16: result.unsigned_int = *((u16*) data); break;
-        case BcType_u32: result.unsigned_int = *((u32*) data); break;
-        case BcType_u64: result.unsigned_int = *((u64*) data); break;
-        case BcType_f32: result.floating     = *((f32*) data); break;
-        case BcType_f64: result.floating     = *((f64*) data); break;
-        default: result.signed_int = 0; break;
-    }
-    
-    return result;
-}
-
 inline Value_Data
 bc_interp_operand_value(Bc_Interp* interp, Bc_Operand operand, Bc_Type value_type) {
     Value_Data result = {};
@@ -186,30 +96,6 @@ bc_interp_function_call(Bc_Interp* interp, string_id ident, Bc_Register return_r
     array_push(interp->scopes, new_scope);
     
     return target_block;
-}
-
-// TODO(Alexander): this is very silly to go from Type* -> Bc_Type -> Type*
-Type*
-bc_type_to_type(Bc_Type type) {
-    Type* result = 0;
-    
-    switch (type.kind) {
-        case BcType_s1:  result = &global_primitive_types[PrimitiveType_s8]; break;
-        case BcType_s8:  result = &global_primitive_types[PrimitiveType_s8]; break;
-        case BcType_s16: result = &global_primitive_types[PrimitiveType_s16]; break;
-        case BcType_s32: result = &global_primitive_types[PrimitiveType_s32]; break;
-        case BcType_s64: result = &global_primitive_types[PrimitiveType_s64]; break;
-        case BcType_u8:  result = &global_primitive_types[PrimitiveType_u8]; break;
-        case BcType_u16: result = &global_primitive_types[PrimitiveType_u16]; break;
-        case BcType_u32: result = &global_primitive_types[PrimitiveType_u32]; break;
-        case BcType_u64: result = &global_primitive_types[PrimitiveType_u64]; break;
-        case BcType_f32: result = &global_primitive_types[PrimitiveType_f32]; break;
-        case BcType_f64: result = &global_primitive_types[PrimitiveType_f64]; break;
-        case BcType_Aggregate: result = type.aggregate; break;
-        default: assert(0 && "bug: provided type is not valid"); break;
-    }
-    
-    return result;
 }
 
 void
@@ -416,9 +302,9 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
             
             
             Type* type = bc->src0.Type.aggregate;
-            assert(type->kind == Type_Function);
+            assert(type->kind == TypeKind_Function);
             
-            Type_Table* arg_types = &type->Function.arguments;
+            Type_Function* t_func = &type->Function;
             if (type->Function.interp_intrinsic) {
                 Interp intrinsic_interp = {};
                 array(Interp_Value)* variadic_args = 0;
@@ -427,10 +313,10 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
                     
                     Value_Data arg_value = bc_interp_operand_value(interp, arg->src, arg->type);
                     
-                    if (arg_index < array_count(arg_types->idents)) {
+                    if (arg_index < array_count(t_func->arg_idents)) {
                         // Normal argument
-                        string_id ident = arg_types->idents[arg_index];
-                        Type* arg_type = map_get(arg_types->ident_to_type, ident);
+                        string_id ident = t_func->arg_idents[arg_index];
+                        Type* arg_type = t_func->arg_types[arg_index];
                         
                         if (arg_type) {
                             void* data = interp_push_value(&intrinsic_interp, arg_type, arg_value);
@@ -444,7 +330,7 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
                         Interp_Value interp_value = {};
                         interp_value.value.data = arg_value;
                         
-                        Type* arg_type = bc_type_to_type(arg->type); // Improve our type system
+                        Type* arg_type = arg->type;
                         if (arg_type) {
                             interp_value.type = *arg_type;
                             array_push(variadic_args, interp_value);

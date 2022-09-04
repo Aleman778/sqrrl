@@ -33,26 +33,23 @@ VAR(while)
 
 #define DEF_TYPE_KEYWORDS \
 VAR_GROUP(builtin_types_begin) \
-VAR(int)      \
+VAR(bool)     \
 VAR(s8)       \
 VAR(s16)      \
 VAR(s32)      \
 VAR(s64)      \
 VAR(smm)      \
-VAR(uint)     \
+VAR(int)      \
 VAR(u8)       \
 VAR(u16)      \
 VAR(u32)      \
 VAR(u64)      \
 VAR(umm)      \
+VAR(uint)     \
 VAR(f32)      \
 VAR(f64)      \
-VAR(char)     \
-VAR(bool)     \
-VAR(b32)      \
-VAR(void)     \
 VAR(string)   \
-VAR(infer)    \
+VAR(cstring)   \
 VAR_GROUP(builtin_types_end) \
 VAR_GROUP(builtin_keywords_end)
 
@@ -85,6 +82,9 @@ VAR(long)     \
 VAR(short)    \
 VAR(float)    \
 VAR(double)   \
+VAR(char)     \
+VAR(void)     \
+VAR(auto)     \
 VAR(__int8)   \
 VAR(__int16)  \
 VAR(__int32)  \
@@ -195,4 +195,9 @@ is_builtin_type_keyword(string_id id) {
 inline bool
 is_not_builtin_keyword(string_id id) {
     return id > builtin_keywords_end;
+}
+
+inline void
+string_builder_push(String_Builder* sb, string_id ident) {
+    string_builder_push(sb, vars_load_string(ident));
 }

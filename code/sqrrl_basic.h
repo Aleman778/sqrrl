@@ -605,7 +605,8 @@ _binary_search(void* arr, void* val, smm count, smm size,
     return result;
 }
 
-#define binary_search(arr, val, compare) _binary_search(arr, &(val), array_count(arr), sizeof(arr), compare)
+#define binary_search(arr, val, compare) \
+_binary_search(arr, &(val), array_count(arr), sizeof(arr), compare)
 
 // NOTE(Alexander): hash map
 

@@ -85,7 +85,7 @@ Type*
 type_infer_value(Value value) {
     switch (value.type) {
         case Value_void: return t_void;
-        case Value_boolean: return t_s1;
+        case Value_boolean: return t_bool;
         case Value_signed_int: return t_int;
         case Value_unsigned_int: return t_uint;
         case Value_floating: return t_f64;
@@ -425,7 +425,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             
             if (first_type && second_type) {
                 if (binary_is_comparator_table[expr->Binary_Expr.op]) {
-                    result = t_s1;
+                    result = t_bool;
                 } else {
                     //pln("parent_type: %", f_type(parent_type));
                     //pln("  % + %", f_type(first_type), f_type(second_type));
@@ -627,15 +627,22 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         case Ast_Named_Type: {
             string_id ident = ast->Named_Type->Ident;
             if (is_builtin_type_keyword(ident)) {
-                if (ident == Sym_void) {
+                if (ident == Kw_void) {
                     result = t_void;
-                } else if (ident == Kw_string) {
-                    result = t_string;
-                } else if (ident == Sym_auto) {
+                } else if (ident == Kw_auto) {
                     unimplemented;
                 } else {
-                    int index = ident - Kw_bool;
+                    // Normalize to fixed size types
+                    switch (ident) {
+                        case Kw_int:  ident = Kw_s32; break; // TODO(Alexander): this should maybe something else or customizable
+                        case Kw_uint: ident = Kw_u32; break; // TODO(Alexander): this should maybe something else or customizable
+                        case Kw_smm:  ident = Kw_s64; break; // TODO(Alexander): architecture dependant
+                        case Kw_umm:  ident = Kw_u64; break; // TODO(Alexander): architecture dependant
+                    }
+                    
+                    int index = ident - Kw_bool + 1;
                     assert(index >= 0 && index < fixed_array_count(basic_type_definitions));
+                    
                     result = &basic_type_definitions[index];
                 }
             } else {
@@ -944,7 +951,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         } break;
         
         case Ast_If_Stmt: {
-            Type* cond = type_infer_expression(tcx, stmt->If_Stmt.cond, t_s1, report_error);
+            Type* cond = type_infer_expression(tcx, stmt->If_Stmt.cond, t_bool, report_error);
             Type* then_block = type_infer_statement(tcx, stmt->If_Stmt.then_block, report_error);
             if (is_ast_stmt(stmt->If_Stmt.else_block)) {
                 Type* else_block = type_infer_statement(tcx, stmt->If_Stmt.else_block, report_error);
@@ -960,7 +967,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         
         case Ast_For_Stmt: {
             Type* init = type_infer_statement(tcx, stmt->For_Stmt.init, report_error);
-            Type* cond = type_infer_expression(tcx, stmt->For_Stmt.cond, t_s1, report_error);
+            Type* cond = type_infer_expression(tcx, stmt->For_Stmt.cond, t_bool, report_error);
             Type* update = type_infer_expression(tcx, stmt->For_Stmt.update, 0, report_error);
             Type* block = type_infer_statement(tcx, stmt->For_Stmt.block, report_error);
             
@@ -970,7 +977,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         } break;
         
         case Ast_While_Stmt: {
-            Type* cond = type_infer_expression(tcx, stmt->While_Stmt.cond, t_s1, report_error);
+            Type* cond = type_infer_expression(tcx, stmt->While_Stmt.cond, t_bool, report_error);
             Type* block = type_infer_statement(tcx, stmt->While_Stmt.block, report_error);
             
             if (cond && block) {

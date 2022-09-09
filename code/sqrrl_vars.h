@@ -49,7 +49,9 @@ VAR(uint)     \
 VAR(f32)      \
 VAR(f64)      \
 VAR(string)   \
-VAR(cstring)   \
+VAR(cstring)  \
+VAR(void)     \
+VAR(auto)     \
 VAR_GROUP(builtin_types_end) \
 VAR_GROUP(builtin_keywords_end)
 
@@ -83,8 +85,6 @@ VAR(short)    \
 VAR(float)    \
 VAR(double)   \
 VAR(char)     \
-VAR(void)     \
-VAR(auto)     \
 VAR(__int8)   \
 VAR(__int16)  \
 VAR(__int32)  \

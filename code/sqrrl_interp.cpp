@@ -772,7 +772,7 @@ internal Format_Type
 convert_type_to_format_type(Type* type) {
     if (type->kind == TypeKind_Basic) {
         switch (type->Basic.kind) {
-            case Basic_s1: return FormatType_bool;
+            case Basic_bool: return FormatType_bool;
             case Basic_s8: return FormatType_s8;
             case Basic_s16: return FormatType_s16;
             case Basic_s32: return FormatType_s32;
@@ -794,6 +794,8 @@ convert_type_to_format_type(Type* type) {
     } else {
         unimplemented;
     }
+    
+    return FormatType_None;
 }
 
 

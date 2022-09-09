@@ -369,12 +369,12 @@ parse_atom(Parser* parser, bool report_error) {
             switch (sym) {
                 case Kw_false: {
                     next_token(parser);
-                    result = push_ast_value(parser, create_boolean_value(false), t_s1);
+                    result = push_ast_value(parser, create_boolean_value(false), t_bool);
                 } break;
                 
                 case Kw_true: {
                     next_token(parser);
-                    result = push_ast_value(parser, create_boolean_value(true), t_s1);
+                    result = push_ast_value(parser, create_boolean_value(true), t_bool);
                 } break;
                 
                 case Kw_cast: {

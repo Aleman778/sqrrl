@@ -171,31 +171,31 @@ x64_push_basic_block(X64_Builder* x64, Bc_Label label) {
 }
 
 X64_Operand
-x64_build_immediate(X64_Builder* x64, s64 value, Bc_Type type) {
+x64_build_immediate(X64_Builder* x64, s64 value, Basic_Type type) {
     X64_Operand result = {};
     
-    switch (type.kind) {
-        case BcType_s1:
-        case BcType_s8:
-        case BcType_u8: {
+    switch (type) {
+        case Basic_bool:
+        case Basic_s8:
+        case Basic_u8: {
             result.kind = X64Operand_imm8;
             result.imm8 = (s8) value;
         } break;
         
-        case BcType_s16:
-        case BcType_u16: {
+        case Basic_s16:
+        case Basic_u16: {
             result.kind = X64Operand_imm16;
             result.imm16 = (s16) value;
         } break;
         
-        case BcType_s32:
-        case BcType_u32: {
+        case Basic_s32:
+        case Basic_u32: {
             result.kind = X64Operand_imm32;
             result.imm32 = (s32) value;
         } break;
         
-        case BcType_s64:
-        case BcType_u64: {
+        case Basic_s64:
+        case Basic_u64: {
             // NOTE(Alexander): if possible use 32-bit immediate
             if (value < S32_MIN || value > S32_MAX) {
                 result.kind = X64Operand_imm64;
@@ -206,10 +206,6 @@ x64_build_immediate(X64_Builder* x64, s64 value, Bc_Type type) {
                 result.imm32 = (s32) value;
             }
         } break;
-        
-        case BcType_Aggregate: {
-            unimplemented;
-        }
         
         default: assert(0 && "unsupported immediate type");
     }
@@ -288,7 +284,7 @@ x64_build_operand(X64_Builder* x64, Bc_Operand operand, Bc_Type type) {
                         Bc_Instruction* cmp = x64->curr_compare_insn;
                         x64->curr_compare_insn = 0;
                         X64_Instruction* insn = x64_build_setcc(x64, cmp);
-                        insn->op0 = x64_build_operand(x64, cmp_dest, bc_type_s1);
+                        insn->op0 = x64_build_operand(x64, cmp_dest, t_bool);
                     }
                 }
                 
@@ -335,7 +331,8 @@ x64_build_operand(X64_Builder* x64, Bc_Operand operand, Bc_Type type) {
         } break;
         
         case BcOperand_Int: {
-            result = x64_build_immediate(x64, operand.Signed_Int, type);
+            assert(type->kind == TypeKind_Basic);
+            result = x64_build_immediate(x64, operand.Signed_Int, type->Basic.kind);
             if (result.kind == X64Operand_imm64) {
                 // NOTE(Alexander): we can only move imm64 to register
                 X64_Operand temp_reg = x64_allocate_temporary_register(x64, type);
@@ -413,7 +410,7 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             if (operand_is_memory(src.kind)) {
                 // NOTE(Alexander): first load the pointer that we want to dereference
                 Bc_Type ptr_type = bc->dest_type;
-                ptr_type.ptr_depth++;
+                //ptr_type.ptr_depth++;
                 
                 X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
                 insn->op0 = x64_allocate_temporary_register(x64, ptr_type);
@@ -433,7 +430,7 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
         case Bytecode_copy_to_deref: {
             // mov [op0], op1
             Bc_Type ptr_type = bc->dest_type;
-            ptr_type.ptr_depth++;
+            //ptr_type.ptr_depth++;
             
             X64_Operand dest = x64_build_operand(x64, bc->dest, ptr_type);
             
@@ -468,11 +465,12 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             
             X64_Instruction* xor_insn = x64_push_instruction(x64, X64Opcode_xor);
             xor_insn->op0 = mov_insn->op0;
-            xor_insn->op1 = x64_build_immediate(x64, -1, bc->dest_type);
+            assert(bc->dest_type->kind == TypeKind_Basic);
+            xor_insn->op1 = x64_build_immediate(x64, -1, bc->dest_type->Basic.kind);
             
             X64_Instruction* and_insn = x64_push_instruction(x64, X64Opcode_and);
             and_insn->op0 = xor_insn->op0;
-            and_insn->op1 = x64_build_immediate(x64, 1, bc->dest_type);
+            and_insn->op1 = x64_build_immediate(x64, 1, bc->dest_type->Basic.kind);
         } break;
         
 #define BINARY_CASE(opcode) \
@@ -629,8 +627,8 @@ add_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type); \
                 }
             } else {
                 X64_Instruction* test_insn = x64_push_instruction(x64, X64Opcode_cmp);
-                test_insn->op0 = x64_build_operand(x64, bc->dest, bc_type_s1);
-                test_insn->op1 = x64_build_immediate(x64, 1, bc_type_s1);
+                test_insn->op0 = x64_build_operand(x64, bc->dest, t_bool);
+                test_insn->op1 = x64_build_immediate(x64, 1, Basic_bool);
                 jump_opcode = X64Opcode_je;
             }
             
@@ -682,7 +680,7 @@ add_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type); \
                 assert(dest_size >= src_size);
                 X64_Operand source_operand = x64_build_operand(x64, bc->src0, bc->src1.Type);
                 
-                if (x64->curr_compare_insn && bc->src1.Type.kind == BcType_s1) {
+                if (x64->curr_compare_insn && bc->src1.Type == t_bool) {
                     Bc_Instruction* cmp = x64->curr_compare_insn;
                     X64_Instruction* insn = x64_build_setcc(x64, cmp);
                     
@@ -775,9 +773,8 @@ add_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type); \
             }
             
             // Set the target to jump to
-            assert(bc->src0.Type.kind == BcType_Aggregate);
-            Type* function_type = bc->src0.Type.aggregate;
-            assert(function_type->kind == Type_Function);
+            assert(bc->src0.Type->kind == TypeKind_Function);
+            Type* function_type = bc->src0.Type;
             
             if (function_type->Function.intrinsic) {
                 
@@ -1053,36 +1050,37 @@ x64_build_data_storage(X64_Builder* x64, Bc_Label label, Value_Data value, Bc_Ty
     
     X64_Operand value_operand = {};
     
-    switch (type.kind) {
-        case BcType_s1:
-        case BcType_s8:
-        case BcType_u8: {
+    assert(type->kind == TypeKind_Basic);
+    switch (type->Basic.kind) {
+        case Basic_bool:
+        case Basic_s8:
+        case Basic_u8: {
             X64_Instruction* insn = x64_push_instruction(x64, X64Directive_db);
             value_operand.kind = X64Operand_imm8;
             value_operand.imm8 = (s8) value.signed_int;
             insn->op0 = value_operand;
         } break;
         
-        case BcType_u16:
-        case BcType_s16: {
+        case Basic_u16:
+        case Basic_s16: {
             X64_Instruction* insn = x64_push_instruction(x64, X64Directive_dw);
             value_operand.kind = X64Operand_imm16;
             value_operand.imm16 = (s16) value.signed_int;
             insn->op0 = value_operand;
         } break;
         
-        case BcType_u32:
-        case BcType_s32:
-        case BcType_f32: {
+        case Basic_u32:
+        case Basic_s32:
+        case Basic_f32: {
             X64_Instruction* insn = x64_push_instruction(x64, X64Directive_dd);
             value_operand.kind = X64Operand_imm32;
             value_operand.imm32 = (s32) value.signed_int;
             insn->op0 = value_operand;
         } break;
         
-        case BcType_u64:
-        case BcType_s64:
-        case BcType_f64:{
+        case Basic_u64:
+        case Basic_s64:
+        case Basic_f64:{
             X64_Instruction* insn = x64_push_instruction(x64, X64Directive_dq);
             value_operand.kind = X64Operand_imm64;
             value_operand.imm64 = (s64) value.signed_int;

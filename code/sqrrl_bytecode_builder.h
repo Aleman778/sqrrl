@@ -120,7 +120,7 @@ bc_stack_alloc(Bc_Builder* bc, Bc_Type value_type) {
     Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_stack_alloc);
     insn->dest = create_unique_bc_register(bc);
     insn->dest_type = value_type;
-    insn->dest_type.ptr_depth++;
+    //insn->dest_type.ptr_depth++;
     insn->src0 = bc_type_op(value_type);
     
     Bc_Operand result = insn->dest;
@@ -223,7 +223,7 @@ bc_branch(Bc_Builder* bc, Bc_Operand cond,
 inline Bc_Operand
 bc_call(Bc_Builder* bc, Bc_Type proc_type, array(Bc_Argument)* args, Bc_Type return_type) {
     Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_call);
-    if (return_type.kind != TypeKind_Void) {
+    if (return_type->kind != TypeKind_Void) {
         insn->dest = create_unique_bc_register(bc);
         insn->dest_type = return_type;
     }

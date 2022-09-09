@@ -93,6 +93,11 @@ bc_save_string(Bc_Builder* bc, string str) {
     return bc_label_op(label);
 }
 
+Bc_Type
+bc_build_type(Bc_Builder* bc, Type* type) {
+    return type;
+}
+
 #if 0
 Bc_Type
 bc_build_type(Bc_Builder* bc, Type* type) {
@@ -153,8 +158,7 @@ bc_conform_to_larger_type(Bc_Builder* bc,
     Bc_Type smaller_type = first_type;
     Bc_Type larger_type = second_type;
     
-    if (first_type.kind == second_type.kind &&
-        first_type.ptr_depth == second_type.ptr_depth) {
+    if (first_type->size == second_type->size) {
         return larger_type;
     }
     
@@ -180,7 +184,8 @@ bc_conform_to_larger_type(Bc_Builder* bc,
         return larger_type;
     }
     
-    Bc_Opcode opcode = is_bc_type_uint(larger_type.kind) ?
+    assert(larger_type->kind == TypeKind_Basic);
+    Bc_Opcode opcode = is_basic_type_uint(larger_type) ?
         Bytecode_zero_extend : Bytecode_sign_extend;
     Bc_Instruction* insn = bc_push_instruction(bc, opcode);
     insn->dest = create_unique_bc_register(bc);
@@ -196,30 +201,30 @@ Bc_Operand
 bc_build_type_cast(Bc_Builder* bc, 
                    Bc_Operand* src, Bc_Type src_type,
                    Bc_Type dest_type) {
-    assert(src_type.kind != BcType_Aggregate);
-    assert(dest_type.kind != BcType_Aggregate);
-    if (src_type.kind == dest_type.kind) {
+    assert(src_type->kind == TypeKind_Basic);
+    assert(dest_type->kind == TypeKind_Basic);
+    if (src_type->Basic.kind == dest_type->Basic.kind) {
         return *src;
     }
     
     Bc_Opcode opcode = Bytecode_noop;
-    bool is_src_float = is_bc_type_floating(src_type.kind);
-    bool is_dest_float = is_bc_type_floating(dest_type.kind);
+    bool is_src_float = is_basic_type_floating(src_type);
+    bool is_dest_float = is_basic_type_floating(dest_type);
     
     if (is_src_float && is_dest_float) {
-        if (dest_type.kind == BcType_f64)  {
+        if (dest_type == t_f64)  {
             opcode = Bytecode_float_extend;
         } else {
             opcode = Bytecode_float_truncate;
         }
     } else if (is_src_float) {
-        if (is_bc_type_sint(dest_type.kind)) {
+        if (is_basic_type_sint(dest_type)) {
             opcode = Bytecode_float_to_sint;
         } else {
             opcode = Bytecode_float_to_uint;
         }
     } else if (is_dest_float) {
-        if (is_bc_type_sint(src_type.kind)) {
+        if (is_basic_type_sint(src_type)) {
             opcode = Bytecode_sint_to_float;
         } else {
             opcode = Bytecode_uint_to_float;
@@ -231,7 +236,7 @@ bc_build_type_cast(Bc_Builder* bc,
         if (src_size > dest_size) {
             opcode = Bytecode_truncate;
         } else {
-            if (is_bc_type_sint(src_type.kind)) {
+            if (is_basic_type_sint(src_type)) {
                 opcode = Bytecode_sign_extend;
             } else {
                 opcode = Bytecode_zero_extend;
@@ -361,9 +366,9 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                 
                 // Store the result in new local variable
                 Bc_Operand dest = bc_stack_alloc(bc, first_type);
-                bc_copy(bc, dest, first, bc_type_s1);
+                bc_copy(bc, dest, first, t_bool);
                 
-                Bc_Operand cond = bc_build_type_cast(bc, &first, first_type, bc_type_s1);
+                Bc_Operand cond = bc_build_type_cast(bc, &first, first_type, t_bool);
                 Bc_Label cont_label = create_unique_bc_label(bc);
                 Bc_Label exit_label = create_unique_bc_label(bc);
                 bc_branch(bc, cond, cont_label, exit_label);
@@ -371,11 +376,11 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                 // Continue to evaluate second expression
                 bc_push_basic_block(bc, cont_label);
                 Bc_Operand second = bc_build_expression(bc, node->Binary_Expr.second);
-                bc_copy(bc, dest, second, bc_type_s1);
+                bc_copy(bc, dest, second, t_bool);
                 
                 // Exit or skipping second expression
                 bc_push_basic_block(bc, exit_label);
-                result = bc_binary(bc, Bytecode_and, first, dest, bc_type_s1);
+                result = bc_binary(bc, Bytecode_and, first, dest, t_bool);
                 
             } else if (binary_op == BinaryOp_Logical_Or) {
                 Bc_Type first_type = bc_build_type(bc, node->Binary_Expr.first->type);
@@ -383,21 +388,21 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                 
                 // Store the result in new local variable
                 Bc_Operand dest = bc_stack_alloc(bc, first_type);
-                bc_copy(bc, dest, first, bc_type_s1);
+                bc_copy(bc, dest, first, t_bool);
                 
-                Bc_Operand cond = bc_build_type_cast(bc, &first, first_type, bc_type_s1);
+                Bc_Operand cond = bc_build_type_cast(bc, &first, first_type, t_bool);
                 Bc_Label cont_label = create_unique_bc_label(bc);
                 Bc_Label exit_label = create_unique_bc_label(bc);
                 bc_branch(bc, cond, exit_label, cont_label);
                 
                 bc_push_basic_block(bc, cont_label);
                 Bc_Operand second = bc_build_expression(bc, node->Binary_Expr.second);
-                bc_copy(bc, dest, second, bc_type_s1);
+                bc_copy(bc, dest, second, t_bool);
                 
                 bc_push_basic_block(bc, exit_label);
                 first = dest;
                 second = bc_signed_int_op(-1);
-                result = bc_binary(bc, Bytecode_or, first, second, bc_type_s1);
+                result = bc_binary(bc, Bytecode_or, first, second, t_bool);
                 
             } else {
                 Bc_Operand second = bc_build_expression(bc, node->Binary_Expr.second);
@@ -469,7 +474,7 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                     }
                     
                     Bc_Argument fmt_arg;
-                    fmt_arg.type = create_bc_type(BcType_s32);
+                    fmt_arg.type = t_s32;
                     fmt_arg.src = bc_signed_int_op(fmt_type);
                     array_push(arguments, fmt_arg);
                 }
@@ -699,7 +704,7 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
             
             // TODO(Alexander): we should use type checker function Type* instead
             Bc_Type return_type = bc_build_type(bc, type->Function.return_type);
-            if (return_type.kind != BcType_void) {
+            if (return_type != t_void) {
                 bc->curr_return_dest = bc_stack_alloc(bc, return_type);
                 bc->curr_return_type = return_type;
                 result.Procedure.first_return_reg = bc->curr_return_dest.Register;
@@ -713,7 +718,7 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
                  arg_index < array_count(t_func->arg_types);
                  ++arg_index) {
                 
-                string_id arg_ident = t_func->arg_idents[arg_ident];
+                string_id arg_ident = t_func->arg_idents[arg_index];
                 Type* arg_type = t_func->arg_types[arg_ident];
                 Bc_Argument arg = {};
                 arg.type = bc_build_type(bc, arg_type);

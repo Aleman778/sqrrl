@@ -4,7 +4,7 @@ value_store_in_memory(Type* type, void* dest, Value_Data src) {
     switch (type->kind) {
         case TypeKind_Basic: {
             switch (type->Basic.kind) {
-                case Basic_s1:
+                case Basic_bool:
                 case Basic_s8:   *((s8*) dest) = (s8)  src.signed_int; break;
                 case Basic_s16: *((s16*) dest) = (s16) src.signed_int; break;
                 case Basic_s32: *((s32*) dest) = (s32) src.signed_int; break;
@@ -74,11 +74,11 @@ value_load_from_memory(Type* type, void* data) {
             result.type = value_type_from_basic_flags(type->Basic.flags);
             
             switch (type->Basic.kind) {
-                case Basic_s1:  result.data.signed_int =  *((s8*) data); break;
-                case Basic_s8:  result.data.signed_int =  *((s8*) data); break;
-                case Basic_s16: result.data.signed_int = *((s16*) data); break;
-                case Basic_s32: result.data.signed_int = *((s32*) data); break;
-                case Basic_s64: result.data.signed_int = *((s64*) data); break;
+                case Basic_bool: result.data.signed_int =  *((s8*) data); break;
+                case Basic_s8:   result.data.signed_int =  *((s8*) data); break;
+                case Basic_s16:  result.data.signed_int = *((s16*) data); break;
+                case Basic_s32:  result.data.signed_int = *((s32*) data); break;
+                case Basic_s64:  result.data.signed_int = *((s64*) data); break;
                 
                 case Basic_u8:  result.data.unsigned_int =  *((u8*) data); break;
                 case Basic_u16: result.data.unsigned_int = *((u16*) data); break;
@@ -137,7 +137,7 @@ value_cast(Value value, Basic_Type type) {
     result.type = value_type_from_basic_flags(flags);
     
     switch (type) {
-        case Basic_s1: {
+        case Basic_bool: {
             result.data.boolean = value_to_bool(value);
         } break;
         
@@ -197,6 +197,17 @@ value_cast(Value value, Basic_Type type) {
     }
     
     return result;
+}
+
+Value
+value_cast_from_same_type(Value_Data data, Basic_Type type) {
+    Value value;
+    value.data = data;
+    
+    u32 flags = basic_type_definitions[type].Basic.flags;;
+    value.type = value_type_from_basic_flags(flags);
+    
+    return value_cast(value, type);
 }
 
 inline s64

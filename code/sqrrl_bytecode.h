@@ -78,21 +78,24 @@ create_basic_type(Basic_Type type_kind) {
 }
 
 inline bool
-is_bc_type_floating(Basic_Type basic_type) {
-    u32 flags = basic_type_definitions[basic_type].Basic.flags;
+is_basic_type_floating(Type* type) {
+    assert(type->kind == TypeKind_Basic);
+    u32 flags = type->Basic.flags;
     return is_bitflag_set(flags, BasicFlag_Floating);
 }
 
 inline bool
-is_bc_type_uint(Basic_Type basic_type) {
-    u32 flags = basic_type_definitions[basic_type].Basic.flags;
+is_basic_type_uint(Type* type) {
+    assert(type->kind == TypeKind_Basic);
+    u32 flags = type->Basic.flags;
     return (is_bitflag_set(flags, BasicFlag_Integer) &&
             is_bitflag_set(flags, BasicFlag_Unsigned));
 }
 
 inline bool
-is_bc_type_sint(Basic_Type basic_type) {
-    u32 flags = basic_type_definitions[basic_type].Basic.flags;
+is_basic_type_sint(Type* type) {
+    assert(type->kind == TypeKind_Basic);
+    u32 flags = type->Basic.flags;
     return (is_bitflag_set(flags, BasicFlag_Integer) &&
             !is_bitflag_set(flags, BasicFlag_Unsigned));
 }

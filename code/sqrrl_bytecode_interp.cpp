@@ -47,7 +47,7 @@ bc_interp_operand_value(Bc_Interp* interp, Bc_Operand operand, Bc_Type value_typ
         case BcOperand_Memory:
         case BcOperand_Stack: {
             Value_Data reg = bc_interp_load_register(interp, operand.Register);
-            result = bc_interp_load_value(interp, value_type, reg.data);
+            result = value_load_from_memory(value_type, reg.data).data;
         } break;
         
         case BcOperand_Register: {
@@ -120,14 +120,14 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             
             // TODO(Alexander): should allocate on stack here too?
             void* data = bc_stack_allocate_type(interp, bc->dest.Register, bc->src0.Type);
-            bc_interp_store_value(interp, bc->src0.Type, data, bc->src1.Const);
+            value_store_in_memory(bc->src0.Type, data, bc->src1.Const);
         } break;
         
         case Bytecode_copy: {
             Value_Data src = bc_interp_operand_value(interp, bc->src0, bc->dest_type);
             if (bc->dest.kind == BcOperand_Memory || bc->dest.kind == BcOperand_Stack) {
                 Value_Data dest = bc_interp_load_register(interp, bc->dest.Register);
-                bc_interp_store_value(interp, bc->dest_type, dest.data, src);
+                value_store_in_memory(bc->dest_type, dest.data, src);
             } else {
                 bc_interp_store_register(interp, bc->dest.Register, src);
             }
@@ -157,11 +157,11 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             assert(bc->src1.kind == BcOperand_None);
             
             Bc_Type ptr_type = bc->dest_type;
-            ptr_type.ptr_depth++;
+            //ptr_type.ptr_depth++;
             
             Value_Data dest_reg = bc_interp_operand_value(interp, bc->dest, ptr_type);
             Value_Data src = bc_interp_operand_value(interp, bc->src0, bc->dest_type);
-            bc_interp_store_value(interp, bc->dest_type, dest_reg.data, src);
+            value_store_in_memory(bc->dest_type, dest_reg.data, src);
         } break;
         
         case Bytecode_neg: {
@@ -216,7 +216,7 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
         } break;
         
         case Bytecode_branch: {
-            Value_Data cond = bc_interp_operand_value(interp, bc->dest, bc_type_s1);
+            Value_Data cond = bc_interp_operand_value(interp, bc->dest, t_bool);
             Bc_Operand* src = (cond.signed_int > 0) ? &bc->src0 : &bc->src1;
             Bc_Label target_label = src->Label;
             
@@ -230,7 +230,7 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
         
         case Bytecode_truncate: {
             Value_Data src = bc_interp_operand_value(interp, bc->src0, bc->dest_type);
-            Value_Data result = bc_interp_cast_value(src, bc->dest_type);
+            Value_Data result = value_cast_from_same_type(src, bc->dest_type->Basic.kind).data;
             bc_interp_store_register(interp, bc->dest.Register, result);
         } break;
         
@@ -298,13 +298,11 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
         case Bytecode_call: {
             assert(bc->src0.kind == BcOperand_Type);
             assert(bc->src1.kind == BcOperand_Argument_List);
-            assert(bc->src0.Type.kind == BcType_Aggregate);
+            assert(bc->src0.Type->kind == TypeKind_Function);
             
-            
-            Type* type = bc->src0.Type.aggregate;
-            assert(type->kind == TypeKind_Function);
-            
+            Type* type = bc->src0.Type;
             Type_Function* t_func = &type->Function;
+            
             if (type->Function.interp_intrinsic) {
                 Interp intrinsic_interp = {};
                 array(Interp_Value)* variadic_args = 0;
@@ -366,7 +364,7 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
             Value_Data value = {};
             if (bc->dest.kind != BcOperand_None) {
                 value = bc_interp_operand_value(interp, bc->dest, bc->dest_type);
-                value = bc_interp_load_value(interp, bc->dest_type, &value.signed_int);
+                value = value_load_from_memory(bc->dest_type, &value.signed_int).data;
                 
 #if 0 // TODO(Alexander): don't think we need this!
                 switch (bc->dest_type.kind) {

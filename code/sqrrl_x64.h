@@ -403,12 +403,12 @@ operand_is_immediate(X64_Operand_Kind kind) {
 
 X64_Operand_Kind
 x64_get_register_kind(Bc_Type type) {
-    if (type.kind != TypeKind_Basic) {
+    if (type->kind != TypeKind_Basic) {
         return X64Operand_r64;
     }
     
     switch (type->Basic.kind) {
-        case Basic_s1:
+        case Basic_bool:
         case Basic_s8:
         case Basic_u8: return X64Operand_r8;
         
@@ -426,18 +426,16 @@ x64_get_register_kind(Bc_Type type) {
         
         default: return X64Operand_r64;
     }
-    
-    return X64Operand_None;
 }
 
 X64_Operand_Kind
 x64_get_memory_kind(Bc_Type type) {
-    if (type.ptr_depth > 0) {
+    if (type->kind != TypeKind_Basic) {
         return X64Operand_m64;
     }
     
-    switch (type.kind) {
-        case Basic_s1:
+    switch (type->Basic.kind) {
+        case Basic_bool:
         case Basic_s8:
         case Basic_u8: return X64Operand_m8;
         
@@ -459,12 +457,12 @@ x64_get_memory_kind(Bc_Type type) {
 
 X64_Operand_Kind
 x64_get_immediate_kind(Bc_Type type) {
-    if (type.ptr_depth > 0) {
+    if (type->kind != TypeKind_Basic) {
         return X64Operand_imm64;
     }
     
-    switch (type.kind) {
-        case Basic_s1:
+    switch (type->Basic.kind) {
+        case Basic_bool:
         case Basic_s8:
         case Basic_u8: return X64Operand_imm8;
         

@@ -38,7 +38,7 @@ u64_limits(u64 max_value) {
 
 #define DEF_BASIC_TYPES \
 BASIC(Invalid, BasicFlag_Invalid,                      Kw_invalid, 0, {}) \
-BASIC(s1,      BasicFlag_Integer,                      Kw_bool, 1, s64_limits(S8_MIN, S8_MAX)) \
+BASIC(bool,    BasicFlag_Integer,                      Kw_bool, 1, s64_limits(0, 1)) \
 BASIC(s8,      BasicFlag_Integer,                      Kw_s8, 1,   s64_limits(S8_MIN, S8_MAX)) \
 BASIC(s16,     BasicFlag_Integer,                      Kw_s16, 2,  s64_limits(S16_MIN, S16_MAX)) \
 BASIC(s32,     BasicFlag_Integer,                      Kw_s32, 4,  s64_limits(S32_MIN, S32_MAX)) \

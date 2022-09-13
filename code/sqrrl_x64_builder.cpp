@@ -390,7 +390,6 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
         case Bytecode_copy: {
             X64_Operand src = x64_build_operand(x64, bc->src0, bc->dest_type);
             
-            
             X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
             insn->op0 = x64_build_operand(x64, bc->dest, bc->dest_type);
             insn->op1 = src;
@@ -429,15 +428,16 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
         
         case Bytecode_copy_to_deref: {
             // mov [op0], op1
-            Bc_Type ptr_type = bc->dest_type;
-            //ptr_type.ptr_depth++;
+            Type ptr_type = {};
+            ptr_type.kind = TypeKind_Pointer;
+            ptr_type.Pointer = bc->dest_type;
             
-            X64_Operand dest = x64_build_operand(x64, bc->dest, ptr_type);
+            X64_Operand dest = x64_build_operand(x64, bc->dest, &ptr_type);
             
             if (operand_is_memory(dest.kind)) {
                 // NOTE(Alexander): first load the pointer that we want to dereference
                 X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
-                insn->op0 = x64_allocate_temporary_register(x64, ptr_type);
+                insn->op0 = x64_allocate_temporary_register(x64, &ptr_type);
                 insn->op1 = dest;
                 dest = insn->op0;
             }

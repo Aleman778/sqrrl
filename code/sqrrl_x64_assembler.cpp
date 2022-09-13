@@ -1,4 +1,12 @@
 
+internal inline bool
+x64_8bit_register_swap(X64_Operand operand) {
+    return operand.kind == X64Operand_r8 && (operand.reg == X64Register_rsp ||
+                                             operand.reg == X64Register_rbp ||
+                                             operand.reg == X64Register_rsi ||
+                                             operand.reg == X64Register_rdi);
+}
+
 internal void
 x64_assemble_instruction(X64_Assembler* assembler,
                          X64_Instruction* insn, 
@@ -17,6 +25,11 @@ x64_assemble_instruction(X64_Assembler* assembler,
     bool use_rex_prefix = encoding->use_rex_prefix;
     if (encoding->use_rex_w) {
         rex_prefix |= 1 << 3;
+        use_rex_prefix = true;
+    }
+    
+    // NOTE(Alexander): to use spl, bpl, sil, dil we need to add rex prefix
+    if (x64_8bit_register_swap(insn->op0) || x64_8bit_register_swap(insn->op1)) {
         use_rex_prefix = true;
     }
     

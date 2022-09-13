@@ -408,11 +408,12 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             
             if (operand_is_memory(src.kind)) {
                 // NOTE(Alexander): first load the pointer that we want to dereference
-                Bc_Type ptr_type = bc->dest_type;
-                //ptr_type.ptr_depth++;
+                Type ptr_type = {};
+                ptr_type.kind = TypeKind_Pointer;
+                ptr_type.Pointer = bc->dest_type;
                 
                 X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
-                insn->op0 = x64_allocate_temporary_register(x64, ptr_type);
+                insn->op0 = x64_allocate_temporary_register(x64, &ptr_type);
                 insn->op1 = src;
                 src = insn->op0;
             }
@@ -668,16 +669,13 @@ add_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type); \
             
             X64_Operand src = x64_build_operand(x64, bc->src0, bc->dest_type);
             if (operand_is_register(src.kind)){ 
-                X64_Operand dest = x64_build_operand(x64, bc->src0, bc->dest_type);
                 if (bc->dest.kind == BcOperand_Register) {
-                    map_put(x64->allocated_virtual_registers, bc->dest.Register, dest);
+                    map_put(x64->allocated_virtual_registers, bc->dest.Register, src);
                 }
-                
             } else {
                 X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
                 mov_insn->op0 = x64_build_operand(x64, bc->dest, bc->dest_type);
                 mov_insn->op1 = src;
-                
             }
         } break;
         
@@ -722,11 +720,9 @@ add_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type); \
                 X64_Operand src = x64_build_operand(x64, bc->src0, bc->dest_type);
                 
                 if (src_size < 4) {
-                    if (operand_is_memory(src.kind)) {
-                        X64_Instruction* movzx_insn = x64_push_instruction(x64, X64Opcode_movzx);
-                        movzx_insn->op0 = x64_build_operand(x64, bc->dest, bc->dest_type);
-                        movzx_insn->op1 = src;
-                    }
+                    X64_Instruction* movzx_insn = x64_push_instruction(x64, X64Opcode_movzx);
+                    movzx_insn->op0 = x64_build_operand(x64, bc->dest, bc->dest_type);
+                    movzx_insn->op1 = src;
                 }
                 
                 X64_Operand dest = x64_build_operand(x64, bc->dest, bc->dest_type);

@@ -995,6 +995,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         
         case Ast_Return_Stmt: {
             result = type_infer_expression(tcx, stmt->Return_Stmt.expr, tcx->return_type, report_error);
+            type_check_assignment(tcx, tcx->return_type, result);
         } break;
     }
     

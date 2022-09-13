@@ -182,7 +182,7 @@ while_loop() {
 
 u8
 combine_bytes(s32 a, s32 b, s32 c, s64 d, s64 x) {
-    return (u8) x + a + b + c + d;
+    return (u8) x + (u8) a + (u8) b + (u8) c + (u8) d;
 }
 
 int

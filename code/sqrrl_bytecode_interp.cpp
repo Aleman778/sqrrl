@@ -147,7 +147,11 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             assert(bc->src0.kind == BcOperand_Stack || bc->src0.kind == BcOperand_Memory);
             assert(bc->src1.kind == BcOperand_None);
             
-            Value_Data src = bc_interp_operand_value(interp, bc->src0, bc->dest_type);
+            
+            Type* value_type = bc->dest_type->Pointer;
+            
+            Value_Data src_reg = bc_interp_operand_value(interp, bc->src0, bc->dest_type);
+            Value_Data src = value_load_from_memory(value_type, src_reg.data).data;
             bc_interp_store_register(interp, bc->dest.Register, src);
         } break;
         

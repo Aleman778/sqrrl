@@ -156,10 +156,11 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             assert(bc->src0.kind != BcOperand_None);
             assert(bc->src1.kind == BcOperand_None);
             
-            Bc_Type ptr_type = bc->dest_type;
-            //ptr_type.ptr_depth++;
+            Type ptr_type = {};
+            ptr_type.kind = TypeKind_Pointer;
+            ptr_type.Pointer = bc->dest_type;
             
-            Value_Data dest_reg = bc_interp_operand_value(interp, bc->dest, ptr_type);
+            Value_Data dest_reg = bc_interp_operand_value(interp, bc->dest, &ptr_type);
             Value_Data src = bc_interp_operand_value(interp, bc->src0, bc->dest_type);
             value_store_in_memory(bc->dest_type, dest_reg.data, src);
         } break;

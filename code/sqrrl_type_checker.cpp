@@ -81,6 +81,20 @@ type_warning(Type_Context* tcx, string message) {
 // NOTE(Alexander): forward declare
 Type* create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error);
 
+inline Type*
+normalize_basic_types(Type* type) {
+    assert(type->kind == TypeKind_Basic);
+    
+    switch (type->Basic.kind) {
+        case Basic_int: return t_s32; break; // TODO(Alexander): this should maybe be something else or customizable
+        case Basic_uint: return t_u32; break; // TODO(Alexander): this should maybe be something else or customizable
+        case Basic_smm: return t_s64; break; // TODO(Alexander): architecture dependant
+        case Basic_umm: return t_u64; break; // TODO(Alexander): architecture dependant
+    }
+    
+    return type;
+} 
+
 Type*
 type_infer_value(Value value) {
     switch (value.type) {
@@ -357,6 +371,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 }
             }
             
+            result = normalize_basic_types(result);
             type_check_value(tcx, result, expr->Value.value);
             expr->type = result;
         } break;
@@ -632,18 +647,11 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 } else if (ident == Kw_auto) {
                     unimplemented;
                 } else {
-                    // Normalize to fixed size types
-                    switch (ident) {
-                        case Kw_int:  ident = Kw_s32; break; // TODO(Alexander): this should maybe something else or customizable
-                        case Kw_uint: ident = Kw_u32; break; // TODO(Alexander): this should maybe something else or customizable
-                        case Kw_smm:  ident = Kw_s64; break; // TODO(Alexander): architecture dependant
-                        case Kw_umm:  ident = Kw_u64; break; // TODO(Alexander): architecture dependant
-                    }
-                    
                     int index = ident - Kw_bool + 1;
                     assert(index >= 0 && index < fixed_array_count(basic_type_definitions));
                     
                     result = &basic_type_definitions[index];
+                    result = normalize_basic_types(result);
                 }
             } else {
                 result = map_get(tcx->local_type_table, ident);
@@ -1100,7 +1108,7 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
     }
     
     {
-        // Intrinsic syntax: assert(int expr)
+        // Intrinsic syntax: assert(s32 expr)
         // Assets that expr is true, used as test case for 
         Type* type = arena_push_struct(tcx->type_arena, Type);
         type->kind = TypeKind_Function;
@@ -1108,7 +1116,7 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
         
         string_id arg0_ident = vars_save_cstring("expr");
         array_push(type->Function.arg_idents, arg0_ident);
-        array_push(type->Function.arg_types, t_int);
+        array_push(type->Function.arg_types, t_s32);
         
         string_id ident = vars_save_cstring("assert");
         type->Function.block = 0;

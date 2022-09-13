@@ -75,6 +75,10 @@ type_equals(Type* a, Type* b) {
             
         } break;
         
+        case TypeKind_Pointer: {
+            return type_equals(a->Pointer, b->Pointer);
+        } break;
+        
         default: {
             pln("%", f_string(string_format("%", f_type(a))));
             assert(0 && "not implemented");

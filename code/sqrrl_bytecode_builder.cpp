@@ -201,8 +201,11 @@ Bc_Operand
 bc_build_type_cast(Bc_Builder* bc, 
                    Bc_Operand* src, Bc_Type src_type,
                    Bc_Type dest_type) {
-    assert(src_type->kind == TypeKind_Basic);
-    assert(dest_type->kind == TypeKind_Basic);
+    if (src_type->kind != TypeKind_Basic || dest_type->kind != TypeKind_Basic) {
+        assert(type_equals(src_type, dest_type));
+        return *src;
+    }
+    
     if (src_type->Basic.kind == dest_type->Basic.kind) {
         return *src;
     }

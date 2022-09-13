@@ -229,8 +229,14 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
         } break;
         
         case Bytecode_truncate: {
-            Value_Data src = bc_interp_operand_value(interp, bc->src0, bc->dest_type);
-            Value_Data result = value_cast_from_same_type(src, bc->dest_type->Basic.kind).data;
+            Value_Data src = bc_interp_operand_value(interp, bc->src0, bc->src1.Type);
+            
+            Value value;
+            value.data = src;
+            u32 flags = bc->dest_type->Basic.flags;
+            value.type = value_type_from_basic_flags(flags);
+            Value_Data result = value_cast(value, bc->dest_type->Basic.kind).data;
+            
             bc_interp_store_register(interp, bc->dest.Register, result);
         } break;
         

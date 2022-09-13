@@ -719,7 +719,7 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
                  ++arg_index) {
                 
                 string_id arg_ident = t_func->arg_idents[arg_index];
-                Type* arg_type = t_func->arg_types[arg_ident];
+                Type* arg_type = t_func->arg_types[arg_index];
                 Bc_Argument arg = {};
                 arg.type = bc_build_type(bc, arg_type);
                 arg.src = create_unique_bc_register(bc);

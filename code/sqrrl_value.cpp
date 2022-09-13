@@ -26,29 +26,30 @@ value_store_in_memory(Type* type, void* dest, Value_Data src) {
                     assert("cannot use architecture or context dependant type");
                 } break;
             }
-            
-            case TypeKind_Array: {
-                // NOTE(Alexander): ugh little bit ugly hack to get this to work
-                smm* array_data = (smm*) dest;
-                *array_data++ = src.array.count;
-                void** elements = (void**) array_data;
-                *elements = src.array.elements;
-            } break;
-            
-            
-            case TypeKind_Function: 
-            case TypeKind_Pointer:
-            case TypeKind_Struct: 
-            case TypeKind_Union: {
-                *((smm*) dest) = src.pointer;
-            } break;
-            
-            default: {
-                assert(0 && "invalid type"); 
-            } break;
-        }
+        } break;
+        
+        case TypeKind_Array: {
+            // NOTE(Alexander): ugh little bit ugly hack to get this to work
+            smm* array_data = (smm*) dest;
+            *array_data++ = src.array.count;
+            void** elements = (void**) array_data;
+            *elements = src.array.elements;
+        } break;
+        
+        
+        case TypeKind_Function: 
+        case TypeKind_Pointer:
+        case TypeKind_Struct: 
+        case TypeKind_Union: {
+            *((smm*) dest) = src.pointer;
+        } break;
+        
+        default: {
+            assert(0 && "invalid type"); 
+        } break;
     }
 }
+
 
 Value_Type 
 value_type_from_basic_flags(u32 flags) {
@@ -102,7 +103,7 @@ value_load_from_memory(Type* type, void* data) {
                     assert("cannot use architecture or context dependant type");
                 } break;
             }
-        }
+        } break;
         
         case TypeKind_Array: {
             result.type = Value_array;

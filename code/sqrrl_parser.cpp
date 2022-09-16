@@ -198,12 +198,12 @@ parse_string(Parser* parser) {
     assert(*curr++ == '"');
     u8* last_push = curr;
     while (curr < end) {
-        char c = *curr++;
+        char c = *curr;
         if (c == '\\') {
             if (last_push != curr) {
                 string_builder_push(&sb, string_view(last_push, curr));
-                last_push = curr;
             }
+            curr++;
             
             u32 value = parse_escape_character(parser, curr, end, false);
             if (value > 0x7F) {
@@ -214,8 +214,11 @@ parse_string(Parser* parser) {
                 string_builder_ensure_capacity(&sb, 1);
                 sb.data[sb.curr_used++] = (char) value;
             }
+            
+            last_push = curr;
             continue;
         } else if (c == '"') {
+            curr++;
             break;
         }
         

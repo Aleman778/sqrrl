@@ -462,11 +462,6 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
             for_compound(node->Call_Expr.args, arg) {
                 Ast* arg_expr = arg->Argument.assign;
                 
-                Bc_Argument bc_arg;
-                bc_arg.type = bc_build_type(bc, arg_expr->type);
-                bc_arg.src = bc_build_expression(bc, arg_expr);
-                array_push(arguments, bc_arg);
-                
                 // HACK(Alexander): for now print_format pushes the format type first then the value 
                 if (arg_count > 0 && function_type->Function.intrinsic == &print_format) {
                     Format_Type fmt_type = convert_type_to_format_type(arg_expr->type);
@@ -481,6 +476,11 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                     fmt_arg.src = bc_signed_int_op(fmt_type);
                     array_push(arguments, fmt_arg);
                 }
+                
+                Bc_Argument bc_arg;
+                bc_arg.type = bc_build_type(bc, arg_expr->type);
+                bc_arg.src = bc_build_expression(bc, arg_expr);
+                array_push(arguments, bc_arg);
                 
                 arg_count++;
             }

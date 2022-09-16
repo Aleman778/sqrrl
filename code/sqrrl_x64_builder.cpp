@@ -769,7 +769,7 @@ add_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type); \
             };
             
             // Allocate registers in 
-            s32 stack_offset = 8; // rcx rdx, r8 and r9 home
+            s32 stack_offset = 32; // rcx rdx, r8 and r9 home
             u64 virtual_regs[fixed_array_count(gpr_registers)];
             for (int arg_index = 0; arg_index < array_count(bc->src1.Argument_List); arg_index++) {
                 Bc_Argument* arg = bc->src1.Argument_List + arg_index;
@@ -1030,6 +1030,7 @@ x64_build_function(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_b
 #endif
     
     // Prologue
+    stack_offset = 80; // TODO(Alexander): why 80 (88) working but not 56 (64), crashes in windows printf (we also get 80 (88) on compiler explorer)
     x64_push_prologue(x64, stack_offset);
     
     Bc_Basic_Block* curr_block = first_block;

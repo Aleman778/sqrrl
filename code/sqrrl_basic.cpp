@@ -49,6 +49,10 @@ print_format(const char* format...) {
                     printf("%d", va_arg(args, int));
                 } break;
                 
+                case FormatType_s32: {
+                    printf("%ld", va_arg(args, s32));
+                } break;
+                
                 case FormatType_uint: {
                     printf("%u", va_arg(args, uint));
                 } break;

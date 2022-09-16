@@ -850,7 +850,7 @@ interp_intrinsic_pln(Interp* interp, array(Interp_Value)* var_args) {
                     }
                     
                     if (var_arg_index >= array_count(var_args)) {
-                        interp_error(interp, string_format(""));
+                        interp_error(interp, string_format("not enough arguments passed to function"));
                         string_builder_free(&sb);
                         return {};
                     }
@@ -887,7 +887,7 @@ interp_intrinsic_pln(Interp* interp, array(Interp_Value)* var_args) {
             pln("%", f_string(format.value.data.str));
         }
     } else {
-        interp_error(interp, string_format("expected `string` as first argument, found `%`", 
+        interp_error(interp, string_format("expected `string` as first argument, found `%`",
                                            f_type(&format.type)));
     }
     

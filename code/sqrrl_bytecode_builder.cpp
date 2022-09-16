@@ -610,6 +610,10 @@ bc_build_statement(Bc_Builder* bc, Ast* node, bool last_statement=false) {
         case Ast_If_Stmt: {
             Bc_Label then_label = create_unique_bc_label(bc);
             Bc_Label else_label = create_unique_bc_label(bc);
+            Bc_Label exit_label = else_label;
+            if (!is_ast_none(node->If_Stmt.else_block)) {
+                exit_label = create_unique_bc_label(bc);
+            }
             
             Bc_Operand cond = bc_build_compare_expression(bc, node->If_Stmt.cond);
             bc_branch(bc, cond, then_label, else_label);
@@ -617,14 +621,16 @@ bc_build_statement(Bc_Builder* bc, Ast* node, bool last_statement=false) {
             {
                 bc_push_basic_block(bc, then_label);
                 bc_build_statement(bc, node->If_Stmt.then_block);
+                if (exit_label.index != else_label.index) {
+                    bc_goto(bc, exit_label);
+                }
             }
             
             {
                 bc_push_basic_block(bc, else_label);
-                if (is_ast_none(node->If_Stmt.else_block)) {
-                    bc_build_statement(bc, node->If_Stmt.then_block);
+                if (!is_ast_none(node->If_Stmt.else_block)) {
+                    bc_build_statement(bc, node->If_Stmt.else_block);
                     
-                    Bc_Label exit_label = create_unique_bc_label(bc);
                     bc_goto(bc, exit_label);
                     bc_push_basic_block(bc, exit_label);
                 }

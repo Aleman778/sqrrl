@@ -93,6 +93,7 @@ value_load_from_memory(Type* type, void* data) {
                     result.data.str = *((string*) data);
                     result.type = Value_string;
                 } break;
+                
                 case Basic_cstring: {
                     result.data.mstr = (Memory_String) data;
                     result.type = Value_memory_string;
@@ -413,6 +414,11 @@ void string_builder_push(String_Builder* sb, Value* value) {
         
         case Value_string: {
             string_builder_push_format(sb, "\"%\"", f_string(value->data.str));
+        } break;
+        
+        case Value_memory_string: {
+            int count = (int) memory_string_count(value->data.mstr);
+            string_builder_push_cformat(sb, "\"%.*s\"", count, (cstring) value->data.mstr);
         } break;
     }
 }

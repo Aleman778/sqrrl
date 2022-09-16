@@ -96,7 +96,7 @@ normalize_basic_types(Type* type) {
 } 
 
 Type*
-type_infer_value(Value value) {
+type_infer_value(Type_Context* tcx, Value value) {
     switch (value.type) {
         case Value_void: return t_void;
         case Value_boolean: return t_bool;
@@ -108,7 +108,19 @@ type_infer_value(Value value) {
         //case Value_pointer: 
         //case Value_array:
         
-        case Value_string: return t_string;
+        case Value_string: {
+#if 0 // TODO(Alexander): maybe string literals should be u8 arrays, for now it's easier to use t_string
+            umm char_count = value.data.str.count;
+            Type* result = arena_push_struct(tcx->type_arena, Type);
+            result->kind = TypeKind_Array;
+            result->Array.type = t_u8;
+            result->Array.capacity = (smm) char_count;
+            result->size = (s32) char_count;
+            result->align = 1;
+            return result;
+#endif
+            return t_string;
+        } break;
         
         default: {
             assert(0 && "invalid type");
@@ -367,7 +379,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 
                 result = expr->type;
                 if (!result) {
-                    result = type_infer_value(expr->Value.value);
+                    result = type_infer_value(tcx, expr->Value.value);
                 }
             }
             

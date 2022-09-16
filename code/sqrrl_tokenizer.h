@@ -75,13 +75,13 @@ global cstring token_type_repr[] = {
 };
 
 global cstring token_type_strings[] = {
-#define TOKEN(name, str) "Token_" #name,
+#define TOKEN(name, ...) "Token_" #name,
     DEF_TOKEN_TYPES
 #undef TOKEN
 };
 
 enum Token_Type {
-#define TOKEN(name, str) Token_##name,
+#define TOKEN(name, ...) Token_##name,
     DEF_TOKEN_TYPES
 #undef TOKEN
 };

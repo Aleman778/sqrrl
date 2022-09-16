@@ -12,6 +12,14 @@ print_format(const char* format...) {
     const char* format_at_prev_percent = format;
     int count_until_percent = 0;
     while (*format != '\0') {
+        // TODO(Alexander): can we improve escaping % or change the template marker altogether
+        //if (*format == '\\' && *(format + 1) == '%') {
+        //printf("%%");
+        //format += 2;
+        //format_at_prev_percent = format;
+        //continue;
+        //}
+        
         if (*format == '%') {
             if (*(format + 1) == '%') {
                 printf("%%");
@@ -261,7 +269,7 @@ string_builder_push_cformat(String_Builder* sb, cstring format...) {
     
     for (;;) {
         umm size_remaining = sb->size - sb->curr_used;
-        int count = vsnprintf((char*) sb->data, size_remaining, format, args);
+        int count = vsnprintf((char*) sb->data + sb->curr_used, size_remaining, format, args);
         
         if (count >= size_remaining) {
             string_builder_ensure_capacity(sb, count + 1);
@@ -281,6 +289,15 @@ _string_builder_push_format(String_Builder* sb, cstring format, va_list args) {
     
     while (*scan) {
         if (*scan == '%') {
+            // TODO(Alexander): can we improve escaping % or change the template marker altogether
+            //if (*scan == '\\' && *(scan + 1) == '%') {
+            //scan += 2;
+            //last_push = scan;
+            //string_builder_push(sb, "%");
+            //continue;
+            //}
+            
+            
             if (*(scan + 1) == '%') {
                 scan += 2;
                 last_push = scan;

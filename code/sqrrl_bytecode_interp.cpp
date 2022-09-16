@@ -22,7 +22,7 @@ bc_interp_load_register(Bc_Interp* interp, Bc_Register reg) {
         } else {
             Bc_Decl* decl = &map_get(interp->declarations, reg);
             assert(decl && decl->kind == BcDecl_Data);
-            return decl->Data.value;
+            return decl->Data.value.data;
         }
     }
 }
@@ -64,7 +64,7 @@ bc_interp_operand_value(Bc_Interp* interp, Bc_Operand operand, Bc_Type value_typ
         
         case BcOperand_Label: {
             Bc_Decl decl = map_get(interp->declarations, operand.Label);
-            result = decl.Data.value;
+            result = decl.Data.value.data;
         } break;
         
         default: {

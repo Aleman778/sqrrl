@@ -197,6 +197,14 @@ create_string_value(string value) {
     return result;
 }
 
+inline Value
+create_memory_string_value(Memory_String value) {
+    Value result;
+    result.type = Value_memory_string;
+    result.data.mstr = value;
+    return result;
+}
+
 inline bool
 is_void(Value value) {
     return value.type == Value_void;

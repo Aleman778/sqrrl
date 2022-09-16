@@ -187,16 +187,31 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
         
         for (umm insn_index = 0; insn_index < curr_block->count; insn_index++) {
             X64_Instruction* insn = curr_block->first + insn_index;
-            if (insn->opcode == X64Opcode_label) {
-                X64_Basic_Block* block = insn->op0.basic_block;
-                if (block->label.index == 0) {
-                    assert(map_get_index(assembler->label_offsets, block->label.ident) == -1 && "duplicate label");
-                    map_put(assembler->label_offsets, block->label.ident, assembler->curr_used);
-                }
-                continue;
-            } else if (insn->opcode == X64Opcode_int3) {
-                push_u8(assembler, 0xCC);
-                continue;
+            
+            // Handle custom x64 opcodes and directives
+            switch (insn->opcode) {
+                case X64Opcode_label: {
+                    X64_Basic_Block* block = insn->op0.basic_block;
+                    if (block->label.index == 0) {
+                        assert(map_get_index(assembler->label_offsets, block->label.ident) == -1 && "duplicate label");
+                        map_put(assembler->label_offsets, block->label.ident, assembler->curr_used);
+                    }
+                } continue; // go to next instruction
+                
+                case X64Opcode_int3: {
+                    push_u8(assembler, 0xCC);
+                } continue; // go to next instruction
+                
+                case X64Directive_db: {
+                    if (insn->op0.kind == X64Operand_imm8) {
+                        push_u8(assembler, insn->op0.imm8);
+                    } else if (insn->op0.kind == X64Operand_string_literal) {
+                        umm count = memory_string_count(insn->op0.string_literal);
+                        for (int i = 0; i < count; i++) {
+                            push_u8(assembler, insn->op0.string_literal[i]);
+                        }
+                    }
+                } continue; // go to next instruction
             }
             
             X64_Instruction_Index index = {};
@@ -240,7 +255,7 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
                         index.op1 = (u8) X64Operand_m32;
                         insn->op1.reg = X64Register_rip;
                         asm_label_target.operand = X64Operand_rel32;
-                        asm_label_target.address_align = 4;
+                        asm_label_target.address_align = 1;
                     } break;
                     
                     
@@ -248,7 +263,7 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
                         index.op1 = (u8) X64Operand_m64;
                         insn->op1.reg = X64Register_rip;
                         asm_label_target.operand = X64Operand_rel32;
-                        asm_label_target.address_align = 8;
+                        asm_label_target.address_align = 1;
                     } break;
                     
                     default: {

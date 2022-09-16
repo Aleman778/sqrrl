@@ -237,7 +237,7 @@ struct Bc_Decl {
     union {
         struct {
             Bc_Type type;
-            Value_Data value;
+            Value value;
         } Data;
         
         struct {

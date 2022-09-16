@@ -85,8 +85,8 @@ bc_save_string(Bc_Builder* bc, string str) {
     Bc_Decl bc_decl = {};
     bc_decl.kind = BcDecl_Data;
     bc_decl.first_byte_offset = (umm) mstr - (umm) bc->data_arena.base;
-    bc_decl.Data.type = bc_build_type(bc, t_string);
-    bc_decl.Data.value.mstr = mstr;
+    bc_decl.Data.type = t_string;
+    bc_decl.Data.value = create_memory_string_value(mstr);
     Bc_Label label = create_unique_bc_label(bc, Sym___string);
     map_put(bc->declarations, label, bc_decl);
     

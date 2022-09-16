@@ -65,7 +65,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
 #endif
     }
     
-    // Extract the directory from the filepath and use as working directory
     // TODO(Alexander): this is hackish solution, we should rely on OS service to do this
     //working_directory = filepath;
     //working_directory.count = 0;
@@ -79,6 +78,12 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     //filename.count -= working_directory.count;
     
     //pln("working directory: %", f_string(working_directory));
+    
+    // TODO(Alexander): this is hardcoded for now
+    t_string->size = sizeof(string);
+    t_string->align = alignof(string);
+    t_cstring->size = sizeof(cstring);
+    t_cstring->align = alignof(cstring);
     
     vars_initialize_keywords_and_symbols();
     
@@ -200,9 +205,12 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     string_builder_push(&sb, "}\n");
                     
                 } else if (decl->kind == BcDecl_Data) {
-                    string_builder_push_format(&sb, "\n%%% = %\n",
-                                               f_string(vars_load_string(it->key.ident)),
-                                               f_s64(&decl->Data.value.signed_int));
+                    string_builder_push(&sb, "%");
+                    string_builder_push(&sb, "%");
+                    string_builder_push(&sb, it->key);
+                    string_builder_push(&sb, " = ");
+                    string_builder_push(&sb, &decl->Data.value);
+                    string_builder_push(&sb, "\n");
                 }
             }
             
@@ -235,19 +243,22 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         pln("compiling function `%`", f_string(vars_load_string(Sym_main)));
         
         for_map (bytecode_builder.declarations, it) {
-            if (it->key.ident == Sym_main || it->key.ident == Kw_global || it->key.index != 0) {
+            if (it->key.ident == Sym_main || it->key.ident == Kw_global) {
                 continue;
             }
             
             Bc_Decl* decl = &it->value;
             if (decl->kind == BcDecl_Procedure) {
+                // TODO(Alexander): we should
+                if (it->key.index != 0) continue;
+                
                 pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
                 Bc_Basic_Block* proc_block =
                     get_bc_basic_block(bytecode, decl->first_byte_offset);
                 x64_build_function(&x64_builder, bytecode, proc_block);
             } else if (decl->kind == BcDecl_Data) {
                 // TODO(Alexander): we need to store the actual value type in the declarations
-                x64_build_data_storage(&x64_builder, it->key, decl->Data.value, decl->Data.type);
+                x64_build_data_storage(&x64_builder, it->key, decl->Data.value.data, decl->Data.type);
             }
         }
         

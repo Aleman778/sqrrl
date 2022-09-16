@@ -95,7 +95,7 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
             x64_build_function(&x64_builder, &bytecode_builder.code, first_basic_block);
         } else if (decl->kind == BcDecl_Data) {
             // TODO(Alexander): we need to store the actual value type in the declarations
-            x64_build_data_storage(&x64_builder, it->key, decl->Data.value, decl->Data.type);
+            x64_build_data_storage(&x64_builder, it->key, decl->Data.value.data, decl->Data.type);
         }
     }
     

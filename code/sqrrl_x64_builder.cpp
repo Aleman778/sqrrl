@@ -779,9 +779,15 @@ add_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type); \
                     u64 vreg = x64_allocate_specific_register(x64, gpr_registers[arg_index]);
                     virtual_regs[arg_index] = vreg;
                     
-                    X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
+                    X64_Instruction* insn;
+                    if (src.kind == X64Operand_data_target) {
+                        insn = x64_push_instruction(x64, X64Opcode_lea);
+                        insn->op0.kind = x64_get_register_kind(t_s64); // TODO: arch dep size of type
+                    } else {
+                        insn = x64_push_instruction(x64, X64Opcode_mov);
+                        insn->op0.kind = x64_get_register_kind(arg->type);
+                    }
                     insn->op0.virtual_register = vreg;
-                    insn->op0.kind = x64_get_register_kind(arg->type);
                     insn->op1 = src;
                 } else {
                     
@@ -1111,6 +1117,13 @@ x64_build_data_storage(X64_Builder* x64, Bc_Label label, Value_Data value, Bc_Ty
             X64_Instruction* insn = x64_push_instruction(x64, X64Directive_dq);
             value_operand.kind = X64Operand_imm64;
             value_operand.imm64 = (s64) value.signed_int;
+            insn->op0 = value_operand;
+        } break;
+        
+        case Basic_string: {
+            X64_Instruction* insn = x64_push_instruction(x64, X64Directive_db);
+            value_operand.kind = X64Operand_string_literal;
+            value_operand.string_literal = value.mstr;
             insn->op0 = value_operand;
         } break;
     }

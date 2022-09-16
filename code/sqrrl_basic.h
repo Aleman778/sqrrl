@@ -300,7 +300,7 @@ string_unquote_nocopy(string s) {
 // Memory string stores count and cstring next to each other in memory
 typedef cstring Memory_String;
 
-#define memory_string_count(s) *((umm*) s - 1)
+#define memory_string_count(s) *((umm*) (s) - 1)
 
 inline string
 mstring_to_string(Memory_String str) {

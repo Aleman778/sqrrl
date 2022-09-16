@@ -183,6 +183,7 @@ X64_OP(rel8) \
 X64_OP(rel32) \
 X64_OP(jump_target) \
 X64_OP(data_target) \
+X64_OP(string_literal)\
 X64_OP(basic_block)
 
 enum X64_Operand_Kind {
@@ -373,6 +374,7 @@ struct X64_Operand {
         s16 imm16;
         s32 imm32;
         s64 imm64;
+        Memory_String string_literal;
         X64_Basic_Block* basic_block;
         X64_Label jump_target;
         u64 virtual_register;
@@ -697,6 +699,10 @@ string_builder_push(String_Builder* sb, X64_Operand* operand, bool show_virtual_
         
         case X64Operand_imm64: {
             string_builder_push_format(sb, "%", f_s64(operand->imm64));
+        } break;
+        
+        case X64Operand_string_literal: {
+            string_builder_push_format(sb, "'%'", f_cstring(operand->string_literal));
         } break;
         
         case X64Operand_jump_target: {

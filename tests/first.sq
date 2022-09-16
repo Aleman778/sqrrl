@@ -136,10 +136,21 @@ void
 if_statements() {
     int x = 10;
     if (x == 10) {
-        assert(1);
+        x += 10;
     } else {
-        assert(0);
+        x -= 10;
     }
+    assert(x == 20);
+}
+
+void
+@test_proc
+if_statement_no_else() {
+    int x = 10;
+    if (x > 5) {
+        x += 10;
+    }
+    assert(x == 20);
 }
 
 void

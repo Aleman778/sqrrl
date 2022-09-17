@@ -131,6 +131,21 @@ function_with_many_arguments() {
     assert(x == 21);
 }
 
+u8
+combine_bytes(s32 a, s32 b, s32 c, s64 d, s64 x) {
+    return (u8) x + (u8) a + (u8) b + (u8) c + (u8) d;
+}
+
+int
+@test_proc
+many_arguments_including_s64_number() {
+    int x = (int) combine_bytes(1, 2, 3, 4, 1423423458093845);
+    assert(x == 31);
+    
+    x = (int) combine_bytes(1, 2, 3, 1423423458093845, 4);
+    assert(x == 31);
+}
+
 void 
 @test_proc
 if_statements() {
@@ -188,20 +203,4 @@ while_loop() {
         x += 1;
     }
     assert(x == 25);
-}
-
-
-u8
-combine_bytes(s32 a, s32 b, s32 c, s64 d, s64 x) {
-    return (u8) x + (u8) a + (u8) b + (u8) c + (u8) d;
-}
-
-int
-@test_proc
-many_arguments_including_s64_number() {
-    int x = (int) combine_bytes(1, 2, 3, 4, 1423423458093845);
-    assert(x == 31);
-    
-    x = (int) combine_bytes(1, 2, 3, 1423423458093845, 4);
-    assert(x == 31);
 }

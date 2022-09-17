@@ -935,7 +935,7 @@ struct Stack_Info {
 };
 
 Stack_Info
-x64_analyse_stack(X64_Builder* x64, Bc_Basic_Block* function_block) {
+x64_analyze_stack(X64_Builder* x64, Bc_Basic_Block* function_block) {
     Stack_Info result = {};
     
     Bc_Basic_Block* it_block = function_block;
@@ -966,7 +966,7 @@ x64_analyse_stack(X64_Builder* x64, Bc_Basic_Block* function_block) {
                 
                 case Bytecode_call: {
                     // TODO(Alexander): this is based on windows x64 calling convention
-                    s32 stack_offset = 8*6; // push RSP, return address and paramter (rcx, rdx, r8, r9) home
+                    s32 stack_offset = 6*6; // push RSP, return address and paramter (rcx, rdx, r8, r9) home
                     
                     for (int arg_index = (int) array_count(bc->src1.Argument_List) - 1;
                          arg_index >= 4; 
@@ -974,7 +974,7 @@ x64_analyse_stack(X64_Builder* x64, Bc_Basic_Block* function_block) {
                         
                         Bc_Argument* arg = bc->src1.Argument_List + arg_index;
                         s32 size = bc_type_to_size(arg->type);
-                        // TODO(Alexander): I think, windows callign convention always align types by at least 8 bytes
+                        // TODO(Alexander): I think, windows calling convention always align types by at least 8 bytes
                         s32 align = (s32) align_forward(size, 8);
                         stack_offset = (s32) align_forward(stack_offset + size, align);
                     }
@@ -1010,7 +1010,13 @@ void
 x64_build_function(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_block) {
     array_free(x64->active_virtual_registers);
     
-    Stack_Info stack = x64_analyse_stack(x64, first_block);
+    Stack_Info stack = x64_analyze_stack(x64, first_block);
+    
+    // Compute the stack frame size
+    s32 stack_frame = stack.local_size + stack.argument_size;
+    // Align to 16 byte boundary (for windows x64 calling convention)
+    // https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170#alignment
+    stack_frame = (s32) align_forward(stack_frame, 16);
     
     x64_push_basic_block(x64, first_block->label);
     
@@ -1028,22 +1034,25 @@ x64_build_function(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_b
         // TODO(Alexander): this is based on windows x64 calling convention
         array(Bc_Argument*) arg_list = label_insn->src1.Argument_List;
         
-        for (int arg_index = 0; 
-             arg_index < array_count(arg_list);
-             ++arg_index) {
-            
-            if (arg_index >= fixed_array_count(gpr_registers)) {
-                break;
-            }
+        int stack_offset = 4*8; // NOTE(Alexander): skip over return address
+        for (int arg_index = (int) min(array_count(arg_list), fixed_array_count(gpr_registers)) - 1;
+             arg_index >= 0; 
+             --arg_index) {
             
             Bc_Argument* arg = arg_list + arg_index;
             X64_Operand_Kind type_kind = x64_get_register_kind(arg->type);
             X64_Operand value = x64_build_physical_register(x64, gpr_registers[arg_index], type_kind);
-            map_put(x64->allocated_virtual_registers, arg->src.Register, value);
+            
+            X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
+            insn->op0 = x64_build_stack_offset(x64, arg->type, stack_offset, X64Register_rsp);
+            insn->op1 = value;
+            stack_offset -= 8;
+            
+            map_put(x64->allocated_virtual_registers, arg->src.Register, insn->op1);
         }
         
         // Push arguments next arguments to stack
-        s32 stack_offset = stack.local_size + 4*8;
+        stack_offset = 8*6; // skip over return address, saved RBP, and home registers (RCX, RDX, R8, R9)
         for (int arg_index = (int) array_count(arg_list) - 1;
              arg_index >= 4; 
              --arg_index) {
@@ -1051,17 +1060,9 @@ x64_build_function(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_b
             Bc_Argument* arg = arg_list + arg_index;
             X64_Operand value = x64_build_stack_offset(x64, arg->type, stack_offset);
             map_put(x64->allocated_virtual_registers, arg->src.Register, value);
-            
-            s32 size = bc_type_to_size(arg->type);
-            stack_offset = (s32) align_forward(stack_offset + size, 8);
+            stack_offset = stack_offset + 8;
         }
     }
-    
-    // Compute the stack frame size
-    s32 stack_frame = stack.local_size + stack.argument_size;
-    // Align to 16 byte boundary (for windows x64 calling convention)
-    // https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170#alignment
-    stack_frame = (s32) align_forward(stack_frame, 16);
     
     // Prologue
     x64_push_prologue(x64, stack_frame);

@@ -89,9 +89,9 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
             
             Bc_Regiter_Mapper register_mapper = {};
             String_Builder test_sb = {};
-            string_builder_push(&test_sb, &register_mapper, first_basic_block, &bytecode_builder.code);
+            //string_builder_push(&test_sb, &register_mapper, first_basic_block, &bytecode_builder.code);
             //pln("%", f_string(string_builder_to_string_nocopy(&test_sb)));
-            string_builder_free(&test_sb);
+            //string_builder_free(&test_sb);
             x64_build_function(&x64_builder, &bytecode_builder.code, first_basic_block);
         } else if (decl->kind == BcDecl_Data) {
             // TODO(Alexander): we need to store the actual value type in the declarations

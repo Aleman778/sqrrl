@@ -162,12 +162,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         Interp interp = {};
         interp_ast_declarations(&interp, ast_file.decls);
         Interp_Value result = interp_function_call(&interp, Sym_main, 0);
-        if (result.modifier == InterpValueMod_Return) {
-            if (is_integer(result.value)) {
-                pln("Interpreter exited with code %", f_int((int) result.value.data.signed_int));
-            } else {
-                pln("Interpreter exited with code 0");
-            }
+        if (result.modifier == InterpValueMod_Return && is_integer(result.value)) {
+            pln("AST interpreter exited with code %\n", f_int((int) result.value.data.signed_int));
+        } else {
+            pln("AST interpreter exited with code 0\n");
         }
     }
 #endif
@@ -224,6 +222,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         interp.code = &bytecode_builder.code;
         interp.declarations = bytecode_builder.declarations;
         int interp_exit_code = (int) bc_interp_bytecode(&interp).signed_int;
+        pln("Bytecode interpreter exited with code: %\n", f_int(interp_exit_code));
         
         // Generate X64 machine code
         X64_Builder x64_builder = {};
@@ -240,7 +239,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         Bc_Basic_Block* main_block =
             get_bc_basic_block(bytecode, main_decl->first_byte_offset);
         x64_build_function(&x64_builder, bytecode, main_block);
-        pln("compiling function `%`", f_string(vars_load_string(Sym_main)));
+        //pln("compiling function `%`", f_string(vars_load_string(Sym_main)));
         
         for_map (bytecode_builder.declarations, it) {
             if (it->key.ident == Sym_main || it->key.ident == Kw_global) {
@@ -252,7 +251,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 // TODO(Alexander): we should
                 if (it->key.index != 0) continue;
                 
-                pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
+                //pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
                 Bc_Basic_Block* proc_block =
                     get_bc_basic_block(bytecode, decl->first_byte_offset);
                 x64_build_function(&x64_builder, bytecode, proc_block);
@@ -330,8 +329,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         asm_make_executable(asm_buffer, asm_size);
         asm_main* func = (asm_main*) asm_buffer;
         int jit_exit_code = (int) func();
-        pln("Interpreter exited with code: %", f_int(interp_exit_code));
-        pln("        JIT exited with code: %", f_int(jit_exit_code));
+        pln("JIT exited with code: %", f_int(jit_exit_code));
     }
     
 #endif

@@ -183,7 +183,7 @@ interp_expression(Interp* interp, Ast* ast) {
                     first.data.signed_int = value_integer_binary_operation(first, second, ast->Binary_Expr.op);
                     
                     result.value = first;
-                    result.type = first_op.type;
+                    result.type = *ast->type;
                 } else {
                     interp_mismatched_types(interp, &first_op.type, &second_op.type);
                 }
@@ -824,27 +824,34 @@ interp_intrinsic_pln(Interp* interp, array(Interp_Value)* var_args) {
         if (var_args) {
             String_Builder sb = {};
             
-            string format_string = format.value.data.str;
-            int format_count = (int) format_string.count;
-            u8* scan = (u8*) format_string.data;
+            // TODO(Alexander): this is a hack, bytecode use Memory_String
+            u8* scan;
+            u8* scan_end;
+            if (interp->flag_running_in_bytecode) {
+                Memory_String format_string = format.value.data.mstr;
+                scan = (u8*) format_string;
+                scan_end = scan + memory_string_count(format_string);
+            } else {
+                string format_string = format.value.data.str;
+                int format_count = (int) format_string.count;
+                scan = (u8*) format_string.data;
+                scan_end = scan + format_count;
+            }
             u8* scan_at_prev_percent = scan;
             
-            smm index = 0;
             int var_arg_index = 0;
             int count_until_percent = 0;
-            while (index < format_count) {
-                
-                if (*scan == '%') {
+            while (scan < scan_end) {
+                if (*scan++ == '%') {
                     if (count_until_percent > 0) {
                         string substring = create_string(count_until_percent, scan_at_prev_percent);
                         string_builder_push(&sb, substring);
                         count_until_percent = 0;
                     }
-                    scan_at_prev_percent = scan + 1;
+                    scan_at_prev_percent = scan;
                     
-                    if (index + 1 < format_count && *(scan + 1) == '%') {
+                    if (*scan == '%') {
                         string_builder_push(&sb, "%");
-                        index += 2;
                         scan += 2;
                         continue;
                     }
@@ -855,11 +862,19 @@ interp_intrinsic_pln(Interp* interp, array(Interp_Value)* var_args) {
                         return {};
                     }
                     
-                    Interp_Value* var_arg = var_args + var_arg_index++;
-                    Format_Type format_type = convert_type_to_format_type(&var_arg->type);
-                    if (format_type == FormatType_None) {
-                        // NOTE(Alexander): if type didn't help then we guess based on value
-                        format_type = convert_value_type_to_format_type(var_arg->value.type);
+                    Interp_Value* var_arg;
+                    Format_Type format_type;
+                    if (interp->flag_running_in_bytecode) {
+                        Interp_Value* format_arg = var_args + var_arg_index++;
+                        var_arg = var_args + var_arg_index++;
+                        format_type = (Format_Type) value_to_s64(format_arg->value);
+                    } else {
+                        var_arg = var_args + var_arg_index++;
+                        format_type = convert_type_to_format_type(&var_arg->type);
+                        if (format_type == FormatType_None) {
+                            // NOTE(Alexander): if type didn't help then we guess based on value
+                            format_type = convert_value_type_to_format_type(var_arg->value.type);
+                        }
                     }
                     
                     void* value_data;
@@ -877,9 +892,6 @@ interp_intrinsic_pln(Interp* interp, array(Interp_Value)* var_args) {
                 } else {
                     count_until_percent++;
                 }
-                
-                scan++;
-                index++;
             }
             printf("%.*s\n", (int) sb.curr_used, (char*) sb.data);
             string_builder_free(&sb);

@@ -316,6 +316,8 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
             
             if (type->Function.interp_intrinsic) {
                 Interp intrinsic_interp = {};
+                intrinsic_interp.flag_running_in_bytecode = true;
+                
                 array(Interp_Value)* variadic_args = 0;
                 
                 for_array(bc->src1.Argument_List, arg, arg_index) {
@@ -341,6 +343,9 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
                         
                         Type* arg_type = arg->type;
                         if (arg_type) {
+                            if (arg_type->kind == TypeKind_Basic) {
+                                interp_value.value.type = value_type_from_basic_flags(arg_type->Basic.flags);
+                            }
                             interp_value.type = *arg_type;
                             array_push(variadic_args, interp_value);
                         } else {

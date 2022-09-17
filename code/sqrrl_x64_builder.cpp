@@ -769,40 +769,64 @@ add_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type); \
             };
             
             // Allocate registers in 
-            s32 stack_offset = 32; // rcx rdx, r8 and r9 home
+            s32 stack_offset = x64->stack_frame_size - (s32) (array_count(bc->src1.Argument_List) - 1)*8;
             u64 virtual_regs[fixed_array_count(gpr_registers)];
-            for (int arg_index = 0; arg_index < array_count(bc->src1.Argument_List); arg_index++) {
+            
+            for (int arg_index = 0; 
+                 arg_index < array_count(bc->src1.Argument_List);
+                 ++arg_index) {
+                
+                if (arg_index >= fixed_array_count(gpr_registers)) {
+                    break;
+                }
+                
                 Bc_Argument* arg = bc->src1.Argument_List + arg_index;
                 X64_Operand src = x64_build_operand(x64, arg->src, arg->type);
                 
-                if (arg_index < fixed_array_count(gpr_registers)) {
-                    u64 vreg = x64_allocate_specific_register(x64, gpr_registers[arg_index]);
-                    virtual_regs[arg_index] = vreg;
-                    
-                    X64_Instruction* insn;
-                    if (src.kind == X64Operand_data_target) {
-                        insn = x64_push_instruction(x64, X64Opcode_lea);
-                        insn->op0.kind = x64_get_register_kind(t_s64); // TODO: arch dep size of type
-                    } else {
-                        insn = x64_push_instruction(x64, X64Opcode_mov);
-                        insn->op0.kind = x64_get_register_kind(arg->type);
-                    }
-                    insn->op0.virtual_register = vreg;
-                    insn->op1 = src;
+                u64 vreg = x64_allocate_specific_register(x64, gpr_registers[arg_index]);
+                virtual_regs[arg_index] = vreg;
+                
+                X64_Instruction* insn;
+                s32 size = bc_type_to_size(arg->type);
+                if (size == 1 || size == 2 || size == 4 || size == 8) {
+                    insn = x64_push_instruction(x64, X64Opcode_mov);
+                    insn->op0.kind = x64_get_register_kind(arg->type);
                 } else {
-                    
-                    s32 size = bc_type_to_size(arg->type);
-                    // NOTE(Alexander): I think, windows callign convention always align types by at least 8 bytes
-                    s32 align = (s32) align_forward(size, 8);
-                    stack_offset = (s32) align_forward(stack_offset, align);
-                    
-                    X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
-                    X64_Operand_Kind kind = x64_get_memory_kind(arg->type);
-                    insn->op0 = x64_build_stack_offset(x64, arg->type, -stack_offset, X64Register_rbp);
-                    insn->op1 = x64_build_operand(x64, arg->src, arg->type);
-                    
-                    stack_offset += size;
+                    // Pass argument by reference
+                    insn = x64_push_instruction(x64, X64Opcode_lea);
+                    insn->op0.kind = x64_get_register_kind(t_s64); // TODO: arch dep size of type
                 }
+                insn->op0.virtual_register = vreg;
+                insn->op1 = src;
+            }
+            
+            for (int arg_index = (int) array_count(bc->src1.Argument_List) - 1;
+                 arg_index >= 4; 
+                 --arg_index) {
+                
+                Bc_Argument* arg = bc->src1.Argument_List + arg_index;
+                X64_Operand src = x64_build_operand(x64, arg->src, arg->type);
+                
+                s32 size = bc_type_to_size(arg->type);
+                // TODO(Alexander): I think, windows callign convention always align types by at least 8 bytes
+                if (!(size == 1 || size == 2 || size == 4 || size == 8)) {
+                    // Pass argument by reference
+                    X64_Instruction* tmp_insn = x64_push_instruction(x64, X64Opcode_lea);
+                    tmp_insn->op0 = x64_allocate_temporary_register(x64, t_s64); // TODO: arch dep size of type
+                    tmp_insn->op1 = src;
+                    src = tmp_insn->op0;
+                    size = 8;
+                }
+                
+                // TODO(Alexander): is this correct?
+                s32 align = (s32) align_forward(size, 8);
+                stack_offset = (s32) align_forward(stack_offset, align);
+                
+                X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
+                insn->op0 = x64_build_stack_offset(x64, arg->type, -stack_offset, X64Register_rbp);
+                insn->op1 = src;
+                
+                stack_offset += size;
             }
             
             // Set the target to jump to
@@ -866,11 +890,11 @@ add_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type); \
 }
 
 void
-x64_push_prologue(X64_Builder* x64, s32 stack_size) {
+x64_push_prologue(X64_Builder* x64, s32 stack_frame_size) {
     // push rbp
     // mov rbp rsp
     // sub rbp stack_size (only relevant for non-leaf functions)
-    
+    x64->stack_frame_size = stack_frame_size;
     
     X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_push);
     insn->op0 = x64_build_physical_register(x64, X64Register_rbp, X64Operand_r64);
@@ -882,20 +906,20 @@ x64_push_prologue(X64_Builder* x64, s32 stack_size) {
     
     insn = x64_push_instruction(x64, X64Opcode_sub);
     insn->op0 = x64_build_physical_register(x64, X64Register_rsp, X64Operand_r64);
-    insn->op1.imm32 = stack_size;
+    insn->op1.imm32 = stack_frame_size;
     insn->op1.kind = X64Operand_imm32;
 }
 
 
 void
-x64_push_epilogue(X64_Builder* x64, s32 stack_size) {
+x64_push_epilogue(X64_Builder* x64) {
     // add rsp stack_size (only relevant for non-leaf functions)
     // pop rbp
     // ret
     
     X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_add);
     insn->op0 = x64_build_physical_register(x64, X64Register_rsp, X64Operand_r64);
-    insn->op1.imm32 = stack_size;
+    insn->op1.imm32 = x64->stack_frame_size;
     insn->op1.kind = X64Operand_imm32;
     
     insn = x64_push_instruction(x64, X64Opcode_pop);
@@ -905,32 +929,70 @@ x64_push_epilogue(X64_Builder* x64, s32 stack_size) {
     //pln("bb.count = %", f_umm(x64->curr_basic_block->count));
 }
 
-void
-x64_analyse_function(X64_Builder* x64, Bc_Instruction* bc) {
-    switch (bc->opcode) {
-        case Bytecode_stack_alloc: {
-            assert(bc->dest.kind == BcOperand_Register);
-            assert(bc->src0.kind == BcOperand_Type);
-            assert(bc->src1.kind == BcOperand_None);
+struct Stack_Info {
+    s32 local_size;
+    s32 argument_size;
+};
+
+Stack_Info
+x64_analyse_stack(X64_Builder* x64, Bc_Basic_Block* function_block) {
+    Stack_Info result = {};
+    
+    Bc_Basic_Block* it_block = function_block;
+    smm it_index = 0;
+    while (it_block) {
+        while (it_index < it_block->instruction_count) {
+            Bc_Instruction* bc = get_first_bc_instruction(it_block) + it_index;
             
-            s32 size = bc_type_to_size(bc->src0.Type);
-            s32 align = bc_type_to_align(bc->src0.Type);
-            assert(size > 0 && "bad size");
-            assert(align > 0 && "bad align");
-            
-            s32 stack_offset = (s32) align_forward((umm) x64->curr_stack_offset, align);
-            stack_offset += size;
-            // NOTE(Alexander): we use negative because stack grows downwards
-            map_put(x64->stack_offsets, bc->dest.Register, -stack_offset);
-            x64->curr_stack_offset = stack_offset;
-            
-            //pln("stack_offset(size = %, align = %, %) = %", f_umm(size), f_umm(align), f_u32(bc->dest.Register), f_s64(stack_offset));
-        } break;
-        
-        case Bytecode_memory_alloc: {
-            
-        } break;
+            switch (bc->opcode) {
+                case Bytecode_stack_alloc: {
+                    assert(bc->dest.kind == BcOperand_Register);
+                    assert(bc->src0.kind == BcOperand_Type);
+                    assert(bc->src1.kind == BcOperand_None);
+                    
+                    s32 size = bc_type_to_size(bc->src0.Type);
+                    s32 align = bc_type_to_align(bc->src0.Type);
+                    assert(size > 0 && "bad size");
+                    assert(align > 0 && "bad align");
+                    
+                    s32 stack_offset = (s32) align_forward((umm) result.local_size, align);
+                    stack_offset += size;
+                    // NOTE(Alexander): we use negative because stack grows downwards
+                    map_put(x64->stack_offsets, bc->dest.Register, -stack_offset);
+                    result.local_size = stack_offset;
+                    
+                    //pln("stack_offset(size = %, align = %, %) = %", f_umm(size), f_umm(align), f_u32(bc->dest.Register), f_s64(stack_offset));
+                } break;
+                
+                case Bytecode_call: {
+                    // TODO(Alexander): this is based on windows x64 calling convention
+                    s32 stack_offset = 8*6; // push RSP, return address and paramter (rcx, rdx, r8, r9) home
+                    
+                    for (int arg_index = (int) array_count(bc->src1.Argument_List) - 1;
+                         arg_index >= 4; 
+                         --arg_index) {
+                        
+                        Bc_Argument* arg = bc->src1.Argument_List + arg_index;
+                        s32 size = bc_type_to_size(arg->type);
+                        // TODO(Alexander): I think, windows callign convention always align types by at least 8 bytes
+                        s32 align = (s32) align_forward(size, 8);
+                        stack_offset = (s32) align_forward(stack_offset + size, align);
+                    }
+                    
+                    result.argument_size = max(result.argument_size, stack_offset);
+                } break;
+                
+                case Bytecode_memory_alloc: {
+                    
+                } break;
+            }
+            it_index++;
+        }
+        it_block = get_bc_basic_block(x64->bytecode, it_block->next_byte_offset);
+        it_index = 0;
     }
+    
+    return result;
 }
 
 internal inline void
@@ -948,9 +1010,7 @@ void
 x64_build_function(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_block) {
     array_free(x64->active_virtual_registers);
     
-    x64->curr_stack_offset = 0;
-    for_bc_basic_block(bytecode, first_block, insn, insn_index, x64_analyse_function(x64, insn));
-    s32 stack_offset = x64->curr_stack_offset;
+    Stack_Info stack = x64_analyse_stack(x64, first_block);
     
     x64_push_basic_block(x64, first_block->label);
     
@@ -960,78 +1020,51 @@ x64_build_function(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_b
         X64Register_rcx, X64Register_rdx, X64Register_r8, X64Register_r9
     };
     
-    stack_offset += 8*5; // push RSP and paramter (rcx, rdx, r8, r9) home
-    // NOTE(Alexander): the return value is automatically pushed
-    
-    // TODO(Alexander): do we need this for other calling conventions?
-    // Align to 16 byte boundary (for windows x64 calling convention)
-    // LINK: https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170#alignment
-    stack_offset = (s32) align_forward(stack_offset + 8, 16) - 8;
-    // NOTE(Alexander): add 8 in alignment to account for the return value, but actual offset we don't use it since it has already modified our RSP
-    
     // TODO(Alexander): callee should save volatile registers
     
-    // Setup argument registers
+    // Map virtual registers to an argument based on calling convention
     Bc_Instruction* label_insn = get_first_bc_instruction(first_block);
-    s32 param_stack_offset = stack_offset - 8; // NOTE(Alexander): - RSP size
     if (label_insn) {
-        array(Bc_Argument*) args = label_insn->src1.Argument_List;
-        for_array(args, arg, arg_index) {
-            if (arg_index < fixed_array_count(gpr_registers)) {
-                X64_Operand_Kind type_kind = x64_get_register_kind(arg->type);
-                X64_Operand value = x64_build_physical_register(x64, gpr_registers[arg_index], type_kind);
-                map_put(x64->allocated_virtual_registers, arg->src.Register, value);
-            } else {
-                X64_Operand value = x64_build_stack_offset(x64, arg->type, param_stack_offset);
-                map_put(x64->allocated_virtual_registers, arg->src.Register, value);
-                
-                s32 size = bc_type_to_size(arg->type);
-                s32 align = (s32) align_forward(size, 8);
-                param_stack_offset -= align;
+        // TODO(Alexander): this is based on windows x64 calling convention
+        array(Bc_Argument*) arg_list = label_insn->src1.Argument_List;
+        
+        for (int arg_index = 0; 
+             arg_index < array_count(arg_list);
+             ++arg_index) {
+            
+            if (arg_index >= fixed_array_count(gpr_registers)) {
+                break;
             }
+            
+            Bc_Argument* arg = arg_list + arg_index;
+            X64_Operand_Kind type_kind = x64_get_register_kind(arg->type);
+            X64_Operand value = x64_build_physical_register(x64, gpr_registers[arg_index], type_kind);
+            map_put(x64->allocated_virtual_registers, arg->src.Register, value);
+        }
+        
+        // Push arguments next arguments to stack
+        s32 stack_offset = stack.local_size + 4*8;
+        for (int arg_index = (int) array_count(arg_list) - 1;
+             arg_index >= 4; 
+             --arg_index) {
+            
+            Bc_Argument* arg = arg_list + arg_index;
+            X64_Operand value = x64_build_stack_offset(x64, arg->type, stack_offset);
+            map_put(x64->allocated_virtual_registers, arg->src.Register, value);
+            
+            s32 size = bc_type_to_size(arg->type);
+            stack_offset = (s32) align_forward(stack_offset + size, 8);
         }
     }
     
-#if 0
-    // Push registers in order
-    for (int arg_index = 0; arg_index < array_count(first_block->args); arg_index++) {
-        if (arg_index >= fixed_array_count(gpr_registers)) {
-            break;
-        }
-        
-        u32 reg = first_block->args[arg_index];
-        
-        // TODO(Alexander): r32 is hardcoded for now, we need to store the argument types
-        X64_Operand arg = x64_build_physical_register(x64, gpr_registers[arg_index], X64Operand_r32);
-        Bc_Register reg_ident = { first_block->label.ident, reg };
-        map_put(x64->allocated_virtual_registers, reg_ident, arg);
-    }
-    
-    // Push onto stack in reverse order (right-to-left)
-    stack_offset += 8*6; // push RSP, return address and paramter (rcx, rdx, r8, r9) home
-    for (int arg_index = (int) array_count(first_block->args) - 1;
-         arg_index >= fixed_array_count(gpr_registers) && arg_index >= 0;
-         arg_index--) {
-        u32 reg = first_block->args[arg_index];
-        
-        // TODO(Alexander): s32 is hardcoded for now, we need to store the argument types
-        Bc_Type type = { BcType_s32, 0 };
-        s32 size = bc_type_to_size(type.kind);
-        s32 align = (s32) align_forward(size, 8);
-        stack_offset = (s32) align_forward(stack_offset, align);
-        
-        
-        X64_Operand arg = x64_build_stack_offset(x64, type, stack_offset);
-        Bc_Register reg_ident = { first_block->label.ident, reg };
-        map_put(x64->allocated_virtual_registers, reg_ident, arg);
-        
-        stack_offset += size;
-    }
-#endif
+    // Compute the stack frame size
+    s32 stack_frame = stack.local_size + stack.argument_size;
+    // Align to 16 byte boundary (for windows x64 calling convention)
+    // https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170#alignment
+    stack_frame = (s32) align_forward(stack_frame, 16);
     
     // Prologue
-    stack_offset = 80; // TODO(Alexander): why 80 (88) working but not 56 (64), crashes in windows printf (we also get 80 (88) on compiler explorer)
-    x64_push_prologue(x64, stack_offset);
+    x64_push_prologue(x64, stack_frame);
     
     Bc_Basic_Block* curr_block = first_block;
     u32 curr_bc_instruction = 0;
@@ -1069,7 +1102,7 @@ x64_build_function(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_b
     }
     
     // Epilogue
-    x64_push_epilogue(x64, stack_offset);
+    x64_push_epilogue(x64);
     
     // Check if we forgot to free any registers
     int allocated_count = (int) array_count(x64->active_virtual_registers);

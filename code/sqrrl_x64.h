@@ -450,6 +450,8 @@ x64_get_memory_kind(Bc_Type type) {
         case Basic_s64:
         case Basic_u64: return X64Operand_m64;
         
+        case Basic_string: return X64Operand_m64; // TODO(Alexander): arch. dep, strings should be passed via reference
+        
         // TODO(Alexander): floating point
         default: assert(0 && "invalid bytecode type kind");
     }

@@ -210,6 +210,7 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
                         for (int i = 0; i < count; i++) {
                             push_u8(assembler, insn->op0.string_literal[i]);
                         }
+                        push_u8(assembler, 0);
                     }
                 } continue; // go to next instruction
             }

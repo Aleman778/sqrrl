@@ -20,7 +20,7 @@ struct X64_Builder {
     Bc_Instruction* curr_compare_insn;
     
     map(u64, s32)* stack_offsets;
-    s32 curr_stack_offset;
+    s32 stack_frame_size;
     map(u64, X64_Operand)* allocated_virtual_registers;
     array(u64)* active_virtual_registers;
     array(u64)* temp_registers;

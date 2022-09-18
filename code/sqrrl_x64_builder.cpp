@@ -946,7 +946,7 @@ x64_analyze_stack(X64_Builder* x64, Bc_Basic_Block* function_block) {
             
             switch (bc->opcode) {
                 case Bytecode_stack_alloc: {
-                    assert(bc->dest.kind == BcOperand_Register);
+                    assert(bc->dest.kind == BcOperand_Stack);
                     assert(bc->src0.kind == BcOperand_Type);
                     assert(bc->src1.kind == BcOperand_None);
                     

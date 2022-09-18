@@ -106,7 +106,7 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
         case Bytecode_label: break;
         
         case Bytecode_stack_alloc: {
-            assert(bc->dest.kind == BcOperand_Register);
+            assert(bc->dest.kind == BcOperand_Stack);
             assert(bc->src0.kind == BcOperand_Type);
             assert(bc->src1.kind == BcOperand_None);
             
@@ -131,6 +131,18 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             } else {
                 bc_interp_store_register(interp, bc->dest.Register, src);
             }
+        } break;
+        
+        case Bytecode_memcpy: {
+            assert(bc->dest.kind == BcOperand_Memory || bc->dest.kind == BcOperand_Stack);
+            assert(bc->src0.kind == BcOperand_Memory || 
+                   bc->src0.kind == BcOperand_Stack || 
+                   bc->src0.kind == BcOperand_Label);
+            assert(bc->src1.kind == BcOperand_Int);
+            
+            Value_Data dest = bc_interp_load_register(interp, bc->dest.Register);
+            Value_Data src = bc_interp_load_register(interp, bc->src0.Register);
+            memcpy(dest.data, src.data, bc->src1.Signed_Int);
         } break;
         
         case Bytecode_copy_from_ref: {
@@ -167,6 +179,17 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             Value_Data dest_reg = bc_interp_operand_value(interp, bc->dest, &ptr_type);
             Value_Data src = bc_interp_operand_value(interp, bc->src0, bc->dest_type);
             value_store_in_memory(bc->dest_type, dest_reg.data, src);
+        } break;
+        
+        case Bytecode_field: {
+            assert(bc->dest.kind == BcOperand_Memory);
+            assert(bc->src0.kind == BcOperand_Stack || bc->src0.kind == BcOperand_Memory);
+            assert(bc->src1.kind == BcOperand_Int);
+            
+            Value_Data src = bc_interp_load_register(interp, bc->src0.Register);
+            Value_Data dest;
+            dest.signed_int = src.signed_int + bc->src1.Signed_Int;
+            bc_interp_store_register(interp, bc->dest.Register, dest);
         } break;
         
         case Bytecode_neg: {

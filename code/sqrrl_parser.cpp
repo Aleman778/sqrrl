@@ -732,6 +732,10 @@ parse_statement(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
                 result->Return_Stmt.expr = parse_expression(parser, false);
             } break;
             
+            //case Kw_struct: {
+            
+            //} break;
+            
             default: {
                 Ast* type = parse_type(parser, false, mods);
                 
@@ -744,6 +748,7 @@ parse_statement(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
                             result->kind = Ast_Decl_Stmt;
                             result->Decl_Stmt.ident = type->children[0];
                             result->Decl_Stmt.type = type;
+                            result->Decl_Stmt.stmt = push_ast_node(parser);
                         } break;
                         
                         case Ast_Function_Type: {

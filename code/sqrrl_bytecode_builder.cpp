@@ -84,7 +84,6 @@ bc_save_string(Bc_Builder* bc, string str) {
     
     Bc_Decl bc_decl = {};
     bc_decl.kind = BcDecl_Data;
-    bc_decl.first_byte_offset = (umm) mstr - (umm) bc->data_arena.base;
     bc_decl.Data.type = t_string;
     bc_decl.Data.value = create_memory_string_value(mstr);
     Bc_Label label = create_unique_bc_label(bc, Sym___string);
@@ -489,7 +488,18 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
         } break;
         
         case Ast_Field_Expr: {
-            unimplemented;
+            Type_Struct* t_struct = &node->Field_Expr.var->type->Struct;
+            string_id ident = ast_unwrap_ident(node->Field_Expr.field);
+            Struct_Field_Info field = get_field_info(t_struct, ident);
+            Bc_Operand var = bc_build_expression(bc, node->Field_Expr.var);
+            
+            Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_field);
+            insn->dest = create_unique_bc_register(bc);
+            insn->dest.kind = BcOperand_Memory;
+            insn->dest_type = field.type;
+            insn->src0 = var;
+            insn->src1 = bc_signed_int_op(field.offset);
+            return insn->dest;
         } break;
         
         case Ast_Cast_Expr: {
@@ -512,7 +522,44 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
         } break;
         
         case Ast_Struct_Expr: {
-            unimplemented;
+            Type* type = node->type;
+            Type_Struct* t_struct = &type->Struct;
+            
+            u8* struct_data = (u8*) arena_push_size(&bc->data_arena, type->size, type->align);
+            
+            Bc_Decl bc_decl = {};
+            bc_decl.kind = BcDecl_Data;
+            bc_decl.Data.type = type;
+            bc_decl.Data.value.type = Value_pointer;
+            bc_decl.Data.value.data.data = struct_data;
+            
+            Bc_Label label = create_unique_bc_label(bc, Sym___const);
+            map_put(bc->declarations, label, bc_decl);
+            
+            // TODO(Alexander): this assumes all field values are contant values
+            
+            int next_field_index = 0;
+            for_compound(node->Struct_Expr.fields, field) {
+                int field_index = next_field_index++;
+                
+                Value_Data field_value = {};
+                
+                if (field->Argument.ident) {
+                    string_id ident = ast_unwrap_ident(field->Argument.ident);
+                    field_index = map_get(t_struct->ident_to_index, ident);
+                    
+                    assert(field->Argument.assign->kind == Ast_Value && "assumes constants only used");
+                    field_value = field->Argument.assign->Value.value.data;
+                }
+                
+                assert(field_index >= 0 && field_index < array_count(t_struct->offsets));
+                
+                umm field_offset = t_struct->offsets[field_index];
+                Type* field_type = t_struct->types[field_index];
+                value_store_in_memory(field_type, struct_data + field_offset, field_value);
+            }
+            
+            result = bc_label_op(label);
         } break;
         
         case Ast_Tuple_Expr: {

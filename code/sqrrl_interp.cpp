@@ -42,6 +42,7 @@ interp_expression(Interp* interp, Ast* ast) {
         
         case Ast_Unary_Expr: {
             Interp_Value first_op = interp_expression(interp, ast->Unary_Expr.first);
+            result.type = *ast->type;
             switch (ast->Unary_Expr.op) {
                 case UnaryOp_Negate: {
                     if (is_integer(first_op.value)) {
@@ -579,9 +580,9 @@ interp_statement(Interp* interp, Ast* ast) {
                             s32 field_index = map_get(t_struct->ident_to_index, field_ident);
                             Type* def_type = t_struct->types[field_index];
                             if (type_equals(&field_expr.type, def_type)) {
-                                interp_mismatched_types(interp, def_type, &field_expr.type);
-                            } else {
                                 // TODO(Alexander): check that the value conforms to def_type
+                            } else {
+                                interp_mismatched_types(interp, def_type, &field_expr.type);
                             }
                             
                             map_put(field_values, field_ident, field_expr.value);

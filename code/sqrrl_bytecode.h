@@ -8,6 +8,9 @@ BC(copy) \
 BC(copy_from_ref) \
 BC(copy_from_deref) \
 BC(copy_to_deref) \
+BC(memset) \
+BC(memcpy) \
+BC(field) \
 BC(neg) \
 BC(not) \
 BC(mul) \
@@ -372,6 +375,8 @@ string_builder_push(String_Builder* sb, Bc_Regiter_Mapper* mapper, Bc_Instructio
         string_builder_push(sb, ":");
     } else {
         bool is_opcode_assign = !(insn->opcode == Bytecode_copy ||
+                                  insn->opcode == Bytecode_memcpy ||
+                                  insn->opcode == Bytecode_memset ||
                                   insn->opcode == Bytecode_copy_to_deref ||
                                   insn->opcode == Bytecode_ret);
         
@@ -380,6 +385,9 @@ string_builder_push(String_Builder* sb, Bc_Regiter_Mapper* mapper, Bc_Instructio
         bool has_assignment = false;
         if (is_opcode_assign && insn->dest_type) {
             string_builder_push(sb, insn->dest_type);
+            if (insn->dest.kind == BcOperand_Stack || insn->dest.kind == BcOperand_Memory) {
+                string_builder_push(sb, "*");
+            }
             has_assignment = true;
         }
         

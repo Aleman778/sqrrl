@@ -688,6 +688,8 @@ arena_push_size(Memory_Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT, umm 
     arena->prev_used = arena->curr_used;
     arena->curr_used = offset + size;
     
+    memset(result, 0, size);
+    
     // TODO(Alexander): add memory clear to zero flag
     
     return result;

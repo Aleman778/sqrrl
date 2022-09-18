@@ -91,6 +91,7 @@ bc_unsigned_int_op(u64 value) {
     return result;
 }
 
+
 inline Bc_Operand
 bc_float_op(f64 value) {
     Bc_Operand result;
@@ -119,13 +120,10 @@ inline Bc_Operand
 bc_stack_alloc(Bc_Builder* bc, Bc_Type value_type) {
     Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_stack_alloc);
     insn->dest = create_unique_bc_register(bc);
+    insn->dest.kind = BcOperand_Stack;
     insn->dest_type = value_type;
-    //insn->dest_type.ptr_depth++;
     insn->src0 = bc_type_op(value_type);
-    
-    Bc_Operand result = insn->dest;
-    result.kind = BcOperand_Stack;
-    return result;
+    return insn->dest;
 }
 
 inline void
@@ -142,6 +140,11 @@ bc_copy(Bc_Builder* bc, Bc_Operand dest, Bc_Operand src, Bc_Type type) {
     insn->dest_type = type;
     insn->dest = dest;
     insn->src0 = src;
+    
+    if (type->kind == TypeKind_Struct) {
+        insn->opcode = Bytecode_memcpy;
+        insn->src1 = bc_signed_int_op(type->size);
+    }
 }
 
 #if 0

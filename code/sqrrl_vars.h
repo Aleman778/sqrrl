@@ -77,6 +77,7 @@ VAR(line)     \
 VAR(undef)    \
 VAR(main)     \
 VAR(__string) \
+VAR(__const)  \
 VAR(test_proc) \
 VAR(unsigned) \
 VAR(signed)   \

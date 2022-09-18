@@ -544,19 +544,99 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         } break;
         
         case Ast_Field_Expr: {
+            Type* type = type_infer_expression(tcx, expr->Field_Expr.var, 0, report_error);
+            string_id field_ident = ast_unwrap_ident(expr->Field_Expr.field);
+            
+            // TODO(Alexander): add support for unions, enums etc.
+            if (type->kind == TypeKind_Struct) {
+                smm index = map_get_index(type->Struct.ident_to_index, field_ident);
+                if (index >= 0) {
+                    Type* field_type = type->Struct.types[index];
+                    expr->type = field_type;
+                    result = expr->type;
+                } else {
+                    if (report_error) {
+                        type_error(tcx, string_format("type `%` doesn't have any fields", f_type(type)));
+                    }
+                }
+            } else {
+                if (report_error) {
+                    type_error(tcx, string_format("type `%` doesn't have any fields", f_type(type)));
+                }
+            }
             
         } break;
         
         case Ast_Array_Expr: {
-            
+            unimplemented;
         } break;
         
         case Ast_Struct_Expr: {
-            
+            Type* type = type_infer_expression(tcx, expr->Struct_Expr.ident, parent_type, report_error);
+            if (type || parent_type) {
+                if (!type) {
+                    type = parent_type;
+                }
+                
+                bool has_ident = false;
+                bool has_errors = false;
+                int next_field_index = 0;
+                for_compound(expr->Struct_Expr.fields, field) {
+                    int field_index = next_field_index++;
+                    
+                    if (field->Argument.ident) {
+                        string_id ident = ast_unwrap_ident(field->Argument.ident);
+                        smm idx = map_get_index(type->Struct.ident_to_index, ident);
+                        if (idx == -1) {
+                            if (report_error) {
+                                type_error(tcx, string_format("`%` undeclared identifier in struct `%`",
+                                                              f_string(vars_load_string(ident)),
+                                                              f_string(vars_load_string(type->ident))));
+                            }
+                            continue;
+                        }
+                        field_index = type->Struct.ident_to_index[idx].value;
+                        has_ident = true;
+                    } else if (has_ident) {
+                        type_error(tcx, string_lit("cannot combine named and anonymous values in struct literal"));
+                        has_errors = true;
+                        break;
+                    }
+                    
+                    Type* field_type = 0;
+                    if (next_field_index <= array_count(type->Struct.types)) {
+                        field_type = type->Struct.types[field_index];
+                    } else {
+                        if (report_error) {
+                            type_error(tcx, string_format("too many fields `%`, expected only `%`",
+                                                          f_string(vars_load_string(type->ident)),
+                                                          f_int(array_count(type->Struct.types))));
+                        }
+                        has_errors = true;
+                        break;
+                    }
+                    
+                    if (field->Argument.assign) {
+                        
+                        constant_folding_of_expressions(field->Argument.assign);
+                        type_infer_expression(tcx, field->Argument.assign, field_type, report_error);
+                    } else {
+                        type_infer_expression(tcx, field->Argument.ident, field_type, report_error);
+                    }
+                }
+                
+                if (!has_errors) {
+                    expr->type = type;
+                    result = type;
+                }
+                
+            } else if (report_error) {
+                type_error(tcx, string_lit("missing type specifier"));
+            }
         } break;
         
         case Ast_Tuple_Expr: {
-            
+            unimplemented;
         } break;
     }
     
@@ -569,7 +649,7 @@ struct Type_Struct_Like {
     array(string_id)* idents;
     array(umm)* offsets;
     
-    map(string_id, s32)* ident_to_index;
+    Ident_Mapper* ident_to_index;
     
     smm offset;
     smm size;
@@ -588,6 +668,7 @@ push_type_to_struct_like(Type_Struct_Like* dest, Type* type, string_id ident) {
     map_put(dest->ident_to_index, ident, index);
     
     dest->offset += type->size;
+    dest->size = dest->offset;
     
     if (type->align > dest->align) {
         dest->align = type->align;
@@ -601,10 +682,6 @@ create_type_struct_like_from_ast(Type_Context* tcx,
                                  bool report_error) {
     
     Type_Struct_Like result = {};
-    
-    smm offset = 0;
-    smm size = 0;
-    smm align = 0;
     
     for_compound(arguments, argument) {
         assert(argument->kind == Ast_Argument);
@@ -622,7 +699,7 @@ create_type_struct_like_from_ast(Type_Context* tcx,
                 assert(argument->Argument.ident->kind == Ast_Ident);
                 string_id ident = argument->Argument.ident->Ident;
                 Type* type = create_type_from_ast(tcx, ast_type, report_error);
-                
+                push_type_to_struct_like(&result, type, ident);
             } break;
             
             case Ast_Compound: {
@@ -632,7 +709,6 @@ create_type_struct_like_from_ast(Type_Context* tcx,
                     assert(ast_ident->kind == Ast_Ident);
                     string_id ident = ast_ident->Ident;
                     push_type_to_struct_like(&result, type, ident);
-                    
                 }
             } break;
             
@@ -669,8 +745,8 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 result = map_get(tcx->local_type_table, ident);
                 if (!result) {
                     result = map_get(tcx->global_type_table, ident);
-                    if (!result) {
-                        // NOTE(Alexander): copypasta
+                    if (!result && report_error) {
+                        // NOTE(Alexander): copypasta, where?
                         type_error(tcx, string_format("`%` is an undeclared identifier", 
                                                       f_string(vars_load_string(ident))));
                     }
@@ -758,17 +834,25 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             Ast* fields = ast->Struct_Type.fields;
             Type_Struct_Like struct_like = create_type_struct_like_from_ast(tcx, fields, report_error);
             result = arena_push_struct(tcx->type_arena, Type);
+            result->kind = TypeKind_Struct;
             result->Struct.types = struct_like.types;
             result->Struct.idents = struct_like.idents;
             result->Struct.offsets = struct_like.offsets;
+            result->Struct.ident_to_index = struct_like.ident_to_index;
+            result->ident = ast_unwrap_ident(ast->Struct_Type.ident);
+            result->size = (s32) struct_like.size;
+            result->align = (s32) struct_like.align;
         } break;
         
         case Ast_Union_Type: {
             Ast* fields = ast->Union_Type.fields;
             Type_Struct_Like struct_like = create_type_struct_like_from_ast(tcx, fields, report_error);
             result = arena_push_struct(tcx->type_arena, Type);
+            result->kind = TypeKind_Union;
             result->Union.types = struct_like.types;
             result->Union.idents = struct_like.idents;
+            result->size = (s32) struct_like.size;
+            result->align = (s32) struct_like.align;
         } break;
         
         case Ast_Enum_Type: {
@@ -963,10 +1047,13 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                     expected_type->Function.block = stmt->Decl_Stmt.stmt;
                 }
                 
-                
                 result = expected_type;
                 stmt->type = result;
                 map_put(tcx->locals, ident, result);
+            } else if (expected_type) {
+                map_put(tcx->global_type_table, ident, expected_type);
+            } else {
+                assert(0 && "compiler bug");
             }
         } break;
         

@@ -87,12 +87,29 @@ enum Type_Kind {
     TypeKind_Pointer,
 };
 
+typedef map(string_id, s32) Ident_Mapper;
+
 struct Type_Struct {
     array(Type*)* types;
     array(string_id)* idents;
     array(umm)* offsets;
-    map(string_id, s32)* ident_to_index;
+    Ident_Mapper* ident_to_index;
 };
+
+struct Struct_Field_Info {
+    Type* type;
+    smm offset;
+};
+
+inline Struct_Field_Info
+get_field_info(Type_Struct* t_struct, string_id ident) {
+    Struct_Field_Info result;
+    int field_index = map_get(t_struct->ident_to_index, ident);
+    result.type = t_struct->types[field_index];
+    result.offset = t_struct->offsets[field_index];
+    return result;
+}
+
 
 struct Type_Union {
     array(Type*)* types;
@@ -192,7 +209,7 @@ string_builder_push(String_Builder* sb, Type* type) {
         } break;
         
         case TypeKind_Struct: {
-            string_builder_push(sb, "struct");
+            string_builder_push(sb, type->ident);
         } break;
         
         case TypeKind_Union: {

@@ -24,6 +24,15 @@ push_u8(X64_Assembler* assembler, u8 value) {
     assembler->curr_used++;
 }
 
+
+inline void
+push_u64(X64_Assembler* assembler, u64 value) {
+    // TODO(Alexander): check if we need to reallocate this
+    *((u64*) (assembler->bytes + assembler->curr_used)) = value;
+    assembler->curr_used += 8;
+}
+
+
 inline void
 modify_u8(X64_Assembler* assembler, umm byte_index, u8 value) {
     assert(assembler->curr_used > byte_index);

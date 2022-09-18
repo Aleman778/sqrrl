@@ -213,6 +213,11 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
                         push_u8(assembler, 0);
                     }
                 } continue; // go to next instruction
+                
+                
+                case X64Directive_dq: {
+                    push_u64(assembler, insn->op0.imm64);
+                } continue;
             }
             
             X64_Instruction_Index index = {};

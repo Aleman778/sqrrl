@@ -308,20 +308,28 @@ x64_build_operand(X64_Builder* x64, Bc_Operand operand, Bc_Type type) {
         
         
         case BcOperand_Memory: {
-            result.virtual_register = operand.Register;
-            result.kind = x64_get_memory_kind(type);
-            x64_allocate_virtual_register(x64, result.virtual_register);
-            
-            bool is_active = false;
-            for_array_v(x64->active_virtual_registers, vreg, _) { 
-                if (vreg == result.virtual_register) {
-                    is_active = true;
-                    break;
+            smm vreg_index = map_get_index(x64->allocated_virtual_registers, operand.Register);
+            if (vreg_index != -1) {
+                // TODO(Alexander): this is a hack: currently we need this to store the arguments passed to us
+                result = x64->allocated_virtual_registers[vreg_index].value;
+                return result;
+            } else {
+                result.virtual_register = operand.Register;
+                result.kind = x64_get_memory_kind(type);
+                
+                x64_allocate_virtual_register(x64, result.virtual_register);
+                
+                bool is_active = false;
+                for_array_v(x64->active_virtual_registers, vreg, _) { 
+                    if (vreg == result.virtual_register) {
+                        is_active = true;
+                        break;
+                    }
                 }
-            }
-            
-            if (!is_active) {
-                array_push(x64->active_virtual_registers, result.virtual_register);
+                
+                if (!is_active) {
+                    array_push(x64->active_virtual_registers, result.virtual_register);
+                }
             }
         } break;
         
@@ -395,6 +403,33 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             insn->op1 = src;
         } break;
         
+        
+        case Bytecode_memcpy: {
+            X64_Operand dest = x64_build_operand(x64, bc->dest, t_s64);
+            X64_Operand src = x64_build_operand(x64, bc->src0, t_s64);
+            s64 size = bc->src1.Signed_Int;
+            
+            int dest_dir = bc->dest.kind == BcOperand_Stack ? -1 : 1;
+            int src_dir  = bc->src1.kind == BcOperand_Stack ? -1 : 1;
+            
+            s64 offset = 0;
+            while (offset < size) {
+                X64_Operand temp_reg = x64_allocate_temporary_register(x64, t_s64);
+                
+                X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
+                insn->op0 = temp_reg;
+                insn->op1 = src;
+                insn->op1.disp64 += offset*src_dir;
+                
+                insn = x64_push_instruction(x64, X64Opcode_mov);
+                insn->op0 = dest;
+                insn->op0.disp64 += offset*dest_dir;
+                insn->op1 = temp_reg;
+                
+                offset += 8;
+            }
+        } break;
+        
         case Bytecode_copy_from_ref: {
             X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_lea);
             insn->op0 = x64_build_operand(x64, bc->dest, bc->dest_type);
@@ -448,6 +483,15 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             insn->op0 = dest;
             insn->op0.kind = x64_get_memory_kind(bc->dest_type);
             insn->op1 = x64_build_operand(x64, bc->src0, bc->dest_type);
+        } break;
+        
+        case Bytecode_field: {
+            X64_Operand src = x64_build_operand(x64, bc->src0, bc->dest_type);
+            s64 offset = bc->src1.Signed_Int;
+            int src_dir  = bc->src0.kind == BcOperand_Stack ? -1 : 1;
+            src.disp64 -= offset*src_dir;
+            
+            map_put(x64->allocated_virtual_registers, bc->dest.Register, src);
         } break;
         
         case Bytecode_neg: {
@@ -1118,49 +1162,74 @@ x64_build_data_storage(X64_Builder* x64, Bc_Label label, Value_Data value, Bc_Ty
     
     X64_Operand value_operand = {};
     
-    assert(type->kind == TypeKind_Basic);
-    switch (type->Basic.kind) {
-        case Basic_bool:
-        case Basic_s8:
-        case Basic_u8: {
-            X64_Instruction* insn = x64_push_instruction(x64, X64Directive_db);
-            value_operand.kind = X64Operand_imm8;
-            value_operand.imm8 = (s8) value.signed_int;
-            insn->op0 = value_operand;
-        } break;
+    if (type->kind == TypeKind_Basic) {
+        switch (type->Basic.kind) {
+            case Basic_bool:
+            case Basic_s8:
+            case Basic_u8: {
+                X64_Instruction* insn = x64_push_instruction(x64, X64Directive_db);
+                value_operand.kind = X64Operand_imm8;
+                value_operand.imm8 = (s8) value.signed_int;
+                insn->op0 = value_operand;
+            } break;
+            
+            case Basic_u16:
+            case Basic_s16: {
+                X64_Instruction* insn = x64_push_instruction(x64, X64Directive_dw);
+                value_operand.kind = X64Operand_imm16;
+                value_operand.imm16 = (s16) value.signed_int;
+                insn->op0 = value_operand;
+            } break;
+            
+            case Basic_u32:
+            case Basic_s32:
+            case Basic_f32: {
+                X64_Instruction* insn = x64_push_instruction(x64, X64Directive_dd);
+                value_operand.kind = X64Operand_imm32;
+                value_operand.imm32 = (s32) value.signed_int;
+                insn->op0 = value_operand;
+            } break;
+            
+            case Basic_u64:
+            case Basic_s64:
+            case Basic_f64:{
+                X64_Instruction* insn = x64_push_instruction(x64, X64Directive_dq);
+                value_operand.kind = X64Operand_imm64;
+                value_operand.imm64 = (s64) value.signed_int;
+                insn->op0 = value_operand;
+            } break;
+            
+            case Basic_string: {
+                X64_Instruction* insn = x64_push_instruction(x64, X64Directive_db);
+                value_operand.kind = X64Operand_string_literal;
+                value_operand.string_literal = value.mstr;
+                insn->op0 = value_operand;
+            } break;
+        }
+    } else {
         
-        case Basic_u16:
-        case Basic_s16: {
-            X64_Instruction* insn = x64_push_instruction(x64, X64Directive_dw);
-            value_operand.kind = X64Operand_imm16;
-            value_operand.imm16 = (s16) value.signed_int;
-            insn->op0 = value_operand;
-        } break;
-        
-        case Basic_u32:
-        case Basic_s32:
-        case Basic_f32: {
-            X64_Instruction* insn = x64_push_instruction(x64, X64Directive_dd);
-            value_operand.kind = X64Operand_imm32;
-            value_operand.imm32 = (s32) value.signed_int;
-            insn->op0 = value_operand;
-        } break;
-        
-        case Basic_u64:
-        case Basic_s64:
-        case Basic_f64:{
-            X64_Instruction* insn = x64_push_instruction(x64, X64Directive_dq);
+        int offset = 0;
+        while (offset < type->size) {
+            int size = min(type->size - offset, 8);
+            
             value_operand.kind = X64Operand_imm64;
-            value_operand.imm64 = (s64) value.signed_int;
+            if (size == 8) {
+                value_operand.imm64 = *((s64*) value.data);
+            } else if (size == 4) {
+                value_operand.imm64 = (s64) *((s32*) value.data);
+            } else if (size == 2) {
+                value_operand.imm64 = (s64) *((s16*) value.data);
+            } else if (size == 1) {
+                value_operand.imm64 = (s64) *((s8*) value.data);
+            } else {
+                assert(0 && "bad size");
+            }
+            
+            X64_Instruction* insn = x64_push_instruction(x64, X64Directive_dq);
             insn->op0 = value_operand;
-        } break;
-        
-        case Basic_string: {
-            X64_Instruction* insn = x64_push_instruction(x64, X64Directive_db);
-            value_operand.kind = X64Operand_string_literal;
-            value_operand.string_literal = value.mstr;
-            insn->op0 = value_operand;
-        } break;
+            
+            offset += size;
+        }
     }
 }
 

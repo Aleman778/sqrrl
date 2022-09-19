@@ -372,7 +372,8 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
         } break;
         
         case Ast_Ident: {
-            string_builder_push_format(sb, " `%`", f_string(vars_load_string(node->Ident)));
+            string_builder_push_format(sb, " `%` (%)", f_string(vars_load_string(node->Ident)),
+                                       f_u32(node->Ident));
         } break;
         
         case Ast_Attribute: {

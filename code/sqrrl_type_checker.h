@@ -92,3 +92,7 @@ type_equals(Type* a, Type* b) {
 struct Ast_File;
 
 s32 type_check_ast_file(Ast_File* ast_file);
+
+Type* create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error);
+
+Type* load_type_declaration(Type_Context* tcx, string_id ident, bool report_error);

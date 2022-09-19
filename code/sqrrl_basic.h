@@ -629,11 +629,18 @@ align_forward(umm address, umm align) {
 
 // NOTE(Alexander): memory arena
 struct Memory_Arena {
-    u8* base;
+    u8* base; // TODO(Alexander): we need to keep track of allocated blocks!
     umm size;
     umm curr_used;
     umm prev_used;
     umm min_block_size;
+};
+
+struct Temporary_Memory {
+    Memory_Arena* arena;
+    // TODO(Alexander): we need to keep track of allocated blocks!
+    umm curr_used;
+    umm prev_used;
 };
 
 inline void
@@ -652,6 +659,22 @@ arena_initialize(Memory_Arena* arena, umm min_block_size) {
     arena->curr_used = 0;
     arena->prev_used = 0;
     arena->min_block_size = min_block_size;
+}
+
+inline Temporary_Memory
+begin_temporary_memory(Memory_Arena* arena) {
+    Temporary_Memory result = {};
+    result.arena = arena;
+    result.curr_used = arena->curr_used;
+    result.prev_used = arena->prev_used;
+    return result;
+}
+
+inline void
+end_temporary_memory(Temporary_Memory* temp_memory) {
+    Memory_Arena* arena = temp_memory->arena;
+    arena->curr_used = temp_memory->curr_used;
+    arena->prev_used = temp_memory->prev_used;
 }
 
 

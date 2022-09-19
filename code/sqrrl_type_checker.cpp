@@ -78,9 +78,6 @@ type_warning(Type_Context* tcx, string message) {
     tcx->warning_count++;
 }
 
-// NOTE(Alexander): forward declare
-Type* create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error);
-
 inline Type*
 normalize_basic_types(Type* type) {
     assert(type->kind == TypeKind_Basic);
@@ -547,6 +544,18 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             Type* type = type_infer_expression(tcx, expr->Field_Expr.var, 0, report_error);
             string_id field_ident = ast_unwrap_ident(expr->Field_Expr.field);
             
+            if (!type) {
+                break;
+            }
+            
+            if (type->kind == TypeKind_Pointer) {
+                type = type->Pointer; // dereference the pointer
+                
+                if (!type) {
+                    break;
+                }
+            }
+            
             // TODO(Alexander): add support for unions, enums etc.
             if (type->kind == TypeKind_Struct) {
                 smm index = map_get_index(type->Struct.ident_to_index, field_ident);
@@ -572,10 +581,15 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         } break;
         
         case Ast_Struct_Expr: {
-            Type* type = type_infer_expression(tcx, expr->Struct_Expr.ident, parent_type, report_error);
+            string_id struct_ident = ast_unwrap_ident(expr->Struct_Expr.ident);
+            Type* type = load_type_declaration(tcx, struct_ident, report_error);
             if (type || parent_type) {
                 if (!type) {
                     type = parent_type;
+                }
+                
+                if (!(type && type->kind == TypeKind_Struct)) {
+                    return 0;
                 }
                 
                 bool has_ident = false;
@@ -721,6 +735,38 @@ create_type_struct_like_from_ast(Type_Context* tcx,
     return result;
 }
 
+
+Type*
+load_type_declaration(Type_Context* tcx, string_id ident, bool report_error) {
+    Type* result = 0;
+    
+    if (is_builtin_type_keyword(ident)) {
+        if (ident == Kw_void) {
+            result = t_void;
+        } else if (ident == Kw_auto) {
+            unimplemented;
+        } else {
+            int index = ident - Kw_bool + 1;
+            assert(index >= 0 && index < fixed_array_count(basic_type_definitions));
+            
+            result = &basic_type_definitions[index];
+            result = normalize_basic_types(result);
+        }
+    } else {
+        result = map_get(tcx->local_type_table, ident);
+        if (!result) {
+            result = map_get(tcx->global_type_table, ident);
+            if (!result && report_error) {
+                // NOTE(Alexander): copypasta, where?
+                type_error(tcx, string_format("`%` is an undeclared identifier", 
+                                              f_string(vars_load_string(ident))));
+            }
+        } 
+    }
+    
+    return result;
+}
+
 Type*
 create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
     assert(is_ast_type(ast));
@@ -729,29 +775,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
     switch (ast->kind) {
         case Ast_Named_Type: {
             string_id ident = ast->Named_Type->Ident;
-            if (is_builtin_type_keyword(ident)) {
-                if (ident == Kw_void) {
-                    result = t_void;
-                } else if (ident == Kw_auto) {
-                    unimplemented;
-                } else {
-                    int index = ident - Kw_bool + 1;
-                    assert(index >= 0 && index < fixed_array_count(basic_type_definitions));
-                    
-                    result = &basic_type_definitions[index];
-                    result = normalize_basic_types(result);
-                }
-            } else {
-                result = map_get(tcx->local_type_table, ident);
-                if (!result) {
-                    result = map_get(tcx->global_type_table, ident);
-                    if (!result && report_error) {
-                        // NOTE(Alexander): copypasta, where?
-                        type_error(tcx, string_format("`%` is an undeclared identifier", 
-                                                      f_string(vars_load_string(ident))));
-                    }
-                } 
-            }
+            result = load_type_declaration(tcx, ident, report_error);
         } break;
         
         case Ast_Array_Type: {
@@ -783,11 +807,15 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         case Ast_Pointer_Type: {
             // TODO(Alexander): do we really want to store a new type declaration
             // for each time we use a pointer?!???
-            result = arena_push_struct(tcx->type_arena, Type);
-            result->kind = TypeKind_Pointer;
-            result->Pointer = create_type_from_ast(tcx, ast->Pointer_Type, report_error);
-            result->size = sizeof(smm);
-            result->align = alignof(smm);
+            
+            Type* ptr_type = create_type_from_ast(tcx, ast->Pointer_Type, report_error);
+            if (ptr_type) {
+                result = arena_push_struct(tcx->type_arena, Type);
+                result->kind = TypeKind_Pointer;
+                result->Pointer = ptr_type;
+                result->size = sizeof(smm);
+                result->align = alignof(smm);
+            }
         } break;
         
         case Ast_Tuple_Type: {
@@ -804,6 +832,12 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             result = arena_push_struct(tcx->type_arena, Type);
             result->kind = TypeKind_Function;
             result->Function.is_variadic = false;
+            Type* return_type = create_type_from_ast(tcx, ast->Function_Type.return_type, report_error);
+            if (return_type) {
+                result->Function.return_type = return_type;
+            } else {
+                return 0;
+            }
             
             // NOTE(Alexander): Loads in the function arguments
             Ast* ast_arguments = ast->Function_Type.arguments;
@@ -816,14 +850,17 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 }
                 
                 Type* type = create_type_from_ast(tcx, ast_argument->Argument.type, report_error);
-                string_id ident = ast_argument->Argument.ident->Ident;
-                array_push(func->arg_idents, ident);
-                array_push(func->arg_types, type);
+                if (type) {
+                    string_id ident = ast_argument->Argument.ident->Ident;
+                    array_push(func->arg_idents, ident);
+                    array_push(func->arg_types, type);
+                } else {
+                    array_free(func->arg_idents);
+                    array_free(func->arg_types);
+                    return 0;
+                }
             }
             
-            result->Function.return_type = create_type_from_ast(tcx, 
-                                                                ast->Function_Type.return_type,
-                                                                report_error);
             assert(ast->Function_Type.ident && ast->Function_Type.ident->kind == Ast_Ident);
             result->Function.ident = ast_unwrap_ident(ast->Function_Type.ident);
             result->size = sizeof(smm);
@@ -929,7 +966,9 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 
                 if (!result) {
                     result = create_type_from_ast(tcx, ast->Typedef.type, report_error);
-                    map_put(tcx->global_type_table, ident, result);
+                    if (result) {
+                        map_put(tcx->global_type_table, ident, result);
+                    }
                 } else {
                     type_error(tcx, string_format("`%` is already defined"));
                 }
@@ -1039,21 +1078,20 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         
         case Ast_Decl_Stmt: {
             string_id ident = ast_unwrap_ident(stmt->Decl_Stmt.ident);
-            Type* expected_type = create_type_from_ast(tcx, stmt->Decl_Stmt.type, report_error);
-            Type* found_type = type_infer_statement(tcx, stmt->Decl_Stmt.stmt, report_error);
             
-            if (expected_type && found_type) {
-                if (expected_type->kind == TypeKind_Function) {
-                    expected_type->Function.block = stmt->Decl_Stmt.stmt;
-                }
+            Type* decl_type = stmt->Decl_Stmt.type->type;
+            if (decl_type) {
+                Type* found_type = type_infer_statement(tcx, stmt->Decl_Stmt.stmt, report_error);
                 
-                result = expected_type;
-                stmt->type = result;
-                map_put(tcx->locals, ident, result);
-            } else if (expected_type) {
-                map_put(tcx->global_type_table, ident, expected_type);
-            } else {
-                assert(0 && "compiler bug");
+                if (found_type) {
+                    if (decl_type->kind == TypeKind_Function) {
+                        decl_type->Function.block = stmt->Decl_Stmt.stmt;
+                    }
+                    
+                    result = decl_type;
+                    stmt->type = result;
+                    map_put(tcx->locals, ident, result);
+                }
             }
         } break;
         
@@ -1094,7 +1132,9 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         
         case Ast_Return_Stmt: {
             result = type_infer_expression(tcx, stmt->Return_Stmt.expr, tcx->return_type, report_error);
-            type_check_assignment(tcx, tcx->return_type, result);
+            if (result) {
+                type_check_assignment(tcx, tcx->return_type, result);
+            }
         } break;
     }
     
@@ -1133,12 +1173,18 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
         }
     }
     
+    Temporary_Memory temp_memory = begin_temporary_memory(tcx->type_arena);
+    
     if (is_ast_type(ast)) {
         string_id ident = comp_unit->ident;
         
         Type* type = create_type_from_ast(tcx, ast, report_error);
         if (type) {
             ast->type = type;
+            // TODO(Alexander): distinguish between types and types of variables
+            // E.g. in `int main(...)`, main is not a type it's a global variable
+            // but `typedef u32 string_id;` in this case string_id is a type.
+            map_put(tcx->global_type_table, comp_unit->ident, type);
             map_put(tcx->globals, comp_unit->ident, type);
         } else {
             result = false;
@@ -1155,6 +1201,11 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
     } else {
         assert(0 && "illegal type: expected X_Stmt or any X_Type node");
     }
+    
+    if (!result) {
+        end_temporary_memory(&temp_memory);
+    }
+    
     
     map_free(tcx->locals);
     tcx->block_depth = 0;
@@ -1248,7 +1299,7 @@ type_check_ast_file(Ast_File* ast_file) {
         Compilation_Unit comp_unit = {};
         comp_unit.ident = ident;
         
-        //pln("Push decl `%`", f_string(vars_load_string(ident)));
+        pln("Push decl `%`", f_string(vars_load_string(ident)));
         
         if (decl->kind == Ast_Decl_Stmt) {
             comp_unit.ast = decl->Decl_Stmt.type;
@@ -1264,8 +1315,9 @@ type_check_ast_file(Ast_File* ast_file) {
     for_map(ast_file->decls, it) {
         string_id ident = it->key;
         Ast* decl = it->value;
+        pln("Push decl `%`", f_string(vars_load_string(ident)));
         
-        if (decl->kind == Ast_Decl_Stmt) {
+        if (decl->kind == Ast_Decl_Stmt && decl->Decl_Stmt.stmt && decl->Decl_Stmt.stmt->kind != Ast_None) {
             Compilation_Unit comp_unit = {};
             comp_unit.ast = decl;
             array_push(queue, comp_unit);

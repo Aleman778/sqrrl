@@ -130,10 +130,17 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     parser.source_groups = preprocessor.source_groups;
     parser.tokenizer = &tokenizer;
     Ast_File ast_file = parse_file(&parser);
+    if (flag_print_ast) {
+        pln("AST (without types):");
+        for_map(ast_file.decls, decl) {
+            print_ast(decl->value, &tokenizer);
+        }
+    }
+    
     
     if (ast_file.error_count > 0) {
         if (flag_print_ast) {
-            pln("AST before typer:");
+            pln("AST (without types):");
             for_map(ast_file.decls, decl) {
                 print_ast(decl->value, &tokenizer);
             }
@@ -146,6 +153,12 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     // Typecheck the AST
     if (type_check_ast_file(&ast_file) != 0) {
         pln("\nErrors found during type checking, exiting...\n");
+        if (flag_print_ast) {
+            pln("AST (not fully typed):");
+            for_map(ast_file.decls, decl) {
+                print_ast(decl->value, &tokenizer);
+            }
+        }
         return 1;
     }
     

@@ -732,10 +732,6 @@ parse_statement(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
                 result->Return_Stmt.expr = parse_expression(parser, false);
             } break;
             
-            //case Kw_struct: {
-            
-            //} break;
-            
             default: {
                 Ast* type = parse_type(parser, false, mods);
                 
@@ -988,6 +984,10 @@ parse_compound(Parser* parser,
     Ast* curr = result;
     for (;;) {
         Token token = peek_token(parser);
+        if (token.type == Token_EOF) {
+            return result;
+        }
+        
         if (token.type == end) {
             next_token(parser);
             break;
@@ -999,10 +999,13 @@ parse_compound(Parser* parser,
         curr->Compound.next = push_ast_node(parser);
         curr = curr->Compound.next;
         
-        // HACK(Alexander): to get avoid requiring separators for block statements
-        if (node && !should_ast_stmt_end_with_semicolon(node)) {
+        if (separator == Token_Semi && node && !should_ast_stmt_end_with_semicolon(node)) {
+            if (next_token_if_matched(parser, separator, false)) {
+                parse_error_unexpected_token(parser, parser->current_token);
+            }
             continue;
         }
+        
         if (!next_token_if_matched(parser, separator, false)) {
             if (next_token_if_matched(parser, end, false)) {
                 break;
@@ -1026,7 +1029,6 @@ parse_compound(Parser* parser,
                 }
             }
         }
-        
     }
     
     return result;
@@ -1174,6 +1176,7 @@ parse_type(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
                     base->Struct_Type.fields = parse_compound(parser,
                                                               Token_Open_Brace, Token_Close_Brace, Token_Semi,
                                                               &parse_formal_struct_or_union_argument);
+                    return base;
                 } break;
                 
                 case Kw_union: {
@@ -1183,6 +1186,7 @@ parse_type(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
                     base->Union_Type.fields = parse_compound(parser,
                                                              Token_Open_Brace, Token_Close_Brace, Token_Semi,
                                                              &parse_formal_struct_or_union_argument);
+                    return base;
                 } break;
                 
                 case Kw_enum: { 
@@ -1195,6 +1199,7 @@ parse_type(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
                     base->Enum_Type.fields = parse_compound(parser,
                                                             Token_Open_Brace, Token_Close_Brace, Token_Comma,
                                                             &parse_formal_enum_argument);
+                    return base;
                 } break;
                 
                 case Kw_typedef: {

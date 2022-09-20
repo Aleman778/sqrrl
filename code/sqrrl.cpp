@@ -95,7 +95,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
     Preprocessor preprocessor = {};
-    string preprocessed_source = preprocess_file(&preprocessor, file.source, file.filename, file.index);
+    string preprocessed_source = preprocess_file(&preprocessor, file.source, file.abspath, file.index);
     
     bool flag_print_ast = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_AST));
     bool flag_print_bc  = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_BYTECODE));
@@ -123,20 +123,13 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     // Lexer
     Tokenizer tokenizer = {};
-    tokenizer_set_source(&tokenizer, preprocessed_source, file.filename);
+    tokenizer_set_source(&tokenizer, preprocessed_source, file.abspath);
     // TODO(alexander): calculate line number!
     
     Parser parser = {};
     parser.source_groups = preprocessor.source_groups;
     parser.tokenizer = &tokenizer;
     Ast_File ast_file = parse_file(&parser);
-    if (flag_print_ast) {
-        pln("AST (without types):");
-        for_map(ast_file.decls, decl) {
-            print_ast(decl->value, &tokenizer);
-        }
-    }
-    
     
     if (ast_file.error_count > 0) {
         if (flag_print_ast) {
@@ -152,13 +145,14 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     // Typecheck the AST
     if (type_check_ast_file(&ast_file) != 0) {
-        pln("\nErrors found during type checking, exiting...\n");
         if (flag_print_ast) {
             pln("AST (not fully typed):");
             for_map(ast_file.decls, decl) {
                 print_ast(decl->value, &tokenizer);
             }
         }
+        
+        pln("\nErrors found during type checking, exiting...\n");
         return 1;
     }
     

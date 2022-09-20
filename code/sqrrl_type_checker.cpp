@@ -475,11 +475,20 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         
         case Ast_Call_Expr: {
             Type* function_type = type_infer_expression(tcx, 
-                                                        expr->Call_Expr.ident,
-                                                        parent_type,
+                                                        expr->Call_Expr.ident, 
+                                                        parent_type, 
                                                         report_error);
             
-            if (function_type && function_type->kind == TypeKind_Function) {
+            if (function_type) {
+                if (function_type->kind != TypeKind_Function) {
+                    if (report_error) {
+                        string_id function_ident = ast_unwrap_ident(expr->Call_Expr.ident);
+                        type_error(tcx, string_format("`%` is not a function", f_var(function_ident)));
+                    }
+                    break;
+                }
+                
+                
                 expr->Call_Expr.function_type = function_type;
                 result = function_type->Function.return_type;
                 expr->type = result;
@@ -852,6 +861,8 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 Type* type = create_type_from_ast(tcx, ast_argument->Argument.type, report_error);
                 if (type) {
                     string_id ident = ast_argument->Argument.ident->Ident;
+                    s32 arg_index = (s32) array_count(func->arg_idents);
+                    map_put(func->ident_to_index, ident, arg_index);
                     array_push(func->arg_idents, ident);
                     array_push(func->arg_types, type);
                 } else {
@@ -979,26 +990,6 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
     return result;
 }
 
-bool
-type_check_assignment(Type_Context* tcx, Type* a, Type* b) {
-    if (a->kind != b->kind) {
-        return false;
-    }
-    
-    switch (a->kind) {
-        case TypeKind_Basic: {
-            // TODO(Alexander): do we want't to also check the signedness, like we do here?
-            if (a->Basic.flags != b->Basic.flags || a->size < b->size) {
-                type_error(tcx, string_format("conversion from `%` to `%`, possible loss of data",
-                                              f_type(a), f_type(b)));
-                return false;
-            }
-        } break;
-    }
-    
-    return true;
-}
-
 Type*
 type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
     Type* result = 0;
@@ -1026,7 +1017,6 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                     stmt->type = found_type;
                 }
                 result = found_type;
-                type_check_assignment(tcx, expected_type, found_type);
                 
                 string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
                 
@@ -1080,7 +1070,19 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
             string_id ident = ast_unwrap_ident(stmt->Decl_Stmt.ident);
             
             Type* decl_type = stmt->Decl_Stmt.type->type;
-            if (decl_type) {
+            if (!decl_type) {
+                decl_type = create_type_from_ast(tcx, stmt->Decl_Stmt.type, report_error);
+                
+                if (!decl_type) {
+                    break;
+                }
+            }
+            
+            if (stmt->Decl_Stmt.stmt->kind == Ast_None) {
+                stmt->type = decl_type;
+                result = decl_type;
+                map_put(tcx->local_type_table, ident, result);
+            } else {
                 Type* found_type = type_infer_statement(tcx, stmt->Decl_Stmt.stmt, report_error);
                 
                 if (found_type) {
@@ -1132,9 +1134,94 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         
         case Ast_Return_Stmt: {
             result = type_infer_expression(tcx, stmt->Return_Stmt.expr, tcx->return_type, report_error);
-            if (result) {
-                type_check_assignment(tcx, tcx->return_type, result);
+        } break;
+    }
+    
+    return result;
+}
+
+bool
+type_check_assignment(Type_Context* tcx, Type* a, Type* b) {
+    assert(a && b);
+    
+    if (a->kind != b->kind) {
+        return false;
+    }
+    
+    switch (a->kind) {
+        case TypeKind_Basic: {
+            // TODO(Alexander): do we want't to also check the signedness, like we do here?
+            if (a->Basic.flags != b->Basic.flags || a->size < b->size) {
+                type_error(tcx, string_format("conversion from `%` to `%`, possible loss of data",
+                                              f_type(a), f_type(b)));
+                return false;
             }
+        } break;
+        
+        case TypeKind_Pointer: {
+            return type_check_assignment(tcx, a->Pointer, b->Pointer);
+        } break;
+    }
+    
+    return true;
+}
+
+bool
+type_check_expression(Type_Context* tcx, Ast* expr) {
+    bool result = true;
+    
+    switch (expr->kind) {
+        case Ast_Call_Expr: {
+            Type* function_type = expr->Call_Expr.function_type;
+            assert(function_type->kind != TypeKind_Function);
+            
+            Type_Function* t_func = &function_type->Function;
+            
+            int arg_index = 0;
+            for_compound(expr->Call_Expr.args, arg) {
+                if (arg->Argument.ident && arg->Argument.ident->kind == Ast_Ident) {
+                    string_id arg_ident = ast_unwrap_ident(arg->Argument.ident);
+                    smm index = map_get_index(t_func->ident_to_index, arg_ident);
+                    if (index > 0) {
+                        arg_index = t_func->ident_to_index[index].value;
+                        assert(arg_index < array_count(t_func->arg_types));
+                    } else {
+                        type_error(tcx, string_format("undeclared parameter with name `%`", 
+                                                      f_var(arg_ident)));
+                        result = false;
+                        break;
+                    }
+                }
+                
+                Type* arg_type = t_func->arg_types[arg_index];
+                type_check_assignment(tcx, arg_type, arg->Argument.assign->type);
+                
+                arg_index++;
+            }
+        } break;
+    }
+    
+    return result;
+}
+
+bool
+type_check_statement(Type_Context* tcx, Ast* stmt) {
+    bool result = true;
+    
+    switch (stmt->kind) {
+        case Ast_Assign_Stmt: {
+            Type* expected_type = stmt->Assign_Stmt.type->type;
+            Type* found_type = stmt->Assign_Stmt.expr->type;
+            result = type_check_assignment(tcx, expected_type, found_type);
+        } break;
+        
+        case Ast_Expr_Stmt: {
+            result = type_check_expression(tcx, stmt->Expr_Stmt);
+        } break;
+        
+        case Ast_Return_Stmt: {
+            Type* found_type = stmt->Return_Stmt.expr->type;
+            result = type_check_assignment(tcx, tcx->return_type, found_type);
         } break;
     }
     
@@ -1193,7 +1280,7 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
     } else if (is_ast_stmt(ast)) {
         Type* type = type_infer_statement(tcx, ast, report_error);
         if (type) {
-            // Check the types
+            result = type_check_statement(tcx, ast);
         } else {
             // NOTE(Alexander): we are missing type info somewhere fail and retry later
             result = false;
@@ -1212,7 +1299,6 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
     
     return result;
 }
-
 
 void
 DEBUG_setup_intrinsic_types(Type_Context* tcx) {
@@ -1317,7 +1403,7 @@ type_check_ast_file(Ast_File* ast_file) {
         Ast* decl = it->value;
         pln("Push decl `%`", f_string(vars_load_string(ident)));
         
-        if (decl->kind == Ast_Decl_Stmt && decl->Decl_Stmt.stmt && decl->Decl_Stmt.stmt->kind != Ast_None) {
+        if (decl->kind == Ast_Decl_Stmt) {
             Compilation_Unit comp_unit = {};
             comp_unit.ast = decl;
             array_push(queue, comp_unit);
@@ -1350,98 +1436,3 @@ type_check_ast_file(Ast_File* ast_file) {
     
     return tcx.error_count;
 }
-
-#if 0
-if (first->kind == TypeKind_Basic && second->kind == TypeKind_Basic) {
-    assert(first->Basic.archetype != Basic_None);
-    assert(second->Basic.archetype != Basic_None);
-    
-    if (first->Basic.archetype != second->Basic.archetype) {
-        
-        if (expr->Binary_Expr.op == BinaryOp_Assign) {
-            assert(0 && "error: cannot implicit cast float to int");
-        }
-        
-        if (first->Basic.archetype == Basic_Int) {
-            expr->Binary_Expr.first->type = second;
-        }
-        
-        
-        if (second->Basic.archetype == Basic_Int) {
-            expr->Binary_Expr.first->type = second;
-            // reinterpret second to float
-            unimplemented;
-        }
-    }
-    
-    if (first->Basic.archetype == Basic_Int) {
-        
-        
-        
-        
-    } else {
-        // Check float, float binary expr
-        
-    }
-    
-    
-    
-}
-
-} break;
-
-}
-
-bool
-typer_check_binary_expression(Ast* first, Ast* second) {
-    Type* first_type = typer_infer_expression(first);
-    Type* second_type = typer_infer_expression(second);
-    
-    if (first_type->kind != second_type->kind) {
-        return false;
-    }
-    
-    
-    switch (first_type->kind) {
-        case TypeKind_Basic: {
-            //if (first_type->Basic.signedness == second_type->Basic.signedness) {
-            
-            //}
-            
-        } break;
-        
-        case TypeKind_Array: {
-            if (!type_equals(first_type->Array.type, second_type->Array.type)) {
-                return false;
-            }
-            if (first_type->Array.capacity != second_type->Array.capacity) {
-                return false;
-            }
-        } break;
-        
-        case TypeKind_Union:
-        case TypeKind_Struct: {
-            if (first_type->kind != second_type->kind) {
-                return false;
-            }
-            
-            TypeKind_Table* first_table = &first_type->Struct_Or_Union;
-            TypeKind_Table* second_table = &first_type->Struct_Or_Union;
-            
-            if (first_table->count != second_table->count) {
-                return false;
-            }
-            
-            // TODO(Alexander): check that entries in the struct/unions match
-            unimplemented;
-        } break;
-        
-        default: {
-            pln("%", f_string(string_format("% == %", f_type(first_type), f_type(second_type))));
-            assert(0 && "not implemented");
-        } break;
-    }
-    
-    return false;
-}
-#endif

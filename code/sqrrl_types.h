@@ -124,6 +124,7 @@ struct Type_Enum {
 struct Type_Function {
     array(string_id)* arg_idents;
     array(Type*)* arg_types;
+    Ident_Mapper* ident_to_index;
     Type* return_type;
     Ast* block;
     Value (*interp_intrinsic)(Interp*, array(Interp_Value)*); // TODO(Alexander): temporary intrinsic definition

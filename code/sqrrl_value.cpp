@@ -37,9 +37,12 @@ value_store_in_memory(Type* type, void* dest, Value_Data src) {
         } break;
         
         
+        case TypeKind_Struct: {
+            memcpy(dest, src.data, type->size);
+        } break;
+        
         case TypeKind_Function: 
         case TypeKind_Pointer:
-        case TypeKind_Struct: 
         case TypeKind_Union: {
             *((smm*) dest) = src.pointer;
         } break;
@@ -119,9 +122,13 @@ value_load_from_memory(Type* type, void* data) {
             }
         } break;
         
+        case TypeKind_Struct: {
+            result.data.data = data;
+            result.type = Value_pointer;
+        } break;
+        
         case TypeKind_Function:
         case TypeKind_Pointer:
-        case TypeKind_Struct:
         case TypeKind_Union: {
             result.data.pointer = *((smm*) data);
             result.type = Value_pointer;

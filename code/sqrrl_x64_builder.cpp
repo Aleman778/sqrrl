@@ -269,7 +269,8 @@ x64_build_operand(X64_Builder* x64, Bc_Operand operand, Bc_Type type) {
     X64_Operand result = {};
     
     switch (operand.kind) {
-        case BcOperand_Register: {
+        case BcOperand_Register:
+        case BcOperand_Memory: {
             
             smm vreg_index = map_get_index(x64->allocated_virtual_registers, operand.Register);
             if (vreg_index != -1) {
@@ -289,34 +290,8 @@ x64_build_operand(X64_Builder* x64, Bc_Operand operand, Bc_Type type) {
                 }
                 
                 result.virtual_register = operand.Register;
-                result.kind = x64_get_register_kind(type);
-                x64_allocate_virtual_register(x64, result.virtual_register);
-                
-                bool is_active = false;
-                for_array_v(x64->active_virtual_registers, vreg, _) { 
-                    if (vreg == result.virtual_register) {
-                        is_active = true;
-                        break;
-                    }
-                }
-                
-                if (!is_active) {
-                    array_push(x64->active_virtual_registers, result.virtual_register);
-                }
-            }
-        } break;
-        
-        
-        case BcOperand_Memory: {
-            smm vreg_index = map_get_index(x64->allocated_virtual_registers, operand.Register);
-            if (vreg_index != -1) {
-                // TODO(Alexander): this is a hack: currently we need this to store the arguments passed to us
-                result = x64->allocated_virtual_registers[vreg_index].value;
-                return result;
-            } else {
-                result.virtual_register = operand.Register;
-                result.kind = x64_get_memory_kind(type);
-                
+                result.kind = operand.kind == BcOperand_Register ? 
+                    x64_get_register_kind(type) :x64_get_memory_kind(type);
                 x64_allocate_virtual_register(x64, result.virtual_register);
                 
                 bool is_active = false;
@@ -430,14 +405,7 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             }
         } break;
         
-        case Bytecode_copy_from_ref: {
-            X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_lea);
-            insn->op0 = x64_build_operand(x64, bc->dest, bc->dest_type);
-            insn->op1 = x64_build_operand(x64, bc->src0, bc->dest_type);
-            
-        } break;
-        
-        case Bytecode_copy_from_deref: {
+        case Bytecode_load: {
             // mov op0, [op1]
             X64_Operand src = x64_build_operand(x64, bc->src0, bc->dest_type);
             
@@ -461,8 +429,14 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             
         } break;
         
+        case Bytecode_load_address: {
+            X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_lea);
+            insn->op0 = x64_build_operand(x64, bc->dest, bc->dest_type);
+            insn->op1 = x64_build_operand(x64, bc->src0, bc->dest_type);
+            
+        } break;
         
-        case Bytecode_copy_to_deref: {
+        case Bytecode_store: {
             // mov [op0], op1
             Type ptr_type = {};
             ptr_type.kind = TypeKind_Pointer;
@@ -477,7 +451,6 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
                 insn->op1 = dest;
                 dest = insn->op0;
             }
-            
             
             X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
             insn->op0 = dest;

@@ -135,9 +135,7 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
         
         case Bytecode_memcpy: {
             assert(bc->dest.kind == BcOperand_Memory || bc->dest.kind == BcOperand_Stack);
-            assert(bc->src0.kind == BcOperand_Memory || 
-                   bc->src0.kind == BcOperand_Stack || 
-                   bc->src0.kind == BcOperand_Label);
+            assert(bc->src0.kind != BcOperand_None);
             assert(bc->src1.kind == BcOperand_Int);
             
             Value_Data dest = bc_interp_load_register(interp, bc->dest.Register);
@@ -145,7 +143,7 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             memcpy(dest.data, src.data, bc->src1.Signed_Int);
         } break;
         
-        case Bytecode_copy_from_ref: {
+        case Bytecode_load_address: {
             assert(bc->dest.kind == BcOperand_Register);
             assert(bc->src0.kind == BcOperand_Stack || bc->src0.kind == BcOperand_Memory);
             assert(bc->src1.kind == BcOperand_None);
@@ -154,7 +152,7 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             bc_interp_store_register(interp, bc->dest.Register, src);
         } break;
         
-        case Bytecode_copy_from_deref: {
+        case Bytecode_load: {
             assert(bc->dest.kind == BcOperand_Register);
             assert(bc->src0.kind == BcOperand_Stack || bc->src0.kind == BcOperand_Memory);
             assert(bc->src1.kind == BcOperand_None);
@@ -167,7 +165,7 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
             bc_interp_store_register(interp, bc->dest.Register, src);
         } break;
         
-        case Bytecode_copy_to_deref: {
+        case Bytecode_store: {
             assert(bc->dest.kind == BcOperand_Stack || bc->dest.kind == BcOperand_Register);
             assert(bc->src0.kind != BcOperand_None);
             assert(bc->src1.kind == BcOperand_None);

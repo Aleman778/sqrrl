@@ -127,8 +127,8 @@ bc_stack_alloc(Bc_Builder* bc, Bc_Type value_type) {
 }
 
 inline void
-bc_copy_to_deref(Bc_Builder* bc, Bc_Operand dest, Bc_Operand src, Bc_Type type) {
-    Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_copy_to_deref);
+bc_load(Bc_Builder* bc, Bc_Operand dest, Bc_Operand src, Bc_Type type) {
+    Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_load);
     insn->dest_type = type;
     insn->dest = dest;
     insn->src0 = src;
@@ -147,19 +147,18 @@ bc_copy(Bc_Builder* bc, Bc_Operand dest, Bc_Operand src, Bc_Type type) {
     }
 }
 
+inline void
+bc_store(Bc_Builder* bc, Bc_Operand dest, Bc_Operand src, Bc_Type type) {
+    Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_store);
+    insn->dest_type = type;
+    insn->dest = dest;
+    insn->src0 = src;
+}
+
 #if 0
 inline Bc_Operand
 bc_load(Bc_Builder* bc, Bc_Operand src, Bc_Type value_type) {
     Bc_Operand result = src;
-    
-    if (src.kind == BcOperand_Stack || src.kind == BcOperand_Memory) {
-        result = create_unique_bc_register(bc);
-        
-        Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_load);
-        insn->dest = result;
-        insn->dest_type = value_type;
-        insn->src0 = src;
-    }
     
     return result;
 }

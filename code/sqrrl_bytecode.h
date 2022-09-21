@@ -5,9 +5,9 @@ BC(noop) \
 BC(stack_alloc) \
 BC(memory_alloc) \
 BC(copy) \
-BC(copy_from_ref) \
-BC(copy_from_deref) \
-BC(copy_to_deref) \
+BC(load) \
+BC(load_address) \
+BC(store) \
 BC(memset) \
 BC(memcpy) \
 BC(field) \
@@ -311,14 +311,14 @@ string_builder_push(String_Builder* sb,
             string_builder_push_format(sb, "r%", f_u64(reg));
         } break;
         
-        case BcOperand_Memory: {
-            u64 reg = bc_map_register(mapper, operand->Register);
-            string_builder_push_format(sb, "memory[r%]", f_u64(reg));
-        } break;
-        
+        case BcOperand_Memory:
         case BcOperand_Stack: {
             u64 reg = bc_map_register(mapper, operand->Register);
-            string_builder_push_format(sb, "stack[r%]", f_u64(reg));
+            if (type) {
+                string_builder_push_format(sb, "r%", f_u64(reg));
+            } else {
+                string_builder_push_format(sb, "[r%]", f_u64(reg));
+            }
         } break;
         
         case BcOperand_Int: {
@@ -375,9 +375,9 @@ string_builder_push(String_Builder* sb, Bc_Regiter_Mapper* mapper, Bc_Instructio
         string_builder_push(sb, ":");
     } else {
         bool is_opcode_assign = !(insn->opcode == Bytecode_copy ||
+                                  insn->opcode == Bytecode_store ||
                                   insn->opcode == Bytecode_memcpy ||
                                   insn->opcode == Bytecode_memset ||
-                                  insn->opcode == Bytecode_copy_to_deref ||
                                   insn->opcode == Bytecode_ret);
         
         string_builder_push(sb, "    ");
@@ -393,7 +393,7 @@ string_builder_push(String_Builder* sb, Bc_Regiter_Mapper* mapper, Bc_Instructio
         
         if (has_assignment) {
             string_builder_push(sb, " ");
-            string_builder_push(sb, mapper, &insn->dest);
+            string_builder_push(sb, mapper, &insn->dest, insn->dest_type);
             string_builder_push(sb, " = ");
         }
         

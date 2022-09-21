@@ -343,14 +343,14 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                     string_id ident = ast_unwrap_ident(node->Unary_Expr.first);
                     Bc_Operand first = map_get(bc->local_variable_mapper, ident);
                     Bc_Type type = bc_build_type(bc, node->type);
-                    result = bc_unary(bc, Bytecode_copy_from_ref, first, type);
+                    result = bc_unary(bc, Bytecode_load_address, first, type);
                 } break;
                 
                 case UnaryOp_Dereference: {
                     string_id ident = ast_unwrap_ident(node->Unary_Expr.first);
                     Bc_Type first_type = bc_build_type(bc, node->Unary_Expr.first->type);
                     Bc_Operand first = map_get(bc->local_variable_mapper, ident);
-                    result = bc_unary(bc, Bytecode_copy_from_deref, first, first_type);
+                    result = bc_unary(bc, Bytecode_load, first, first_type);
                 } break;
                 
                 default: {
@@ -431,7 +431,7 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                     
                     if (first_ast->kind == Ast_Unary_Expr && first_ast->Unary_Expr.op == UnaryOp_Dereference) {
                         Bc_Operand first = bc_build_expression(bc, first_ast->Unary_Expr.first);
-                        bc_copy_to_deref(bc, first, second, second_type);
+                        bc_store(bc, first, second, second_type);
                         
                     } else {
                         Bc_Type first_type = bc_build_type(bc, node->Binary_Expr.first->type);
@@ -488,10 +488,22 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
         } break;
         
         case Ast_Field_Expr: {
-            Type_Struct* t_struct = &node->Field_Expr.var->type->Struct;
+            Bc_Operand var = bc_build_expression(bc, node->Field_Expr.var);
+            Type* type = node->Field_Expr.var->type;
+            
+            if (type->kind == TypeKind_Pointer) {
+                // dereference the pointer
+                type = type->Pointer;
+                Bc_Operand temp_memory = create_unique_bc_register(bc);
+                temp_memory.kind = BcOperand_Memory;
+                bc_load(bc, temp_memory, var, node->type);
+                var = temp_memory;
+            }
+            
+            assert(type->kind == TypeKind_Struct);
+            Type_Struct* t_struct = &type->Struct;
             string_id ident = ast_unwrap_ident(node->Field_Expr.field);
             Struct_Field_Info field = get_field_info(t_struct, ident);
-            Bc_Operand var = bc_build_expression(bc, node->Field_Expr.var);
             
             Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_field);
             insn->dest = create_unique_bc_register(bc);

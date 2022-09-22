@@ -181,7 +181,7 @@ bc_interp_instruction(Bc_Interp* interp, Bc_Instruction* bc) {
         
         case Bytecode_field: {
             assert(bc->dest.kind == BcOperand_Memory);
-            assert(bc->src0.kind == BcOperand_Stack || bc->src0.kind == BcOperand_Memory);
+            assert(bc->src0.kind != BcOperand_None);
             assert(bc->src1.kind == BcOperand_Int);
             
             Value_Data src = bc_interp_load_register(interp, bc->src0.Register);

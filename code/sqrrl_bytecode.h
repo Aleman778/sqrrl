@@ -1,5 +1,5 @@
 
-// BC(name, num_operands)
+// BC(name)
 #define DEF_BYTECODES \
 BC(noop) \
 BC(stack_alloc) \
@@ -51,13 +51,13 @@ BC(call) \
 BC(ret)
 
 enum Bc_Opcode {
-#define BC(name, ...) Bytecode_##name,
+#define BC(name) Bytecode_##name,
     DEF_BYTECODES
 #undef BC
 };
 
 global const cstring bytecode_opcode_names[] = {
-#define BC(name, ...) #name,
+#define BC(name) #name,
     DEF_BYTECODES
 #undef BC
 };

@@ -426,6 +426,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                         result = arena_push_struct(tcx->type_arena, Type);
                         result->kind = TypeKind_Pointer;
                         result->Pointer = type;
+                        result->size = sizeof(umm);
+                        result->align = alignof(umm);
                     } break;
                     
                     default: {

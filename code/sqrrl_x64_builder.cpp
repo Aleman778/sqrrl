@@ -291,7 +291,7 @@ x64_build_operand(X64_Builder* x64, Bc_Operand operand, Bc_Type type) {
                 
                 result.virtual_register = operand.Register;
                 result.kind = operand.kind == BcOperand_Register ? 
-                    x64_get_register_kind(type) :x64_get_memory_kind(type);
+                    x64_get_register_kind(type) : x64_get_memory_kind(type);
                 x64_allocate_virtual_register(x64, result.virtual_register);
                 
                 bool is_active = false;
@@ -376,6 +376,11 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
             insn->op0 = x64_build_operand(x64, bc->dest, bc->dest_type);
             insn->op1 = src;
+            
+            if (bc->dest.kind == BcOperand_Memory) {
+                insn->op0.kind = x64_get_memory_kind(bc->dest_type);
+            }
+            
         } break;
         
         
@@ -461,9 +466,9 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
         case Bytecode_field: {
             X64_Operand src = x64_build_operand(x64, bc->src0, bc->dest_type);
             s64 offset = bc->src1.Signed_Int;
-            int src_dir  = bc->src0.kind == BcOperand_Stack ? -1 : 1;
-            src.disp64 -= offset*src_dir;
-            
+            //int src_dir = bc->src0.kind == BcOperand_Stack ? -1 : 1;
+            //src.disp64 -= offset*src_dir;
+            src.disp64 += offset;
             map_put(x64->allocated_virtual_registers, bc->dest.Register, src);
         } break;
         
@@ -496,9 +501,9 @@ X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov); \
 mov_insn->op0 = x64_build_operand(x64, bc->dest, bc->dest_type); \
 mov_insn->op1 = x64_build_operand(x64, bc->src0, bc->dest_type); \
         \
-X64_Instruction* add_insn = x64_push_instruction(x64, opcode); \
-add_insn->op0 = mov_insn->op0; \
-add_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type); \
+X64_Instruction* op_insn = x64_push_instruction(x64, opcode); \
+op_insn->op0 = mov_insn->op0; \
+op_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type);
         
         case Bytecode_add: {
             BINARY_CASE(X64Opcode_add);
@@ -805,6 +810,7 @@ add_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type); \
                 
                 X64_Instruction* insn;
                 s32 size = bc_type_to_size(arg->type);
+                assert(size > 0 && "bad size");
                 if (size == 1 || size == 2 || size == 4 || size == 8) {
                     insn = x64_push_instruction(x64, X64Opcode_mov);
                     insn->op0.kind = x64_get_register_kind(arg->type);

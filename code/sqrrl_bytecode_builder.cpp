@@ -493,11 +493,12 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
             
             if (type->kind == TypeKind_Pointer) {
                 // dereference the pointer
+                Bc_Operand temp_reg = create_unique_bc_register(bc);
+                temp_reg.kind = BcOperand_Register;
+                bc_copy(bc, temp_reg, var, type);
+                var = temp_reg;
+                var.kind = BcOperand_Memory;
                 type = type->Pointer;
-                Bc_Operand temp_memory = create_unique_bc_register(bc);
-                temp_memory.kind = BcOperand_Memory;
-                bc_load(bc, temp_memory, var, node->type);
-                var = temp_memory;
             }
             
             assert(type->kind == TypeKind_Struct);

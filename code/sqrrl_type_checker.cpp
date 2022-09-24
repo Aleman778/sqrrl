@@ -398,10 +398,14 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 if (type) {
                     result = type;
                     
-                } else if (report_error) {
-                    // NOTE(Alexander): copypasta
-                    type_error(tcx, string_format("`%` is an undeclared identifier", 
-                                                  f_string(vars_load_string(expr->Ident))));
+                } else {
+                    if (tcx->set_undeclared_to_s64) {
+                        result = t_s64;
+                    } else if (report_error) {
+                        // NOTE(Alexander): copypasta
+                        type_error(tcx, string_format("`%` is an undeclared identifier", 
+                                                      f_string(vars_load_string(expr->Ident))));
+                    }
                 }
             }
             expr->type = result;

@@ -144,6 +144,8 @@ Ast* ident;                                     \
 Ast* elem_type;                                 \
 Ast* fields;                                    \
 })                                              \
+AST(Const_Type,        "const", Ast*)           \
+AST(Volatile_Type,     "volatile", Ast*)        \
 AST(Typedef,           "typedef", struct {      \
 Ast* type;                                      \
 Ast* ident;                                     \
@@ -190,12 +192,14 @@ typedef s32 Ast_Decl_Modifier;
 enum {
     AstDeclModifier_None           = 0,
     AstDeclModifier_Inline         = bit(1),
-    AstDeclModifier_No_Inline      = bit(2),
-    AstDeclModifier_Internal       = bit(3),
-    AstDeclModifier_Global         = bit(4),
-    AstDeclModifier_Const          = bit(5),
-    AstDeclModifier_Cconv_cdecl    = bit(6),
-    AstDeclModifier_Cconv_fastcall = bit(7),
+    AstDeclModifier_Always_Inline  = bit(2),
+    AstDeclModifier_No_Inline      = bit(3),
+    AstDeclModifier_Internal       = bit(4),
+    AstDeclModifier_External       = bit(5),
+    AstDeclModifier_Global         = bit(6),
+    AstDeclModifier_Const          = bit(7),
+    AstDeclModifier_Cconv_cdecl    = bit(8),
+    AstDeclModifier_Cconv_fastcall = bit(9),
 };
 
 union Span {
@@ -321,6 +325,11 @@ is_ast_stmt(Ast* ast) {
 inline bool
 is_ast_type(Ast* ast) {
     return ast->kind > Ast_Type_Begin && ast->kind < Ast_Type_End;
+}
+
+inline bool
+is_ast_compound(Ast* ast) {
+    return ast && ast->kind == Ast_Compound;
 }
 
 void

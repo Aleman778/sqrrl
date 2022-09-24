@@ -15,7 +15,10 @@ struct Type_Context {
     
     Type* return_type;
     
-    b32 block_depth;
+    // TODO(Alexander): this can be made into a bitflag later
+    b32 set_undeclared_to_s64;
+    
+    s32 block_depth;
     s32 error_count;
     s32 warning_count;
 };
@@ -90,6 +93,8 @@ type_equals(Type* a, Type* b) {
 
 // NOTE(Alexander): forward declare
 struct Ast_File;
+
+Type* type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool report_error);
 
 s32 type_check_ast_file(Ast_File* ast_file);
 

@@ -26,6 +26,10 @@ preprocess_parse_and_eval_constant_expression(Preprocessor* preprocessor, Tokeni
         return value;
     }
     
+    Type_Context tcx = {};
+    tcx.set_undeclared_to_s64 = preprocessor->is_system_header;
+    type_infer_expression(&tcx, expr, t_s64, true);
+    
     // TODO(Alexander): interpreter needs to be able to access macro definitions
     Interp interp = {};
     interp.set_undeclared_to_zero = preprocessor->is_system_header;

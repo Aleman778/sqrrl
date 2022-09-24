@@ -8,19 +8,21 @@ VAR(break)    \
 VAR(cast)     \
 VAR(continue) \
 VAR(const)    \
+VAR(volatile) \
 VAR(defer)    \
 VAR(do)       \
 VAR(else)     \
 VAR(enum)     \
-VAR(extern)   \
 VAR(error)    \
 VAR(false)    \
 VAR(for)      \
 VAR(global)   \
-VAR(internal) \
+VAR(extern)   \
+VAR(intern)   \
 VAR(if)       \
 VAR(in)       \
 VAR(inline)   \
+VAR(always_inline) \
 VAR(no_inline)\
 VAR(local_persist) \
 VAR(return)   \

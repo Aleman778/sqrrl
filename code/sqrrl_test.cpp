@@ -77,13 +77,15 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
     x64_builder.next_free_virtual_register = bytecode_builder.next_register;
     
     for_map (bytecode_builder.declarations, it) {
-        if (it->key.ident == Kw_global || it->key.index != 0) {
+        if (it->key.ident == Kw_global) {
             continue;
         }
         
         Bc_Decl* decl = &it->value;
         
         if (decl->kind == BcDecl_Procedure) {
+            if (it->key.index != 0) continue;
+            
             //pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
             Bc_Basic_Block* first_basic_block = get_bc_basic_block(&bytecode_builder.code, decl->first_byte_offset);
             

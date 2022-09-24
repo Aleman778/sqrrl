@@ -254,7 +254,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             
             Bc_Decl* decl = &it->value;
             if (decl->kind == BcDecl_Procedure) {
-                // TODO(Alexander): we should
+                // TODO(Alexander): to support function overloading we should remove this
                 if (it->key.index != 0) continue;
                 
                 //pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));

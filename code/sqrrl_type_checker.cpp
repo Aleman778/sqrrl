@@ -1387,7 +1387,7 @@ type_check_ast_file(Ast_File* ast_file) {
         Compilation_Unit comp_unit = {};
         comp_unit.ident = ident;
         
-        pln("Push decl `%`", f_string(vars_load_string(ident)));
+        //pln("Push decl `%`", f_string(vars_load_string(ident)));
         
         if (decl->kind == Ast_Decl_Stmt) {
             comp_unit.ast = decl->Decl_Stmt.type;
@@ -1403,7 +1403,7 @@ type_check_ast_file(Ast_File* ast_file) {
     for_map(ast_file->decls, it) {
         string_id ident = it->key;
         Ast* decl = it->value;
-        pln("Push decl `%`", f_string(vars_load_string(ident)));
+        //pln("Push decl `%`", f_string(vars_load_string(ident)));
         
         if (decl->kind == Ast_Decl_Stmt) {
             Compilation_Unit comp_unit = {};

@@ -204,3 +204,43 @@ while_loop() {
     }
     assert(x == 25);
 }
+
+struct v2s {
+    s32 x;
+    s32 y;
+}
+
+void
+@test_proc
+struct_v2s() {
+    v2s v = v2s { x: 5, y: -12 };
+    assert(v.x + v.y == -7);
+}
+
+void
+v2s_ptr_scale(v2s* v, s32 s) {
+    v.x *= s;
+    v.y *= s;
+}
+
+void
+@test_proc
+modify_struct_v2s_via_call_as_pointer() {
+    v2s v = v2s { x: 5, y: -12 };
+    v2s_ptr_scale(&v, 10);
+    assert(v.x + v.y == -70);
+}
+
+void
+v2s_scale(v2s v, s32 s) {
+    v.x *= s;
+    v.y *= s;
+}
+
+void
+@test_proc
+no_modify_struct_v2s_via_call_as_copy() {
+    v2s v = v2s { x: 5, y: -12 };
+    v2s_scale(&v, 10);
+    assert(v.x + v.y == -7);
+}

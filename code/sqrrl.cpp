@@ -311,10 +311,17 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         X64_Assembler assembler = {};
         assembler.bytes = (u8*) asm_buffer;
         assembler.size = asm_size;
+        assembler.rodata_offsets = x64_builder.rodata_offsets;
         
         x64_assemble_to_machine_code(&assembler,
                                      x64_instruction_definitions,
                                      x64_builder.first_basic_block);
+        
+        assert(assembler.curr_used + x64_builder.rodata_section_arena.curr_used < assembler.size && 
+               "asm buf out of memory");
+        memcpy(assembler.bytes + assembler.curr_used, 
+               x64_builder.rodata_section_arena.base, 
+               x64_builder.rodata_section_arena.curr_used);
         
 #if 0
         pln("\nX64 Machine Code (% bytes):", f_umm(assembler.curr_used));

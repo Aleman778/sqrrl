@@ -1,7 +1,10 @@
 
 typedef map(Bc_Register, u64) Bc_Live_Length_Table;
 typedef map(Bc_Label, Bc_Decl) Bc_Decl_Table;
-typedef map(string_id, u32) Bc_Label_Index_Table;
+
+struct Bc_Label_Index_Table {
+    map(string_id, u32)* ident_to_index;
+};
 
 struct Bc_Builder {
     Bytecode code;
@@ -17,7 +20,7 @@ struct Bc_Builder {
     Bc_Label curr_prologue;
     Bc_Label curr_epilogue;
     Bc_Label curr_bb;
-    Bc_Label_Index_Table* label_indices;
+    Bc_Label_Index_Table label_indices;
     Bc_Instruction* curr_instruction;
     Bc_Basic_Block* curr_basic_block;
     Bc_Operand curr_return_dest;
@@ -50,21 +53,22 @@ create_unique_bc_register(Bc_Builder* bc) {
 }
 
 inline Bc_Label
-create_unique_bc_label(Bc_Builder* bc) {
+create_unique_bc_label(Bc_Label_Index_Table* label_indices, string_id label_ident) {
     Bc_Label result;
-    result.ident = bc->curr_decl;
-    result.index = map_get(bc->label_indices, result.ident);
-    map_put(bc->label_indices, result.ident, result.index + 1);
+    result.ident = label_ident;
+    result.index = map_get(label_indices->ident_to_index, result.ident);
+    map_put(label_indices->ident_to_index, result.ident, result.index + 1);
     return result;
 }
 
 inline Bc_Label
+create_unique_bc_label(Bc_Builder* bc) {
+    return create_unique_bc_label(&bc->label_indices, bc->curr_decl);
+}
+
+inline Bc_Label
 create_unique_bc_label(Bc_Builder* bc, string_id ident) {
-    Bc_Label result;
-    result.ident = ident;
-    result.index = map_get(bc->label_indices, result.ident);
-    map_put(bc->label_indices, result.ident, result.index + 1);
-    return result;
+    return create_unique_bc_label(&bc->label_indices, ident);
 }
 
 inline Bc_Operand

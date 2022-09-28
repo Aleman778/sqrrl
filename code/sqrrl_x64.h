@@ -18,9 +18,13 @@ X64_OPCODE_ALIAS(cwd, cwq, CWQ) \
 X64_OPCODE_ALIAS(cwd, cwo, CWO) \
 X64_OPCODE(lea, LEA) \
 X64_OPCODE(mov, MOV) \
+X64_OPCODE(movss, MOVSS) \
+X64_OPCODE(movsd, MOVSD) \
 X64_OPCODE(movsx, MOVSX) \
 X64_OPCODE(movsxd, MOVSXD) \
 X64_OPCODE(movzx, MOVZX) \
+X64_OPCODE(cvttss2si, CVTTSS2SI) \
+X64_OPCODE(cvttsd2si, CVTTSD2SI) \
 X64_OPCODE(push, PUSH) \
 X64_OPCODE(pop, POP) \
 X64_OPCODE(cmp, CMP) \
@@ -314,7 +318,24 @@ X64_REGISTER(mm3, 8, 3, mm, MMX) \
 X64_REGISTER(mm4, 8, 4, mm, MMX) \
 X64_REGISTER(mm5, 8, 5, mm, MMX) \
 X64_REGISTER(mm6, 8, 6, mm, MMX) \
-X64_REGISTER(mm7, 8, 7, mm, MMX)
+X64_REGISTER(mm7, 8, 7, mm, MMX) \
+\
+X64_REGISTER(xmm0,  16, 0,  xmm, SSE) \
+X64_REGISTER(xmm1,  16, 1,  xmm, SSE) \
+X64_REGISTER(xmm2,  16, 2,  xmm, SSE) \
+X64_REGISTER(xmm3,  16, 3,  xmm, SSE) \
+X64_REGISTER(xmm4,  16, 4,  xmm, SSE) \
+X64_REGISTER(xmm5,  16, 5,  xmm, SSE) \
+X64_REGISTER(xmm6,  16, 6,  xmm, SSE) \
+X64_REGISTER(xmm7,  16, 7,  xmm, SSE) \
+X64_REGISTER(xmm8,  16, 8,  xmm, SSE) \
+X64_REGISTER(xmm9,  16, 9,  xmm, SSE) \
+X64_REGISTER(xmm10, 16, 10, xmm, SSE) \
+X64_REGISTER(xmm11, 16, 11, xmm, SSE) \
+X64_REGISTER(xmm12, 16, 12, xmm, SSE) \
+X64_REGISTER(xmm13, 16, 13, xmm, SSE) \
+X64_REGISTER(xmm14, 16, 14, xmm, SSE) \
+X64_REGISTER(xmm15, 16, 15, xmm, SSE)
 // TODO(Alexander): add more registers
 
 global int const x64_num_physical_registers = 24; // counting rax and eax as the same
@@ -349,11 +370,18 @@ global cstring x64_register_name_table[] = {
 #undef X64_REGISTER
 };
 
-global X64_Register x64_gpr_register_table[] = {
+global X64_Register x64_int_register_table[] = {
     X64Register_rax, X64Register_rcx, X64Register_rdx, X64Register_rbx,
     X64Register_rsi, X64Register_rdi, X64Register_r8,  X64Register_r9,
     X64Register_r10, X64Register_r11, X64Register_r12, X64Register_r13,
     X64Register_r14, X64Register_r15
+};
+
+global X64_Register x64_vector_register_table[] = {
+    X64Register_xmm0,  X64Register_xmm1,  X64Register_xmm2,  X64Register_xmm3,
+    X64Register_xmm4,  X64Register_xmm5,  X64Register_xmm6,  X64Register_xmm7,
+    X64Register_xmm8,  X64Register_xmm9,  X64Register_xmm10, X64Register_xmm11,
+    X64Register_xmm12, X64Register_xmm13, X64Register_xmm14, X64Register_xmm15,
 };
 
 bool
@@ -389,8 +417,19 @@ struct X64_Operand {
 };
 
 inline bool
-operand_is_register(X64_Operand_Kind kind) {
+operand_is_int_register(X64_Operand_Kind kind) {
     return kind >= X64Operand_r8 && kind <= X64Operand_r64;
+}
+
+inline bool
+operand_is_vector_register(X64_Operand_Kind kind) {
+    return kind >= X64Operand_xmm && kind <= X64Operand_ymm;
+}
+
+inline bool
+operand_is_register(X64_Operand_Kind kind) {
+    return operand_is_int_register(kind) ||
+        operand_is_vector_register(kind);
 }
 
 inline bool
@@ -424,7 +463,7 @@ x64_get_register_kind(Bc_Type type) {
         case Basic_u64: return X64Operand_r64;
         
         case Basic_f32:
-        case Basic_f64: return X64Operand_mm;
+        case Basic_f64: return X64Operand_xmm;
         
         default: return X64Operand_r64;
     }
@@ -444,9 +483,11 @@ x64_get_memory_kind(Bc_Type type) {
         case Basic_s16:
         case Basic_u16: return X64Operand_m16;
         
+        case Basic_f32:
         case Basic_s32:
         case Basic_u32: return X64Operand_m32;
         
+        case Basic_f64: 
         case Basic_s64:
         case Basic_u64: return X64Operand_m64;
         
@@ -485,19 +526,6 @@ x64_get_immediate_kind(Bc_Type type) {
     
     return X64Operand_None;
 }
-
-X64_Operand
-x64_operand_type_cast(X64_Operand source, Bc_Type dest_type) {
-    if (operand_is_register(source.kind))  {
-        source.kind = x64_get_register_kind(dest_type);
-    } else if (operand_is_memory(source.kind)) {
-        source.kind = x64_get_memory_kind(dest_type);
-    } else if  (operand_is_immediate(source.kind)) {
-        source.kind = x64_get_immediate_kind(dest_type);
-    }
-    return source;
-}
-
 
 struct X64_Instruction {
     X64_Opcode opcode;
@@ -637,7 +665,8 @@ string_builder_push(String_Builder* sb, X64_Operand* operand, bool show_virtual_
         case X64Operand_r8:
         case X64Operand_r16:
         case X64Operand_r32:
-        case X64Operand_r64: {
+        case X64Operand_r64:
+        case X64Operand_xmm: {
             if (operand->is_allocated) {
                 X64_Register actual_reg = convert_register_to_specific_kind(operand->reg, operand->kind);
                 string_builder_push_format(sb, "%", f_cstring(x64_register_name_table[actual_reg]));

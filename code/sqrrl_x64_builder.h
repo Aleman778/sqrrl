@@ -3,15 +3,22 @@ struct X64_Register_Node {
     u64 virtual_register;
     X64_Register physical_register;
     array(u64)* interference;
+    
+    b32 is_vector_register;
     b32 is_allocated;
     b32 is_spilled;
 };
 
 typedef map(u64, X64_Register_Node) Interference_Graph;
 
+typedef map(Bc_Label, u32) X64_Data_Offset_Table;
+
 struct X64_Builder {
-    Memory_Arena arena;
+    Memory_Arena text_section_arena;
     X64_Basic_Block* first_basic_block;
+    
+    Memory_Arena rodata_section_arena;
+    X64_Data_Offset_Table* rodata_offsets;
     
     umm instruction_count;
     X64_Instruction* curr_instruction;
@@ -25,9 +32,7 @@ struct X64_Builder {
     array(u64)* active_virtual_registers;
     array(u64)* temp_registers;
     
-    Memory_Arena rodata_segment_arena;
-    
-    Bc_Label_Index_Table* label_indices;
+    Bc_Label_Index_Table label_indices;
     u64 next_free_virtual_register;
     Bc_Live_Length_Table* bc_register_live_lengths;
     
@@ -52,7 +57,7 @@ x64_allocate_virtual_register(X64_Builder* x64, u64 virtual_register) {
     }
     
     {
-        //pln("x64_allocate_virtual_register: r%", f_u32(virtual_register));
+        pln("x64_allocate_virtual_register: r%", f_u32(virtual_register));
         
         X64_Register_Node new_node = {};
         new_node.virtual_register = virtual_register;
@@ -64,9 +69,9 @@ x64_allocate_virtual_register(X64_Builder* x64, u64 virtual_register) {
         X64_Register_Node* other_node = &map_get(x64->interference_graph, *other_vreg);
         array_push(node->interference, other_node->virtual_register);
         array_push(other_node->interference, node->virtual_register);
-        //pln("interference % -> %", 
-        //f_u32(node->virtual_register),
-        //f_u32(other_node->virtual_register));
+        pln("interference % -> %", 
+            f_u32(node->virtual_register),
+            f_u32(other_node->virtual_register));
     }
 }
 
@@ -128,12 +133,6 @@ x64_free_virtual_register(X64_Builder* x64, u64 virtual_register) {
     }
 }
 
-inline bool
-operand_is_unallocated_register(X64_Operand operand) {
-    return (operand_is_register(operand.kind) || 
-            operand_is_memory(operand.kind)) && !operand.is_allocated;
-}
-
 #if BUILD_DEBUG
 // TODO(Alexander): ugh macro nonsense
 #define S1(x) #x
@@ -144,8 +143,8 @@ operand_is_unallocated_register(X64_Operand operand) {
 #endif 
 
 
-#define x64_push_struct(x64, type, ...) \
-(type*) x64_push_size(x64, (umm) sizeof(type), (umm) alignof(type), __VA_ARGS__)
+#define x64_text_push_struct(x64, type, ...) \
+(type*) x64_text_push_size(x64, (umm) sizeof(type), (umm) alignof(type), __VA_ARGS__)
 
 X64_Basic_Block* x64_push_basic_block(X64_Builder* x64, Bc_Label label);
 

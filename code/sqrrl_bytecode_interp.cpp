@@ -304,27 +304,46 @@ bc_interp_store_register(interp, bc->dest.Register, result); \
         } break;
         
         case Bytecode_float_to_sint: {
-            unimplemented;
+            Value_Data value = bc_interp_operand_value(interp, bc->src0, bc->src1.Type);
+            Value_Data result;
+            result.signed_int = (s64) value.floating;
+            bc_interp_store_register(interp, bc->dest.Register, result);
         } break;
         
         case Bytecode_float_to_uint: {
-            unimplemented;
+            Value_Data value = bc_interp_operand_value(interp, bc->src0, bc->src1.Type);
+            Value_Data result;
+            result.unsigned_int = (u64) value.floating;
+            bc_interp_store_register(interp, bc->dest.Register, result);
         } break;
         
         case Bytecode_sint_to_float: {
-            unimplemented;
+            Value_Data value = bc_interp_operand_value(interp, bc->src0, bc->src1.Type);
+            Value_Data result;
+            result.floating = (f64) value.signed_int;
+            bc_interp_store_register(interp, bc->dest.Register, result);
         } break;
         
         case Bytecode_uint_to_float: {
-            unimplemented;
+            Value_Data value = bc_interp_operand_value(interp, bc->src0, bc->src1.Type);
+            Value_Data result;
+            result.floating = (f64) value.unsigned_int;
+            bc_interp_store_register(interp, bc->dest.Register, result);
         } break;
         
         case Bytecode_float_extend: {
-            unimplemented;
+            Value_Data value = bc_interp_operand_value(interp, bc->src0, bc->src1.Type);
+            // TODO(Alexander): do we need to do anything here?
+            Value_Data result = value;
+            bc_interp_store_register(interp, bc->dest.Register, result);
         } break;
         
         case Bytecode_float_truncate: {
-            unimplemented;
+            Value_Data value = bc_interp_operand_value(interp, bc->src0, bc->src1.Type);
+            Value_Data result;
+            // TODO(Alexander): we only support f64 -> f32 for now
+            result.floating = (f32) value.floating;
+            bc_interp_store_register(interp, bc->dest.Register, result);
         } break;
         
         case Bytecode_call: {

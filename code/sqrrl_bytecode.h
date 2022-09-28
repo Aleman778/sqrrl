@@ -326,7 +326,7 @@ string_builder_push(String_Builder* sb,
         } break;
         
         case BcOperand_Float: {
-            string_builder_push_format(sb, "%", f_u64(operand->Float));
+            string_builder_push_format(sb, "%", f_float(operand->Float));
         } break;
         
         case BcOperand_String: {

@@ -16,19 +16,33 @@ void
 x64_perform_register_allocation(X64_Builder* x64) {
     for_map (x64->interference_graph, it) {
         X64_Register_Node* node = &it->value;
-        
         if (!node->is_allocated) {
-            for (int physical_reg_index = 0;
-                 physical_reg_index < fixed_array_count(x64_gpr_register_table);
-                 physical_reg_index++) {
+            
+            // Allocate the regsiter if possible
+            if (node->is_vector_register) {
+                for (int physical_reg_index = 0;
+                     physical_reg_index < fixed_array_count(x64_vector_register_table);
+                     physical_reg_index++) {
+                    
+                    node->physical_register = x64_vector_register_table[physical_reg_index];
+                    node->is_allocated = x64_register_allocation_check_interference(x64->interference_graph, node);
+                    if (node->is_allocated) break;
+                }
                 
-                node->physical_register = x64_gpr_register_table[physical_reg_index];
-                node->is_allocated = x64_register_allocation_check_interference(x64->interference_graph, node);
-                if (node->is_allocated) break;
+            } else {
+                for (int physical_reg_index = 0;
+                     physical_reg_index < fixed_array_count(x64_int_register_table);
+                     physical_reg_index++) {
+                    
+                    node->physical_register = x64_int_register_table[physical_reg_index];
+                    node->is_allocated = x64_register_allocation_check_interference(x64->interference_graph, node);
+                    if (node->is_allocated) break;
+                }
             }
             
             if (!node->is_allocated) {
                 // NOTE(Alexander): no more free registers needs to be spilled
+                // TODO(Alexander): we need to handle, spilling
                 node->is_spilled = true;
             }
         }
@@ -54,8 +68,8 @@ operand.is_allocated = true; \
 // NOTE(Alexander): makes sure that when memory gets fragmented that we start a new block
 // TODO(Alexander): introduce allocators so we can reuse arena_push_size (mostly copypasta)
 void*
-x64_push_size(X64_Builder* x64, umm size, umm align, umm flags=0) {
-    Memory_Arena* arena = &x64->arena;
+x64_text_push_size(X64_Builder* x64, umm size, umm align, umm flags=0) {
+    Memory_Arena* arena = &x64->text_section_arena;
     umm current = (umm) (arena->base + arena->curr_used);
     umm offset = align_forward(current, align) - (umm) arena->base;
     
@@ -69,9 +83,8 @@ x64_push_size(X64_Builder* x64, umm size, umm align, umm flags=0) {
         arena->prev_used = 0;
         arena->size = arena->min_block_size;
         
-        Bc_Label label = x64->curr_basic_block->label;
-        label.index = map_get(x64->label_indices, label.ident);
-        map_put(x64->label_indices, label.ident, label.index + 1);
+        Bc_Label label = create_unique_bc_label(&x64->label_indices, 
+                                                x64->curr_basic_block->label.ident);
         x64_push_basic_block(x64, label);
         
         current = (umm) arena->base + arena->curr_used;
@@ -98,7 +111,7 @@ x64_fix_memory_to_memory_instruction(X64_Builder* x64, X64_Instruction* insn) {
         
         // We push a new instruction and copy over the old one onto that
         X64_Instruction* mov_insn = insn;
-        insn = x64_push_struct(x64, X64_Instruction);
+        insn = x64_text_push_struct(x64, X64_Instruction);
         x64->curr_basic_block->count++;
         x64->instruction_count++;
         *insn = *mov_insn;
@@ -125,7 +138,7 @@ _x64_push_instruction(X64_Builder* x64, X64_Opcode opcode, cstring comment = 0) 
         x64_fix_memory_to_memory_instruction(x64, insn);
     }
     
-    X64_Instruction* insn = x64_push_struct(x64, X64_Instruction);
+    X64_Instruction* insn = x64_text_push_struct(x64, X64_Instruction);
     insn->opcode = opcode;
     x64->curr_basic_block->count++;
     x64->curr_instruction = insn;
@@ -143,15 +156,15 @@ _x64_push_instruction(X64_Builder* x64, X64_Opcode opcode, cstring comment = 0) 
 
 X64_Basic_Block*
 x64_push_basic_block(X64_Builder* x64, Bc_Label label) {
-    //pln("x64_push_basic_block: label = %, %",
+    //pln("x64_text_push_basic_block: label = %, %",
     //f_string(vars_load_string(label.ident)), f_int(label.index));
-    
-    if (!arena_can_fit_size(&x64->arena, sizeof(X64_Basic_Block) + sizeof(X64_Instruction),
+    Memory_Arena* arena = &x64->text_section_arena;
+    if (!arena_can_fit_size(arena, sizeof(X64_Basic_Block) + sizeof(X64_Instruction),
                             max(alignof(X64_Basic_Block), alignof(X64_Instruction)))) {
-        arena_grow(&x64->arena);
+        arena_grow(arena);
     }
     
-    X64_Basic_Block* block = arena_push_struct(&x64->arena, X64_Basic_Block);
+    X64_Basic_Block* block = arena_push_struct(arena, X64_Basic_Block);
     block->label = label;
     if (x64->curr_basic_block) {
         x64->curr_basic_block->next = block;
@@ -329,7 +342,25 @@ x64_build_operand(X64_Builder* x64, Bc_Operand operand, Bc_Type type) {
         } break;
         
         case BcOperand_Float: {
-            unimplemented;
+            assert(type->kind == TypeKind_Basic);
+            assert(type->size != 0 && "bad size");
+            assert(type->align != 0 && "bad align");
+            
+            // TODO(Alexander): this will create new constant for each and every value, even if they are the same
+            // Store the float as read-only data
+            void* data = arena_push_size(&x64->rodata_section_arena, type->size, type->align);
+            u32 offset = (u32) ((umm) data - (umm) x64->rodata_section_arena.base);
+            Bc_Label label = create_unique_bc_label(&x64->label_indices,
+                                                    Sym___const);
+            value_store_in_memory(type, data, operand.Const);
+            map_put(x64->rodata_offsets, label, offset);
+            
+            X64_Opcode mov_opcode = (type == t_f64) ? X64Opcode_movsd : X64Opcode_movss;
+            X64_Operand temp_reg = x64_allocate_temporary_register(x64, type);
+            X64_Instruction* mov_insn = x64_push_instruction(x64, mov_opcode);
+            mov_insn->op0 = temp_reg;
+            mov_insn->op1 = x64_build_data_target(x64, label);
+            result = temp_reg;
         } break;
         
         case BcOperand_Label: {
@@ -373,7 +404,14 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
         case Bytecode_copy: {
             X64_Operand src = x64_build_operand(x64, bc->src0, bc->dest_type);
             
-            X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
+            X64_Opcode mov_opcode = X64Opcode_mov;
+            if (bc->dest_type == t_f32) {
+                mov_opcode = X64Opcode_movss;
+            } else if (bc->dest_type == t_f64) {
+                mov_opcode = X64Opcode_movsd;
+            }
+            
+            X64_Instruction* insn = x64_push_instruction(x64, mov_opcode);
             insn->op0 = x64_build_operand(x64, bc->dest, bc->dest_type);
             insn->op1 = src;
             
@@ -760,7 +798,13 @@ op_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type);
         } break;
         
         case Bytecode_float_to_sint: {
-            unimplemented;
+            // TODO(Alexander): cpuid feature flag SSE2
+            X64_Opcode opcode = (bc->src1.Type == t_f64) ? 
+                X64Opcode_cvttsd2si : X64Opcode_cvttss2si;
+            
+            X64_Instruction* insn = x64_push_instruction(x64, opcode);
+            insn->op0 = x64_build_operand(x64, bc->dest, bc->dest_type);
+            insn->op1 = x64_build_operand(x64, bc->src0, bc->src1.Type);
         } break;
         
         case Bytecode_float_to_uint: {
@@ -786,33 +830,49 @@ op_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type);
         case Bytecode_call: {
             // TODO(Alexander): uses the x64 microsoft calling convention
             // https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention
-            const X64_Register gpr_registers[] = {
+            const X64_Register int_argument_registers[] = {
                 X64Register_rcx, X64Register_rdx, X64Register_r8, X64Register_r9
             };
+            const X64_Register vector_argument_registers[] = {
+                X64Register_xmm0, X64Register_xmm1, X64Register_xmm2, X64Register_xmm4
+            };
+            assert(fixed_array_count(int_argument_registers) == 
+                   fixed_array_count(vector_argument_registers));
             
             // Allocate registers in 
             s32 stack_offset = x64->stack_frame_size - (s32) (array_count(bc->src1.Argument_List) - 1)*8;
-            u64 virtual_regs[fixed_array_count(gpr_registers)];
+            u64 virtual_regs[fixed_array_count(int_argument_registers)];
             
             for (int arg_index = 0; 
                  arg_index < array_count(bc->src1.Argument_List);
                  ++arg_index) {
                 
-                if (arg_index >= fixed_array_count(gpr_registers)) {
+                if (arg_index >= fixed_array_count(int_argument_registers)) {
                     break;
                 }
                 
                 Bc_Argument* arg = bc->src1.Argument_List + arg_index;
                 X64_Operand src = x64_build_operand(x64, arg->src, arg->type);
                 
-                u64 vreg = x64_allocate_specific_register(x64, gpr_registers[arg_index]);
+                bool use_vector_register = (arg->type->kind == TypeKind_Basic && 
+                                            is_bitflag_set(arg->type->Basic.flags, BasicFlag_Floating));
+                u64 vreg;
+                if (use_vector_register) {
+                    vreg = x64_allocate_specific_register(x64, vector_argument_registers[arg_index]);
+                } else {
+                    vreg = x64_allocate_specific_register(x64, int_argument_registers[arg_index]);
+                }
                 virtual_regs[arg_index] = vreg;
                 
                 X64_Instruction* insn;
                 s32 size = bc_type_to_size(arg->type);
                 assert(size > 0 && "bad size");
                 if (size == 1 || size == 2 || size == 4 || size == 8) {
-                    insn = x64_push_instruction(x64, X64Opcode_mov);
+                    X64_Opcode mov_opcode = X64Opcode_mov;
+                    if (use_vector_register) {
+                        mov_opcode = (arg->type == t_f64) ? X64Opcode_movsd : X64Opcode_movss;
+                    }
+                    insn = x64_push_instruction(x64, mov_opcode);
                     insn->op0.kind = x64_get_register_kind(arg->type);
                 } else {
                     // Pass argument by reference
@@ -883,7 +943,7 @@ op_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type);
             
             // Free allocate registers in order
             for (int arg_index = 0; arg_index < array_count(bc->src1.Argument_List); arg_index++) {
-                if (arg_index >= fixed_array_count(gpr_registers)) {
+                if (arg_index >= fixed_array_count(int_argument_registers)) {
                     break;
                 }
                 x64_free_virtual_register(x64, virtual_regs[arg_index]);
@@ -913,7 +973,7 @@ op_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type);
 }
 
 void
-x64_push_prologue(X64_Builder* x64, s32 stack_frame_size) {
+x64_text_push_prologue(X64_Builder* x64, s32 stack_frame_size) {
     // push rbp
     // mov rbp rsp
     // sub rbp stack_size (only relevant for non-leaf functions)
@@ -935,7 +995,7 @@ x64_push_prologue(X64_Builder* x64, s32 stack_frame_size) {
 
 
 void
-x64_push_epilogue(X64_Builder* x64) {
+x64_text_push_epilogue(X64_Builder* x64) {
     // add rsp stack_size (only relevant for non-leaf functions)
     // pop rbp
     // ret
@@ -1088,7 +1148,7 @@ x64_build_function(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_b
     }
     
     // Prologue
-    x64_push_prologue(x64, stack_frame);
+    x64_text_push_prologue(x64, stack_frame);
     
     Bc_Basic_Block* curr_block = first_block;
     u32 curr_bc_instruction = 0;
@@ -1126,7 +1186,7 @@ x64_build_function(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_b
     }
     
     // Epilogue
-    x64_push_epilogue(x64);
+    x64_text_push_epilogue(x64);
     
     // Check if we forgot to free any registers
     int allocated_count = (int) array_count(x64->active_virtual_registers);

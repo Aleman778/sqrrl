@@ -7,11 +7,16 @@ struct X64_Assembler {
     umm size;
     
     map(string_id, umm)* label_offsets;
+    X64_Data_Offset_Table* rodata_offsets;
 };
 
 struct X64_Asm_Label_Target {
     X64_Instruction* insn;
+    
     X64_Basic_Block* block;
+    u32 section_offset;
+    u32 section_index;
+    
     X64_Operand_Kind operand;
     s32 address_align;
     u32 insn_size;

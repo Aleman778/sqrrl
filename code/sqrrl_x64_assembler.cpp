@@ -167,6 +167,7 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
                              X64_Basic_Block* basic_block) {
     
     // TODO(Alexander): we can build this in sqrrl_x64_builder.cpp instead
+    
     map(Bc_Label, X64_Basic_Block*)* named_basic_blocks = 0;
     {
         X64_Basic_Block* curr_block = basic_block; 
@@ -253,7 +254,11 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
                 asm_label_target.address_align = 0;
                 asm_label_target.insn = insn;
                 asm_label_target.block = map_get(named_basic_blocks, insn->op1.jump_target);
-                assert(asm_label_target.block != 0);
+                if (!asm_label_target.block) {
+                    asm_label_target.section_offset =
+                        map_get(assembler->rodata_offsets, insn->op1.jump_target);
+                    asm_label_target.section_index = 1;
+                }
                 
                 switch (insn->op0.kind) {
                     
@@ -264,9 +269,19 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
                         asm_label_target.address_align = 1;
                     } break;
                     
-                    
                     case X64Operand_r64: {
                         index.op1 = (u8) X64Operand_m64;
+                        insn->op1.reg = X64Register_rip;
+                        asm_label_target.operand = X64Operand_rel32;
+                        asm_label_target.address_align = 1;
+                    } break;
+                    
+                    case X64Operand_xmm: {
+                        // TODO(Alexander): kind of a hack for now, we need to memory size, which comes from the opcode
+                        index.op1 = (u8) X64Operand_m32;
+                        if (insn->opcode == X64Opcode_movsd) {
+                            index.op1 = (u8) X64Operand_m64;
+                        }
                         insn->op1.reg = X64Register_rip;
                         asm_label_target.operand = X64Operand_rel32;
                         asm_label_target.address_align = 1;
@@ -294,13 +309,18 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
         curr_block = curr_block->next;
     }
     
-    // Patch relative jump distances
+    // Patch relative addresses
     for_map(label_targets, it) {
         umm source = it->key;
         X64_Asm_Label_Target* asm_label_target = &it->value;
         
-        
-        s64 abs64 = (s64) asm_label_target->block->code.offset;
+        s64 abs64 = 0;
+        if (asm_label_target->section_index == 1) {
+            // TODO(Alexander): hack puts RODATA segment directly after TEXT, expects DATA to be pushed afterwards
+            abs64 = (s64) assembler->curr_used + (s64) asm_label_target->section_offset;
+        } else {
+            abs64 = (s64) asm_label_target->block->code.offset;
+        }
         s64 rel64 = abs64 - (s64) source - asm_label_target->insn_size;
         
         if (asm_label_target->address_align) {
@@ -339,4 +359,6 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
             } break;
         }
     }
+    
+    map_free(label_targets);
 }

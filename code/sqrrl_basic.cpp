@@ -81,9 +81,12 @@ print_format(const char* format...) {
                     printf("%zu", va_arg(args, umm));
                 } break;
                 
-                case FormatType_f32:
+                case FormatType_f32: {
+                    printf("%f", va_arg(args, f32));
+                } break;
+                
                 case FormatType_f64: {
-                    printf("%f", va_arg(args, double));
+                    printf("%f", va_arg(args, f64));
                 } break;
                 
                 case FormatType_string: {

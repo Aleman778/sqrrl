@@ -111,10 +111,15 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
     X64_Assembler assembler = {};
     assembler.bytes = (u8*) asm_buffer;
     assembler.size = asm_size;
+    assembler.rodata_offsets = x64_builder.rodata_offsets;
     
     x64_assemble_to_machine_code(&assembler,
                                  x64_instruction_definitions,
                                  x64_builder.first_basic_block);
+    memcpy(assembler.bytes + assembler.curr_used, 
+           x64_builder.rodata_section_arena.base, 
+           x64_builder.rodata_section_arena.curr_used);
+    
     asm_make_executable(asm_buffer, asm_size);
     
     // Collect all the test to run

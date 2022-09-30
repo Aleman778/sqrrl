@@ -408,7 +408,6 @@ interp_function_call(Interp* interp, string_id ident, Ast* args, Type* function_
                 
                 if (type->Function.intrinsic) {
                     result.value = type->Function.interp_intrinsic(interp, variadic_arguments);
-                    
                 } else {
                     interp_error(interp, string_format("`%` function has no definition and is no intrinsic", f_string(vars_load_string(ident))));
                 }
@@ -816,7 +815,7 @@ convert_value_type_to_format_type(Value_Type type) {
 }
 
 Value
-interp_intrinsic_pln(Interp* interp, array(Interp_Value)* var_args) {
+interp_intrinsic_print_format(Interp* interp, array(Interp_Value)* var_args) {
     Interp_Value format = interp_load_value(interp, vars_save_cstring("format"));
     
     if (format.value.type == Value_string || 
@@ -894,7 +893,11 @@ interp_intrinsic_pln(Interp* interp, array(Interp_Value)* var_args) {
                     count_until_percent++;
                 }
             }
-            printf("%.*s\n", (int) sb.curr_used, (char*) sb.data);
+            if (count_until_percent > 0) {
+                string substring = create_string(count_until_percent, scan_at_prev_percent);
+                string_builder_push(&sb, substring);
+            }
+            printf("%.*s", (int) sb.curr_used, (char*) sb.data);
             string_builder_free(&sb);
         } else {
             pln("%", f_string(format.value.data.str));

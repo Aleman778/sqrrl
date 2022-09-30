@@ -18,6 +18,8 @@ X64_OPCODE_ALIAS(cwd, cwq, CWQ) \
 X64_OPCODE_ALIAS(cwd, cwo, CWO) \
 X64_OPCODE(lea, LEA) \
 X64_OPCODE(mov, MOV) \
+X64_OPCODE(movd, MOVD) \
+X64_OPCODE(movq, MOVQ) \
 X64_OPCODE(movss, MOVSS) \
 X64_OPCODE(movsd, MOVSD) \
 X64_OPCODE(movsx, MOVSX) \

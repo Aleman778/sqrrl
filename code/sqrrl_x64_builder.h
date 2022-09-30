@@ -57,7 +57,7 @@ x64_allocate_virtual_register(X64_Builder* x64, u64 virtual_register) {
     }
     
     {
-        pln("x64_allocate_virtual_register: r%", f_u32(virtual_register));
+        //pln("x64_allocate_virtual_register: r%", f_u32(virtual_register));
         
         X64_Register_Node new_node = {};
         new_node.virtual_register = virtual_register;
@@ -69,9 +69,9 @@ x64_allocate_virtual_register(X64_Builder* x64, u64 virtual_register) {
         X64_Register_Node* other_node = &map_get(x64->interference_graph, *other_vreg);
         array_push(node->interference, other_node->virtual_register);
         array_push(other_node->interference, node->virtual_register);
-        pln("interference % -> %", 
-            f_u32(node->virtual_register),
-            f_u32(other_node->virtual_register));
+        //pln("interference % -> %", 
+        //f_u32(node->virtual_register),
+        //f_u32(other_node->virtual_register));
     }
 }
 

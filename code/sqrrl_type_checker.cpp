@@ -1313,8 +1313,8 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
     // We will still have intrinsics but these intrinsics are just for debugging
     
     {
-        // Intrinsic syntax: pln(string format...)
-        // e.g. pln("hello %, lucky number is %", "world", 7);
+        // Intrinsic syntax: print_format(string format...)
+        // e.g. print_format %, lucky number is %\n", "world", 7);
         Type* type = arena_push_struct(tcx->type_arena, Type);
         type->kind = TypeKind_Function;
         type->Function.is_variadic = true;
@@ -1323,9 +1323,9 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
         array_push(type->Function.arg_idents, arg0_ident);
         array_push(type->Function.arg_types, t_string);
         
-        string_id ident = vars_save_cstring("pln");
+        string_id ident = vars_save_cstring("print_format");
         type->Function.block = 0;
-        type->Function.interp_intrinsic = &interp_intrinsic_pln;
+        type->Function.interp_intrinsic = &interp_intrinsic_print_format;
         type->Function.intrinsic = &print_format;
         type->Function.ident = ident;
         type->Function.return_type = t_void;

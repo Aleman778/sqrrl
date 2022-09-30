@@ -77,6 +77,14 @@ ref_operator() {
 
 void
 @test_proc
+float_to_int() {
+    f32 x = 4.4f + 4.4f;
+    int y = (int) x;
+    assert(y == 8);
+}
+
+void
+@test_proc
 ref_and_deref_operator() {
     int x = 10;
     int* y = &x;

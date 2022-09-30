@@ -25,6 +25,7 @@ int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm)) {
     
+    
     {
         // Put dummy file as index 0
         Loaded_Source_File file = {};

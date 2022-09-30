@@ -766,6 +766,7 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
             bc->curr_epilogue = create_unique_bc_label(bc);
             bc->curr_return_dest = {};
             bc->curr_basic_block = bc_push_basic_block(bc, bc->curr_prologue);
+            Bc_Instruction* label_insn = get_first_bc_instruction(bc->curr_basic_block);
             
             Bc_Decl result = map_get(bc->declarations, bc->curr_prologue);
             result.kind = BcDecl_Procedure;
@@ -798,7 +799,6 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
                 bc_copy(bc, arg_dest, arg.src, arg.type);
                 map_put(bc->local_variable_mapper, arg_ident, arg_dest);
             }
-            Bc_Instruction* label_insn = get_first_bc_instruction(bc->curr_basic_block);
             label_insn->src0.kind = BcOperand_Type;
             label_insn->src0.Type = return_type;
             label_insn->src1.kind = BcOperand_Argument_List;

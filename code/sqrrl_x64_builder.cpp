@@ -841,7 +841,8 @@ op_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type);
             
             // Allocate registers in 
             s32 stack_offset = x64->stack_frame_size - (s32) (array_count(bc->src1.Argument_List) - 1)*8;
-            u64 virtual_regs[fixed_array_count(int_argument_registers)];
+            u64 virtual_regs[fixed_array_count(int_argument_registers)] = {0, 0, 0, 0};
+            u64 virtual_vector_regs[fixed_array_count(vector_argument_registers)] = {0, 0, 0, 0};
             
             for (int arg_index = 0; 
                  arg_index < array_count(bc->src1.Argument_List);
@@ -859,10 +860,12 @@ op_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type);
                 u64 vreg;
                 if (use_vector_register) {
                     vreg = x64_allocate_specific_register(x64, vector_argument_registers[arg_index]);
+                    virtual_vector_regs[arg_index] = vreg;
                 } else {
                     vreg = x64_allocate_specific_register(x64, int_argument_registers[arg_index]);
+                    virtual_vector_regs[arg_index] = vreg;
                 }
-                virtual_regs[arg_index] = vreg;
+                
                 
                 X64_Instruction* insn;
                 s32 size = bc_type_to_size(arg->type);
@@ -875,12 +878,27 @@ op_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type);
                     insn = x64_push_instruction(x64, mov_opcode);
                     insn->op0.kind = x64_get_register_kind(arg->type);
                 } else {
+                    assert(!use_vector_register);
+                    
                     // Pass argument by reference
                     insn = x64_push_instruction(x64, X64Opcode_lea);
                     insn->op0.kind = x64_get_register_kind(t_s64); // TODO: arch dep size of type
                 }
                 insn->op0.virtual_register = vreg;
                 insn->op1 = src;
+                
+                
+                if (use_vector_register) {
+                    // TODO(Alexander): a quirk with varargs and unprototyped functions, dup xmm to int
+                    u64 vec_vreg = x64_allocate_specific_register(x64, int_argument_registers[arg_index]);
+                    virtual_regs[arg_index] = vec_vreg;
+                    
+                    X64_Opcode opcode = (arg->type == t_f64) ? X64Opcode_movq : X64Opcode_movd;
+                    X64_Instruction* dup_insn = x64_push_instruction(x64, opcode);
+                    dup_insn->op0.kind = x64_get_register_kind(arg->type == t_f64 ? t_s64 : t_s32);
+                    dup_insn->op0.virtual_register = vec_vreg;
+                    dup_insn->op1 = insn->op0;
+                }
             }
             
             for (int arg_index = (int) array_count(bc->src1.Argument_List) - 1;
@@ -891,13 +909,13 @@ op_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type);
                 X64_Operand src = x64_build_operand(x64, arg->src, arg->type);
                 
                 s32 size = bc_type_to_size(arg->type);
-                // TODO(Alexander): I think, windows callign convention always align types by at least 8 bytes
                 if (!(size == 1 || size == 2 || size == 4 || size == 8)) {
                     // Pass argument by reference
                     X64_Instruction* tmp_insn = x64_push_instruction(x64, X64Opcode_lea);
                     tmp_insn->op0 = x64_allocate_temporary_register(x64, t_s64); // TODO: arch dep size of type
                     tmp_insn->op1 = src;
                     src = tmp_insn->op0;
+                    // TODO(Alexander): I think, windows calling convention always align types by at least 8 bytes
                     size = 8;
                 }
                 
@@ -942,11 +960,13 @@ op_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type);
             }
             
             // Free allocate registers in order
-            for (int arg_index = 0; arg_index < array_count(bc->src1.Argument_List); arg_index++) {
-                if (arg_index >= fixed_array_count(int_argument_registers)) {
-                    break;
+            for (int arg_index = 0; arg_index < fixed_array_count(int_argument_registers); arg_index++) {
+                if (virtual_regs[arg_index] != 0) {
+                    x64_free_virtual_register(x64, virtual_regs[arg_index]);
                 }
-                x64_free_virtual_register(x64, virtual_regs[arg_index]);
+                if (virtual_vector_regs[arg_index] != 0) {
+                    x64_free_virtual_register(x64, virtual_vector_regs[arg_index]);
+                }
             }
             
             // Make sure we setup the result as RAX

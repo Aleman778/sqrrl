@@ -119,9 +119,16 @@ x64_fix_memory_to_memory_instruction(X64_Builder* x64, X64_Instruction* insn) {
         insn->comment = "fixed memory to memory in above instruction";
 #endif
         
+        
         mov_insn->opcode = X64Opcode_mov;
         mov_insn->op0 = x64_allocate_temporary_register(x64, reg_kind);
         mov_insn->op1 = insn->op1;
+        
+        if (insn->opcode == X64Opcode_movss || 
+            insn->opcode == X64Opcode_movsd) {
+            mov_insn->opcode = insn->opcode;
+            mov_insn->op0.kind = X64Operand_xmm;
+        }
         
         insn->op1 = mov_insn->op0;
     }
@@ -305,7 +312,7 @@ x64_build_operand(X64_Builder* x64, Bc_Operand operand, Bc_Type type) {
                 result.virtual_register = operand.Register;
                 result.kind = operand.kind == BcOperand_Register ? 
                     x64_get_register_kind(type) : x64_get_memory_kind(type);
-                x64_allocate_virtual_register(x64, result.virtual_register);
+                x64_allocate_virtual_register(x64, result.virtual_register, type);
                 
                 bool is_active = false;
                 for_array_v(x64->active_virtual_registers, vreg, _) { 
@@ -327,8 +334,13 @@ x64_build_operand(X64_Builder* x64, Bc_Operand operand, Bc_Type type) {
         } break;
         
         case BcOperand_Int: {
-            assert(type->kind == TypeKind_Basic);
-            result = x64_build_immediate(x64, operand.Signed_Int, type->Basic.kind);
+            assert(type->kind == TypeKind_Basic || type->kind == TypeKind_Pointer);
+            if (type->kind == TypeKind_Pointer) {
+                result = x64_build_immediate(x64, operand.Signed_Int, Basic_s64); // TODO(Alexander): arch dep!
+            } else if (type->kind == TypeKind_Basic) {
+                result = x64_build_immediate(x64, operand.Signed_Int, type->Basic.kind);
+            }
+            
             if (result.kind == X64Operand_imm64) {
                 // NOTE(Alexander): we can only move imm64 to register
                 X64_Operand temp_reg = x64_allocate_temporary_register(x64, type);
@@ -423,6 +435,10 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
         
         
         case Bytecode_memcpy: {
+            // TODO(Alexander): right now we have a pointer to the struct
+            // stored on the stack but we want to first fetch the pointer
+            // and use it to perform the memcpy, how can we do this?
+            
             X64_Operand dest = x64_build_operand(x64, bc->dest, t_s64);
             X64_Operand src = x64_build_operand(x64, bc->src0, t_s64);
             s64 size = bc->src1.Signed_Int;
@@ -645,6 +661,34 @@ op_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type);
             x64_free_virtual_register(x64, rdx);
         } break;
         
+#define BINARY_FLOAT_CASE(op_f32, op_f64) \
+Type* type = bc->dest_type; \
+X64_Opcode mov_opcode = (type == t_f64) ? X64Opcode_movsd : X64Opcode_movss; \
+X64_Instruction* mov_insn = x64_push_instruction(x64, mov_opcode); \
+mov_insn->op0 = x64_build_operand(x64, bc->dest, bc->dest_type); \
+mov_insn->op1 = x64_build_operand(x64, bc->src0, bc->dest_type); \
+        \
+X64_Opcode opcode = (type == t_f64) ? op_f64 : op_f32; \
+X64_Instruction* op_insn = x64_push_instruction(x64, opcode); \
+op_insn->op0 = mov_insn->op0; \
+op_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type);
+        
+        case Bytecode_fadd: {
+            BINARY_FLOAT_CASE(X64Opcode_addss, X64Opcode_addsd);
+        } break;
+        
+        case Bytecode_fsub: {
+            BINARY_FLOAT_CASE(X64Opcode_subss, X64Opcode_subsd);
+        } break;
+        
+        case Bytecode_fmul: {
+            BINARY_FLOAT_CASE(X64Opcode_mulss, X64Opcode_mulsd);
+        } break;
+        
+        case Bytecode_fdiv: {
+            BINARY_FLOAT_CASE(X64Opcode_divss, X64Opcode_divsd);
+        } break;
+        
         case Bytecode_cmpeq:
         case Bytecode_cmpneq:
         case Bytecode_cmple:
@@ -812,7 +856,13 @@ op_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type);
         } break;
         
         case Bytecode_sint_to_float: {
-            unimplemented;
+            // TODO(Alexander): cpuid feature flag SSE2
+            X64_Opcode opcode = (bc->dest_type == t_f64) ? 
+                X64Opcode_cvtsi2sd : X64Opcode_cvtsi2ss;
+            
+            X64_Instruction* insn = x64_push_instruction(x64, opcode);
+            insn->op0 = x64_build_operand(x64, bc->dest, bc->dest_type);
+            insn->op1 = x64_build_operand(x64, bc->src0, bc->src1.Type);
         } break;
         
         case Bytecode_uint_to_float: {
@@ -828,44 +878,73 @@ op_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type);
         } break;
         
         case Bytecode_call: {
+            // Set the target to jump to
+            assert(bc->src0.Type->kind == TypeKind_Function);
+            Type* function_type = bc->src0.Type;
+            
             // TODO(Alexander): uses the x64 microsoft calling convention
             // https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention
             const X64_Register int_argument_registers[] = {
                 X64Register_rcx, X64Register_rdx, X64Register_r8, X64Register_r9
             };
             const X64_Register vector_argument_registers[] = {
-                X64Register_xmm0, X64Register_xmm1, X64Register_xmm2, X64Register_xmm4
+                X64Register_xmm0, X64Register_xmm1, X64Register_xmm2, X64Register_xmm3
             };
             assert(fixed_array_count(int_argument_registers) == 
                    fixed_array_count(vector_argument_registers));
             
             // Allocate registers in 
             s32 stack_offset = x64->stack_frame_size - (s32) (array_count(bc->src1.Argument_List) - 1)*8;
-            u64 virtual_regs[fixed_array_count(int_argument_registers)] = {0, 0, 0, 0};
-            u64 virtual_vector_regs[fixed_array_count(vector_argument_registers)] = {0, 0, 0, 0};
+            
+            array(X64_Argument)* arguments = 0;
+            
+            // Return type
+            Type* return_type = function_type->Function.return_type;
+            bool use_first_reg_as_return = false;
+            if (return_type->size > 8) {
+                // TODO(Alexander): types that cannot fit in RAX, requires that the caller
+                // allocates space for the return value and passes reference to it
+                X64_Argument return_arg = {};
+                return_arg.type = bc->dest_type;
+                return_arg.src = x64_build_stack_offset(x64, 
+                                                        bc->dest_type, 
+                                                        x64->return_value_stack_offset);
+                use_first_reg_as_return = true;
+                array_push(arguments, return_arg);
+            }
             
             for (int arg_index = 0; 
                  arg_index < array_count(bc->src1.Argument_List);
+                 ++arg_index) {
+                
+                Bc_Argument* arg = bc->src1.Argument_List + arg_index;
+                X64_Operand src = x64_build_operand(x64, arg->src, arg->type);
+                
+                X64_Argument x64_arg = {};
+                x64_arg.src = src;
+                x64_arg.type = arg->type;
+                array_push(arguments, x64_arg);
+            }
+            
+            for (int arg_index = 0; 
+                 arg_index < array_count(arguments);
                  ++arg_index) {
                 
                 if (arg_index >= fixed_array_count(int_argument_registers)) {
                     break;
                 }
                 
-                Bc_Argument* arg = bc->src1.Argument_List + arg_index;
-                X64_Operand src = x64_build_operand(x64, arg->src, arg->type);
-                
+                X64_Argument* arg = arguments + arg_index;
                 bool use_vector_register = (arg->type->kind == TypeKind_Basic && 
                                             is_bitflag_set(arg->type->Basic.flags, BasicFlag_Floating));
                 u64 vreg;
                 if (use_vector_register) {
                     vreg = x64_allocate_specific_register(x64, vector_argument_registers[arg_index]);
-                    virtual_vector_regs[arg_index] = vreg;
+                    arg->vector_vreg = vreg;
                 } else {
                     vreg = x64_allocate_specific_register(x64, int_argument_registers[arg_index]);
-                    virtual_vector_regs[arg_index] = vreg;
+                    arg->vreg = vreg;
                 }
-                
                 
                 X64_Instruction* insn;
                 s32 size = bc_type_to_size(arg->type);
@@ -881,40 +960,43 @@ op_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type);
                     assert(!use_vector_register);
                     
                     // Pass argument by reference
-                    insn = x64_push_instruction(x64, X64Opcode_lea);
+                    X64_Opcode opcode = X64Opcode_lea;
+                    if (operand_is_register(arg->src.kind)) {
+                        opcode = X64Opcode_mov;
+                    }
+                    insn = x64_push_instruction(x64, opcode);
                     insn->op0.kind = x64_get_register_kind(t_s64); // TODO: arch dep size of type
                 }
                 insn->op0.virtual_register = vreg;
-                insn->op1 = src;
+                insn->op1 = arg->src;
                 
                 
                 if (use_vector_register) {
                     // TODO(Alexander): a quirk with varargs and unprototyped functions, dup xmm to int
-                    u64 vec_vreg = x64_allocate_specific_register(x64, int_argument_registers[arg_index]);
-                    virtual_regs[arg_index] = vec_vreg;
+                    u64 int_vreg = x64_allocate_specific_register(x64, int_argument_registers[arg_index]);
+                    arg->vreg = int_vreg;
                     
                     X64_Opcode opcode = (arg->type == t_f64) ? X64Opcode_movq : X64Opcode_movd;
                     X64_Instruction* dup_insn = x64_push_instruction(x64, opcode);
                     dup_insn->op0.kind = x64_get_register_kind(arg->type == t_f64 ? t_s64 : t_s32);
-                    dup_insn->op0.virtual_register = vec_vreg;
+                    dup_insn->op0.virtual_register = int_vreg;
                     dup_insn->op1 = insn->op0;
                 }
             }
             
-            for (int arg_index = (int) array_count(bc->src1.Argument_List) - 1;
+            for (int arg_index = (int) array_count(arguments) - 1;
                  arg_index >= 4; 
                  --arg_index) {
                 
-                Bc_Argument* arg = bc->src1.Argument_List + arg_index;
-                X64_Operand src = x64_build_operand(x64, arg->src, arg->type);
+                X64_Argument* arg = arguments + arg_index;
                 
                 s32 size = bc_type_to_size(arg->type);
                 if (!(size == 1 || size == 2 || size == 4 || size == 8)) {
                     // Pass argument by reference
                     X64_Instruction* tmp_insn = x64_push_instruction(x64, X64Opcode_lea);
                     tmp_insn->op0 = x64_allocate_temporary_register(x64, t_s64); // TODO: arch dep size of type
-                    tmp_insn->op1 = src;
-                    src = tmp_insn->op0;
+                    tmp_insn->op1 = arg->src;
+                    arg->src = tmp_insn->op0;
                     // TODO(Alexander): I think, windows calling convention always align types by at least 8 bytes
                     size = 8;
                 }
@@ -925,14 +1007,10 @@ op_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type);
                 
                 X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
                 insn->op0 = x64_build_stack_offset(x64, arg->type, -stack_offset, X64Register_rbp);
-                insn->op1 = src;
+                insn->op1 = arg->src;
                 
                 stack_offset += size;
             }
-            
-            // Set the target to jump to
-            assert(bc->src0.Type->kind == TypeKind_Function);
-            Type* function_type = bc->src0.Type;
             
             if (function_type->Function.intrinsic) {
                 
@@ -959,26 +1037,34 @@ op_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type);
                 call_insn->op0.jump_target = { function_type->Function.ident, 0 };
             }
             
-            // Free allocate registers in order
-            for (int arg_index = 0; arg_index < fixed_array_count(int_argument_registers); arg_index++) {
-                if (virtual_regs[arg_index] != 0) {
-                    x64_free_virtual_register(x64, virtual_regs[arg_index]);
+            // Free allocated registers in order
+            for (int arg_index = 0; arg_index < array_count(arguments); arg_index++) {
+                X64_Argument* arg = arguments + arg_index;
+                if (arg->vreg) {
+                    x64_free_virtual_register(x64, arg->vreg);
                 }
-                if (virtual_vector_regs[arg_index] != 0) {
-                    x64_free_virtual_register(x64, virtual_vector_regs[arg_index]);
+                if (arg->vector_vreg) {
+                    x64_free_virtual_register(x64, arg->vector_vreg);
                 }
             }
             
-            // Make sure we setup the result as RAX
+            // Store the return value
             if (function_type->Function.return_type->kind != TypeKind_Void) {
-                x64_allocate_specific_register(x64, X64Register_rax, bc->dest.Register);
-                
-                X64_Operand dest = {};
-                dest.kind = x64_get_register_kind(bc->dest_type);
-                dest.is_allocated = true;
-                dest.reg = X64Register_rax;
-                map_put(x64->allocated_virtual_registers, bc->dest.Register, dest);
+                if (use_first_reg_as_return) {
+                    X64_Operand dest = array_first(arguments)->src;
+                    map_put(x64->allocated_virtual_registers, bc->dest.Register, dest);
+                } else {
+                    x64_allocate_specific_register(x64, X64Register_rax, bc->dest.Register);
+                    
+                    X64_Operand dest = {};
+                    dest.kind = x64_get_register_kind(bc->dest_type);
+                    dest.is_allocated = true;
+                    dest.reg = X64Register_rax;
+                    map_put(x64->allocated_virtual_registers, bc->dest.Register, dest);
+                }
             }
+            
+            array_free(arguments);
         } break;
         
         case Bytecode_ret: {
@@ -1035,10 +1121,12 @@ x64_text_push_epilogue(X64_Builder* x64) {
 struct Stack_Info {
     s32 local_size;
     s32 argument_size;
+    s32 return_value_size;
+    b32 first_arg_as_return;
 };
 
 Stack_Info
-x64_analyze_stack(X64_Builder* x64, Bc_Basic_Block* function_block) {
+x64_analyze_stack(X64_Builder* x64, Bc_Basic_Block* function_block, Bc_Procedure_Info* proc) {
     Stack_Info result = {};
     
     Bc_Basic_Block* it_block = function_block;
@@ -1058,6 +1146,16 @@ x64_analyze_stack(X64_Builder* x64, Bc_Basic_Block* function_block) {
                     assert(size > 0 && "bad size");
                     assert(align > 0 && "bad align");
                     
+                    if (bc->dest.Register == proc->first_return_reg && size > 8) {
+                        // TODO(Alexander): hack to fix return through first argument
+                        // in the windows x64 callign convention.
+                        // We don't need to allocate the entire data, the caller is responsible
+                        // for allocating the reutrn value, RCX will hold a pointer
+                        result.first_arg_as_return = true;
+                        size = 8; // TODO(Alexander): arch dep!
+                        align = 8;
+                    }
+                    
                     s32 stack_offset = (s32) align_forward((umm) result.local_size, align);
                     stack_offset += size;
                     // NOTE(Alexander): we use negative because stack grows downwards
@@ -1070,6 +1168,11 @@ x64_analyze_stack(X64_Builder* x64, Bc_Basic_Block* function_block) {
                 case Bytecode_call: {
                     // TODO(Alexander): this is based on windows x64 calling convention
                     s32 stack_offset = 6*6; // push RSP, return address and paramter (rcx, rdx, r8, r9) home
+                    
+                    if (bc->dest_type && bc->dest_type->size > 8 && 
+                        bc->dest_type->size > result.return_value_size) {
+                        result.return_value_size = bc->dest_type->size;
+                    }
                     
                     for (int arg_index = (int) array_count(bc->src1.Argument_List) - 1;
                          arg_index >= 4; 
@@ -1110,43 +1213,63 @@ x64_free_virtual_register_if_dead(X64_Builder* x64, Bc_Operand operand, u32 curr
 }
 
 void
-x64_build_function(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_block) {
+x64_build_procedure(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_block,
+                    Bc_Procedure_Info* proc) {
     array_free(x64->active_virtual_registers);
     
-    Stack_Info stack = x64_analyze_stack(x64, first_block);
+    Stack_Info stack = x64_analyze_stack(x64, first_block, proc);
     
     // Compute the stack frame size
-    s32 stack_frame = stack.local_size + stack.argument_size;
+    s32 stack_frame = stack.local_size + stack.argument_size + stack.return_value_size;
     // Align to 16 byte boundary (for windows x64 calling convention)
     // https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170#alignment
     stack_frame = (s32) align_forward(stack_frame, 16);
     
     x64_push_basic_block(x64, first_block->label);
-    
-    // TODO(Alexander): uses the x64 microsoft calling convention
-    // https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention
-    const X64_Register gpr_registers[] = {
-        X64Register_rcx, X64Register_rdx, X64Register_r8, X64Register_r9
-    };
-    
     // TODO(Alexander): callee should save volatile registers
     
     // Map virtual registers to an argument based on calling convention
     Bc_Instruction* label_insn = get_first_bc_instruction(first_block);
     if (label_insn) {
-        // TODO(Alexander): this is based on windows x64 calling convention
-        array(Bc_Argument*) arg_list = label_insn->src1.Argument_List;
+        // TODO(Alexander): uses the x64 microsoft calling convention
+        // https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention
+        const X64_Register int_argument_registers[] = {
+            X64Register_rcx, X64Register_rdx, X64Register_r8, X64Register_r9
+        };
+        const X64_Register vector_argument_registers[] = {
+            X64Register_xmm0, X64Register_xmm1, X64Register_xmm2, X64Register_xmm3
+        };
         
+        array(Bc_Argument)* arg_list = label_insn->src1.Argument_List;
+        
+        Type* return_type = label_insn->src0.Type;
+        if (return_type && return_type->size > 8) {
+            // Return value cannot fit in RAX, pointer is instead passed as first argument
+            Bc_Argument arg = {};
+            arg.type = return_type;
+            arg.src.kind = BcOperand_Register;
+            arg.src.Register = proc->first_return_reg;
+            array_insert(arg_list, arg, 0);
+        }
+        
+        // First 4 register paramters, save HOME registers
         int stack_offset = 4*8; // NOTE(Alexander): skip over return address
-        for (int arg_index = (int) min(array_count(arg_list), fixed_array_count(gpr_registers)) - 1;
+        for (int arg_index = (int) min(array_count(arg_list), fixed_array_count(int_argument_registers)) - 1;
              arg_index >= 0; 
              --arg_index) {
             
             Bc_Argument* arg = arg_list + arg_index;
             X64_Operand_Kind type_kind = x64_get_register_kind(arg->type);
-            X64_Operand value = x64_build_physical_register(x64, gpr_registers[arg_index], type_kind);
+            X64_Operand value = x64_build_physical_register(x64, int_argument_registers[arg_index], type_kind);
             
-            X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
+            X64_Opcode mov_opcode = X64Opcode_mov;
+            if (arg->type == t_f32) {
+                mov_opcode = X64Opcode_movss;
+            } else if (arg->type == t_f64) {
+                mov_opcode = X64Opcode_movsd;
+            }
+            
+            X64_Instruction* insn = x64_push_instruction(x64, mov_opcode);
             insn->op0 = x64_build_stack_offset(x64, arg->type, stack_offset, X64Register_rsp);
             insn->op1 = value;
             stack_offset -= 8;
@@ -1165,10 +1288,23 @@ x64_build_function(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_b
             map_put(x64->allocated_virtual_registers, arg->src.Register, value);
             stack_offset = stack_offset + 8;
         }
+        
+        x64->return_value_stack_offset = (s32) align_forward(stack_offset, DEFAULT_ALIGNMENT);
     }
     
     // Prologue
     x64_text_push_prologue(x64, stack_frame);
+    
+    // TODO(Alexander): windows x64 specific calling convention, fix for when first argument
+    // is a pointer to the return value.
+    if (stack.first_arg_as_return) {
+        // Move pointer to the reutrn
+        X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
+        s64 offset = map_get(x64->stack_offsets, proc->first_return_reg);
+        insn->op0 = x64_build_stack_offset(x64, t_s64, offset); // TODO(Alexander): arch dep!
+        insn->op1 = x64_build_physical_register(x64, X64Register_rcx, X64Operand_r64);
+    }
+    
     
     Bc_Basic_Block* curr_block = first_block;
     u32 curr_bc_instruction = 0;

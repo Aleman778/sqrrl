@@ -18,14 +18,28 @@
 #include "sqrrl_x64_insn_def.cpp"
 #include "sqrrl_x64_assembler.cpp"
 
-
 typedef int asm_main(void);
+
+struct v3 {
+    f32 x;
+    f32 y;
+    f32 z;
+};
+
+inline v3
+vec3(f32 x, f32 y, f32 z) {
+    v3 result;
+    result.x = x;
+    result.y = y;
+    result.z = z;
+    return result;
+}
 
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm)) {
     
-    
+    v3 v = vec3(0.0f, 1.0f, 2.0f);
     {
         // Put dummy file as index 0
         Loaded_Source_File file = {};
@@ -98,7 +112,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     string preprocessed_source = preprocess_file(&preprocessor, file.source, file.abspath, file.index);
     
     bool flag_print_ast = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_AST));
+    bool flag_run_ast_interp = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_RUN_AST_INTERP));
     bool flag_print_bc  = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_BYTECODE));
+    bool flag_run_bc_interp  = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_RUN_BYTECODE_INTERP));
+    bool flag_print_asm_vreg = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_ASM_VREG));
     bool flag_print_asm = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_ASM));
     
     // TODO(alexander): temp printing source
@@ -163,8 +180,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         }
     }
     
-#if 1
-    {
+    if (flag_run_ast_interp) {
         // Interpret the AST
         Interp interp = {};
         interp_ast_declarations(&interp, ast_file.decls);
@@ -175,9 +191,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             pln("AST interpreter exited with code 0\n");
         }
     }
-#endif
     
-#if 1
     {
         // Build bytecode representation of the AST
         Bc_Builder bytecode_builder = {};
@@ -225,11 +239,13 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         }
         
         // Interpret the bytecode
-        Bc_Interp interp = {};
-        interp.code = &bytecode_builder.code;
-        interp.declarations = bytecode_builder.declarations;
-        int interp_exit_code = (int) bc_interp_bytecode(&interp).signed_int;
-        pln("Bytecode interpreter exited with code: %\n", f_int(interp_exit_code));
+        if (flag_run_bc_interp) {
+            Bc_Interp interp = {};
+            interp.code = &bytecode_builder.code;
+            interp.declarations = bytecode_builder.declarations;
+            int interp_exit_code = (int) bc_interp_bytecode(&interp).signed_int;
+            pln("Bytecode interpreter exited with code: %\n", f_int(interp_exit_code));
+        }
         
         // Generate X64 machine code
         X64_Builder x64_builder = {};
@@ -245,8 +261,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         
         Bc_Basic_Block* main_block =
             get_bc_basic_block(bytecode, main_decl->first_byte_offset);
-        x64_build_function(&x64_builder, bytecode, main_block);
-        //pln("compiling function `%`", f_string(vars_load_string(Sym_main)));
+        x64_build_procedure(&x64_builder, bytecode, main_block, &main_decl->Procedure);
+        //pln("compiling procedure `%`", f_string(vars_load_string(Sym_main)));
         
         for_map (bytecode_builder.declarations, it) {
             if (it->key.ident == Sym_main || it->key.ident == Kw_global) {
@@ -255,13 +271,13 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             
             Bc_Decl* decl = &it->value;
             if (decl->kind == BcDecl_Procedure) {
-                // TODO(Alexander): to support function overloading we should remove this
+                // TODO(Alexander): to support procedure overloading we should remove this
                 if (it->key.index != 0) continue;
                 
-                //pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
+                //pln("compiling procedure `%`", f_string(vars_load_string(it->key.ident)));
                 Bc_Basic_Block* proc_block =
                     get_bc_basic_block(bytecode, decl->first_byte_offset);
-                x64_build_function(&x64_builder, bytecode, proc_block);
+                x64_build_procedure(&x64_builder, bytecode, proc_block, &decl->Procedure);
             } else if (decl->kind == BcDecl_Data) {
                 // TODO(Alexander): we need to store the actual value type in the declarations
                 x64_build_data_storage(&x64_builder, it->key, decl->Data.value.data, decl->Data.type);
@@ -275,7 +291,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                                 interference_graph.data, 
                                 (u32) interference_graph.count);
         
-        if (flag_print_asm) {
+        if (flag_print_asm_vreg) {
             // Print the human readable x64 assembly code (before register allocation)
             String_Builder sb = {};
             string_builder_push(&sb, x64_builder.first_basic_block, true);
@@ -345,8 +361,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         int jit_exit_code = (int) func();
         pln("JIT exited with code: %", f_int(jit_exit_code));
     }
-    
-#endif
     
     return 0;
 }

@@ -260,7 +260,7 @@ interp_expression(Interp* interp, Ast* ast) {
                         result.value.type = Value_pointer;
                         result.value.data.data = value.data.array.elements;
                         
-                    } else if (value.type == Value_pointer) {
+                    } else if (is_integer(value)) {
                         result.value = value;
                         
                     } else {

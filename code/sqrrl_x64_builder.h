@@ -27,6 +27,7 @@ struct X64_Builder {
     Bc_Instruction* curr_compare_insn;
     
     map(u64, s32)* stack_offsets;
+    s32 return_value_stack_offset;
     s32 stack_frame_size;
     map(u64, X64_Operand)* allocated_virtual_registers;
     array(u64)* active_virtual_registers;
@@ -41,6 +42,14 @@ struct X64_Builder {
     Interference_Graph* interference_graph;
 };
 
+struct X64_Argument {
+    X64_Operand src;
+    Type* type;
+    
+    u64 vreg;
+    u64 vector_vreg;
+};
+
 inline void
 x64_add_interference(X64_Builder* x64, u64 a, u64 b) {
     X64_Register_Node* node_a = &map_get(x64->interference_graph, a);
@@ -51,7 +60,7 @@ x64_add_interference(X64_Builder* x64, u64 a, u64 b) {
 
 
 inline void
-x64_allocate_virtual_register(X64_Builder* x64, u64 virtual_register) {
+x64_allocate_virtual_register(X64_Builder* x64, u64 virtual_register, bool is_vector_register) {
     if (map_get_index(x64->interference_graph, virtual_register) != -1) {
         return;
     }
@@ -61,6 +70,7 @@ x64_allocate_virtual_register(X64_Builder* x64, u64 virtual_register) {
         
         X64_Register_Node new_node = {};
         new_node.virtual_register = virtual_register;
+        new_node.is_vector_register = is_vector_register;
         map_put(x64->interference_graph, virtual_register, new_node);
     }
     
@@ -76,10 +86,11 @@ x64_allocate_virtual_register(X64_Builder* x64, u64 virtual_register) {
 }
 
 inline u64
-x64_allocate_temporary_register(X64_Builder* x64) {
+x64_allocate_temporary_register(X64_Builder* x64, bool is_vector_register) {
     u64 virtual_register = x64->next_free_virtual_register++;
-    x64_allocate_virtual_register(x64, virtual_register);
+    x64_allocate_virtual_register(x64, virtual_register, is_vector_register);
     array_push(x64->temp_registers, virtual_register);
+    array_push(x64->active_virtual_registers, virtual_register);
     return virtual_register;
 }
 
@@ -87,7 +98,8 @@ inline X64_Operand
 x64_allocate_temporary_register(X64_Builder* x64, Bc_Type type) {
     X64_Operand result = {};
     result.kind = x64_get_register_kind(type);
-    result.virtual_register = x64_allocate_temporary_register(x64);
+    result.virtual_register = 
+        x64_allocate_temporary_register(x64, operand_is_vector_register(result.kind));
     return result;
 }
 
@@ -95,14 +107,15 @@ inline X64_Operand
 x64_allocate_temporary_register(X64_Builder* x64, X64_Operand_Kind kind) {
     X64_Operand result = {};
     result.kind = kind;
-    result.virtual_register = x64_allocate_temporary_register(x64);
+    result.virtual_register = 
+        x64_allocate_temporary_register(x64, operand_is_vector_register(kind));
     return result;
 }
 
 
 inline void
 x64_allocate_specific_register(X64_Builder* x64, X64_Register physical_register, u64 virtual_register) {
-    x64_allocate_virtual_register(x64, virtual_register);
+    x64_allocate_virtual_register(x64, virtual_register, register_is_vector(physical_register));
     
     X64_Register_Node* node = &map_get(x64->interference_graph, virtual_register);
     node->physical_register = physical_register;
@@ -113,7 +126,7 @@ x64_allocate_specific_register(X64_Builder* x64, X64_Register physical_register,
 
 inline u64
 x64_allocate_specific_register(X64_Builder* x64, X64_Register physical_register) {
-    u64 virtual_register = x64_allocate_temporary_register(x64);
+    u64 virtual_register = x64_allocate_temporary_register(x64, register_is_vector(physical_register));
     x64_allocate_specific_register(x64, physical_register, virtual_register);
     return virtual_register;
 }
@@ -148,7 +161,10 @@ x64_free_virtual_register(X64_Builder* x64, u64 virtual_register) {
 
 X64_Basic_Block* x64_push_basic_block(X64_Builder* x64, Bc_Label label);
 
-void x64_build_function(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_block);
+void x64_build_procedure(X64_Builder* x64, 
+                         Bytecode* bytecode, 
+                         Bc_Basic_Block* first_block,
+                         Bc_Procedure_Info* proc);
 
 void x64_build_data_storage(X64_Builder* x64, 
                             Bc_Label label, 

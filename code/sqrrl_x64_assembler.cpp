@@ -227,7 +227,6 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
             index.op1 = (u8) insn->op1.kind;
             index.op2 = (u8) insn->op2.kind;
             
-            
             // TODO(Alexander): this is a bit janky, data targets could appear anywhere
             if (insn->op0.kind == X64Operand_jump_target) {
                 
@@ -242,8 +241,10 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
                     index.op0 = (u8) X64Operand_rel32;
                     asm_label_target.operand = X64Operand_rel32;
                 } else {
-                    index.op0 = (u8) X64Operand_rel8;
-                    asm_label_target.operand = X64Operand_rel8;
+                    // TODO(Alexander): optimization: we can make this faster (maybe?) or at
+                    //                                least reduce the code size by using rel8
+                    index.op0 = (u8) X64Operand_rel32;
+                    asm_label_target.operand = X64Operand_rel32;
                 }
                 
                 map_put(label_targets, assembler->curr_used, asm_label_target);

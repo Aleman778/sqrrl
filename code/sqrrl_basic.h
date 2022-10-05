@@ -744,6 +744,7 @@ arena_can_fit_size(Memory_Arena* arena, umm size, umm align) {
 #define arena_get_struct(arena, type, byte_offset) \
 (type*) ((u8*) (arena)->base + (byte_offset))
 
+
 inline void
 arena_rewind(Memory_Arena* arena) {
     arena->curr_used = arena->prev_used;

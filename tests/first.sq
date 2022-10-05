@@ -21,6 +21,16 @@ truncating_integer() {
     assert((s32) x == -1499690745);
 }
 
+typedef void my_void;
+
+void
+@test_proc
+void_ptr_assign_and_int_casting() {
+    my_void* x = (my_void*) 1000;
+    int* y = (int*) x;
+    assert((int) y == 1000);
+}
+
 void
 @test_proc
 sign_extend_and_wrapping_integers() {
@@ -75,13 +85,13 @@ ref_operator() {
     assert(y == z);
 }
 
-void
-@test_proc
-float_to_int() {
-    f32 x = 4.4f + 4.4f;
-    int y = (int) x;
-    assert(y == 8);
-}
+//void
+//@test_proc
+//float_to_int() {
+//f32 x = 4.4f + 4.4f;
+//int y = (int) x;
+//assert(y == 8);
+//}
 
 void
 @test_proc

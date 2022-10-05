@@ -13,11 +13,15 @@ BC(memcpy) \
 BC(field) \
 BC(neg) \
 BC(not) \
+BC(add) \
+BC(sub) \
 BC(mul) \
 BC(div) \
 BC(mod) \
-BC(add) \
-BC(sub) \
+BC(fadd) \
+BC(fsub) \
+BC(fmul) \
+BC(fdiv) \
 BC(shl) \
 BC(shr) \
 BC(lt) \
@@ -234,6 +238,13 @@ enum Bc_Decl_Kind {
     BcDecl_Procedure,
 };
 
+
+struct Bc_Procedure_Info {
+    Bc_Register first_register;
+    Bc_Register first_return_reg;
+    Bc_Register first_arg_reg;
+};
+
 struct Bc_Decl {
     Bc_Decl_Kind kind;
     umm first_byte_offset;
@@ -243,11 +254,7 @@ struct Bc_Decl {
             Value value;
         } Data;
         
-        struct {
-            Bc_Register first_register;
-            Bc_Register first_return_reg;
-            Bc_Register first_arg_reg;
-        } Procedure;
+        Bc_Procedure_Info Procedure;
     };
 };
 

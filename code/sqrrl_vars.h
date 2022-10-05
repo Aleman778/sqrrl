@@ -1,8 +1,8 @@
 
 // Predefined keywords variables that are reserved by the compiler.
 #define DEF_KEYWORDS \
-VAR_GROUP(builtin_keywords_begin) \
 VAR(invalid)  \
+VAR_GROUP(builtin_keywords_begin) \
 VAR(asm)      \
 VAR(break)    \
 VAR(cast)     \
@@ -64,8 +64,11 @@ VAR(__FILE__) \
 VAR(__FUNCTION__) \
 VAR(__LINE__) \
 VAR(PRINT_AST) \
+VAR(RUN_AST_INTERP) \
 VAR(PRINT_BYTECODE) \
+VAR(RUN_BYTECODE_INTERP) \
 VAR(PRINT_ASM) \
+VAR(PRINT_ASM_VREG) \
 VAR(define)   \
 VAR(defined)  \
 VAR(elif)     \

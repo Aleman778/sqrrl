@@ -78,9 +78,15 @@ type_warning(Type_Context* tcx, string message) {
     tcx->warning_count++;
 }
 
-inline Type*
+Type*
 normalize_basic_types(Type* type) {
-    assert(type->kind == TypeKind_Basic);
+    if (type->kind != TypeKind_Basic) {
+        if (type->kind == TypeKind_Pointer) {
+            type->Pointer = normalize_basic_types(type->Pointer);
+        }
+        
+        return type;
+    }
     
     switch (type->Basic.kind) {
         case Basic_int: return t_s32; break; // TODO(Alexander): this should maybe be something else or customizable
@@ -148,6 +154,11 @@ type_check_value(Type_Context* tcx, Type* type, Value value) {
         } break;
         
         case Value_signed_int: {
+            if (type->kind == TypeKind_Pointer) {
+                result = true;
+                break;
+            }
+            
             result = type->kind == TypeKind_Basic;
             if (!result) break;
             
@@ -189,6 +200,11 @@ type_check_value(Type_Context* tcx, Type* type, Value value) {
         } break;
         
         case Value_unsigned_int: {
+            if (type->kind == TypeKind_Pointer) {
+                result = true;
+                break;
+            }
+            
             result = type->kind == TypeKind_Basic;
             if (!result) break;
             
@@ -302,7 +318,7 @@ constant_folding_of_expressions(Ast* ast) {
                     // int + int;
                     // float + int -> float + float;
                     // int + float -> float + float;
-                    // float -x-> int (is a no no, it has to be an explicit cast)
+                    // float -X-> int (is a no no, it has to be an explicit cast)
                     // X == X -> bool (where == is any valid comparison operator)
                     
                     if (is_floating(first) || is_floating(second)) {
@@ -318,7 +334,7 @@ constant_folding_of_expressions(Ast* ast) {
                         first = value_floating_binary_operation(first, second, ast->Binary_Expr.op);
                         result = first;
                         
-                    } else if (is_integer(first) || is_integer(second)) {
+                    } else if (is_integer(first) && is_integer(second)) {
                         // NOTE(Alexander): integer math
                         first.data.signed_int = value_integer_binary_operation(first, second, ast->Binary_Expr.op);
                         
@@ -369,18 +385,21 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         
         
         case Ast_Value: {
-            
-            if (parent_type) {
-                result = parent_type;
-            } else {
-                
-                result = expr->type;
-                if (!result) {
+            result = expr->type;
+            if (!result) {
+                if (parent_type) {
+                    result = parent_type;
+                } else {
                     result = type_infer_value(tcx, expr->Value.value);
                 }
             }
             
             result = normalize_basic_types(result);
+            if (result && result->kind == TypeKind_Basic &&
+                is_bitflag_set(result->Basic.flags, BasicFlag_Floating | BasicFlag_Integer)) {
+                
+                expr->Value.value = value_cast(expr->Value.value, result->Basic.kind);
+            }
             type_check_value(tcx, result, expr->Value.value);
             expr->type = result;
         } break;
@@ -454,27 +473,53 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                                                       report_error);
             
             if (first_type && second_type) {
-                if (binary_is_comparator_table[expr->Binary_Expr.op]) {
-                    result = t_bool;
-                } else {
-                    //pln("parent_type: %", f_type(parent_type));
-                    //pln("  % + %", f_type(first_type), f_type(second_type));
-                    if (first_type->size > second_type->size) {
-                        result = first_type;
-                    } else {
-                        result = second_type;
-                    }
+                
+                if (first_type->kind == TypeKind_Basic && 
+                    second_type->kind == TypeKind_Basic) {
                     
-                    if (parent_type && result != parent_type) {
-                        //pln("  % >= %", f_int(first_type->size), f_int(second_type->size));
-                        if (parent_type->size >= result->size) {
-                            result = parent_type;
+                    bool is_first_floating = is_bitflag_set(first_type->Basic.flags, BasicFlag_Floating);
+                    bool is_second_floating = is_bitflag_set(second_type->Basic.flags, BasicFlag_Floating);
+                    
+                    // NOTE(Alexander): Type rules
+                    // float + int -> float + float;
+                    // int + float -> float + float;
+                    if (is_first_floating || is_second_floating) {
+                        if (!is_first_floating) {
+                            first_type = second_type;
+                            result = second_type;
+                        } else if (!is_second_floating) {
+                            first_type = first_type;
+                            result = first_type;
                         }
                     }
-                    
-                    //pln("-> %", f_type(result));
                 }
                 
+                //pln("parent_type: %", f_type(parent_type));
+                //pln("  % + %", f_type(first_type), f_type(second_type));
+                if (first_type->size > second_type->size) {
+                    result = first_type;
+                    second_type = result;
+                } else {
+                    result = second_type;
+                    first_type = result;
+                }
+                
+                if (parent_type && result != parent_type) {
+                    //pln("  % >= %", f_int(first_type->size), f_int(second_type->size));
+                    if (parent_type->size >= result->size) {
+                        result = parent_type;
+                        first_type = result;
+                        second_type = result;
+                    }
+                }
+                
+                expr->Binary_Expr.first->type = first_type;
+                expr->Binary_Expr.second->type = second_type;
+                //pln("-> %", f_type(result));
+                
+                if (binary_is_comparator_table[expr->Binary_Expr.op]) {
+                    result = t_bool;
+                }
                 expr->type = result;
             }
         } break;
@@ -530,8 +575,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         } break;
         
         case Ast_Cast_Expr: {
-            type_infer_expression(tcx, expr->Cast_Expr.expr, parent_type, report_error);
             result = create_type_from_ast(tcx, expr->Cast_Expr.type, report_error);
+            type_infer_expression(tcx, expr->Cast_Expr.expr, result, report_error);
             expr->type = result;
         } break;
         
@@ -1008,6 +1053,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
             
             Type* expected_type = create_type_from_ast(tcx, stmt->Assign_Stmt.type, report_error);
             if (!expected_type) {
+                // TODO(Alexander): we can add support for auto types
                 return result;
             }
             

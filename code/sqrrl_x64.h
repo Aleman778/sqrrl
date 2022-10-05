@@ -13,6 +13,14 @@ X64_OPCODE(sub, SUB) \
 X64_OPCODE(mul, MUL) \
 X64_OPCODE(imul, IMUL) \
 X64_OPCODE(idiv, IDIV) \
+X64_OPCODE(addss, ADDSS) \
+X64_OPCODE(addsd, ADDSD) \
+X64_OPCODE(subss, SUBSS) \
+X64_OPCODE(subsd, SUBSD) \
+X64_OPCODE(mulss, MULSS) \
+X64_OPCODE(mulsd, MULSD) \
+X64_OPCODE(divss, DIVSS) \
+X64_OPCODE(divsd, DIVSD) \
 X64_OPCODE(cwd, CWD) \
 X64_OPCODE_ALIAS(cwd, cwq, CWQ) \
 X64_OPCODE_ALIAS(cwd, cwo, CWO) \
@@ -25,8 +33,10 @@ X64_OPCODE(movsd, MOVSD) \
 X64_OPCODE(movsx, MOVSX) \
 X64_OPCODE(movsxd, MOVSXD) \
 X64_OPCODE(movzx, MOVZX) \
-X64_OPCODE(cvttss2si, CVTTSS2SI) \
-X64_OPCODE(cvttsd2si, CVTTSD2SI) \
+X64_OPCODE(cvttss2si, CVTSS2SI) \
+X64_OPCODE(cvttsd2si, CVTSD2SI) \
+X64_OPCODE(cvtsi2ss, CVTSI2SS) \
+X64_OPCODE(cvtsi2sd, CVTSI2SD) \
 X64_OPCODE(push, PUSH) \
 X64_OPCODE(pop, POP) \
 X64_OPCODE(cmp, CMP) \
@@ -176,6 +186,9 @@ X64_OP(m8) \
 X64_OP(m16) \
 X64_OP(m32) \
 X64_OP(m64) \
+X64_OP(m128) \
+X64_OP(m256) \
+X64_OP(m512) \
 X64_OP(imm8) \
 X64_OP(imm16) \
 X64_OP(imm32) \
@@ -389,6 +402,11 @@ global X64_Register x64_vector_register_table[] = {
 bool
 register_is_gpr(X64_Register reg) {
     return reg >= X64Register_ah && reg <= X64Register_r15;
+}
+
+bool
+register_is_vector(X64_Register reg) {
+    return reg >= X64Register_xmm0 && reg <= X64Register_xmm15;
 }
 
 // NOTE(Alexander): forward declare
@@ -741,14 +759,14 @@ string_builder_push(String_Builder* sb, X64_Operand* operand, bool show_virtual_
         case X64Operand_jump_target: {
             string_builder_push_format(sb, "%", f_string(vars_load_string(operand->jump_target.ident)));
             if (operand->jump_target.index > 0) {
-                string_builder_push_format(sb, "%", f_u32(operand->jump_target.index));
+                string_builder_push_format(sb, "@%", f_u32(operand->jump_target.index));
             }
         } break;
         
         case X64Operand_data_target: {
             string_builder_push_format(sb, "[%", f_string(vars_load_string(operand->jump_target.ident)));
             if (operand->jump_target.index > 0) {
-                string_builder_push_format(sb, "%]", f_u32(operand->jump_target.index));
+                string_builder_push_format(sb, "@%]", f_u32(operand->jump_target.index));
             } else {
                 string_builder_push(sb, "]");
             }
@@ -765,7 +783,7 @@ string_builder_push(String_Builder* sb, X64_Instruction* insn, bool show_virtual
             if (block->label.index > 0) {
                 string_builder_push_format(sb, "%", 
                                            f_string(vars_load_string(block->label.ident)));
-                string_builder_push_format(sb, "%:", f_u32(block->label.index));
+                string_builder_push_format(sb, "@%:", f_u32(block->label.index));
             } else {
                 string_builder_push_format(sb, "%:",
                                            f_string(vars_load_string(block->label.ident)));

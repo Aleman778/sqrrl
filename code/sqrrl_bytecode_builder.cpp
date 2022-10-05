@@ -201,7 +201,7 @@ bc_build_type_cast(Bc_Builder* bc,
                    Bc_Operand* src, Bc_Type src_type,
                    Bc_Type dest_type) {
     if (src_type->kind != TypeKind_Basic || dest_type->kind != TypeKind_Basic) {
-        assert(type_equals(src_type, dest_type));
+        //assert(type_equals(src_type, dest_type));
         return *src;
     }
     
@@ -255,7 +255,9 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
     
     switch (node->kind) {
         case Ast_Ident: {
-            result = map_get(bc->local_variable_mapper, node->Ident);
+            Bc_Argument local = map_get(bc->local_variable_mapper, node->Ident);
+            result = local.src;
+            
             if (!result.kind) {
                 // TODO(Alexander): handle global variables in a better way
                 // using real declarations with real type info!!!
@@ -285,6 +287,13 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                             bc_push_operand(bc, variable);
                 }
 #endif
+            }
+            
+            
+            if (result.kind) {
+                if (!type_equals(node->type, local.type)) {
+                    result = bc_build_type_cast(bc, &result, local.type, node->type);
+                }
             }
             
             
@@ -341,7 +350,7 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                 
                 case UnaryOp_Address_Of: {
                     string_id ident = ast_unwrap_ident(node->Unary_Expr.first);
-                    Bc_Operand first = map_get(bc->local_variable_mapper, ident);
+                    Bc_Operand first = map_get(bc->local_variable_mapper, ident).src;
                     Bc_Type type = bc_build_type(bc, node->type);
                     result = bc_unary(bc, Bytecode_load_address, first, type);
                 } break;
@@ -349,7 +358,7 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                 case UnaryOp_Dereference: {
                     string_id ident = ast_unwrap_ident(node->Unary_Expr.first);
                     Bc_Type first_type = bc_build_type(bc, node->Unary_Expr.first->type);
-                    Bc_Operand first = map_get(bc->local_variable_mapper, ident);
+                    Bc_Operand first = map_get(bc->local_variable_mapper, ident).src;
                     result = bc_unary(bc, Bytecode_load, first, first_type);
                 } break;
                 
@@ -419,7 +428,21 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                                                              &first, first_type, 
                                                              &second, second_type);
                     
-                    Bc_Opcode binary_opcode = binary_op_to_bc_opcode_table[binary_op];
+                    Bc_Opcode binary_opcode = Bytecode_noop;
+                    if (type->kind == TypeKind_Basic && 
+                        is_bitflag_set(type->Basic.flags, BasicFlag_Floating)) {
+                        switch (binary_op) {
+                            case BinaryOp_Add: binary_opcode = Bytecode_fadd; break;
+                            case BinaryOp_Subtract: binary_opcode = Bytecode_fsub; break;
+                            case BinaryOp_Multiply: binary_opcode = Bytecode_fmul; break;
+                            case BinaryOp_Divide: binary_opcode = Bytecode_fdiv; break;
+                            default: assert(0 && "invalid float binary operator");
+                        }
+                    } else {
+                        binary_opcode = binary_op_to_bc_opcode_table[binary_op];
+                    }
+                    
+                    
                     second = bc_binary(bc, binary_opcode, first, second, type);
                     second_type = type;
                     result = second;
@@ -636,12 +659,17 @@ bc_build_statement(Bc_Builder* bc, Ast* node, bool last_statement=false) {
             Bc_Type type = bc_build_type(bc, node->type);
             Bc_Operand dest = bc_stack_alloc(bc, type);
             string_id ident = ast_unwrap_ident(node->Assign_Stmt.ident);
-            map_put(bc->local_variable_mapper, ident, dest);
+            Bc_Argument local = {};
+            local.src = dest;
+            local.type = type;
+            map_put(bc->local_variable_mapper, ident, local);
             
-            Bc_Type source_type = bc_build_type(bc, node->Assign_Stmt.expr->type);
-            Bc_Operand source = bc_build_expression(bc, node->Assign_Stmt.expr);
-            source = bc_build_type_cast(bc, &source, source_type, type);
-            bc_copy(bc, dest, source, type);
+            if (!is_ast_none(node->Assign_Stmt.expr)) {
+                Bc_Type source_type = bc_build_type(bc, node->Assign_Stmt.expr->type);
+                Bc_Operand source = bc_build_expression(bc, node->Assign_Stmt.expr);
+                source = bc_build_type_cast(bc, &source, source_type, type);
+                bc_copy(bc, dest, source, type);
+            }
         } break;
         
         case Ast_Expr_Stmt: {
@@ -797,7 +825,11 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
                 
                 Bc_Operand arg_dest = bc_stack_alloc(bc, arg.type);
                 bc_copy(bc, arg_dest, arg.src, arg.type);
-                map_put(bc->local_variable_mapper, arg_ident, arg_dest);
+                
+                Bc_Argument local = {};
+                local.src = arg_dest;
+                local.type = arg_type;
+                map_put(bc->local_variable_mapper, arg_ident, local);
             }
             label_insn->src0.kind = BcOperand_Type;
             label_insn->src0.Type = return_type;

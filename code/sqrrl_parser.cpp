@@ -150,7 +150,7 @@ parse_type_from_value_suffix(Parser* parser, Type* default_type, s32 flags) {
             } break;
         }
         
-        if (!is_bitflag_set(flags, result->Basic.flags)) {
+        if (result && !is_bitflag_set(flags, result->Basic.flags)) {
             if (is_bitflag_set(flags, BasicFlag_Integer)) {
                 parse_error(parser, token, 
                             string_format("expected integer literal suffix, found `%`", f_string(suffix)));
@@ -309,7 +309,7 @@ parse_int(Parser* parser) {
     Token token = parser->current_token;
     assert(token.type == Token_Int);
     
-    Type* type = parse_type_from_value_suffix(parser, t_int, BasicFlag_Integer);
+    Type* type = parse_type_from_value_suffix(parser, 0, BasicFlag_Integer);
     
     Parse_U64_Value_Result parsed_result = parse_u64_value(token);
     if (parsed_result.is_too_large) {
@@ -439,12 +439,30 @@ parse_atom(Parser* parser, bool report_error) {
         } break;
         
         case Token_Open_Paren: {
+            // TODO(Alexander): this is a hack, parenthesized and cast expressions are sightly ambiguous 
             next_token(parser);
+            Tokenizer_State begin_tokenizer = save_tokenizer(parser->tokenizer);
+            
             Token first_token = peek_token(parser);
             result = push_ast_node(parser, &token);
+            Ast* inner = parse_type(parser, false);
+            if (inner && is_ast_type(inner)) {
+                if (!peek_token_match(parser, Token_Close_Paren, false)) {
+                    if (inner) {
+                        arena_rewind(&parser->ast_arena);
+                    }
+                    inner = 0;
+                }
+            }
             
-            Ast* inner = parse_expression(parser, false);
-            if (!is_ast_none(inner)) {
+            if (!inner || is_ast_none(inner)) {
+                restore_tokenizer(&begin_tokenizer);
+                parser->num_peeked_tokens = 0;
+                if (inner) {
+                    arena_rewind(&parser->ast_arena);
+                }
+                
+                inner = parse_expression(parser);
                 Token peek = peek_token(parser);
                 switch (peek.type) {
                     case Token_Close_Paren: {
@@ -464,34 +482,19 @@ parse_atom(Parser* parser, bool report_error) {
                         }
                     } break;
                 }
-            } else {
-                arena_rewind(&parser->ast_arena);
-                inner = parse_type(parser, false);
             }
             
             next_token_if_matched(parser, Token_Close_Paren);
             
-            Ast* expr = parse_expression(parser, false, 13);
-            if (expr->kind != Ast_None) {
-                Ast* type = inner;
-                if (type->kind == Ast_Ident) {
-                    inner = push_ast_node(parser, &first_token);
-                    inner->kind = Ast_Named_Type;
-                    inner->Named_Type = type;
-                    type = inner;
+            if (is_ast_type(inner)) {
+                Ast* expr = parse_expression(parser, false, 13);
+                if (expr) {
+                    result->kind = Ast_Cast_Expr;
+                    result->Cast_Expr.type = inner;
+                    result->Cast_Expr.expr = expr;
+                } else {
+                    // TODO(Alexander): we should convert inner into expression if possible
                 }
-                if (!is_ast_type(type)) {
-                    if (report_error) {
-                        parse_error_expected_type(parser, first_token);
-                    }
-                    break;
-                }
-                
-                result->kind = Ast_Cast_Expr;
-                result->Cast_Expr.type = type;
-                result->Cast_Expr.expr = expr;
-            } else {
-                arena_rewind(&parser->ast_arena);
             }
         } break;
         
@@ -548,6 +551,12 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
         Ast* rhs_expr = lhs_expr;
         Token token = peek_token(parser);
         switch (token.type) {
+            case Token_Right_Arrow: {
+                if (!parser->c_compatibility_mode) {
+                    break;
+                }
+            } // Fallthrough
+            
             case Token_Dot: {
                 next_token(parser);
                 lhs_expr = push_ast_node(parser);

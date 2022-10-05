@@ -31,6 +31,10 @@ type_equals(Type* a, Type* b) {
     }
     
     switch (a->kind) {
+        case TypeKind_Void: {
+            return true;
+        } break;
+        
         case TypeKind_Basic: {
             if (a->Basic.kind != b->Basic.kind) {
                 return false;

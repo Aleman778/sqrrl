@@ -29,7 +29,8 @@ struct Bc_Builder {
     u64 instruction_count;
     u32 curr_declaration_index;
     
-    map(string_id, Bc_Operand)* local_variable_mapper;
+    // TODO(Alexander): Bc_Argument can be renamed later
+    map(string_id, Bc_Argument)* local_variable_mapper;
     
     Bc_Live_Length_Table* live_lengths;
     

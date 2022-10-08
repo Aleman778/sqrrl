@@ -343,7 +343,7 @@ int main(int argc, char* argv[]) {
     // Enable UTF-8 encoding
     SetConsoleOutputCP(65001);
     
-    umm asm_buffer_size = 2048;
+    umm asm_buffer_size = 2048*4;
     void* asm_buffer = VirtualAlloc(0, asm_buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     
     cstring windows_system_headers_root_dir = find_windows_kits_include_dir();

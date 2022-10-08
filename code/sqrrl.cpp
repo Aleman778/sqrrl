@@ -20,26 +20,10 @@
 
 typedef int asm_main(void);
 
-struct v3 {
-    f32 x;
-    f32 y;
-    f32 z;
-};
-
-inline v3
-vec3(f32 x, f32 y, f32 z) {
-    v3 result;
-    result.x = x;
-    result.y = y;
-    result.z = z;
-    return result;
-}
-
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm)) {
     
-    v3 v = vec3(0.0f, 1.0f, 2.0f);
     {
         // Put dummy file as index 0
         Loaded_Source_File file = {};
@@ -52,7 +36,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
     string filepath = {};
-    
     
     if (argc > 1) {
 #if BUILD_TEST
@@ -79,19 +62,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
 #endif
     }
     
-    // TODO(Alexander): this is hackish solution, we should rely on OS service to do this
-    //working_directory = filepath;
-    //working_directory.count = 0;
-    //for (int index = 0; index < filepath.count; index++) {
-    //if (filepath.data[index] == '\\' || filepath.data[index] == '/') {
-    //working_directory.count = index + 1;
-    //}
-    //}
     string filename = filepath;
-    //filename.data += working_directory.count;
-    //filename.count -= working_directory.count;
-    
-    //pln("working directory: %", f_string(working_directory));
     
     // TODO(Alexander): this is hardcoded for now
     t_string->size = sizeof(string);
@@ -106,6 +77,15 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     if (!file.is_valid) {
         return -1;
+    }
+    
+    // TODO(Alexander): this is hackish solution, we should rely on OS service to do this
+    working_directory = filepath;
+    working_directory.count = 0;
+    for (int index = 0; index < filepath.count; index++) {
+        if (filepath.data[index] == '\\' || filepath.data[index] == '/') {
+            working_directory.count = index + 1;
+        }
     }
     
     Preprocessor preprocessor = {};
@@ -212,7 +192,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 if (decl->kind == BcDecl_Procedure) {
                     Bc_Basic_Block* first_basic_block = get_bc_basic_block(bytecode, decl->first_byte_offset);
                     Bc_Instruction* label = get_first_bc_instruction(first_basic_block);
-                    Bc_Regiter_Mapper register_mapper = {};
+                    Bc_Register_Mapper register_mapper = {};
                     
                     string_builder_push(&sb, "\n");
                     string_builder_push(&sb, &register_mapper, &label->src0);

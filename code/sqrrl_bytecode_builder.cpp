@@ -13,6 +13,13 @@ bc_push_instruction(Bc_Builder* bc, Bc_Opcode opcode) {
         if (prev_insn->src1.kind == BcOperand_Register) {
             map_put(bc->live_lengths, prev_insn->src1.Register, bc->instruction_count - 1);
         }
+        if (prev_insn->src1.kind == BcOperand_Argument_List) {
+            for_array(prev_insn->src1.Argument_List, arg, arg_index) {
+                if (arg->src.kind == BcOperand_Register || arg->src.kind == BcOperand_Memory) {
+                    map_put(bc->live_lengths, arg->src.Register, bc->instruction_count - 1);
+                }
+            }
+        }
     }
     
     if (!arena_can_fit(&bc->code_arena, Bc_Instruction)) {

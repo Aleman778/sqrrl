@@ -123,6 +123,7 @@ x64_allocate_specific_register(X64_Builder* x64, X64_Register physical_register,
     node->physical_register = physical_register;
     node->is_allocated = true;
     
+    array_push(x64->temp_registers, virtual_register);
     array_push(x64->active_virtual_registers, virtual_register);
 }
 

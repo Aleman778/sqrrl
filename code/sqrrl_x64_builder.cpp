@@ -4,6 +4,7 @@ x64_register_allocation_check_interference(Interference_Graph* interference_grap
                                            X64_Register_Node* node) {
     for_array(node->interference, dep_id, _) {
         X64_Register_Node* other_node = &map_get(interference_graph, *dep_id);
+        assert(node != other_node && "detected short cycle");
         if (node->physical_register == other_node->physical_register) {
             return false;
         }
@@ -28,7 +29,7 @@ x64_perform_register_allocation(X64_Builder* x64) {
                     node->is_allocated = x64_register_allocation_check_interference(x64->interference_graph, node);
                     if (node->is_allocated) break;
                 }
-                
+                assert(node->is_allocated && "out of registers to allocate");
             } else {
                 for (int physical_reg_index = 0;
                      physical_reg_index < fixed_array_count(x64_int_register_table);
@@ -38,6 +39,7 @@ x64_perform_register_allocation(X64_Builder* x64) {
                     node->is_allocated = x64_register_allocation_check_interference(x64->interference_graph, node);
                     if (node->is_allocated) break;
                 }
+                assert(node->is_allocated && "out of registers to allocate");
             }
             
             if (!node->is_allocated) {
@@ -326,6 +328,13 @@ x64_build_operand(X64_Builder* x64, Bc_Operand operand, Bc_Type type) {
                 
                 if (!is_active) {
                     array_push(x64->active_virtual_registers, result.virtual_register);
+                    
+#ifdef DEBUG_X64_REGISTER_ALLOC
+                    smm idx = map_get_index(x64->bc_register_live_lengths, result.virtual_register);
+                    if (idx == -1) {
+                        pln("Warning: bytecode register r% has no live length", f_int(result.virtual_register));
+                    }
+#endif
                 }
             }
         } break;
@@ -487,6 +496,8 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
                 insn->op0.disp64 += offset*dest_dir;
                 insn->op1 = temp_reg;
                 
+                x64_free_virtual_register(x64, temp_reg.virtual_register);
+                
                 offset += 4;
             }
         } break;
@@ -586,13 +597,16 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
         } break;
         
 #define BINARY_CASE(opcode) \
+X64_Operand dest = x64_build_operand(x64, bc->dest, bc->dest_type); \
+X64_Operand src0 = x64_build_operand(x64, bc->src0, bc->dest_type); \
+X64_Operand src1 = x64_build_operand(x64, bc->src1, bc->dest_type); \
 X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov); \
-mov_insn->op0 = x64_build_operand(x64, bc->dest, bc->dest_type); \
-mov_insn->op1 = x64_build_operand(x64, bc->src0, bc->dest_type); \
+mov_insn->op0 = dest; \
+mov_insn->op1 = src0; \
         \
 X64_Instruction* op_insn = x64_push_instruction(x64, opcode); \
-op_insn->op0 = mov_insn->op0; \
-op_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type);
+op_insn->op0 = dest; \
+op_insn->op1 = src1;
         
         case Bytecode_add: {
             BINARY_CASE(X64Opcode_add);
@@ -699,15 +713,17 @@ op_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type);
 #define BINARY_FLOAT_CASE(op_f32, op_f64) \
 Type* type = bc->dest_type; \
 X64_Opcode mov_opcode = (type == t_f64) ? X64Opcode_movsd : X64Opcode_movss; \
-X64_Operand src = x64_build_operand(x64, bc->src0, bc->dest_type); \
+X64_Operand dest = x64_build_operand(x64, bc->dest, bc->dest_type); \
+X64_Operand src0 = x64_build_operand(x64, bc->src0, bc->dest_type); \
+X64_Operand src1 = x64_build_operand(x64, bc->src1, bc->dest_type); \
 X64_Instruction* mov_insn = x64_push_instruction(x64, mov_opcode); \
-mov_insn->op0 = x64_build_operand(x64, bc->dest, bc->dest_type); \
-mov_insn->op1 = src; \
+mov_insn->op0 = dest; \
+mov_insn->op1 = src0; \
         \
 X64_Opcode opcode = (type == t_f64) ? op_f64 : op_f32; \
 X64_Instruction* op_insn = x64_push_instruction(x64, opcode); \
-op_insn->op0 = mov_insn->op0; \
-op_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type);
+op_insn->op0 = dest; \
+op_insn->op1 = src1;
         
         case Bytecode_fadd: {
             BINARY_FLOAT_CASE(X64Opcode_addss, X64Opcode_addsd);
@@ -1073,6 +1089,7 @@ op_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type);
                 call_insn->op0.jump_target = { function_type->Function.ident, 0 };
             }
             
+#ifdef DEBUG_X64_REGISTER_ALLOC
             // Free allocated registers in order
             for (int arg_index = 0; arg_index < array_count(arguments); arg_index++) {
                 X64_Argument* arg = arguments + arg_index;
@@ -1083,6 +1100,7 @@ op_insn->op1 = x64_build_operand(x64, bc->src1, bc->dest_type);
                     x64_free_virtual_register(x64, arg->vector_vreg);
                 }
             }
+#endif
             
             // Store the return value
             if (function_type->Function.return_type->kind != TypeKind_Void) {
@@ -1200,9 +1218,10 @@ x64_analyze_stack(X64_Builder* x64, Bc_Basic_Block* function_block, Bc_Procedure
                     }
                     
                     s32 stack_offset = (s32) align_forward((umm) result.local_size, align);
-                    stack_offset += size;
                     // NOTE(Alexander): we use negative because stack grows downwards
-                    map_put(x64->stack_offsets, bc->dest.Register, -stack_offset);
+                    map_put(x64->stack_offsets, bc->dest.Register, -(stack_offset + align));
+                    
+                    stack_offset += size;
                     result.local_size = stack_offset;
                     
                     //pln("stack_offset(size = %, align = %, %) = %", f_umm(size), f_umm(align), f_u32(bc->dest.Register), f_s64(stack_offset));
@@ -1246,11 +1265,16 @@ x64_analyze_stack(X64_Builder* x64, Bc_Basic_Block* function_block, Bc_Procedure
 
 internal inline void
 x64_free_virtual_register_if_dead(X64_Builder* x64, Bc_Operand operand, u32 curr_bc_instruction) {
-    if (operand.kind == BcOperand_Register) {
+    if (operand.kind == BcOperand_Register || operand.kind == BcOperand_Memory) {
         u64 live_length = map_get(x64->bc_register_live_lengths, operand.Register);
-        //if (live_length > 0) pln("trying to free bytecode register: % (len = %)", f_u32(operand->Register.index), f_u32(live_length));
+        //if (live_length > 0) pln("trying to free bytecode register: % (len = %)", f_u32(operand.Register), f_u32(live_length));
         if (live_length > 0 && live_length <= curr_bc_instruction) {
+            //pln("free dead register");
             x64_free_virtual_register(x64, operand.Register);
+        }
+    } else if (operand.kind == BcOperand_Argument_List) {
+        for_array(operand.Argument_List, arg, _) {
+            x64_free_virtual_register_if_dead(x64, arg->src, curr_bc_instruction);
         }
     }
 }
@@ -1265,7 +1289,14 @@ x64_build_procedure(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_
     x64->first_arg_as_return = stack.first_arg_as_return;
     
     // Compute the stack frame size
-    s32 stack_frame = stack.local_size + stack.argument_size + stack.return_value_size;
+    s32 stack_frame = stack.local_size;
+    if (stack.return_value_size > 0) {
+        stack_frame = (s32) align_forward(stack_frame, DEFAULT_ALIGNMENT);
+        x64->return_value_stack_offset = stack_frame;
+        stack_frame += stack.return_value_size;
+    }
+    stack_frame += stack.argument_size;
+    
     // Align to 16 byte boundary (for windows x64 calling convention)
     // https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170#alignment
     stack_frame = (s32) align_forward(stack_frame, 16);
@@ -1343,8 +1374,6 @@ x64_build_procedure(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_
             map_put(x64->allocated_virtual_registers, arg->src.Register, value);
             stack_offset = stack_offset + 8;
         }
-        
-        x64->return_value_stack_offset = (s32) align_forward(stack_offset, DEFAULT_ALIGNMENT);
     }
     
     // Prologue
@@ -1399,11 +1428,32 @@ x64_build_procedure(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_
     // Epilogue
     x64_text_push_epilogue(x64);
     
+#ifdef DEBUG_X64_REGISTER_ALLOC
     // Check if we forgot to free any registers
     int allocated_count = (int) array_count(x64->active_virtual_registers);
     if (allocated_count > 0) {
-        //pln("Warning: x64 backend forgot to free `%` virtual registers", f_int(allocated_count));
+        
+        pln("Warning: x64 backend forgot to free `%` virtual registers", f_int(allocated_count));
+        print_format("[");
+        for_array(x64->active_virtual_registers, it, index) {
+            
+            X64_Register_Node* node = &map_get(x64->interference_graph, *it);
+            print_format("r%", f_int(*it));
+            if (node && node->is_allocated) {
+                print_format(" (%)", f_cstring(x64_register_name_table[node->physical_register]));
+            }
+            if (node) {
+                int interference = (int) array_count(node->interference);
+                print_format(" <-> %", f_int(interference));
+            }
+            
+            if (index < allocated_count - 1) {
+                print_format(", ");
+            }
+        } 
+        pln("]");
     }
+#endif
 }
 
 void

@@ -7,10 +7,12 @@ bc_push_instruction(Bc_Builder* bc, Bc_Opcode opcode) {
     Bc_Instruction* prev_insn = bc->curr_instruction;
     if (prev_insn) {
         // Record live lengths of temporary registers
-        if (prev_insn->src0.kind == BcOperand_Register) {
+        if (prev_insn->src0.kind == BcOperand_Register || 
+            prev_insn->src0.kind == BcOperand_Memory) {
             map_put(bc->live_lengths, prev_insn->src0.Register, bc->instruction_count - 1);
         }
-        if (prev_insn->src1.kind == BcOperand_Register) {
+        if (prev_insn->src1.kind == BcOperand_Register || 
+            prev_insn->src1.kind == BcOperand_Memory) {
             map_put(bc->live_lengths, prev_insn->src1.Register, bc->instruction_count - 1);
         }
         if (prev_insn->src1.kind == BcOperand_Argument_List) {
@@ -796,6 +798,7 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
         case TypeKind_Function: {
             assert(decl->kind == Ast_Block_Stmt);
             
+            bc->instruction_count = 0;
             bc->curr_decl = ident;
             bc->curr_prologue = create_unique_bc_label(bc);
             bc->curr_epilogue = create_unique_bc_label(bc);

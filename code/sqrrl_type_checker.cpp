@@ -638,7 +638,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     result = expr->type;
                 } else {
                     if (report_error) {
-                        type_error(tcx, string_format("type `%` doesn't have any fields", f_type(type)));
+                        type_error(tcx, string_format("type `%` doesn't have field `%`", f_type(type), f_var(field_ident)));
                     }
                 }
             } else {

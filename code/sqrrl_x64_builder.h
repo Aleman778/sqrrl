@@ -27,6 +27,8 @@ struct X64_Builder {
     Bc_Instruction* curr_compare_insn;
     
     map(u64, s32)* stack_offsets;
+    Bc_Register return_value_register; // TODO(Alexander): this is a hack to return types > 8 bytes
+    b32 first_arg_as_return;
     s32 return_value_stack_offset;
     s32 stack_frame_size;
     map(u64, X64_Operand)* allocated_virtual_registers;
@@ -121,6 +123,7 @@ x64_allocate_specific_register(X64_Builder* x64, X64_Register physical_register,
     node->physical_register = physical_register;
     node->is_allocated = true;
     
+    array_push(x64->temp_registers, virtual_register);
     array_push(x64->active_virtual_registers, virtual_register);
 }
 

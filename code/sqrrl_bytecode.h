@@ -269,17 +269,18 @@ string_builder_push(String_Builder* sb, Bc_Label label) {
     }
 }
 
-struct Bc_Regiter_Mapper {
+struct Bc_Register_Mapper {
     map(Bc_Register, u64)* table;
     u64 next_register;
     
-    ~Bc_Regiter_Mapper() {
+    ~Bc_Register_Mapper() {
         map_free(table);
     }
 };
 
 u64
-bc_map_register(Bc_Regiter_Mapper* mapper, Bc_Register reg) {
+bc_map_register(Bc_Register_Mapper* mapper, Bc_Register reg) {
+#if 0
     u64 result;
     smm index = map_get_index(mapper->table, reg);
     if (index == -1) {
@@ -289,18 +290,21 @@ bc_map_register(Bc_Regiter_Mapper* mapper, Bc_Register reg) {
         result = mapper->table[index].value;
     }
     return result;
+#else
+    return reg;
+#endif
 }
 
 
 // NOTE(Alexander): forward declare below
 void string_builder_push(String_Builder* sb, 
-                         Bc_Regiter_Mapper* mapper,
+                         Bc_Register_Mapper* mapper,
                          array(Bc_Argument)* argument_list, 
                          bool show_types=false);
 
 bool
 string_builder_push(String_Builder* sb, 
-                    Bc_Regiter_Mapper* mapper, 
+                    Bc_Register_Mapper* mapper, 
                     Bc_Operand* operand, 
                     Bc_Type type={}) {
     
@@ -354,7 +358,7 @@ string_builder_push(String_Builder* sb,
 
 void
 string_builder_push(String_Builder* sb,
-                    Bc_Regiter_Mapper* mapper,
+                    Bc_Register_Mapper* mapper,
                     array(Bc_Argument)* argument_list, 
                     bool show_types) {
     
@@ -375,7 +379,7 @@ string_builder_push(String_Builder* sb,
 }
 
 void
-string_builder_push(String_Builder* sb, Bc_Regiter_Mapper* mapper, Bc_Instruction* insn) {
+string_builder_push(String_Builder* sb, Bc_Register_Mapper* mapper, Bc_Instruction* insn) {
     if (insn->opcode == Bytecode_label) {
         string_builder_push(sb, "  ");
         string_builder_push(sb, insn->dest.Label);
@@ -431,7 +435,7 @@ string_builder_push(String_Builder* sb, Bc_Regiter_Mapper* mapper, Bc_Instructio
 
 void
 string_builder_push(String_Builder* sb, 
-                    Bc_Regiter_Mapper* mapper, 
+                    Bc_Register_Mapper* mapper, 
                     Bc_Basic_Block* block, 
                     Bytecode* code) {
     

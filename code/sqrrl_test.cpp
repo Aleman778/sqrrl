@@ -89,7 +89,6 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
             //pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
             Bc_Basic_Block* first_basic_block = get_bc_basic_block(&bytecode_builder.code, decl->first_byte_offset);
             
-            Bc_Regiter_Mapper register_mapper = {};
             String_Builder test_sb = {};
             //string_builder_push(&test_sb, &register_mapper, first_basic_block, &bytecode_builder.code);
             //pln("%", f_string(string_builder_to_string_nocopy(&test_sb)));
@@ -213,7 +212,7 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
                                                "Bytecode interpreter failed procedure `%`\n",
                                                f_string(test_name));
                     
-                    Bc_Regiter_Mapper register_mapper = {};
+                    Bc_Register_Mapper register_mapper = {};
                     Bc_Basic_Block* first_basic_block = get_bc_basic_block(&bytecode_builder.code, decl->first_byte_offset);
                     string_builder_push(sb_failure_log, &register_mapper, 
                                         first_basic_block, &bytecode_builder.code);

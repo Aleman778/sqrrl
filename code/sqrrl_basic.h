@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <cstdarg>
+#include <cmath>
 
 // NOTE(Alexander): rename static to better reflect its actual meaning
 #define internal static

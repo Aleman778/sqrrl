@@ -405,7 +405,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         } break;
         
         case Ast_Ident: {
-            
             string_id ident = ast_unwrap_ident(expr);
             Type* type = map_get(tcx->locals, ident);
             //pln("%: %", f_string(vars_load_string(ident)), f_type(type));
@@ -472,8 +471,10 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                                                       parent_type,
                                                       report_error);
             
+            
             if (first_type && second_type) {
                 
+                bool is_result_floating = false;
                 if (first_type->kind == TypeKind_Basic && 
                     second_type->kind == TypeKind_Basic) {
                     
@@ -484,6 +485,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     // float + int -> float + float;
                     // int + float -> float + float;
                     if (is_first_floating || is_second_floating) {
+                        is_result_floating = true;
                         if (!is_first_floating) {
                             first_type = second_type;
                             result = second_type;
@@ -506,7 +508,13 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 
                 if (parent_type && result != parent_type) {
                     //pln("  % >= %", f_int(first_type->size), f_int(second_type->size));
-                    if (parent_type->size >= result->size) {
+                    bool is_parent_floating = false;
+                    if (parent_type->kind == TypeKind_Basic) {
+                        is_parent_floating = is_bitflag_set(parent_type->Basic.flags, BasicFlag_Floating);
+                    }
+                    
+                    if (parent_type->size >= result->size && 
+                        (is_result_floating == is_parent_floating)) {
                         result = parent_type;
                         first_type = result;
                         second_type = result;
@@ -575,9 +583,14 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         } break;
         
         case Ast_Cast_Expr: {
-            result = create_type_from_ast(tcx, expr->Cast_Expr.type, report_error);
-            type_infer_expression(tcx, expr->Cast_Expr.expr, result, report_error);
-            expr->type = result;
+            Type* type = create_type_from_ast(tcx, expr->Cast_Expr.type, report_error);
+            if (type) {
+                Type* actual_type = type_infer_expression(tcx, expr->Cast_Expr.expr, type, report_error);
+                if (actual_type) {
+                    expr->type = type;
+                    result = expr->type;
+                }
+            }
         } break;
         
         case Ast_Paren_Expr: {
@@ -625,7 +638,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     result = expr->type;
                 } else {
                     if (report_error) {
-                        type_error(tcx, string_format("type `%` doesn't have any fields", f_type(type)));
+                        type_error(tcx, string_format("type `%` doesn't have field `%`", f_type(type), f_var(field_ident)));
                     }
                 }
             } else {
@@ -728,6 +741,8 @@ struct Type_Struct_Like {
     smm offset;
     smm size;
     smm align;
+    
+    b32 has_error;
 };
 
 
@@ -773,16 +788,24 @@ create_type_struct_like_from_ast(Type_Context* tcx,
                 assert(argument->Argument.ident->kind == Ast_Ident);
                 string_id ident = argument->Argument.ident->Ident;
                 Type* type = create_type_from_ast(tcx, ast_type, report_error);
-                push_type_to_struct_like(&result, type, ident);
+                if (type) {
+                    push_type_to_struct_like(&result, type, ident);
+                } else {
+                    result.has_error = true;
+                }
             } break;
             
             case Ast_Compound: {
                 
                 Type* type = create_type_from_ast(tcx, ast_type, report_error);
-                for_compound(argument->Argument.ident, ast_ident) {
-                    assert(ast_ident->kind == Ast_Ident);
-                    string_id ident = ast_ident->Ident;
-                    push_type_to_struct_like(&result, type, ident);
+                if (type) {
+                    for_compound(argument->Argument.ident, ast_ident) {
+                        assert(ast_ident->kind == Ast_Ident);
+                        string_id ident = ast_ident->Ident;
+                        push_type_to_struct_like(&result, type, ident);
+                    }
+                } else {
+                    result.has_error = true;
                 }
             } break;
             
@@ -932,26 +955,30 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         case Ast_Struct_Type: {
             Ast* fields = ast->Struct_Type.fields;
             Type_Struct_Like struct_like = create_type_struct_like_from_ast(tcx, fields, report_error);
-            result = arena_push_struct(tcx->type_arena, Type);
-            result->kind = TypeKind_Struct;
-            result->Struct.types = struct_like.types;
-            result->Struct.idents = struct_like.idents;
-            result->Struct.offsets = struct_like.offsets;
-            result->Struct.ident_to_index = struct_like.ident_to_index;
-            result->ident = ast_unwrap_ident(ast->Struct_Type.ident);
-            result->size = (s32) struct_like.size;
-            result->align = (s32) struct_like.align;
+            if (!struct_like.has_error) {
+                result = arena_push_struct(tcx->type_arena, Type);
+                result->kind = TypeKind_Struct;
+                result->Struct.types = struct_like.types;
+                result->Struct.idents = struct_like.idents;
+                result->Struct.offsets = struct_like.offsets;
+                result->Struct.ident_to_index = struct_like.ident_to_index;
+                result->ident = ast_unwrap_ident(ast->Struct_Type.ident);
+                result->size = (s32) struct_like.size;
+                result->align = (s32) struct_like.align;
+            }
         } break;
         
         case Ast_Union_Type: {
             Ast* fields = ast->Union_Type.fields;
             Type_Struct_Like struct_like = create_type_struct_like_from_ast(tcx, fields, report_error);
-            result = arena_push_struct(tcx->type_arena, Type);
-            result->kind = TypeKind_Union;
-            result->Union.types = struct_like.types;
-            result->Union.idents = struct_like.idents;
-            result->size = (s32) struct_like.size;
-            result->align = (s32) struct_like.align;
+            if (!struct_like.has_error) {
+                result = arena_push_struct(tcx->type_arena, Type);
+                result->kind = TypeKind_Union;
+                result->Union.types = struct_like.types;
+                result->Union.idents = struct_like.idents;
+                result->size = (s32) struct_like.size;
+                result->align = (s32) struct_like.align;
+            }
         } break;
         
         case Ast_Enum_Type: {
@@ -1413,6 +1440,27 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
         type->Function.intrinsic = &intrinsic_assert;
         type->Function.ident = ident;
         type->Function.return_type = t_void;
+        
+        map_put(tcx->globals, ident, type);
+    }
+    
+    {
+        // Intrinsic syntax:  sqrt(f32 num)
+        // Assets that expr is true, used as test case for 
+        Type* type = arena_push_struct(tcx->type_arena, Type);
+        type->kind = TypeKind_Function;
+        type->Function.is_variadic = false;
+        
+        string_id arg0_ident = vars_save_cstring("num");
+        array_push(type->Function.arg_idents, arg0_ident);
+        array_push(type->Function.arg_types, t_f32);
+        
+        string_id ident = vars_save_cstring("sqrt");
+        type->Function.block = 0;
+        type->Function.interp_intrinsic = 0;
+        type->Function.intrinsic = &sqrtf;
+        type->Function.ident = ident;
+        type->Function.return_type = t_f32;
         
         map_put(tcx->globals, ident, type);
     }

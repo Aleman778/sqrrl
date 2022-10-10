@@ -7,11 +7,20 @@ bc_push_instruction(Bc_Builder* bc, Bc_Opcode opcode) {
     Bc_Instruction* prev_insn = bc->curr_instruction;
     if (prev_insn) {
         // Record live lengths of temporary registers
-        if (prev_insn->src0.kind == BcOperand_Register) {
+        if (prev_insn->src0.kind == BcOperand_Register || 
+            prev_insn->src0.kind == BcOperand_Memory) {
             map_put(bc->live_lengths, prev_insn->src0.Register, bc->instruction_count - 1);
         }
-        if (prev_insn->src1.kind == BcOperand_Register) {
+        if (prev_insn->src1.kind == BcOperand_Register || 
+            prev_insn->src1.kind == BcOperand_Memory) {
             map_put(bc->live_lengths, prev_insn->src1.Register, bc->instruction_count - 1);
+        }
+        if (prev_insn->src1.kind == BcOperand_Argument_List) {
+            for_array(prev_insn->src1.Argument_List, arg, arg_index) {
+                if (arg->src.kind == BcOperand_Register || arg->src.kind == BcOperand_Memory) {
+                    map_put(bc->live_lengths, arg->src.Register, bc->instruction_count - 1);
+                }
+            }
         }
     }
     
@@ -436,12 +445,12 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                             case BinaryOp_Subtract: binary_opcode = Bytecode_fsub; break;
                             case BinaryOp_Multiply: binary_opcode = Bytecode_fmul; break;
                             case BinaryOp_Divide: binary_opcode = Bytecode_fdiv; break;
-                            default: assert(0 && "invalid float binary operator");
                         }
-                    } else {
-                        binary_opcode = binary_op_to_bc_opcode_table[binary_op];
                     }
                     
+                    if (binary_opcode == Bytecode_noop) {
+                        binary_opcode = binary_op_to_bc_opcode_table[binary_op];
+                    }
                     
                     second = bc_binary(bc, binary_opcode, first, second, type);
                     second_type = type;
@@ -789,6 +798,7 @@ bc_register_declaration(Bc_Builder* bc, string_id ident, Ast* decl, Type* type) 
         case TypeKind_Function: {
             assert(decl->kind == Ast_Block_Stmt);
             
+            bc->instruction_count = 0;
             bc->curr_decl = ident;
             bc->curr_prologue = create_unique_bc_label(bc);
             bc->curr_epilogue = create_unique_bc_label(bc);

@@ -1,0 +1,120 @@
+// Based on https://raytracing.github.io/books/RayTracingInOneWeekend.html
+
+#define pln(format, ...) print_format(format##"\n", ##__VA_ARGS__)
+
+#include "vecmath.sq"
+
+//#define PRINT_AST 1
+//#define PRINT_BYTECODE 1
+//#define PRINT_ASM_VREG 1
+//#define PRINT_ASM 1
+
+v3
+ray_sky_color(ray r) {
+    v3 dir = r.direction;
+    dir = vec3_normalize(dir);
+    
+    f32 t = 0.5f*(dir.y + 1.0f);
+    f32 t_inv = 1.0f-t;
+    
+    v3 sky_color_0 = vec3(1.0f, 1.0f, 1.0f);
+    v3 sky_color_1 = vec3(0.5f, 0.7f, 1.0f);
+    v3 color_0 = vec3_scale(sky_color_0, t_inv);
+    v3 color_1 = vec3_scale(sky_color_1, t);
+    v3 color = vec3_add(color_0, color_1);
+    return color;
+}
+
+f32
+hit_sphere(v3 center, f32 radius, ray r) {
+    v3 oc = vec3_sub(r.origin, center);
+    f32 a = vec3_dot(r.direction, r.direction);
+    
+    f32 b = vec3_dot(oc, r.direction);
+    b = 2.0f*b;
+    
+    f32 c = vec3_dot(oc, oc);
+    c = c - radius*radius;
+    
+    f32 discriminant = b*b - 4.0f*a*c;
+    f32 cmp = 0.0f;
+    if (discriminant < cmp) {
+        return 0.0f-1.0f;
+    } else {
+        f32 sqrt_discriminant = sqrt(discriminant);
+        return (0.0f-b - sqrt_discriminant) / (2.0f*a);
+    }
+}
+
+int
+main() {
+    //debug_break();
+    
+    f32 aspect_ratio = 16.0f / 9.0f;
+    int image_width = 400;
+    int image_height = (int) (image_width / aspect_ratio);
+    
+    f32 viewport_height = 2.0f;
+    f32 viewport_width = aspect_ratio * viewport_height;
+    
+    v3 origin = vec3(0.0f, 0.0f, 0.0f);
+    v3 horizontal = vec3(viewport_width, 0.0f, 0.0f);
+    v3 vertical = vec3(0.0f, viewport_height, 0.0f);
+    v3 focal = vec3(0.0f, 0.0f, 1.0f);
+    
+    // Compute the lower left screen coordinate
+    v3 temp = vec3_scale(horizontal, 0.5f);
+    v3 lower_left_corner = vec3_sub(origin, temp);
+    temp = vec3_scale(vertical, 0.5f);
+    lower_left_corner = vec3_sub(lower_left_corner, temp);
+    lower_left_corner = vec3_sub(lower_left_corner, focal);
+    
+    pln("P3\n% %\n255", image_width, image_height);
+    
+    for (int y = image_height-1; y >= 0; y -= 1) {
+        for (int x = 0; x < image_width; x += 1) {
+            // TODO(Alexander): bug (image_width) breaks
+            // TODO(Alexander): bug (image_width - 1) breaks
+            f32 u = (f32) x / (f32) image_width;
+            f32 v = (f32) y / (f32) image_height;
+            
+            temp = vec3_scale(horizontal, u);
+            v3 dir = vec3_add(lower_left_corner, temp);
+            temp = vec3_scale(vertical, v);
+            dir = vec3_add(dir, temp);
+            dir = vec3_sub(dir, origin);
+            
+            ray r;
+            r.origin = origin;
+            r.direction = dir;
+            
+            // Compute the final color
+            v3 color;
+            v3 sphere_pos = vec3(0.0f, 0.0f, -1.0f);
+            f32 t = hit_sphere(sphere_pos, 0.5f, r);
+            
+            if (t > 0.0f) {
+                v3 normal = ray_at(r, t);
+                temp = vec3(0.0f, 0.0f, -1.0f);
+                normal = vec3_sub(normal, temp);
+                normal = vec3_normalize(normal);
+                
+                color.x = 0.5f*(normal.x + 1.0f);
+                color.y = 0.5f*(normal.y + 1.0f);
+                color.z = 0.5f*(normal.z + 1.0f);
+            } else {
+                color = ray_sky_color(r);
+            }
+            
+            // Write the color
+            int ir = (int) (254.999f * color.x);
+            int ig = (int) (254.999f * color.y);
+            int ib = (int) (254.999f * color.z);
+            
+            pln("% % %", ir, ig, ib);
+            //return 0;
+        }
+    }
+    
+    return 0;
+}

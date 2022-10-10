@@ -235,7 +235,7 @@ x64_build_immediate(X64_Builder* x64, s64 value, Basic_Type type) {
     return result;
 }
 
-X64_Operand
+inline X64_Operand
 x64_build_jump_target(X64_Builder* x64, Bc_Label label) {
     X64_Operand result = {};
     result.kind = X64Operand_jump_target;
@@ -243,16 +243,54 @@ x64_build_jump_target(X64_Builder* x64, Bc_Label label) {
     return result;
 }
 
-X64_Operand
-x64_build_data_target(X64_Builder* x64, Bc_Label label) {
+inline X64_Operand
+x64_build_data_target(X64_Builder* x64, Bc_Label label, Type* type) {
     X64_Operand result = {};
-    result.kind = X64Operand_data_target;
+    
+    if (type->kind == TypeKind_Basic) {
+        switch (type->Basic.kind) {
+            case Basic_u8:
+            case Basic_s8: {
+                result.kind = X64Operand_m8_target; 
+            } break;
+            
+            case Basic_u16: 
+            case Basic_s16: {
+                result.kind = X64Operand_m16_target; 
+            } break;
+            
+            case Basic_u32: 
+            case Basic_s32:
+            case Basic_f32: {
+                result.kind = X64Operand_m32_target; 
+            } break;
+            
+            case Basic_u64:
+            case Basic_s64:
+            case Basic_f64:
+            case Basic_string:
+            case Basic_cstring: {
+                result.kind = X64Operand_m64_target; 
+            } break;
+            
+            default: assert("invalid data target type");
+        }
+    } else {
+        result.kind = X64Operand_m64_target;
+    }
     result.jump_target = label;
     return result;
 }
 
+inline X64_Operand
+x64_build_data_target(X64_Builder* x64, Bc_Label label, X64_Operand_Kind kind) {
+    X64_Operand result = {};
+    result.kind = kind;
+    result.jump_target = label;
+    return result;
+}
 
-X64_Operand
+inline X64_Operand
 x64_build_stack_offset(X64_Builder* x64, 
                        Bc_Type type, 
                        s64 stack_offset, 
@@ -382,12 +420,12 @@ x64_build_operand(X64_Builder* x64, Bc_Operand operand, Bc_Type type) {
             X64_Operand temp_reg = x64_allocate_temporary_register(x64, type);
             X64_Instruction* mov_insn = x64_push_instruction(x64, mov_opcode);
             mov_insn->op0 = temp_reg;
-            mov_insn->op1 = x64_build_data_target(x64, label);
+            mov_insn->op1 = x64_build_data_target(x64, label, type);
             result = temp_reg;
         } break;
         
         case BcOperand_Label: {
-            result = x64_build_data_target(x64, operand.Label);
+            result = x64_build_data_target(x64, operand.Label, type);
         } break;
     }
     
@@ -395,22 +433,103 @@ x64_build_operand(X64_Builder* x64, Bc_Operand operand, Bc_Type type) {
 }
 
 X64_Instruction*
+x64_build_compare(X64_Builder* x64, Bc_Instruction* cmp)  {
+    // NOTE(Alexander): the dest type is actually the source
+    Type* type = cmp->dest_type;
+    X64_Opcode opcode = X64Opcode_cmp;
+    X64_Operand first = x64_build_operand(x64, cmp->src0, type);
+    X64_Operand second = x64_build_operand(x64, cmp->src1, type);
+    
+    if (type->kind == TypeKind_Basic && 
+        is_bitflag_set(type->Basic.flags, BasicFlag_Floating)) {
+        opcode = (type == t_f64) ? X64Opcode_ucomisd : X64Opcode_ucomiss;
+        
+        if (operand_is_memory(first.kind)) {
+            // NOTE(Alexander): float comparison doesn't support memory operand on the left-hand side
+            X64_Opcode mov_opcode = (type == t_f64) ? X64Opcode_movsd : X64Opcode_movss;
+            X64_Operand temp_reg = x64_allocate_temporary_register(x64, type);
+            X64_Instruction* mov_insn = x64_push_instruction(x64, mov_opcode);
+            mov_insn->op0 = temp_reg;
+            mov_insn->op1 = first;
+            first = temp_reg;
+        }
+    } else {
+        if (operand_is_immediate(first.kind)) {
+            X64_Operand temp_reg = x64_allocate_temporary_register(x64, type);
+            X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
+            mov_insn->op0 = temp_reg;
+            mov_insn->op1 = first;
+            first = temp_reg;
+        }
+    }
+    
+    X64_Instruction* insn = x64_push_instruction(x64, opcode);
+    insn->op0 = first;
+    insn->op1 = second;
+    return insn;
+    
+}
+
+X64_Opcode
+x64_build_jump_opcode(X64_Builder* x64, Bc_Opcode opcode, Type* type) {
+    X64_Opcode result = X64Opcode_noop;
+    
+    if (type->kind == TypeKind_Basic && 
+        is_bitflag_set(type->Basic.flags, BasicFlag_Floating)) {
+        switch (opcode) {
+            case Bytecode_cmpeq:  result = X64Opcode_je;  break;
+            case Bytecode_cmpneq: result = X64Opcode_jne; break;
+            case Bytecode_cmple:  result = X64Opcode_jbe; break;
+            case Bytecode_cmplt:  result = X64Opcode_jb;  break;
+            case Bytecode_cmpge:  result = X64Opcode_jae; break;
+            case Bytecode_cmpgt:  result = X64Opcode_ja;  break;
+            default: assert(0 && "invalid opcode");
+        }
+    } else {
+        switch (opcode) {
+            case Bytecode_cmpeq:  result = X64Opcode_je;  break;
+            case Bytecode_cmpneq: result = X64Opcode_jne; break;
+            case Bytecode_cmple:  result = X64Opcode_jle; break;
+            case Bytecode_cmplt:  result = X64Opcode_jl;  break;
+            case Bytecode_cmpge:  result = X64Opcode_jge; break;
+            case Bytecode_cmpgt:  result = X64Opcode_jg;  break;
+            default: assert(0 && "invalid opcode");
+        }
+    }
+    
+    return result;
+}
+
+
+X64_Instruction*
 x64_build_setcc(X64_Builder* x64, Bc_Instruction* cmp) {
     assert(cmp->dest.kind == BcOperand_Register);
     
-    X64_Instruction* cmp_insn = x64_push_instruction(x64, X64Opcode_cmp);
-    cmp_insn->op0 = x64_build_operand(x64, cmp->src0, cmp->dest_type);
-    cmp_insn->op1 = x64_build_operand(x64, cmp->src1, cmp->dest_type);
+    x64_build_compare(x64, cmp);
+    X64_Opcode set_opcode = X64Opcode_noop;
     
-    // NOTE(Alexander): we use inverted condition and so we only jump when condition is false
-    X64_Opcode set_opcode = X64Opcode_sete;
-    switch (cmp->opcode) {
-        case Bytecode_cmpeq:  set_opcode = X64Opcode_sete;  break;
-        case Bytecode_cmpneq: set_opcode = X64Opcode_setne; break;
-        case Bytecode_cmple:  set_opcode = X64Opcode_setle; break;
-        case Bytecode_cmplt:  set_opcode = X64Opcode_setl;  break;
-        case Bytecode_cmpge:  set_opcode = X64Opcode_setge; break;
-        case Bytecode_cmpgt:  set_opcode = X64Opcode_setg;  break;
+    Type* type = cmp->dest_type;
+    if (type->kind == TypeKind_Basic && 
+        is_bitflag_set(type->Basic.flags, BasicFlag_Floating)) {
+        switch (cmp->opcode) {
+            case Bytecode_cmpeq:  set_opcode = X64Opcode_sete;  break;
+            case Bytecode_cmpneq: set_opcode = X64Opcode_setne; break;
+            case Bytecode_cmple:  set_opcode = X64Opcode_setbe; break;
+            case Bytecode_cmplt:  set_opcode = X64Opcode_setb;  break;
+            case Bytecode_cmpge:  set_opcode = X64Opcode_setae; break;
+            case Bytecode_cmpgt:  set_opcode = X64Opcode_seta;  break;
+            default: assert(0 && "invalid opcode");
+        }
+    } else {
+        switch (cmp->opcode) {
+            case Bytecode_cmpeq:  set_opcode = X64Opcode_sete;  break;
+            case Bytecode_cmpneq: set_opcode = X64Opcode_setne; break;
+            case Bytecode_cmple:  set_opcode = X64Opcode_setle; break;
+            case Bytecode_cmplt:  set_opcode = X64Opcode_setl;  break;
+            case Bytecode_cmpge:  set_opcode = X64Opcode_setge; break;
+            case Bytecode_cmpgt:  set_opcode = X64Opcode_setg;  break;
+            default: assert(0 && "invalid opcode");
+        }
     }
     
     return x64_push_instruction(x64, set_opcode);
@@ -573,12 +692,45 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
         } break;
         
         case Bytecode_neg: {
-            X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov); 
-            mov_insn->op0 = x64_build_operand(x64, bc->dest, bc->dest_type); 
-            mov_insn->op1 = x64_build_operand(x64, bc->src0, bc->dest_type);
-            
-            X64_Instruction* neg_insn = x64_push_instruction(x64, X64Opcode_neg);
-            neg_insn->op0 = mov_insn->op0;
+            Type* type = bc->dest_type;
+            if (type->kind == TypeKind_Basic &&
+                is_bitflag_set(type->Basic.flags, BasicFlag_Floating)) {
+                
+                // Use xor to set the sign bit of the floating point value
+                void* data = arena_push_size(&x64->rodata_section_arena, 16, type->align);
+                u32 offset = (u32) ((umm) data - (umm) x64->rodata_section_arena.base);
+                Bc_Label label = create_unique_bc_label(&x64->label_indices, Sym___const);
+                map_put(x64->rodata_offsets, label, offset);
+                if (type == t_f64) {
+                    u32* values = (u32*) data;
+                    for (int i = 0; i < 4; i++) *values++ = 0x80000000;
+                } else {
+                    u64* values = (u64*) data;
+                    for (int i = 0; i < 2; i++) *values++ = 0x8000000000000000ull;
+                }
+                
+                X64_Operand dest = x64_build_operand(x64, bc->dest, bc->dest_type); 
+                X64_Operand src = x64_build_operand(x64, bc->src0, bc->dest_type); 
+                
+                X64_Opcode mov_opcode = (type == t_f64) ? X64Opcode_movsd : X64Opcode_movss;
+                X64_Instruction* mov_insn = x64_push_instruction(x64, mov_opcode); 
+                mov_insn->op0 = dest;
+                mov_insn->op1 = src;
+                
+                X64_Opcode xor_opcode = (type == t_f64) ? X64Opcode_xorpd : X64Opcode_xorps;
+                X64_Instruction* neg_insn = x64_push_instruction(x64, xor_opcode);
+                neg_insn->op0 = mov_insn->op0;
+                neg_insn->op1 = x64_build_data_target(x64, label, X64Operand_m128_target);
+                
+            } else {
+                
+                X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov); 
+                mov_insn->op0 = x64_build_operand(x64, bc->dest, bc->dest_type); 
+                mov_insn->op1 = x64_build_operand(x64, bc->src0, bc->dest_type);
+                
+                X64_Instruction* neg_insn = x64_push_instruction(x64, X64Opcode_neg);
+                neg_insn->op0 = mov_insn->op0;
+            }
         } break;
         
         case Bytecode_not: {
@@ -746,7 +898,7 @@ op_insn->op1 = src1;
         case Bytecode_cmple:
         case Bytecode_cmplt:
         case Bytecode_cmpge:
-        case Bytecode_cmpgt: {
+        case Bytecode_cmpgt:{
             x64->curr_compare_insn = bc;
         } break;
         
@@ -769,19 +921,8 @@ op_insn->op1 = src1;
             Bc_Instruction* cmp = x64->curr_compare_insn;
             if (cmp) {
                 // NOTE(Alexander): the dest type is actually the source
-                X64_Instruction* cmp_insn = x64_push_instruction(x64, X64Opcode_cmp);
-                cmp_insn->op0 = x64_build_operand(x64, cmp->src0, cmp->dest_type);
-                cmp_insn->op1 = x64_build_operand(x64, cmp->src1, cmp->dest_type);
-                
-                // NOTE(Alexander): we use inverted condition and so we only jump when condition is false
-                switch (cmp->opcode) {
-                    case Bytecode_cmpeq:  jump_opcode = X64Opcode_je;  break;
-                    case Bytecode_cmpneq: jump_opcode = X64Opcode_jne; break;
-                    case Bytecode_cmple:  jump_opcode = X64Opcode_jle; break;
-                    case Bytecode_cmplt:  jump_opcode = X64Opcode_jl;  break;
-                    case Bytecode_cmpge:  jump_opcode = X64Opcode_jge; break;
-                    case Bytecode_cmpgt:  jump_opcode = X64Opcode_jg;  break;
-                }
+                x64_build_compare(x64, cmp);
+                jump_opcode = x64_build_jump_opcode(x64, cmp->opcode, cmp->dest_type);
             } else {
                 X64_Instruction* test_insn = x64_push_instruction(x64, X64Opcode_cmp);
                 test_insn->op0 = x64_build_operand(x64, bc->dest, t_bool);

@@ -249,7 +249,7 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
                 
                 map_put(label_targets, assembler->curr_used, asm_label_target);
                 
-            } else if (insn->op1.kind == X64Operand_data_target) {
+            } else if (operand_is_data_target(insn->op1.kind)) {
                 
                 X64_Asm_Label_Target asm_label_target = {};
                 asm_label_target.address_align = 0;
@@ -261,38 +261,16 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
                     asm_label_target.section_index = 1;
                 }
                 
-                switch (insn->op0.kind) {
-                    
-                    case X64Operand_r32: {
-                        index.op1 = (u8) X64Operand_m32;
-                        insn->op1.reg = X64Register_rip;
-                        asm_label_target.operand = X64Operand_rel32;
-                        asm_label_target.address_align = 1;
-                    } break;
-                    
-                    case X64Operand_r64: {
-                        index.op1 = (u8) X64Operand_m64;
-                        insn->op1.reg = X64Register_rip;
-                        asm_label_target.operand = X64Operand_rel32;
-                        asm_label_target.address_align = 1;
-                    } break;
-                    
-                    case X64Operand_xmm: {
-                        // TODO(Alexander): kind of a hack for now, we need to memory size, which comes from the opcode
-                        index.op1 = (u8) X64Operand_m32;
-                        if (insn->opcode == X64Opcode_movsd) {
-                            index.op1 = (u8) X64Operand_m64;
-                        }
-                        insn->op1.reg = X64Register_rip;
-                        asm_label_target.operand = X64Operand_rel32;
-                        asm_label_target.address_align = 1;
-                    } break;
-                    
-                    default: {
-                        unimplemented; 
-                    } break;
+                switch (insn->op1.kind) {
+                    case X64Operand_m32_target: index.op1 = (u8) X64Operand_m32; break;
+                    case X64Operand_m64_target: index.op1 = (u8) X64Operand_m64; break;
+                    case X64Operand_m128_target: index.op1 = (u8) X64Operand_m128; break;
+                    default: unimplemented; 
                 }
                 
+                insn->op1.reg = X64Register_rip;
+                asm_label_target.operand = X64Operand_rel32;
+                asm_label_target.address_align = 1;
                 map_put(label_targets, assembler->curr_used, asm_label_target);
             }
             
@@ -300,7 +278,7 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
             X64_Encoding encoding = map_get(x64_instruction_definitions, index);
             x64_assemble_instruction(assembler, insn, &encoding);
             
-            if (insn->op0.kind == X64Operand_jump_target || insn->op1.kind == X64Operand_data_target) {
+            if (insn->op0.kind == X64Operand_jump_target || operand_is_data_target(insn->op1.kind)) {
                 X64_Asm_Label_Target* asm_label_target = &map_get(label_targets, prev_used);
                 asm_label_target->insn_size = (u32) (assembler->curr_used - prev_used);
             }

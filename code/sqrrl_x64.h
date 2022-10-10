@@ -21,6 +21,8 @@ X64_OPCODE(mulss, MULSS) \
 X64_OPCODE(mulsd, MULSD) \
 X64_OPCODE(divss, DIVSS) \
 X64_OPCODE(divsd, DIVSD) \
+X64_OPCODE(xorps, XORPS) \
+X64_OPCODE(xorpd, XORPD) \
 X64_OPCODE(cwd, CWD) \
 X64_OPCODE_ALIAS(cwd, cwq, CWQ) \
 X64_OPCODE_ALIAS(cwd, cwo, CWO) \
@@ -40,6 +42,8 @@ X64_OPCODE(cvtsi2sd, CVTSI2SD) \
 X64_OPCODE(push, PUSH) \
 X64_OPCODE(pop, POP) \
 X64_OPCODE(cmp, CMP) \
+X64_OPCODE(ucomiss, UCOMISS) \
+X64_OPCODE(ucomisd, UCOMISD) \
 X64_OPCODE(test, TEST) \
 X64_OPCODE(jmp, JMP) \
 X64_OPCODE(ja, JA) \
@@ -135,6 +139,7 @@ global const cstring x64_opcode_names[] = {
 #undef X64_OPCODE
 };
 
+
 inline X64_Opcode
 x64_opcode_invert_jump_condition(X64_Opcode opcode) {
     switch (opcode) {
@@ -201,8 +206,14 @@ X64_OP(zmm) \
 X64_OP(rel8) \
 X64_OP(rel32) \
 X64_OP(jump_target) \
-X64_OP(data_target) \
-X64_OP(string_literal)\
+X64_OP(m8_target) \
+X64_OP(m16_target) \
+X64_OP(m32_target) \
+X64_OP(m64_target) \
+X64_OP(m128_target) \
+X64_OP(m256_target) \
+X64_OP(m512_target) \
+X64_OP(string_literal) \
 X64_OP(basic_block)
 
 enum X64_Operand_Kind {
@@ -460,6 +471,11 @@ operand_is_memory(X64_Operand_Kind kind) {
 inline bool
 operand_is_immediate(X64_Operand_Kind kind) {
     return (kind >= X64Operand_imm8 && kind <= X64Operand_imm64);
+}
+
+inline bool
+operand_is_data_target(X64_Operand_Kind kind) {
+    return (kind >= X64Operand_m8_target && kind <= X64Operand_m512_target);
 }
 
 X64_Operand_Kind
@@ -763,7 +779,13 @@ string_builder_push(String_Builder* sb, X64_Operand* operand, bool show_virtual_
             }
         } break;
         
-        case X64Operand_data_target: {
+        case X64Operand_m8_target:
+        case X64Operand_m16_target:
+        case X64Operand_m32_target:
+        case X64Operand_m64_target:
+        case X64Operand_m128_target:
+        case X64Operand_m256_target:
+        case X64Operand_m512_target: {
             string_builder_push_format(sb, "[%", f_string(vars_load_string(operand->jump_target.ident)));
             if (operand->jump_target.index > 0) {
                 string_builder_push_format(sb, "@%]", f_u32(operand->jump_target.index));

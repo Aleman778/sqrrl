@@ -330,7 +330,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 printf("0%hhX ", byte);
             }
             
-            if (byte_index % 16 == 15) {
+            if (byte_index % 90 == 89) {
                 printf("\n");
             }
         }

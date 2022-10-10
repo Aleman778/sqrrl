@@ -445,12 +445,12 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                             case BinaryOp_Subtract: binary_opcode = Bytecode_fsub; break;
                             case BinaryOp_Multiply: binary_opcode = Bytecode_fmul; break;
                             case BinaryOp_Divide: binary_opcode = Bytecode_fdiv; break;
-                            default: assert(0 && "invalid float binary operator");
                         }
-                    } else {
-                        binary_opcode = binary_op_to_bc_opcode_table[binary_op];
                     }
                     
+                    if (binary_opcode == Bytecode_noop) {
+                        binary_opcode = binary_op_to_bc_opcode_table[binary_op];
+                    }
                     
                     second = bc_binary(bc, binary_opcode, first, second, type);
                     second_type = type;

@@ -288,6 +288,10 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
         curr_block = curr_block->next;
     }
     
+    // TODO(Alexander): push padding to align block by 16 bytes, is this enough?
+    assembler->curr_used = align_forward(assembler->curr_used, DEFAULT_ALIGNMENT);
+    assert(assembler->curr_used < assembler->size && "asm buffer out of memory");
+    
     // Patch relative addresses
     for_map(label_targets, it) {
         umm source = it->key;

@@ -29,7 +29,7 @@ x64_perform_register_allocation(X64_Builder* x64) {
                     node->is_allocated = x64_register_allocation_check_interference(x64->interference_graph, node);
                     if (node->is_allocated) break;
                 }
-                assert(node->is_allocated && "out of registers to allocate");
+                //assert(node->is_allocated && "out of registers to allocate");
             } else {
                 for (int physical_reg_index = 0;
                      physical_reg_index < fixed_array_count(x64_int_register_table);
@@ -39,7 +39,7 @@ x64_perform_register_allocation(X64_Builder* x64) {
                     node->is_allocated = x64_register_allocation_check_interference(x64->interference_graph, node);
                     if (node->is_allocated) break;
                 }
-                assert(node->is_allocated && "out of registers to allocate");
+                //assert(node->is_allocated && "out of registers to allocate");
             }
             
             if (!node->is_allocated) {
@@ -697,16 +697,16 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
                 is_bitflag_set(type->Basic.flags, BasicFlag_Floating)) {
                 
                 // Use xor to set the sign bit of the floating point value
-                void* data = arena_push_size(&x64->rodata_section_arena, 16, type->align);
+                void* data = arena_push_size(&x64->rodata_section_arena, 16, 16);
                 u32 offset = (u32) ((umm) data - (umm) x64->rodata_section_arena.base);
                 Bc_Label label = create_unique_bc_label(&x64->label_indices, Sym___const);
                 map_put(x64->rodata_offsets, label, offset);
                 if (type == t_f64) {
-                    u32* values = (u32*) data;
-                    for (int i = 0; i < 4; i++) *values++ = 0x80000000;
-                } else {
                     u64* values = (u64*) data;
                     for (int i = 0; i < 2; i++) *values++ = 0x8000000000000000ull;
+                } else {
+                    u32* values = (u32*) data;
+                    for (int i = 0; i < 4; i++) *values++ = 0x80000000;
                 }
                 
                 X64_Operand dest = x64_build_operand(x64, bc->dest, bc->dest_type); 
@@ -1222,6 +1222,8 @@ op_insn->op1 = src1;
                     X64_Instruction* call_insn = x64_push_instruction(x64, X64Opcode_call);
                     call_insn->op0.kind = call_address;
                     call_insn->op0 = mov_imm64_insn->op0;
+                    
+                    x64_free_virtual_register(x64, mov_imm64_insn->op0.virtual_register);
                 }
             } else {
                 X64_Instruction* call_insn = x64_push_instruction(x64, X64Opcode_call);
@@ -1230,8 +1232,8 @@ op_insn->op1 = src1;
                 call_insn->op0.jump_target = { function_type->Function.ident, 0 };
             }
             
-#ifdef DEBUG_X64_REGISTER_ALLOC
             // Free allocated registers in order
+            // TODO(Alexander): should we auto clean these by using temporary register?
             for (int arg_index = 0; arg_index < array_count(arguments); arg_index++) {
                 X64_Argument* arg = arguments + arg_index;
                 if (arg->vreg) {
@@ -1241,7 +1243,26 @@ op_insn->op1 = src1;
                     x64_free_virtual_register(x64, arg->vector_vreg);
                 }
             }
-#endif
+            
+            const X64_Register volatile_registers[] = {
+                X64Register_rax, X64Register_rcx, X64Register_rdx, X64Register_r8, 
+                X64Register_r9, X64Register_r10, X64Register_r11, X64Register_xmm0,
+                X64Register_xmm1, X64Register_xmm2, X64Register_xmm3, X64Register_xmm4,
+                X64Register_xmm5
+            };
+            
+            // Flush volatile registers to make sure it won't be used after this call
+            for (int i = 0; i < fixed_array_count(volatile_registers); i++) {
+                x64_flush_register(x64, volatile_registers[i]);
+            }
+            
+            const X64_Register non_volatile_registers[] = {
+                X64Register_rbx, X64Register_rbp, X64Register_rdi, X64Register_rsi,
+                X64Register_rsp, X64Register_r12, X64Register_r13, X64Register_r14,
+                X64Register_r15, X64Register_xmm6, X64Register_xmm7, X64Register_xmm8,
+                X64Register_xmm9, X64Register_xmm10, X64Register_xmm11, X64Register_xmm12,
+                X64Register_xmm13, X64Register_xmm14, X64Register_xmm15
+            };
             
             // Store the return value
             if (function_type->Function.return_type->kind != TypeKind_Void) {
@@ -1249,12 +1270,17 @@ op_insn->op1 = src1;
                     X64_Operand dest = array_first(arguments)->src;
                     map_put(x64->allocated_virtual_registers, bc->dest.Register, dest);
                 } else {
-                    x64_allocate_specific_register(x64, X64Register_rax, bc->dest.Register);
-                    
                     X64_Operand dest = {};
                     dest.kind = x64_get_register_kind(bc->dest_type);
                     dest.is_allocated = true;
-                    dest.reg = X64Register_rax;
+                    if (return_type->kind == TypeKind_Basic &&
+                        is_bitflag_set(return_type->Basic.flags, BasicFlag_Floating)) {
+                        dest.reg = X64Register_xmm0;
+                    } else {
+                        dest.reg = X64Register_rax;
+                    }
+                    
+                    x64_allocate_specific_register(x64, dest.reg, bc->dest.Register);
                     map_put(x64->allocated_virtual_registers, bc->dest.Register, dest);
                 }
             }

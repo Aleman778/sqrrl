@@ -53,7 +53,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         
     } else {
 #if BUILD_DEBUG
-        filepath = string_lit("personal/first.sq");
+        filepath = string_lit("examples/raytracer/first.sq");
 #else 
         if (argc <= 1) {
             pln("Usage: sqrrl file.sq");

@@ -421,7 +421,7 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                 
                 bc_push_basic_block(bc, exit_label);
                 first = dest;
-                second = bc_signed_int_op(-1);
+                second = bc_signed_int_op(0);
                 result = bc_binary(bc, Bytecode_or, first, second, t_bool);
                 
             } else {

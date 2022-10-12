@@ -2,6 +2,16 @@
 
 #define pln(format, ...) print_format(format##"\n", ##__VA_ARGS__)
 
+
+#define PI_F32 3.1415926535897932385f
+#define INF_F32 100000000000000000000000000000000000.0f
+
+f32
+degrees_to_radians(f32 degrees) {
+    return degrees * PI_F32 / 180.0f;
+}
+
+
 #include "vecmath.sq"
 
 //#define PRINT_AST 1
@@ -25,25 +35,42 @@ ray_sky_color(ray r) {
     return color;
 }
 
-f32
-hit_sphere(v3 center, f32 radius, ray r) {
+struct Hit_Result {
+    v3 p;
+    v3 normal;
+    f32 t;
+}
+
+Hit_Result
+hit_sphere(v3 center, f32 radius, ray r, f32 t_min, f32 t_max) {
+    Hit_Result result;
+    result.t = -1.0f;
+    
     v3 oc = vec3_sub(r.origin, center);
-    f32 a = vec3_dot(r.direction, r.direction);
+    f32 a = vec3_length_squared(r.direction);
+    f32 half_b = vec3_dot(oc, r.direction);
+    f32 c = vec3_length_squared(oc) - radius*radius;
+    f32 discriminant = half_b*half_b - a*c;
     
-    f32 b = vec3_dot(oc, r.direction);
-    b = 2.0f*b;
-    
-    f32 c = vec3_dot(oc, oc);
-    c = c - radius*radius;
-    
-    f32 discriminant = b*b - 4.0f*a*c;
     f32 cmp = 0.0f;
     if (discriminant < cmp) {
-        return 0.0f-1.0f;
-    } else {
-        f32 sqrt_discriminant = sqrt(discriminant);
-        return (0.0f-b - sqrt_discriminant) / (2.0f*a);
+        return result;
     }
+    
+    f32 sqrt_discriminant = sqrt(discriminant);
+    f32 root = (-half_b - sqrt_discriminant) / a;
+    if (root < t_min || root >= t_max) {
+        root = (-half_b + sqrt_discriminant) / a;
+        if (root < t_min || root >= t_max) {
+            return result;
+        }
+    }
+    
+    result.t = root;
+    result.p = ray_at(r, root);
+    result.normal = vec3_sub(result.p, center);
+    result.normal = vec3_scale(result.normal, 1.0f/radius);
+    return result;
 }
 
 int
@@ -89,19 +116,17 @@ main() {
             r.direction = dir;
             
             // Compute the final color
+            f32 t_min = 0.0f;
+            f32 t_max = INF_F32;
+            
             v3 color;
             v3 sphere_pos = vec3(0.0f, 0.0f, -1.0f);
-            f32 t = hit_sphere(sphere_pos, 0.5f, r);
+            Hit_Result hit = hit_sphere(sphere_pos, 0.5f, r, t_min, t_max);
             
-            if (t > 0.0f) {
-                v3 normal = ray_at(r, t);
-                temp = vec3(0.0f, 0.0f, -1.0f);
-                normal = vec3_sub(normal, temp);
-                normal = vec3_normalize(normal);
-                
-                color.x = 0.5f*(normal.x + 1.0f);
-                color.y = 0.5f*(normal.y + 1.0f);
-                color.z = 0.5f*(normal.z + 1.0f);
+            if (hit.t > 0.0f) {
+                color.x = 0.5f*(hit.normal.x + 1.0f);
+                color.y = 0.5f*(hit.normal.y + 1.0f);
+                color.z = 0.5f*(hit.normal.z + 1.0f);
             } else {
                 color = ray_sky_color(r);
             }

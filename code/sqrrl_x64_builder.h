@@ -78,13 +78,28 @@ x64_allocate_virtual_register(X64_Builder* x64, u64 virtual_register, bool is_ve
     
     X64_Register_Node* node = &map_get(x64->interference_graph, virtual_register);
     for_array(x64->active_virtual_registers, other_vreg, other_index) {
+        
         X64_Register_Node* other_node = &map_get(x64->interference_graph, *other_vreg);
-        array_push(node->interference, other_node->virtual_register);
-        array_push(other_node->interference, node->virtual_register);
-        //pln("interference % -> %", 
-        //f_u32(node->virtual_register),
-        //f_u32(other_node->virtual_register));
+        if ((bool) other_node->is_vector_register == is_vector_register) {
+            array_push(node->interference, other_node->virtual_register);
+            array_push(other_node->interference, node->virtual_register);
+            //pln("interference % -> %", 
+            //f_u32(node->virtual_register),
+            //f_u32(other_node->virtual_register));
+        }
     }
+}
+
+inline void
+x64_flush_register(X64_Builder* x64, X64_Register physical_register) {
+    // TODO(Alexander): maybe we should pre allocate nodes for physical registers
+    u64 virtual_register = x64->next_free_virtual_register++;
+    x64_allocate_virtual_register(x64, virtual_register, 
+                                  register_is_vector(physical_register));
+    
+    X64_Register_Node* node = &map_get(x64->interference_graph, virtual_register);
+    node->physical_register = physical_register;
+    node->is_allocated = true;
 }
 
 inline u64
@@ -123,7 +138,6 @@ x64_allocate_specific_register(X64_Builder* x64, X64_Register physical_register,
     node->physical_register = physical_register;
     node->is_allocated = true;
     
-    array_push(x64->temp_registers, virtual_register);
     array_push(x64->active_virtual_registers, virtual_register);
 }
 

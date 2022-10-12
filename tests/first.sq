@@ -60,9 +60,22 @@ and_operator() {
 void
 @test_proc
 or_operator() {
-    bool x = false;
+    bool x = true;
     x = x || true;
     assert(x);
+    
+    x = false;
+    x = x || true;
+    assert(x);
+    
+    x = true;
+    x = x || false;
+    assert(x);
+    
+    x = false;
+    bool y = false;
+    x = x || y;
+    assert(!x);
 }
 
 void

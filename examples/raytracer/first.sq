@@ -41,15 +41,20 @@ struct Hit_Result {
     f32 t;
 }
 
+struct Sphere {
+    v3 p;
+    f32 radius;
+}
+
 Hit_Result
-hit_sphere(v3 center, f32 radius, ray r, f32 t_min, f32 t_max) {
+hit_sphere(Sphere sphere, ray r, f32 t_min, f32 t_max) {
     Hit_Result result;
     result.t = -1.0f;
     
-    v3 oc = vec3_sub(r.origin, center);
+    v3 oc = vec3_sub(r.origin, sphere.p);
     f32 a = vec3_length_squared(r.direction);
     f32 half_b = vec3_dot(oc, r.direction);
-    f32 c = vec3_length_squared(oc) - radius*radius;
+    f32 c = vec3_length_squared(oc) - sphere.radius*sphere.radius;
     f32 discriminant = half_b*half_b - a*c;
     
     f32 cmp = 0.0f;
@@ -59,6 +64,7 @@ hit_sphere(v3 center, f32 radius, ray r, f32 t_min, f32 t_max) {
     
     f32 sqrt_discriminant = sqrt(discriminant);
     f32 root = (-half_b - sqrt_discriminant) / a;
+    
     if (root < t_min || root >= t_max) {
         root = (-half_b + sqrt_discriminant) / a;
         if (root < t_min || root >= t_max) {
@@ -68,8 +74,8 @@ hit_sphere(v3 center, f32 radius, ray r, f32 t_min, f32 t_max) {
     
     result.t = root;
     result.p = ray_at(r, root);
-    result.normal = vec3_sub(result.p, center);
-    result.normal = vec3_scale(result.normal, 1.0f/radius);
+    result.normal = vec3_sub(result.p, sphere.p);
+    result.normal = vec3_scale(result.normal, 1.0f/sphere.radius);
     return result;
 }
 
@@ -98,6 +104,14 @@ main() {
     
     pln("P3\n% %\n255", image_width, image_height);
     
+    Sphere sphere1;
+    sphere1.p = vec3(0.0f, 0.0f, -1.0f);
+    sphere1.radius = 0.5f;
+    
+    Sphere sphere2;
+    sphere2.p = vec3(0.0f, -100.5f, -1.0f);
+    sphere2.radius = 100.0f;
+    
     for (int y = image_height-1; y >= 0; y -= 1) {
         for (int x = 0; x < image_width; x += 1) {
             // TODO(Alexander): bug (image_width) breaks
@@ -115,18 +129,30 @@ main() {
             r.origin = origin;
             r.direction = dir;
             
-            // Compute the final color
             f32 t_min = 0.0f;
             f32 t_max = INF_F32;
             
-            v3 color;
-            v3 sphere_pos = vec3(0.0f, 0.0f, -1.0f);
-            Hit_Result hit = hit_sphere(sphere_pos, 0.5f, r, t_min, t_max);
             
-            if (hit.t > 0.0f) {
-                color.x = 0.5f*(hit.normal.x + 1.0f);
-                color.y = 0.5f*(hit.normal.y + 1.0f);
-                color.z = 0.5f*(hit.normal.z + 1.0f);
+            Hit_Result found_hit;
+            found_hit.t = -1.0f;
+            
+            v3 color;
+            Hit_Result curr_hit = hit_sphere(sphere1, r, t_min, t_max);
+            if (curr_hit.t > 0.0f) {
+                t_max = curr_hit.t;
+                found_hit = curr_hit;
+            }
+            
+            curr_hit = hit_sphere(sphere2, r, t_min, t_max);
+            if (curr_hit.t > 0.0f) {
+                t_max = curr_hit.t;
+                found_hit = curr_hit;
+            }
+            
+            if (found_hit.t > 0.0f) {
+                color.x = 0.5f*(found_hit.normal.x + 1.0f);
+                color.y = 0.5f*(found_hit.normal.y + 1.0f);
+                color.z = 0.5f*(found_hit.normal.z + 1.0f);
             } else {
                 color = ray_sky_color(r);
             }

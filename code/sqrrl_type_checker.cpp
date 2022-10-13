@@ -1464,6 +1464,23 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
         
         map_put(tcx->globals, ident, type);
     }
+    
+    {
+        // Intrinsic syntax:  random_f32(
+        // Assets that expr is true, used as test case for 
+        Type* type = arena_push_struct(tcx->type_arena, Type);
+        type->kind = TypeKind_Function;
+        type->Function.is_variadic = false;
+        
+        string_id ident = vars_save_cstring("random_f32");
+        type->Function.block = 0;
+        type->Function.interp_intrinsic = 0;
+        type->Function.intrinsic = &random_f32;
+        type->Function.ident = ident;
+        type->Function.return_type = t_f32;
+        
+        map_put(tcx->globals, ident, type);
+    }
 }
 
 s32

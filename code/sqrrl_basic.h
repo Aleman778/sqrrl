@@ -127,6 +127,11 @@ intrinsic_assert(int expr) {
 #define assert_enum(T, v) assert((v) > 0 && (v) < T##_Count && "enum value out of range")
 #define assert_power_of_two(x) assert((((x) & ((x) - 1)) == 0) && "x is not power of two")
 
+f32
+random_f32() {
+    return (f32) rand() / (RAND_MAX + 1.0f);
+}
+
 inline umm
 cstring_count(cstring str) {
     return (umm) strlen(str);

@@ -381,7 +381,7 @@ string_builder_push(String_Builder* sb,
 void
 string_builder_push(String_Builder* sb, Bc_Register_Mapper* mapper, Bc_Instruction* insn) {
     if (insn->opcode == Bytecode_label) {
-        string_builder_push(sb, "  ");
+        string_builder_push(sb, "\n  ");
         string_builder_push(sb, insn->dest.Label);
         string_builder_push(sb, ":");
     } else {

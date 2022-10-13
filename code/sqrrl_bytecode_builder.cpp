@@ -441,10 +441,14 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                     if (type->kind == TypeKind_Basic && 
                         is_bitflag_set(type->Basic.flags, BasicFlag_Floating)) {
                         switch (binary_op) {
-                            case BinaryOp_Add: binary_opcode = Bytecode_fadd; break;
-                            case BinaryOp_Subtract: binary_opcode = Bytecode_fsub; break;
-                            case BinaryOp_Multiply: binary_opcode = Bytecode_fmul; break;
-                            case BinaryOp_Divide: binary_opcode = Bytecode_fdiv; break;
+                            case BinaryOp_Add:
+                            case BinaryOp_Add_Assign: binary_opcode = Bytecode_fadd; break;
+                            case BinaryOp_Subtract:
+                            case BinaryOp_Subtract_Assign: binary_opcode = Bytecode_fsub; break;
+                            case BinaryOp_Multiply:
+                            case BinaryOp_Multiply_Assign: binary_opcode = Bytecode_fmul; break;
+                            case BinaryOp_Divide:
+                            case BinaryOp_Divide_Assign: binary_opcode = Bytecode_fdiv; break;
                         }
                     }
                     

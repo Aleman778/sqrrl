@@ -11,6 +11,11 @@ degrees_to_radians(f32 degrees) {
     return degrees * PI_F32 / 180.0f;
 }
 
+f32
+random_f32_between(f32 minimum, f32 maximum) {
+    assert(maximum >= minimum);
+    return minimum + (maximum-minimum)*random_f32();
+}
 
 #include "vecmath.sq"
 
@@ -86,6 +91,7 @@ main() {
     f32 aspect_ratio = 16.0f / 9.0f;
     int image_width = 400;
     int image_height = (int) (image_width / aspect_ratio);
+    int samples_per_pixel = 100;
     
     f32 viewport_height = 2.0f;
     f32 viewport_width = aspect_ratio * viewport_height;
@@ -116,46 +122,53 @@ main() {
         for (int x = 0; x < image_width; x += 1) {
             // TODO(Alexander): bug (image_width) breaks
             // TODO(Alexander): bug (image_width - 1) breaks
-            f32 u = (f32) x / (f32) image_width;
-            f32 v = (f32) y / (f32) image_height;
             
-            temp = vec3_scale(horizontal, u);
-            v3 dir = vec3_add(lower_left_corner, temp);
-            temp = vec3_scale(vertical, v);
-            dir = vec3_add(dir, temp);
-            dir = vec3_sub(dir, origin);
-            
-            ray r;
-            r.origin = origin;
-            r.direction = dir;
-            
-            f32 t_min = 0.0f;
-            f32 t_max = INF_F32;
-            
-            
-            Hit_Result found_hit;
-            found_hit.t = -1.0f;
-            
-            v3 color;
-            Hit_Result curr_hit = hit_sphere(sphere1, r, t_min, t_max);
-            if (curr_hit.t > 0.0f) {
-                t_max = curr_hit.t;
-                found_hit = curr_hit;
+            v3 color = vec3(0.0f, 0.0f, 0.0f);
+            for (int sample_index = 0;
+                 sample_index < samples_per_pixel;
+                 sample_index += 1) {
+                f32 u = ((f32) x + random_f32()) / (f32) image_width;
+                f32 v = ((f32) y + random_f32()) / (f32) image_height;
+                
+                temp = vec3_scale(horizontal, u);
+                v3 dir = vec3_add(lower_left_corner, temp);
+                temp = vec3_scale(vertical, v);
+                dir = vec3_add(dir, temp);
+                dir = vec3_sub(dir, origin);
+                
+                ray r;
+                r.origin = origin;
+                r.direction = dir;
+                
+                f32 t_min = 0.0f;
+                f32 t_max = INF_F32;
+                
+                
+                Hit_Result found_hit;
+                found_hit.t = -1.0f;
+                
+                Hit_Result curr_hit = hit_sphere(sphere1, r, t_min, t_max);
+                if (curr_hit.t > 0.0f) {
+                    t_max = curr_hit.t;
+                    found_hit = curr_hit;
+                }
+                
+                curr_hit = hit_sphere(sphere2, r, t_min, t_max);
+                if (curr_hit.t > 0.0f) {
+                    t_max = curr_hit.t;
+                    found_hit = curr_hit;
+                }
+                
+                if (found_hit.t > 0.0f) {
+                    color.x += 0.5f*(found_hit.normal.x + 1.0f);
+                    color.y += 0.5f*(found_hit.normal.y + 1.0f);
+                    color.z += 0.5f*(found_hit.normal.z + 1.0f);
+                } else {
+                    color = vec3_add(color, ray_sky_color(r));
+                }
             }
             
-            curr_hit = hit_sphere(sphere2, r, t_min, t_max);
-            if (curr_hit.t > 0.0f) {
-                t_max = curr_hit.t;
-                found_hit = curr_hit;
-            }
-            
-            if (found_hit.t > 0.0f) {
-                color.x = 0.5f*(found_hit.normal.x + 1.0f);
-                color.y = 0.5f*(found_hit.normal.y + 1.0f);
-                color.z = 0.5f*(found_hit.normal.z + 1.0f);
-            } else {
-                color = ray_sky_color(r);
-            }
+            color = vec3_scale(color, 1.0f/(f32) samples_per_pixel);
             
             // Write the color
             int ir = (int) (254.999f * color.x);

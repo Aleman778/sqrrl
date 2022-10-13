@@ -1086,9 +1086,6 @@ op_insn->op1 = src1;
             assert(fixed_array_count(int_argument_registers) == 
                    fixed_array_count(vector_argument_registers));
             
-            // Allocate registers in 
-            s32 stack_offset = x64->stack_frame_size - (s32) (array_count(bc->src1.Argument_List) - 1)*8;
-            
             array(X64_Argument)* arguments = 0;
             
             // Return type
@@ -1105,6 +1102,9 @@ op_insn->op1 = src1;
                 use_first_reg_as_return = true;
                 array_push(arguments, return_arg);
             }
+            
+            // Allocate registers on stack where rcx, rdx, r8, r9 setup by callee
+            s32 stack_offset = 4*8;
             
             for (int arg_index = 0; 
                  arg_index < array_count(bc->src1.Argument_List);
@@ -1177,9 +1177,9 @@ op_insn->op1 = src1;
                 }
             }
             
-            for (int arg_index = (int) array_count(arguments) - 1;
-                 arg_index >= 4; 
-                 --arg_index) {
+            for (int arg_index = (int) 4;
+                 arg_index < array_count(arguments);
+                 ++arg_index) {
                 
                 X64_Argument* arg = arguments + arg_index;
                 
@@ -1194,15 +1194,10 @@ op_insn->op1 = src1;
                     size = 8;
                 }
                 
-                // TODO(Alexander): is this correct?
-                s32 align = (s32) align_forward(size, 8);
-                stack_offset = (s32) align_forward(stack_offset, align);
-                
                 X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
-                insn->op0 = x64_build_stack_offset(x64, arg->type, -stack_offset, X64Register_rbp);
+                insn->op0 = x64_build_stack_offset(x64, arg->type, stack_offset, X64Register_rsp);
                 insn->op1 = arg->src;
-                
-                stack_offset += size;
+                stack_offset += 8;
             }
             
             if (function_type->Function.intrinsic) {

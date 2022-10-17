@@ -24,8 +24,8 @@ X64_OPCODE(divsd, DIVSD) \
 X64_OPCODE(xorps, XORPS) \
 X64_OPCODE(xorpd, XORPD) \
 X64_OPCODE(cwd, CWD) \
-X64_OPCODE_ALIAS(cwd, cwq, CWQ) \
-X64_OPCODE_ALIAS(cwd, cwo, CWO) \
+X64_OPCODE(cdq, CDQ) \
+X64_OPCODE(cqo, CQO) \
 X64_OPCODE(lea, LEA) \
 X64_OPCODE(mov, MOV) \
 X64_OPCODE(movd, MOVD) \
@@ -507,7 +507,7 @@ x64_get_register_kind(Bc_Type type) {
 
 X64_Operand_Kind
 x64_get_memory_kind(Bc_Type type) {
-    if (type->kind != TypeKind_Basic) {
+    if (type->kind != TypeKind_Basic) { 
         return X64Operand_m64;
     }
     

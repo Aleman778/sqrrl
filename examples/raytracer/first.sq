@@ -2,7 +2,6 @@
 
 #define pln(format, ...) print_format(format##"\n", ##__VA_ARGS__)
 
-
 #define PI_F32 3.1415926535897932385f
 #define INF_F32 100000000000000000000000000000000000.0f
 
@@ -22,7 +21,7 @@ random_f32_between(f32 minimum, f32 maximum) {
 //#define PRINT_AST 1
 //#define PRINT_BYTECODE 1
 //#define PRINT_ASM_VREG 1
-//#define PRINT_ASM 1
+#define PRINT_ASM 1
 
 v3
 ray_sky_color(ray r) {
@@ -84,6 +83,39 @@ hit_sphere(Sphere sphere, ray r, f32 t_min, f32 t_max) {
     return result;
 }
 
+v3
+ray_color(ray r, [2]Sphere spheres, int depth) {
+    if (depth <= 0) {
+        return vec3(0.0f, 0.0f, 0.0f);
+    }
+    
+    f32 t_min = 0.0f;
+    f32 t_max = INF_F32;
+    
+    Hit_Result found_hit;
+    found_hit.t = -1.0f;
+    
+    for (int i = 0; i < spheres.count; i += 1) {
+        Hit_Result hit = hit_sphere(spheres[i], r, t_min, t_max);
+        if (hit.t > 0.0f) {
+            t_max = hit.t;
+            found_hit = hit;
+        }
+    }
+    
+    v3 color;
+    if (found_hit.t > 0.0f) {
+        color.x += 0.5f*(found_hit.normal.x + 1.0f);
+        color.y += 0.5f*(found_hit.normal.y + 1.0f);
+        color.z += 0.5f*(found_hit.normal.z + 1.0f);
+    } else {
+        color = vec3_add(color, ray_sky_color(r));
+    }
+    
+    return color;
+}
+
+
 int
 main() {
     //debug_break();
@@ -92,6 +124,7 @@ main() {
     int image_width = 400;
     int image_height = (int) (image_width / aspect_ratio);
     int samples_per_pixel = 100;
+    int max_ray_depth = 50;
     
     f32 viewport_height = 2.0f;
     f32 viewport_width = aspect_ratio * viewport_height;
@@ -110,13 +143,12 @@ main() {
     
     pln("P3\n% %\n255", image_width, image_height);
     
-    Sphere sphere1;
-    sphere1.p = vec3(0.0f, 0.0f, -1.0f);
-    sphere1.radius = 0.5f;
+    [2]Sphere spheres;
+    spheres[0].p = vec3(0.0f, 0.0f, -1.0f);
+    spheres[0].radius = 0.5f;
     
-    Sphere sphere2;
-    sphere2.p = vec3(0.0f, -100.5f, -1.0f);
-    sphere2.radius = 100.0f;
+    spheres[1].p = vec3(0.0f, -100.5f, -1.0f);
+    spheres[1].radius = 100.0f;
     
     for (int y = image_height-1; y >= 0; y -= 1) {
         for (int x = 0; x < image_width; x += 1) {
@@ -140,32 +172,7 @@ main() {
                 r.origin = origin;
                 r.direction = dir;
                 
-                f32 t_min = 0.0f;
-                f32 t_max = INF_F32;
-                
-                
-                Hit_Result found_hit;
-                found_hit.t = -1.0f;
-                
-                Hit_Result curr_hit = hit_sphere(sphere1, r, t_min, t_max);
-                if (curr_hit.t > 0.0f) {
-                    t_max = curr_hit.t;
-                    found_hit = curr_hit;
-                }
-                
-                curr_hit = hit_sphere(sphere2, r, t_min, t_max);
-                if (curr_hit.t > 0.0f) {
-                    t_max = curr_hit.t;
-                    found_hit = curr_hit;
-                }
-                
-                if (found_hit.t > 0.0f) {
-                    color.x += 0.5f*(found_hit.normal.x + 1.0f);
-                    color.y += 0.5f*(found_hit.normal.y + 1.0f);
-                    color.z += 0.5f*(found_hit.normal.z + 1.0f);
-                } else {
-                    color = vec3_add(color, ray_sky_color(r));
-                }
+                ray_color(r, spheres, max_ray_depth);
             }
             
             color = vec3_scale(color, 1.0f/(f32) samples_per_pixel);

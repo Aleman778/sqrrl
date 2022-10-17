@@ -236,6 +236,7 @@ while_loop() {
     assert(x == 25);
 }
 
+#if 0
 struct v2s {
     s32 x;
     s32 y;
@@ -275,3 +276,4 @@ no_modify_struct_v2s_via_call_as_copy() {
     v2s_scale(&v, 10);
     assert(v.x + v.y == -7);
 }
+#endif

@@ -31,7 +31,7 @@ preprocess_parse_and_eval_constant_expression(Preprocessor* preprocessor, Tokeni
     type_infer_expression(&tcx, expr, t_s64, true);
     
     // TODO(Alexander): interpreter needs to be able to access macro definitions
-
+    
     Interp interp = {};
     interp.set_undeclared_to_zero = preprocessor->is_system_header;
     Interp_Value result = interp_expression(&interp, expr);
@@ -1001,7 +1001,7 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath, int 
                 current_group = {};
                 current_group.offset = sb->curr_used;
                 current_group.file_index = file_index;
-                // TODO(Alexander): deosn't have to be C compat, but for now we assume that
+                // TODO(Alexander): doesn't have to be C compat, but for now we assume that
                 current_group.c_compatibility_mode = preprocessor->is_system_header;
             }
             

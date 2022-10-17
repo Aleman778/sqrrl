@@ -13915,6 +13915,38 @@
         }
       ]
     },
+    "CDQ": {
+      "summary": "Convert Doubleword to Quadword",
+      "forms": [
+        {
+          "operands": [],
+          "encodings": [
+            {
+              "use_prefix": false,
+              "prefix": "66",
+              "primary_opcode": "99"
+            }
+          ]
+        }
+      ]
+    },
+    "CQO": {
+      "summary": "Convert Quadword to Octword",
+      "forms": [
+        {
+          "operands": [],
+          "encodings": [
+            {
+              "use_rex_prefix": true,
+              "use_rex_w": true,
+              "use_prefix": false,
+              "prefix": "66",
+              "primary_opcode": "99"
+            }
+          ]
+        }
+      ]
+    },
     "CWDE": {
       "summary": "Convert Word to Doubleword",
       "forms": [

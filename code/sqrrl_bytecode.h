@@ -11,6 +11,7 @@ BC(store) \
 BC(memset) \
 BC(memcpy) \
 BC(field) \
+BC(index) \
 BC(neg) \
 BC(not) \
 BC(add) \

@@ -691,6 +691,25 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             }
         } break;
         
+        case Bytecode_index: {
+            Type* type = bc->dest_type;
+            X64_Operand dest = x64_build_operand(x64, bc->dest, bc->dest_type);
+            
+            // TODO(Alexander): using SIB byte we can probably improve this!
+            X64_Operand index = x64_build_operand(x64, bc->src1, t_s32);
+            if (operand_is_immediate(index.kind)) {
+                assert(bc->src0.kind == BcOperand_Stack);
+                
+                X64_Operand result = x64_build_operand(x64, bc->src0, bc->dest_type);
+                result.disp64 -= type->size * index.imm64;
+                map_put(x64->allocated_virtual_registers, bc->dest.Register, result);
+            } else {
+                X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_imul);
+                insn->op0 = index;
+                insn->op1 = x64_build_immediate(x64, type->size, Basic_s32);
+            }
+        } break;
+        
         case Bytecode_neg: {
             Type* type = bc->dest_type;
             if (type->kind == TypeKind_Basic &&
@@ -828,8 +847,13 @@ op_insn->op1 = src1;
             // TODO(Alexander): are we sure this will become a register?
             
             // Convert RAX into RDX:RAX
-            // TODO(Alexander): check type to pick one of cwd, cwq, cwo
-            x64_push_instruction(x64, X64Opcode_cwd);
+            // TODO(Alexander): check type to pick one of cwd, cdq, cqo
+            switch (bc->dest_type->size) {
+                case 8: x64_push_instruction(x64, X64Opcode_cqo); break;
+                case 4: x64_push_instruction(x64, X64Opcode_cdq); break;
+                case 2: x64_push_instruction(x64, X64Opcode_cwd); break;
+                default: assert(0 && "invalid type for div or mod")
+            }
             
             X64_Operand divisor = x64_build_operand(x64, bc->src1, bc->dest_type);
             if (operand_is_immediate(divisor.kind)) {
@@ -1203,7 +1227,9 @@ op_insn->op1 = src1;
             if (function_type->Function.intrinsic) {
                 
                 if (function_type->Function.intrinsic == &interp_intrinsic_debug_break) {
-                    x64_push_instruction(x64, X64Opcode_int3);
+                    if (x64->is_debugger_present) {
+                        x64_push_instruction(x64, X64Opcode_int3);
+                    }
                     
                 } else {
                     // TODO(Alexander): r64 hardcoded 
@@ -1550,7 +1576,6 @@ x64_build_procedure(X64_Builder* x64, Bytecode* bytecode, Bc_Basic_Block* first_
         insn->op0 = x64_build_stack_offset(x64, t_s64, offset); // TODO(Alexander): arch dep!
         insn->op1 = x64_build_physical_register(x64, X64Register_rcx, X64Operand_r64);
     }
-    
     
     Bc_Basic_Block* curr_block = first_block;
     u32 curr_bc_instruction = 0;

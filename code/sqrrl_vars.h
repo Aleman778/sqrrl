@@ -101,6 +101,9 @@ VAR(__fastcall) \
 VAR(pack)     \
 VAR(push)     \
 VAR(pop)      \
+VAR(data)     \
+VAR(count)    \
+VAR(capacity) \
 
 
 typedef u32 string_id;

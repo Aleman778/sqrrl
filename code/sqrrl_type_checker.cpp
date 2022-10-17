@@ -304,7 +304,6 @@ constant_folding_of_expressions(Ast* ast) {
         } break;
         
         case Ast_Binary_Expr: {
-            
             if (is_binary_assign(ast->Binary_Expr.op)) {
                 // NOTE(Alexander): we cannot constant fold lhs of an assignemnt operator
                 constant_folding_of_expressions(ast->Binary_Expr.second);
@@ -362,6 +361,12 @@ constant_folding_of_expressions(Ast* ast) {
                 }
             }
         } break;
+        
+        case Ast_Field_Expr: {
+            if (ast->Field_Expr.var->kind == Ast_Ident) {
+                pln("%.%", f_var(ast_unwrap_ident(ast->Field_Expr.var)), f_var(ast_unwrap_ident(ast->Field_Expr.field)));
+            }
+        } break;
     }
     
     if (result.type != Value_void) {
@@ -395,11 +400,15 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             }
             
             result = normalize_basic_types(result);
-            if (result && result->kind == TypeKind_Basic &&
-                is_bitflag_set(result->Basic.flags, BasicFlag_Floating | BasicFlag_Integer)) {
-                
-                expr->Value.value = value_cast(expr->Value.value, result->Basic.kind);
-            }
+            // TODO(Alexander): value casting isn't save to do in type infer because we might 
+            // now know exactly which type we are dealing with at the moment, so this can 
+            // result in problematic casting where data is lost.
+            
+            //if (result && result->kind == TypeKind_Basic &&
+            //is_bitflag_set(result->Basic.flags, BasicFlag_Floating | BasicFlag_Integer)) {
+            //
+            //expr->Value.value = value_cast(expr->Value.value, result->Basic.kind);
+            //}
             type_check_value(tcx, result, expr->Value.value);
             expr->type = result;
         } break;
@@ -633,24 +642,66 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             if (type->kind == TypeKind_Struct) {
                 smm index = map_get_index(type->Struct.ident_to_index, field_ident);
                 if (index >= 0) {
-                    Type* field_type = type->Struct.types[index];
-                    expr->type = field_type;
-                    result = expr->type;
-                } else {
-                    if (report_error) {
-                        type_error(tcx, string_format("type `%` doesn't have field `%`", f_type(type), f_var(field_ident)));
+                    result = type->Struct.types[index];
+                    if (result) {
+                        
                     }
                 }
+            } else if (type->kind == TypeKind_Array) {
+                // NOTE(Alexander): Array are actually structs that has 2-3 fields, 
+                // - data: which is just a raw pointer to the first element
+                // - count: the number of elements 
+                // - capacity (only applicable for growable arrays): the number of allocated elements
+                
+                switch (field_ident) {
+                    case Sym_data: {
+                        result = arena_push_struct(tcx->type_arena, Type);
+                        result->kind = TypeKind_Pointer;
+                        result->Pointer = type->Array.type; 
+                    } break;
+                    
+                    case Sym_count: result = t_smm; break;
+                    case Sym_capacity: {
+                        if (type->Array.is_dynamic) {
+                            result = t_smm;
+                        }
+                    } break;
+                }
+                
             } else {
                 if (report_error) {
                     type_error(tcx, string_format("type `%` doesn't have any fields", f_type(type)));
                 }
+                
+                break;
             }
+            
+            if (result) {
+                expr->type = result;
+                
+            } else {
+                type_error(tcx, string_format("type `%` doesn't have field `%`", f_type(type), f_var(field_ident)));
+            }
+            
+            
             
         } break;
         
         case Ast_Array_Expr: {
-            unimplemented;
+            
+            if (parent_type && parent_type->kind == TypeKind_Array) {
+                Type* type = parent_type->Array.type;
+                
+                result = parent_type;
+                for_compound(expr->Array_Expr.elements, it) {
+                    if (!type_infer_expression(tcx, it, type, report_error)) {
+                        result = 0;
+                        break;
+                    }
+                }
+            } else {
+                type_error(tcx, string_format("cannot assign array literal to non-array type"));
+            }
         } break;
         
         case Ast_Struct_Expr: {
@@ -862,29 +913,46 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         } break;
         
         case Ast_Array_Type: {
+            // Array capacity
+            smm capacity = 0;
+            if (ast->Array_Type.shape) {
+                Value capacity_value = constant_folding_of_expressions(ast->Array_Type.shape);
+                
+                if (is_integer(capacity_value)) {
+                    capacity = value_to_smm(capacity_value);
+                } else {
+                    if (report_error) {
+                        type_error(tcx, string_lit("array shape should be an integer"));
+                    }
+                    
+                    break;
+                }
+            }
+            
             Type* elem_type = create_type_from_ast(tcx, ast->Array_Type.elem_type, report_error);
-            result = arena_push_struct(tcx->type_arena, Type);
-            result->kind = TypeKind_Array;
-            result->Array.type = elem_type;
-            // TODO(Alexander): what is the shape, expression, I assume right now it's an integer?
-            
-            
-            // TODO(Alexander): constant evaluation
-            Value capacity = {};
-            if (ast->Array_Type.shape && ast->Array_Type.shape->kind == Ast_Value) {
-                capacity = ast->Array_Type.shape->Value.value;
+            if (elem_type) {
+                result = arena_push_struct(tcx->type_arena, Type);
+                result->kind = TypeKind_Array;
+                result->Array.type = elem_type;
+                result->Array.capacity = capacity;
+                result->Array.is_dynamic = ast->Array_Type.is_dynamic;
+                if (!result->Array.is_dynamic && result->Array.capacity > 0) {
+                    // NOTE(Alexander): fixed size arrays with known size should be allocated directly
+                    // TODO(Alexander): arch dep
+                    result->size = sizeof(void*);
+                    result->align = alignof(void*);
+                    //result->size = elem_type->size * (s32) result->Array.capacity;
+                    //result->align = elem_type->align;
+                } else {
+                    result->size = sizeof(void*) + sizeof(smm);
+                    // TODO(Alexander): for dynamic arrays we probably just want a pointer to this struct
+                    //                  to avoid dangling pointers from reallocations!
+                    if (result->Array.is_dynamic) {
+                        result->size += sizeof(smm);
+                    }
+                    result->align = alignof(void*);
+                }
             }
-            
-            result->Array.capacity = 0;
-            
-            // TODO(Alexander): proper type checking
-            if (is_integer(capacity)) {
-                result->Array.capacity = value_to_smm(capacity);
-            } else if (!is_void(capacity)) {
-                type_error(tcx, string_lit("expected integer value"));
-            }
-            result->size = sizeof(smm)*2;
-            result->align = alignof(smm);
         } break;
         
         case Ast_Pointer_Type: {
@@ -1194,6 +1262,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         case Ast_For_Stmt: {
             Type* init = type_infer_statement(tcx, stmt->For_Stmt.init, report_error);
             Type* cond = type_infer_expression(tcx, stmt->For_Stmt.cond, t_bool, report_error);
+            constant_folding_of_expressions(stmt->For_Stmt.cond);
             Type* update = type_infer_expression(tcx, stmt->For_Stmt.update, 0, report_error);
             Type* block = type_infer_statement(tcx, stmt->For_Stmt.block, report_error);
             

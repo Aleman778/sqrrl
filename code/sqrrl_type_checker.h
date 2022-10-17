@@ -26,6 +26,8 @@ struct Type_Context {
 
 bool
 type_equals(Type* a, Type* b) {
+    assert(a && b);
+    
     if (a->kind != b->kind) {
         return false;
     }

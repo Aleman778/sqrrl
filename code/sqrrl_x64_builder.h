@@ -42,6 +42,8 @@ struct X64_Builder {
     Bytecode* bytecode;
     
     Interference_Graph* interference_graph;
+    
+    b32 is_debugger_present;
 };
 
 struct X64_Argument {

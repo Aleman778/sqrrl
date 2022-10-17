@@ -293,8 +293,8 @@ interp_expression(Interp* interp, Ast* ast) {
                     
                     smm array_index = value_to_smm(index.value);
                     if (array_index < array_value.count) {
-                        // TODO(Alexander): do we need null checking here?
                         Type* elem_type = array.type.Array.type;
+                        
                         smm elem_size = elem_type->size;
                         assert(elem_size > 0 && "not valid array element size");
                         

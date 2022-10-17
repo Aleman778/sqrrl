@@ -22,7 +22,7 @@ typedef int asm_main(void);
 
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
-                    void (*asm_make_executable)(void*, umm)) {
+                    void (*asm_make_executable)(void*, umm), bool is_debugger_present) {
     
     {
         // Put dummy file as index 0
@@ -43,7 +43,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             if (argc > 2) {
                 filepath = string_lit(argv[2]);
             } else {
-                filepath = string_lit("tests/first.sq");
+                filepath = string_lit("../tests/first.sq");
             }
             return run_compiler_tests(filepath, asm_buffer, asm_size, asm_make_executable);
         }
@@ -53,8 +53,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         
     } else {
 #if BUILD_DEBUG
-        filepath = string_lit("examples/raytracer/first.sq");
-#else 
+        // TODO(Alexander): temporary files for testing
+        filepath = string_lit("../personal/first.sq");
+        //filepath = string_lit("../examples/raytracer/first.sq");
+#else
         if (argc <= 1) {
             pln("Usage: sqrrl file.sq");
             return 0;
@@ -233,6 +235,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         x64_builder.bc_register_live_lengths = bytecode_builder.live_lengths;
         x64_builder.bytecode = &bytecode_builder.code;
         x64_builder.next_free_virtual_register = bytecode_builder.next_register;
+        x64_builder.is_debugger_present = is_debugger_present;
         
         // Make sure to compile entry point function first
         Bc_Label entry_point_label = { Sym_main, 0 };
@@ -267,7 +270,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         // Print interference graph before register allocation
         string interference_graph = x64_interference_graph_to_graphviz_dot(&x64_builder);
         //pln("\nGraphviz interference graph (before):\n%", f_string(interference_graph));
-        DEBUG_write_entire_file("build/rig_before.dot", 
+        DEBUG_write_entire_file("rig_before.dot", 
                                 interference_graph.data, 
                                 (u32) interference_graph.count);
         
@@ -287,7 +290,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         // Print interference graph before register allocation
         interference_graph = x64_interference_graph_to_graphviz_dot(&x64_builder);
         //pln("\nGraphviz interference graph (after):\n%", f_string(interference_graph));
-        DEBUG_write_entire_file("build/rig_after.dot", 
+        DEBUG_write_entire_file("rig_after.dot", 
                                 interference_graph.data, 
                                 (u32) interference_graph.count);
         

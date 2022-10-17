@@ -537,17 +537,57 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                 type = type->Pointer;
             }
             
-            assert(type->kind == TypeKind_Struct);
-            Type_Struct* t_struct = &type->Struct;
-            string_id ident = ast_unwrap_ident(node->Field_Expr.field);
-            Struct_Field_Info field = get_field_info(t_struct, ident);
+            string_id field_ident = ast_unwrap_ident(node->Field_Expr.field);
+            Type* field_type = 0;
+            smm field_offset = 0;
             
+            // TODO(Alexander): maybe we can turn arrays and strings into structs somehow?
+            if (type->kind == TypeKind_Struct) {
+                Type_Struct* t_struct = &type->Struct;
+                Struct_Field_Info field = get_field_info(t_struct, field_ident);
+                field_type = field.type;
+                field_offset = field.offset;
+                
+            } else if (type->kind == TypeKind_Array) {
+                switch (field_ident) {
+                    case Sym_data: {
+                        field_type = type->Array.type;
+                        field_offset = 0;
+                    } break;
+                    
+                    case Sym_count: {
+                        // TODO(Alexander): arch dep! this is hard coded for now
+                        field_type = t_s64;
+                        field_offset = t_s64->size;
+                    } break;
+                    
+                    case Sym_capacity: {
+                        assert(type->Array.is_dynamic);
+                        field_type = t_s64;
+                        field_offset = t_s64->size*2;
+                    } break;
+                }
+            } else if (type == t_string) {
+                switch (field_ident) {
+                    case Sym_data: {
+                        field_type = type->Array.type;
+                        field_offset = 0;
+                    } break;
+                    
+                    case Sym_count: {
+                        field_type = t_s64;
+                        field_offset = t_s64->size;
+                    } break;
+                }
+            }
+            
+            assert(field_type && "invalid field expression");
             Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_field);
             insn->dest = create_unique_bc_register(bc);
             insn->dest.kind = BcOperand_Memory;
-            insn->dest_type = field.type;
+            insn->dest_type = field_type;
             insn->src0 = var;
-            insn->src1 = bc_signed_int_op(field.offset);
+            insn->src1 = bc_signed_int_op(field_offset);
             return insn->dest;
         } break;
         
@@ -563,11 +603,50 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
         } break;
         
         case Ast_Index_Expr: {
-            unimplemented;
+            Type* type = node->type;
+            assert(type);
+            
+            if (type->kind == TypeKind_Array) {
+                type = type->Array.type;
+                assert(type);
+            } else if (type->kind == TypeKind_Pointer) {
+                type = type->Pointer;
+                assert(type);
+            } else if (type == t_string) {
+                type = t_u8;
+            }
+            
+            Bc_Operand arr = bc_build_expression(bc, node->Index_Expr.array);
+            Bc_Operand index = bc_build_expression(bc, node->Index_Expr.index);
+            
+            assert(type && "invalid field expression");
+            Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_index);
+            insn->dest = create_unique_bc_register(bc);
+            insn->dest.kind = BcOperand_Memory;
+            insn->dest_type = type;
+            insn->src0 = arr;
+            insn->src1 = index;
+            
+            result = insn->dest;
         } break;
         
         case Ast_Array_Expr: {
+            //Type* type = node->type;
+            //assert(type->kind == TypeKind_Array);
+            
+            //Type* elem_type = type->Array.type;
             unimplemented;
+            //Bc_Decl bc_decl = {};
+            //bc_decl.kind = BcDecl_Data;
+            //bc_decl.Data.type = type;
+            //bc_decl.Data.value.type = Value_array;
+            
+            //array(Bc_Operand)* elements = 0;
+            
+            //for_compound(expr->Array_Expr.elements, it) {
+            
+            //bc_build_expression()
+            //}
         } break;
         
         case Ast_Struct_Expr: {
@@ -677,7 +756,10 @@ bc_build_statement(Bc_Builder* bc, Ast* node, bool last_statement=false) {
             local.type = type;
             map_put(bc->local_variable_mapper, ident, local);
             
-            if (!is_ast_none(node->Assign_Stmt.expr)) {
+            if (is_ast_none(node->Assign_Stmt.expr)) {
+                
+                
+            } else {
                 Bc_Type source_type = bc_build_type(bc, node->Assign_Stmt.expr->type);
                 Bc_Operand source = bc_build_expression(bc, node->Assign_Stmt.expr);
                 source = bc_build_type_cast(bc, &source, source_type, type);

@@ -118,6 +118,7 @@ AST(Named_Type,        "named", Ast*)           \
 AST(Array_Type,        "array", struct {        \
 Ast* elem_type;                                 \
 Ast* shape;                                     \
+b32 is_dynamic;                                \
 })                                              \
 AST(Pointer_Type,      "pointer", Ast*)         \
 AST(Tuple_Type,        "tuple", struct {        \

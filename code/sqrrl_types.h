@@ -145,7 +145,8 @@ struct Type {
         
         struct {
             Type* type;
-            smm capacity; // for dynamic array, use 0
+            smm capacity;
+            b32 is_dynamic;
         } Array;
         
         Type_Struct Struct;
@@ -196,12 +197,12 @@ string_builder_push(String_Builder* sb, Type* type) {
         } break;
         
         case TypeKind_Array: {
-            string_builder_push(sb, type->Array.type);
-            if (type->Array.capacity == 0) {
+            if (type->Array.capacity > 0) {
                 string_builder_push_format(sb, "[%]", f_smm(type->Array.capacity));
             } else {
                 string_builder_push(sb, "[..]");
             }
+            string_builder_push(sb, type->Array.type);
         } break;
         
         case TypeKind_Pointer: {
@@ -247,6 +248,12 @@ string_builder_push(String_Builder* sb, Type* type) {
             string_builder_push(sb, "invalid");
         } break;
     }
+}
+
+inline Type*
+type_deref(Type* type) {
+    assert(type && type->kind == TypeKind_Pointer);
+    return type->Pointer;
 }
 
 void

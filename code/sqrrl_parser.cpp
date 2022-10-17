@@ -669,6 +669,7 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
 
 inline internal Ast*
 parse_assign_statement(Parser* parser, Ast* type) {
+    
     Ast* result = push_ast_node(parser);
     result->kind = Ast_Assign_Stmt;
     result->Assign_Stmt.type = type;
@@ -823,6 +824,9 @@ parse_statement(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
         }
     } else if (token.type == Token_Open_Brace) {
         result = parse_block_statement(parser, &token);
+    } if (token.type == Token_Open_Bracket) {
+        Ast* type = parse_type(parser, true, mods);
+        result = parse_assign_statement(parser, type);
     }
     
     if (!result) {
@@ -929,8 +933,9 @@ Ast*
 parse_actual_struct_or_union_argument(Parser* parser) {
     Ast* result = push_ast_node(parser);
     result->kind = Ast_Argument;
-    result->Argument.ident = parse_identifier(parser, false);
-    if (result->Argument.ident) {
+    
+    if (peek_token_match(parser, Token_Ident, false)) {
+        result->Argument.ident = parse_identifier(parser, true);
         if (next_token_if_matched(parser, Token_Colon, false)) {
             result->Argument.assign = parse_expression(parser);
         } else {
@@ -1136,6 +1141,19 @@ parse_type(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
     if (token.type == Token_Open_Paren) {
         // TODO(alexander): tuple type
     }
+    
+    
+    if (token.type == Token_Open_Bracket) {
+        next_token(parser);
+        Ast* result = push_ast_node(parser);
+        result->kind = Ast_Array_Type;
+        result->Array_Type.shape = parse_atom(parser, false);
+        result->Array_Type.is_dynamic = next_token_if_matched(parser, Token_Range, false);
+        next_token_if_matched(parser, Token_Close_Bracket);
+        result->Array_Type.elem_type = parse_type(parser, true, mods);
+        return result;
+    }
+    
     
     if (token.type != Token_Ident) {
         if (report_error) {
@@ -1447,16 +1465,6 @@ parse_complex_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_M
                                                                    Token_Open_Paren, Token_Close_Paren, Token_Comma,
                                                                    &parse_formal_function_argument);
             }
-        } break;
-        
-        case Token_Open_Bracket: {
-            next_token(parser);
-            result = push_ast_node(parser);
-            result->kind = Ast_Array_Type;
-            result->Array_Type.elem_type = base_type;
-            result->Array_Type.shape = parse_expression(parser, false);
-            
-            next_token_if_matched(parser, Token_Close_Bracket);
         } break;
         
         case Token_Mul: {

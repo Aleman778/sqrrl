@@ -362,6 +362,9 @@ int main(int argc, char* argv[]) {
     array_push(windows_system_header_dirs, 
                "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Tools\\MSVC\\14.29.30133\\include\\");
     
+    bool is_debugger_present = IsDebuggerPresent();
+    
     // NOTE(alexander): here goes any platform specific initialization
-    return compiler_main_entry(argc, argv, asm_buffer, asm_buffer_size, &asm_buffer_prepare_for_execute);
+    return compiler_main_entry(argc, argv, 
+                               asm_buffer, asm_buffer_size, &asm_buffer_prepare_for_execute, is_debugger_present);
 }

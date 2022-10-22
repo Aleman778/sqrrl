@@ -60,24 +60,6 @@ test_type_rules() {
 }
 #endif
 
-void
-type_error(Type_Context* tcx, string message) {
-    Span_Data span = {};
-    string filename = string_lit("examples/demo.sq"); // TODO: store names of source files somewhere!
-    pln("%:%:%: error: %\n", f_string(filename), f_smm(span.begin_line), f_smm(span.begin_column), f_string(message));
-    DEBUG_log_backtrace();
-    tcx->error_count++;
-}
-
-void
-type_warning(Type_Context* tcx, string message) {
-    Span_Data span = {};
-    string filename = string_lit("examples/demo.sq"); // TODO: store names of source files somewhere!
-    pln("%:%:%: warning: %\n", f_string(filename), f_smm(span.begin_line), f_smm(span.begin_column), f_string(message));
-    DEBUG_log_backtrace();
-    tcx->warning_count++;
-}
-
 Type*
 normalize_basic_types(Type* type) {
     if (type->kind != TypeKind_Basic) {
@@ -363,8 +345,19 @@ constant_folding_of_expressions(Ast* ast) {
         } break;
         
         case Ast_Field_Expr: {
-            if (ast->Field_Expr.var->kind == Ast_Ident) {
-                pln("%.%", f_var(ast_unwrap_ident(ast->Field_Expr.var)), f_var(ast_unwrap_ident(ast->Field_Expr.field)));
+            // TODO(Alexander): hack to inject the fixed size into count
+            string_id ident = ast_unwrap_ident(ast->Field_Expr.field);
+            if (ident == Sym_count) {
+                
+                Ast* var = ast->Field_Expr.var;
+                if (var && var->type) {
+                    
+                    Type* type = var->type;
+                    if (type->kind == TypeKind_Array && type->Array.capacity > 0) {
+                        result.type = Value_signed_int;
+                        result.data.signed_int = type->Array.capacity;
+                    }
+                }
             }
         } break;
     }
@@ -372,7 +365,7 @@ constant_folding_of_expressions(Ast* ast) {
     if (result.type != Value_void) {
         ast->kind = Ast_Value;
         ast->Value.value = result;
-        ast->type = 0;
+        //ast->type = 0;
     }
     
     return result;
@@ -1168,17 +1161,9 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                 string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
                 
                 if (tcx->block_depth > 0) {
-                    if (map_get(tcx->locals, ident)) {
+                    if (!push_local(tcx, ident, expected_type, report_error)) {
                         result = 0;
-                        if (report_error) {
-                            type_error(tcx,
-                                       string_format("cannot redeclare previous local variable `%`",
-                                                     f_string(vars_load_string(ident))));
-                        }
-                    } else {
-                        map_put(tcx->locals, ident, expected_type);
                     }
-                    
                 } else {
                     
                     if (map_get(tcx->globals, ident) && report_error) {
@@ -1201,16 +1186,18 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         } break;
         
         case Ast_Block_Stmt: {
+            push_type_scope(tcx);
+            
             // TODO(Alexander): create a new scope
             Ast* stmts = stmt->Block_Stmt.stmts;
-            tcx->block_depth++;
             for_compound(stmts, it) {
                 result = type_infer_statement(tcx, it, report_error);
                 if (!result) {
                     break;
                 }
             }
-            tcx->block_depth--;
+            
+            pop_type_scope(tcx);
         } break;
         
         case Ast_Decl_Stmt: {
@@ -1260,6 +1247,8 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         } break;
         
         case Ast_For_Stmt: {
+            push_type_scope(tcx);
+            
             Type* init = type_infer_statement(tcx, stmt->For_Stmt.init, report_error);
             Type* cond = type_infer_expression(tcx, stmt->For_Stmt.cond, t_bool, report_error);
             constant_folding_of_expressions(stmt->For_Stmt.cond);
@@ -1269,6 +1258,8 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
             if (init && cond && update && block) {
                 result = init;
             }
+            
+            pop_type_scope(tcx);
         } break;
         
         case Ast_While_Stmt: {
@@ -1387,6 +1378,7 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
         ast->type = type;
         
         if (type && type->kind == TypeKind_Function) {
+            push_type_scope(tcx);
             type->Function.block = ast->Decl_Stmt.stmt;
             
             // Store the arguments in local context
@@ -1399,12 +1391,15 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
                     Type* arg_type = func->arg_types[arg_index];
                     if (arg_type) {
                         string_id ident = func->arg_idents[arg_index];
-                        map_put(tcx->locals, ident, arg_type);
+                        if (!push_local(tcx, ident, arg_type, report_error)) {
+                            result = false;
+                        }
                     }
                 }
             }
             
             tcx->return_type = type->Function.return_type;
+            pop_type_scope(tcx);
         }
     }
     

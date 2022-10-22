@@ -32,10 +32,6 @@ u64_limits(u64 max_value) {
     return result;
 }
 
-
-#define S64Limits(v) (s64) v
-#define U64Value(v) (u64) v
-
 #define DEF_BASIC_TYPES \
 BASIC(Invalid, BasicFlag_Invalid,                      Kw_invalid, 0, {}) \
 BASIC(bool,    BasicFlag_Integer,                      Kw_bool, 1, s64_limits(0, 1)) \

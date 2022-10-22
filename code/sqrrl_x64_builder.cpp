@@ -535,6 +535,34 @@ x64_build_setcc(X64_Builder* x64, Bc_Instruction* cmp) {
     return x64_push_instruction(x64, set_opcode);
 }
 
+X64_Operand
+x64_mov_to_register(X64_Builder* x64, X64_Operand operand) {
+    if (operand_is_register(operand.kind)) {
+        return operand;
+    }
+    
+    bool is_vector = operand_is_vector_register(operand.kind);
+    u64 vreg = x64_allocate_temporary_register(x64, is_vector);
+    X64_Operand result = {};
+    result.virtual_register = vreg;
+    switch (operand.kind) {
+        case X64Operand_m8:
+        case X64Operand_imm8: result.kind = X64Operand_r8; break;
+        case X64Operand_m16:
+        case X64Operand_imm16: result.kind = X64Operand_r16; break;
+        case X64Operand_m32:
+        case X64Operand_imm32: result.kind = X64Operand_r32; break;
+        case X64Operand_m64:
+        case X64Operand_imm64: result.kind = X64Operand_r64; break;
+        default: assert(0 && "invalid operand type");
+    }
+    
+    X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
+    insn->op0 = result;
+    insn->op1 = operand;
+    return result;
+}
+
 void
 x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
     switch (bc->opcode) {
@@ -561,64 +589,62 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             }
         } break;
         
-        
         case Bytecode_memcpy: {
-            // TODO(Alexander): right now we store it on the stack which 
-            // grows downwards, maybe we want to always do this?
-            //int dest_dir = bc->dest.kind == BcOperand_Stack ? -1 : 1;
-            //int src_dir = bc->src0.kind  == BcOperand_Stack ? -1 : 1;
-            int dest_dir = -1;
-            int src_dir = -1;
+            u64 src = x64_allocate_specific_register(x64, X64Register_rsi);
+            u64 dest = x64_allocate_specific_register(x64, X64Register_rdi);
+            u64 count = x64_allocate_specific_register(x64, X64Register_rcx);
             
-            X64_Operand dest;
-            if (x64->first_arg_as_return && 
-                bc->dest.Register == x64->return_value_register) {
-                X64_Instruction* mov_insn = x64_push_instruction(x64, X64Opcode_mov);
-                mov_insn->op0 = x64_allocate_temporary_register(x64, t_s64);
-                mov_insn->op1 = x64_build_operand(x64, bc->dest, t_s64);
-                dest = mov_insn->op0;
-                dest.kind = X64Operand_m64;
-                //dest_dir = -1;
-                //src_dir = 1;
-            } else {
-                dest = x64_build_operand(x64, bc->dest, t_s64);
-            }
+            X64_Instruction* mov_dest = x64_push_instruction(x64, X64Opcode_lea);
+            mov_dest->op0.kind = x64_get_register_kind(t_s64);
+            mov_dest->op0.virtual_register = dest;
+            mov_dest->op1 = x64_build_operand(x64, bc->dest, t_s64);
             
-            X64_Operand src = x64_build_operand(x64, bc->src0, t_s64);
-            s64 size = bc->src1.Signed_Int;
+            X64_Instruction* mov_src = x64_push_instruction(x64, X64Opcode_mov);
+            mov_src->op0.kind = x64_get_register_kind(t_s64);
+            mov_src->op0.virtual_register = src;
+            mov_src->op1 = x64_build_operand(x64, bc->src0, t_s64);
             
-            // TODO(Alexander): we should switch rep stob instead of copying dwords, alignment problem
-            s64 offset = 0;
-            while (offset < size) {
-                s64 remaining = size - offset;
-                Type* data_type = t_s32;
-                if (remaining == 1) {
-                    data_type = t_s8;
-                } else if (remaining == 2) {
-                    data_type = t_s16;
-                } else if (remaining == 4) {
-                    data_type = t_s32;
-                }
-                
-                X64_Operand temp_reg = x64_allocate_temporary_register(x64, data_type);
-                X64_Operand_Kind memory_kind = x64_get_memory_kind(data_type);
-                
-                X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_mov);
-                insn->op0 = temp_reg;
-                insn->op1 = src;
-                insn->op1.kind = memory_kind;
-                insn->op1.disp64 += offset*src_dir;
-                
-                insn = x64_push_instruction(x64, X64Opcode_mov);
-                insn->op0 = dest;
-                insn->op0.kind = memory_kind;
-                insn->op0.disp64 += offset*dest_dir;
-                insn->op1 = temp_reg;
-                
-                x64_free_virtual_register(x64, temp_reg.virtual_register);
-                
-                offset += 4;
-            }
+            X64_Instruction* mov_count = x64_push_instruction(x64, X64Opcode_mov);
+            mov_count->op0.kind = x64_get_register_kind(t_s64);
+            mov_count->op0.virtual_register = count;
+            mov_count->op1 = x64_build_operand(x64, bc->src1, t_s64);
+            
+            x64_push_instruction(x64, X64Opcode_std);
+            x64_push_instruction(x64, X64Opcode_rep);
+            x64_push_instruction(x64, X64Opcode_movsb);
+            
+            x64_free_virtual_register(x64, count);
+            x64_free_virtual_register(x64, dest);
+            x64_free_virtual_register(x64, src);
+        } break;
+        
+        case Bytecode_memset: {
+            u64 src = x64_allocate_specific_register(x64, X64Register_rax);
+            u64 dest = x64_allocate_specific_register(x64, X64Register_rdi);
+            u64 count = x64_allocate_specific_register(x64, X64Register_rcx);
+            
+            X64_Instruction* mov_dest = x64_push_instruction(x64, X64Opcode_lea);
+            mov_dest->op0.kind = x64_get_register_kind(t_s64);
+            mov_dest->op0.virtual_register = dest;
+            mov_dest->op1 = x64_build_operand(x64, bc->dest, t_s64);
+            
+            X64_Instruction* mov_src = x64_push_instruction(x64, X64Opcode_mov);
+            mov_src->op0.kind = x64_get_register_kind(t_s64);
+            mov_src->op0.virtual_register = src;
+            mov_src->op1 = x64_build_operand(x64, bc->src0, t_s64);
+            
+            X64_Instruction* mov_count = x64_push_instruction(x64, X64Opcode_mov);
+            mov_count->op0.kind = x64_get_register_kind(t_s64);
+            mov_count->op0.virtual_register = count;
+            mov_count->op1 = x64_build_operand(x64, bc->src1, t_s64);
+            
+            x64_push_instruction(x64, X64Opcode_std);
+            x64_push_instruction(x64, X64Opcode_rep);
+            x64_push_instruction(x64, X64Opcode_stosb);
+            
+            x64_free_virtual_register(x64, count);
+            x64_free_virtual_register(x64, dest);
+            x64_free_virtual_register(x64, src);
         } break;
         
         case Bytecode_load: {
@@ -695,18 +721,46 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             Type* type = bc->dest_type;
             X64_Operand dest = x64_build_operand(x64, bc->dest, bc->dest_type);
             
-            // TODO(Alexander): using SIB byte we can probably improve this!
             X64_Operand index = x64_build_operand(x64, bc->src1, t_s32);
+            
             if (operand_is_immediate(index.kind)) {
                 assert(bc->src0.kind == BcOperand_Stack);
                 
                 X64_Operand result = x64_build_operand(x64, bc->src0, bc->dest_type);
                 result.disp64 -= type->size * index.imm64;
+                
                 map_put(x64->allocated_virtual_registers, bc->dest.Register, result);
             } else {
+                // TODO(Alexander): knowing how this is stored in memory and
+                // using SIB byte we can improve this!
+                // TODO(Alexander): arch dep
+                
+                u64 virtual_register = x64->next_free_virtual_register++;
+                x64_allocate_virtual_register(x64, virtual_register, false);
+                array_push(x64->active_virtual_registers, virtual_register);
+                u64 extended_length = map_get(x64->bc_register_live_lengths, bc->dest.Register);
+                map_put(x64->bc_register_live_lengths, virtual_register, extended_length);
+                X64_Operand result = {};
+                result.kind = x64_get_register_kind(t_s64);
+                result.virtual_register = virtual_register;
+                
+                index = x64_mov_to_register(x64, index);
                 X64_Instruction* insn = x64_push_instruction(x64, X64Opcode_imul);
                 insn->op0 = index;
-                insn->op1 = x64_build_immediate(x64, type->size, Basic_s32);
+                insn->op1 = index;
+                insn->op2 = x64_build_immediate(x64, type->size, Basic_s64);
+                
+                insn = x64_push_instruction(x64, X64Opcode_lea);
+                insn->op0 = result;
+                insn->op1 = x64_build_operand(x64, bc->src0, t_s64);
+                
+                insn = x64_push_instruction(x64, X64Opcode_sub);
+                insn->op0 = result;
+                insn->op1 = index;
+                insn->op1.kind = x64_get_register_kind(t_s64);
+                
+                result.kind = x64_get_memory_kind(type);
+                map_put(x64->allocated_virtual_registers, bc->dest.Register, result);
             }
         } break;
         
@@ -852,7 +906,7 @@ op_insn->op1 = src1;
                 case 8: x64_push_instruction(x64, X64Opcode_cqo); break;
                 case 4: x64_push_instruction(x64, X64Opcode_cdq); break;
                 case 2: x64_push_instruction(x64, X64Opcode_cwd); break;
-                default: assert(0 && "invalid type for div or mod")
+                default: assert(0 && "invalid type for div or mod");
             }
             
             X64_Operand divisor = x64_build_operand(x64, bc->src1, bc->dest_type);
@@ -1387,11 +1441,21 @@ x64_analyze_stack(X64_Builder* x64, Bc_Basic_Block* function_block, Bc_Procedure
             switch (bc->opcode) {
                 case Bytecode_stack_alloc: {
                     assert(bc->dest.kind == BcOperand_Stack);
-                    assert(bc->src0.kind == BcOperand_Type);
+                    assert(bc->src0.kind == BcOperand_Type || 
+                           bc->src0.kind == BcOperand_Aggregate_Type);
                     assert(bc->src1.kind == BcOperand_None);
                     
-                    s32 size = bc_type_to_size(bc->src0.Type);
-                    s32 align = bc_type_to_align(bc->src0.Type);
+                    s32 size = 0;
+                    s32 align = 0;
+                    if (bc->src0.kind == BcOperand_Aggregate_Type) {
+                        Bc_Aggregate_Type agg_type = bc->src0.Aggregate_Type;
+                        size = (s32) (agg_type.base->size*agg_type.count);
+                        align = (s32) agg_type.base->align;
+                    } else {
+                        size = bc_type_to_size(bc->src0.Type);
+                        align = bc_type_to_align(bc->src0.Type);
+                    }
+                    
                     assert(size > 0 && "bad size");
                     assert(align > 0 && "bad align");
                     

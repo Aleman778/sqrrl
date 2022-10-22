@@ -4,6 +4,10 @@ struct Compilation_Unit {
     string_id ident;
 };
 
+struct Type_Scope {
+    array(string_id)* locals;
+};
+
 struct Type_Context {
     Memory_Arena* type_arena;
     
@@ -12,6 +16,9 @@ struct Type_Context {
     
     map(string_id, Type*)* local_type_table;
     map(string_id, Type*)* global_type_table;
+    
+    array(Type_Scope)* scopes;
+    Type_Scope* active_scope;
     
     Type* return_type;
     
@@ -23,6 +30,70 @@ struct Type_Context {
     s32 warning_count;
 };
 
+inline void
+type_error(Type_Context* tcx, string message) {
+    Span_Data span = {};
+    string filename = string_lit("examples/demo.sq"); // TODO: store names of source files somewhere!
+    pln("%:%:%: error: %\n", f_string(filename), f_smm(span.begin_line), f_smm(span.begin_column), f_string(message));
+    DEBUG_log_backtrace();
+    tcx->error_count++;
+}
+
+inline void
+type_warning(Type_Context* tcx, string message) {
+    Span_Data span = {};
+    string filename = string_lit("examples/demo.sq"); // TODO: store names of source files somewhere!
+    pln("%:%:%: warning: %\n", f_string(filename), f_smm(span.begin_line), f_smm(span.begin_column), f_string(message));
+    DEBUG_log_backtrace();
+    tcx->warning_count++;
+}
+
+bool
+push_local(Type_Context* tcx, string_id ident, Type* type, bool report_error) {
+    assert(tcx->block_depth > 0);
+    assert(tcx->active_scope);
+    
+    if (map_get(tcx->locals, ident)) {
+        if (report_error) {
+            type_error(tcx,
+                       string_format("cannot redeclare previous local variable `%`",
+                                     f_string(vars_load_string(ident))));
+        }
+        return false;
+        
+    } else {
+        map_put(tcx->locals, ident, type);
+        array_push(tcx->active_scope->locals, ident);
+        return true;
+    }
+}
+
+void
+push_type_scope(Type_Context* tcx) {
+    tcx->block_depth++;
+    
+    Type_Scope scope = {};
+    array_push(tcx->scopes, scope);
+    tcx->active_scope = &array_last(tcx->scopes);
+}
+
+void
+pop_type_scope(Type_Context* tcx) {
+    assert(tcx->active_scope);
+    for_array(tcx->active_scope->locals, ident, _) {
+        map_remove(tcx->locals, ident);
+    }
+    array_free(tcx->active_scope->locals);
+    array_pop(tcx->scopes);
+    
+    if (array_count(tcx->scopes) > 0) {
+        tcx->active_scope = &array_last(tcx->scopes);
+    } else {
+        tcx->active_scope = 0;
+    }
+    
+    tcx->block_depth--;
+}
 
 bool
 type_equals(Type* a, Type* b) {

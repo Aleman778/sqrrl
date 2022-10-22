@@ -140,7 +140,8 @@ enum Bc_Operand_Kind {
     BcOperand_Float,
     BcOperand_Label,
     BcOperand_Argument_List,
-    BcOperand_Type
+    BcOperand_Type,
+    BcOperand_Aggregate_Type
 };
 
 inline bool
@@ -205,6 +206,11 @@ get_bc_basic_block(Bytecode* code, smm offset) {
 // NOTE(Alexander): forward declare
 struct Bc_Argument;
 
+struct Bc_Aggregate_Type {
+    Type* base;
+    umm count;
+};
+
 struct Bc_Operand {
     Bc_Operand_Kind kind;
     union {
@@ -217,6 +223,7 @@ struct Bc_Operand {
         Memory_String String;
         array(Bc_Argument)* Argument_List;
         Bc_Type Type;
+        Bc_Aggregate_Type Aggregate_Type;
     };
 };
 

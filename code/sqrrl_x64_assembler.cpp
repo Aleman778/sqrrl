@@ -1,6 +1,9 @@
 
 internal inline bool
 x64_8bit_register_swap(X64_Operand operand) {
+    // NOTE(Alexander): checks for this regisetr swap (from intel manual):
+    // "When any REX prefix is used, SPL, BPL, SIL and DIL are used. 
+    // Otherwise, without any REX prefix AH, CH, DH and BH are used."
     return operand.kind == X64Operand_r8 && (operand.reg == X64Register_rsp ||
                                              operand.reg == X64Register_rbp ||
                                              operand.reg == X64Register_rsi ||
@@ -103,6 +106,15 @@ x64_assemble_instruction(X64_Assembler* assembler,
                     modrm = ModRM_indirect_disp32;
                     displacement_bytes = 4;
                 }
+            } else {
+                // NOTE(Alexander): For indirect non-RBP/RIP relative addressing 
+                // we are forced to add a displacement
+                if (rm == 0b101 && encoding->modrm_mod == ModRM_indirect &&
+                    modrm_rm->reg != X64Register_rip && modrm_rm->reg != X64Register_rsp) {
+                    
+                    modrm = ModRM_indirect_disp8;
+                    displacement_bytes = 1;
+                }
             }
         }
         
@@ -198,6 +210,18 @@ x64_assemble_to_machine_code(X64_Assembler* assembler,
                         map_put(assembler->label_offsets, block->label.ident, assembler->curr_used);
                     }
                 } continue; // go to next instruction
+                
+                case X64Opcode_rep: {
+                    push_u8(assembler, 0xF3);
+                } continue;
+                
+                case X64Opcode_stosb: {
+                    push_u8(assembler, 0xAA);
+                } continue;
+                
+                case X64Opcode_movsb: {
+                    push_u8(assembler, 0xA4);
+                } continue;
                 
                 case X64Opcode_int3: {
                     push_u8(assembler, 0xCC);

@@ -538,54 +538,48 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
             }
             
             string_id field_ident = ast_unwrap_ident(node->Field_Expr.field);
-            Type* field_type = 0;
             smm field_offset = 0;
             
             // TODO(Alexander): maybe we can turn arrays and strings into structs somehow?
             if (type->kind == TypeKind_Struct) {
                 Type_Struct* t_struct = &type->Struct;
                 Struct_Field_Info field = get_field_info(t_struct, field_ident);
-                field_type = field.type;
                 field_offset = field.offset;
                 
             } else if (type->kind == TypeKind_Array) {
                 switch (field_ident) {
                     case Sym_data: {
-                        field_type = type->Array.type;
                         field_offset = 0;
                     } break;
                     
                     case Sym_count: {
-                        // TODO(Alexander): arch dep! this is hard coded for now
-                        field_type = t_s64;
+                        // TODO(Alexander): arch dep (ptr size)! this is hard coded for now
                         field_offset = t_s64->size;
                     } break;
                     
                     case Sym_capacity: {
+                        // TODO(Alexander): arch dep (ptr size)! this is hard coded for now
                         assert(type->Array.is_dynamic);
-                        field_type = t_s64;
                         field_offset = t_s64->size*2;
                     } break;
                 }
             } else if (type == t_string) {
                 switch (field_ident) {
                     case Sym_data: {
-                        field_type = type->Array.type;
                         field_offset = 0;
                     } break;
                     
                     case Sym_count: {
-                        field_type = t_s64;
+                        // TODO(Alexander): arch dep (ptr size)! this is hard coded for now
                         field_offset = t_s64->size;
                     } break;
                 }
             }
             
-            assert(field_type && "invalid field expression");
             Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_field);
             insn->dest = create_unique_bc_register(bc);
             insn->dest.kind = BcOperand_Memory;
-            insn->dest_type = field_type;
+            insn->dest_type = node->type;
             insn->src0 = var;
             insn->src1 = bc_signed_int_op(field_offset);
             return insn->dest;
@@ -748,8 +742,20 @@ bc_build_statement(Bc_Builder* bc, Ast* node, bool last_statement=false) {
     switch (node->kind) {
         case Ast_Assign_Stmt: {
             
+            Bc_Operand dest;
             Bc_Type type = bc_build_type(bc, node->type);
-            Bc_Operand dest = bc_stack_alloc(bc, type);
+            // TODO(Alexander): maybe we wan't a better way to allocate an array on the stack
+            if (type->kind == TypeKind_Array && type->Array.capacity > 0) {
+                Type* base = type->Array.type;
+                dest = bc_stack_alloc_aggregate(bc, type, base, type->Array.capacity);
+                
+                Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_memset);
+                insn->dest = dest;
+                insn->src0 = bc_signed_int_op(0);
+                insn->src1 = bc_signed_int_op(base->size*type->Array.capacity);
+            } else {
+                dest = bc_stack_alloc(bc, type);
+            }
             string_id ident = ast_unwrap_ident(node->Assign_Stmt.ident);
             Bc_Argument local = {};
             local.src = dest;

@@ -236,7 +236,7 @@ while_loop() {
     assert(x == 25);
 }
 
-#if 0
+#if 1
 struct v2s {
     s32 x;
     s32 y;

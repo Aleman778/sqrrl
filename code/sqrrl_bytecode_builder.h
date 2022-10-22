@@ -131,6 +131,18 @@ bc_stack_alloc(Bc_Builder* bc, Bc_Type value_type) {
     return insn->dest;
 }
 
+inline Bc_Operand
+bc_stack_alloc_aggregate(Bc_Builder* bc, Bc_Type value_type, Type* base_type, umm count) {
+    Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_stack_alloc);
+    insn->dest = create_unique_bc_register(bc);
+    insn->dest.kind = BcOperand_Stack;
+    insn->dest_type = value_type;
+    insn->src0.kind = BcOperand_Aggregate_Type;
+    insn->src0.Aggregate_Type.base = base_type;
+    insn->src0.Aggregate_Type.count = count;
+    return insn->dest;
+}
+
 inline void
 bc_load(Bc_Builder* bc, Bc_Operand dest, Bc_Operand src, Bc_Type type) {
     Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_load);

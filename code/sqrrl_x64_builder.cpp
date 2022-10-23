@@ -594,12 +594,30 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             u64 dest = x64_allocate_specific_register(x64, X64Register_rdi);
             u64 count = x64_allocate_specific_register(x64, X64Register_rcx);
             
-            X64_Instruction* mov_dest = x64_push_instruction(x64, X64Opcode_lea);
+            
+            X64_Instruction* mov_dest;
+            if (x64->first_arg_as_return && 
+                bc->dest.Register == x64->return_value_register) {
+                // TODO(Alexander): hack: for windows x64 calling convention
+                // we pass return as pointer instead!
+                mov_dest = x64_push_instruction(x64, X64Opcode_mov);
+            } else {
+                mov_dest = x64_push_instruction(x64, X64Opcode_lea);
+            }
+            
             mov_dest->op0.kind = x64_get_register_kind(t_s64);
             mov_dest->op0.virtual_register = dest;
             mov_dest->op1 = x64_build_operand(x64, bc->dest, t_s64);
             
-            X64_Instruction* mov_src = x64_push_instruction(x64, X64Opcode_mov);
+            X64_Instruction* mov_src;
+            if (x64->first_arg_as_return && 
+                bc->dest.Register == x64->return_value_register) {
+                // TODO(Alexander): hack: for windows x64 calling convention
+                // we pass return as pointer instead!
+                mov_src = x64_push_instruction(x64, X64Opcode_lea);
+            } else {
+                mov_src= x64_push_instruction(x64, X64Opcode_mov);
+            }
             mov_src->op0.kind = x64_get_register_kind(t_s64);
             mov_src->op0.virtual_register = src;
             mov_src->op1 = x64_build_operand(x64, bc->src0, t_s64);
@@ -609,7 +627,6 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             mov_count->op0.virtual_register = count;
             mov_count->op1 = x64_build_operand(x64, bc->src1, t_s64);
             
-            x64_push_instruction(x64, X64Opcode_std);
             x64_push_instruction(x64, X64Opcode_rep);
             x64_push_instruction(x64, X64Opcode_movsb);
             
@@ -638,7 +655,6 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             mov_count->op0.virtual_register = count;
             mov_count->op1 = x64_build_operand(x64, bc->src1, t_s64);
             
-            x64_push_instruction(x64, X64Opcode_std);
             x64_push_instruction(x64, X64Opcode_rep);
             x64_push_instruction(x64, X64Opcode_stosb);
             
@@ -704,9 +720,7 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             X64_Operand dest = x64_build_operand(x64, bc->dest, bc->dest_type); // used later
             X64_Operand src = x64_build_operand(x64, bc->src0, bc->dest_type);
             s64 offset = bc->src1.Signed_Int;
-            //int src_dir = bc->src0.kind == BcOperand_Stack ? -1 : 1;
-            //src.disp64 -= offset*src_dir;
-            src.disp64 -= offset;
+            src.disp64 += offset;
             src.kind = dest.kind;
             map_put(x64->allocated_virtual_registers, bc->dest.Register, src);
             
@@ -727,7 +741,7 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
                 assert(bc->src0.kind == BcOperand_Stack);
                 
                 X64_Operand result = x64_build_operand(x64, bc->src0, bc->dest_type);
-                result.disp64 -= type->size * index.imm64;
+                result.disp64 += type->size * index.imm64;
                 
                 map_put(x64->allocated_virtual_registers, bc->dest.Register, result);
             } else {
@@ -754,7 +768,7 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
                 insn->op0 = result;
                 insn->op1 = x64_build_operand(x64, bc->src0, t_s64);
                 
-                insn = x64_push_instruction(x64, X64Opcode_sub);
+                insn = x64_push_instruction(x64, X64Opcode_add);
                 insn->op0 = result;
                 insn->op1 = index;
                 insn->op1.kind = x64_get_register_kind(t_s64);
@@ -1198,12 +1212,9 @@ op_insn->op1 = src1;
             }
             
             for (int arg_index = 0; 
-                 arg_index < array_count(arguments);
+                 arg_index < array_count(arguments) &&
+                 arg_index < fixed_array_count(int_argument_registers);
                  ++arg_index) {
-                
-                if (arg_index >= fixed_array_count(int_argument_registers)) {
-                    break;
-                }
                 
                 X64_Argument* arg = arguments + arg_index;
                 bool use_vector_register = (arg->type->kind == TypeKind_Basic && 
@@ -1470,10 +1481,10 @@ x64_analyze_stack(X64_Builder* x64, Bc_Basic_Block* function_block, Bc_Procedure
                     }
                     
                     s32 stack_offset = (s32) align_forward((umm) result.local_size, align);
-                    // NOTE(Alexander): we use negative because stack grows downwards
-                    map_put(x64->stack_offsets, bc->dest.Register, -(stack_offset + align));
-                    
                     stack_offset += size;
+                    
+                    // NOTE(Alexander): we use negative because stack grows downwards
+                    map_put(x64->stack_offsets, bc->dest.Register, -stack_offset);
                     result.local_size = stack_offset;
                     
                     //pln("stack_offset(size = %, align = %, %) = %", f_umm(size), f_umm(align), f_u32(bc->dest.Register), f_s64(stack_offset));

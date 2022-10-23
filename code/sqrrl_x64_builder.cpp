@@ -610,8 +610,8 @@ x64_build_instruction_from_bytecode(X64_Builder* x64, Bc_Instruction* bc) {
             mov_dest->op1 = x64_build_operand(x64, bc->dest, t_s64);
             
             X64_Instruction* mov_src;
-            if (x64->first_arg_as_return && 
-                bc->dest.Register == x64->return_value_register) {
+            if ((x64->first_arg_as_return && bc->dest.Register == x64->return_value_register) ||
+                bc->src0.Register == x64->first_arg_register) {
                 // TODO(Alexander): hack: for windows x64 calling convention
                 // we pass return as pointer instead!
                 mov_src = x64_push_instruction(x64, X64Opcode_lea);
@@ -1355,6 +1355,7 @@ op_insn->op1 = src1;
                 if (use_first_reg_as_return) {
                     X64_Operand dest = array_first(arguments)->src;
                     map_put(x64->allocated_virtual_registers, bc->dest.Register, dest);
+                    x64->first_arg_register = bc->dest.Register;
                 } else {
                     X64_Operand dest = {};
                     dest.kind = x64_get_register_kind(bc->dest_type);
@@ -1366,6 +1367,7 @@ op_insn->op1 = src1;
                         dest.reg = X64Register_rax;
                     }
                     
+                    x64->first_arg_register = 0;
                     x64_allocate_specific_register(x64, dest.reg, bc->dest.Register);
                     map_put(x64->allocated_virtual_registers, bc->dest.Register, dest);
                 }

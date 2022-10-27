@@ -158,9 +158,11 @@ bc_copy(Bc_Builder* bc, Bc_Operand dest, Bc_Operand src, Bc_Type type) {
     insn->dest = dest;
     insn->src0 = src;
     
-    if (type->kind == TypeKind_Struct) {
-        insn->opcode = Bytecode_memcpy;
-        insn->src1 = bc_signed_int_op(type->size);
+    if (type->kind == TypeKind_Struct || type->kind == TypeKind_Array) {
+        if (!(type->size == 1 || type->size == 2 || type->size == 4 || type->size == 8)) {
+            insn->opcode = Bytecode_memcpy;
+            insn->src1 = bc_signed_int_op(type->size);
+        }
     }
 }
 
@@ -170,6 +172,17 @@ bc_store(Bc_Builder* bc, Bc_Operand dest, Bc_Operand src, Bc_Type type) {
     insn->dest_type = type;
     insn->dest = dest;
     insn->src0 = src;
+}
+
+inline Bc_Operand
+bc_index(Bc_Builder* bc, Bc_Operand arr, Bc_Operand index, Bc_Type type) {
+    Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_index);
+    insn->dest = create_unique_bc_register(bc);
+    insn->dest.kind = BcOperand_Memory;
+    insn->dest_type = type;
+    insn->src0 = arr;
+    insn->src1 = index;
+    return insn->dest;
 }
 
 #if 0

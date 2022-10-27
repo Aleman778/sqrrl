@@ -488,17 +488,17 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
             
             Type* function_type = node->Call_Expr.function_type;
             assert(function_type->kind == TypeKind_Function);
+            Type_Function* proc_type = &function_type->Function;
             
             Bc_Type return_type = bc_build_type(bc, function_type->Function.return_type);
-            Bc_Type proc_type = bc_build_type(bc, function_type);
             
-            int arg_count = 0;
+            int arg_index = 0;
             array(Bc_Argument)* arguments = 0;
             for_compound(node->Call_Expr.args, arg) {
                 Ast* arg_expr = arg->Argument.assign;
                 
                 // HACK(Alexander): for now print_format pushes the format type first then the value 
-                if (arg_count > 0 && function_type->Function.intrinsic == &print_format) {
+                if (arg_index > 0 && proc_type->intrinsic == &print_format) {
                     Format_Type fmt_type = convert_type_to_format_type(arg_expr->type);
                     
                     if (fmt_type == FormatType_string) {
@@ -517,10 +517,11 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
                 bc_arg.src = bc_build_expression(bc, arg_expr);
                 array_push(arguments, bc_arg);
                 
-                arg_count++;
+                arg_index++;
             }
             
-            result = bc_call(bc, proc_type, arguments, return_type);
+            Bc_Type bc_proc_type = bc_build_type(bc, function_type);
+            result = bc_call(bc, bc_proc_type, arguments, return_type);
         } break;
         
         case Ast_Field_Expr: {
@@ -614,14 +615,8 @@ bc_build_expression(Bc_Builder* bc, Ast* node) {
             Bc_Operand index = bc_build_expression(bc, node->Index_Expr.index);
             
             assert(type && "invalid field expression");
-            Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_index);
-            insn->dest = create_unique_bc_register(bc);
-            insn->dest.kind = BcOperand_Memory;
-            insn->dest_type = type;
-            insn->src0 = arr;
-            insn->src1 = index;
             
-            result = insn->dest;
+            result = bc_index(bc, arr, index, type);
         } break;
         
         case Ast_Array_Expr: {
@@ -742,20 +737,10 @@ bc_build_statement(Bc_Builder* bc, Ast* node, bool last_statement=false) {
     switch (node->kind) {
         case Ast_Assign_Stmt: {
             
-            Bc_Operand dest;
             Bc_Type type = bc_build_type(bc, node->type);
             // TODO(Alexander): maybe we wan't a better way to allocate an array on the stack
-            if (type->kind == TypeKind_Array && type->Array.capacity > 0) {
-                Type* base = type->Array.type;
-                dest = bc_stack_alloc_aggregate(bc, type, base, type->Array.capacity);
-                
-                Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_memset);
-                insn->dest = dest;
-                insn->src0 = bc_signed_int_op(0);
-                insn->src1 = bc_signed_int_op(base->size*type->Array.capacity);
-            } else {
-                dest = bc_stack_alloc(bc, type);
-            }
+            
+            Bc_Operand dest = bc_stack_alloc(bc, type);
             string_id ident = ast_unwrap_ident(node->Assign_Stmt.ident);
             Bc_Argument local = {};
             local.src = dest;
@@ -763,8 +748,26 @@ bc_build_statement(Bc_Builder* bc, Ast* node, bool last_statement=false) {
             map_put(bc->local_variable_mapper, ident, local);
             
             if (is_ast_none(node->Assign_Stmt.expr)) {
-                
-                
+                if (type->kind == TypeKind_Array && type->Array.capacity > 0) {
+                    Type* base = type->Array.type;
+                    Bc_Operand arr = bc_stack_alloc_aggregate(bc, type, base, type->Array.capacity);
+                    
+                    Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_memset);
+                    insn->dest = arr;
+                    insn->src0 = bc_signed_int_op(0);
+                    insn->src1 = bc_signed_int_op(base->size*type->Array.capacity);
+                    
+                    bc_copy(bc, dest, arr, type);
+                } else if (type->kind == TypeKind_Struct) {
+                    Bc_Instruction* insn = bc_push_instruction(bc, Bytecode_memset);
+                    insn->dest = dest;
+                    insn->src0 = bc_signed_int_op(0);
+                    insn->src1 = bc_signed_int_op(type->size);
+                    
+                } else {
+                    // TODO(Alexander): maybe this is a type error?
+                    unimplemented;
+                }
             } else {
                 Bc_Type source_type = bc_build_type(bc, node->Assign_Stmt.expr->type);
                 Bc_Operand source = bc_build_expression(bc, node->Assign_Stmt.expr);

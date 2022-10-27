@@ -85,6 +85,7 @@ hit_sphere(Sphere sphere, ray r, f32 t_min, f32 t_max) {
 
 v3
 ray_color(ray r, [2]Sphere spheres, int depth) {
+    print_vec3(spheres[0].p);
     if (depth <= 0) {
         return vec3(0.0f, 0.0f, 0.0f);
     }
@@ -172,7 +173,8 @@ main() {
                 r.origin = origin;
                 r.direction = dir;
                 
-                ray_color(r, spheres, max_ray_depth);
+                v3 c = ray_color(r, spheres, max_ray_depth);
+                color = vec3_add(color, c);
             }
             
             color = vec3_scale(color, 1.0f/(f32) samples_per_pixel);
@@ -182,8 +184,8 @@ main() {
             int ig = (int) (254.999f * color.y);
             int ib = (int) (254.999f * color.z);
             
-            pln("% % %", ir, ig, ib);
-            //return 0;
+            //pln("% % %", ir, ig, ib);
+            return 0;
         }
     }
     

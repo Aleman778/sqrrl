@@ -119,7 +119,7 @@ x64_fix_memory_to_memory_instruction(X64_Builder* x64, X64_Instruction* insn) {
         if (insn->opcode == X64Opcode_movss || 
             insn->opcode == X64Opcode_movsd) {
             mov_insn->opcode = insn->opcode;
-            mov_insn->op0.kind = X64Operand_xmm;
+            mov_insn->op1.kind = X64Operand_xmm;
         }
         insn->op0 = mov_insn->op1;
         

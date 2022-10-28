@@ -343,23 +343,6 @@ constant_folding_of_expressions(Ast* ast) {
                 }
             }
         } break;
-        
-        case Ast_Field_Expr: {
-            // TODO(Alexander): hack to inject the fixed size into count
-            string_id ident = ast_unwrap_ident(ast->Field_Expr.field);
-            if (ident == Sym_count) {
-                
-                Ast* var = ast->Field_Expr.var;
-                if (var && var->type) {
-                    
-                    Type* type = var->type;
-                    if (type->kind == TypeKind_Array && type->Array.capacity > 0) {
-                        result.type = Value_signed_int;
-                        result.data.signed_int = type->Array.capacity;
-                    }
-                }
-            }
-        } break;
     }
     
     if (result.type != Value_void) {
@@ -653,7 +636,19 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                         result->Pointer = type->Array.type; 
                     } break;
                     
-                    case Sym_count: result = t_smm; break;
+                    case Sym_count: {
+                        result = t_smm;
+                        
+                        if (type->Array.capacity > 0) {
+                            Value capacity = {};
+                            capacity.type = Value_signed_int;
+                            capacity.data.signed_int = type->Array.capacity;
+                            
+                            expr->kind = Ast_Value;
+                            expr->Value.value = capacity;
+                        }
+                    } break;
+                    
                     case Sym_capacity: {
                         if (type->Array.is_dynamic) {
                             result = t_smm;

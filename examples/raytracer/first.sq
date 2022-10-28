@@ -21,7 +21,7 @@ random_f32_between(f32 minimum, f32 maximum) {
 //#define PRINT_AST 1
 //#define PRINT_BYTECODE 1
 //#define PRINT_ASM_VREG 1
-#define PRINT_ASM 1
+//#define PRINT_ASM 1
 
 v3
 ray_sky_color(ray r) {
@@ -85,7 +85,7 @@ hit_sphere(Sphere sphere, ray r, f32 t_min, f32 t_max) {
 
 v3
 ray_color(ray r, [2]Sphere spheres, int depth) {
-    print_vec3(spheres[0].p);
+    //print_vec3(spheres[0].p);
     if (depth <= 0) {
         return vec3(0.0f, 0.0f, 0.0f);
     }
@@ -184,8 +184,7 @@ main() {
             int ig = (int) (254.999f * color.y);
             int ib = (int) (254.999f * color.z);
             
-            //pln("% % %", ir, ig, ib);
-            return 0;
+            pln("% % %", ir, ig, ib);
         }
     }
     

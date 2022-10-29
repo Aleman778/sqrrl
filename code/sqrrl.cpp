@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+typedef int asm_main(void);
+
 #include "sqrrl.h"
 
 #include "sqrrl_basic.cpp"
@@ -17,8 +19,8 @@
 #include "sqrrl_x64_builder.cpp"
 #include "sqrrl_x64_insn_def.cpp"
 #include "sqrrl_x64_assembler.cpp"
+#include "sqrrl_x64_converter.cpp"
 
-typedef int asm_main(void);
 
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,

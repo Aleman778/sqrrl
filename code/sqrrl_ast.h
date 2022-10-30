@@ -310,7 +310,7 @@ should_ast_stmt_end_with_semicolon(Ast* node) {
 
 inline bool
 is_ast_none(Ast* ast) {
-    return ast->kind == Ast_None;
+    return ast && ast->kind == Ast_None;
 }
 
 inline bool

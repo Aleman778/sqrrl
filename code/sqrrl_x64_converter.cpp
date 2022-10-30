@@ -1,5 +1,5 @@
 
-Intermediate_Code*
+inline Intermediate_Code*
 create_ic(Ic_Opcode opcode = IC_NOOP) {
     // TODO(Alexander): temporary bump allocation for now
     Intermediate_Code* result = (Intermediate_Code*) calloc(1, sizeof(Intermediate_Code));
@@ -8,6 +8,19 @@ create_ic(Ic_Opcode opcode = IC_NOOP) {
     return result;
 }
 
+inline Ic_Arg
+ic_reg() {
+    // TODO(Alexander): how to handle register allocation
+    Ic_Arg result = {};
+    result.reg = 0;
+    result.type = IC_S32 + IC_REG; // TODO(Alexander): hardcoded type
+    return result;
+}
+
+// TODO(Alexander): this is temporary
+map(string_id, s64)* stack_displacements;
+s64 curr_displacement;
+
 Ic_Arg
 convert_to_ic_arg(Ast* node) {
     Ic_Arg result = {};
@@ -15,7 +28,7 @@ convert_to_ic_arg(Ast* node) {
     switch (node->kind) {
         case Ast_Value: {
             if (is_integer(node->Value.value)) {
-                result.type = IC_IMM;
+                result.type = IC_S32 + IC_IMM;
                 result.disp = value_to_s64(node->Value.value);
             } else {
                 unimplemented;
@@ -23,7 +36,12 @@ convert_to_ic_arg(Ast* node) {
         } break;
         
         case Ast_Ident: {
-            result.type = IC_STACK;
+            string_id ident = ast_unwrap_ident(node);
+            assert(map_key_exists(stack_displacements, ident));
+            
+            result.type = IC_S32 + IC_STK;
+            result.reg = X64_RBP; // TODO(Alexander): RBP hardcoded for now
+            result.disp = map_get(stack_displacements, ident);
         } break;
         
         default: unimplemented;
@@ -32,22 +50,24 @@ convert_to_ic_arg(Ast* node) {
     return result;
 }
 
-Ic_Arg
-ic_reg() {
-    // TODO(Alexander): how to handle register allocation
-    Ic_Arg result = {};
-    result.reg = 0;
-    result.type = IC_REG;
-    return result;
-}
-
-
 
 Intermediate_Code*
 convert_to_intermediate_code(Ast* node) {
     Intermediate_Code* result = 0;
     
     switch (node->kind) {
+        case Ast_Ident: {
+            result = create_ic(IC_MOV);
+            result->dest = ic_reg();
+            result->src0 = convert_to_ic_arg(node);
+        } break;
+        
+        case Ast_Value: {
+            result = create_ic(IC_MOV);
+            result->dest = ic_reg();
+            result->src0 = convert_to_ic_arg(node);
+        } break;
+        
         case Ast_Binary_Expr: {
             result = create_ic();
             result->dest = ic_reg();
@@ -63,57 +83,79 @@ convert_to_intermediate_code(Ast* node) {
             
         } break;
         
+        case Ast_Assign_Stmt: {
+            string_id ident = ast_unwrap_ident(node->Assign_Stmt.ident);
+            
+            curr_displacement -= 4; // TODO(Alexander): hardcoded s32 for now
+            map_put(stack_displacements, ident, curr_displacement);
+            
+            if (!is_ast_none(node->Assign_Stmt.expr)) {
+                result = convert_to_intermediate_code(node->Assign_Stmt.expr);
+                result->dest = convert_to_ic_arg(node->Assign_Stmt.ident);
+            }
+        } break;
+        
+        case Ast_Expr_Stmt: {
+            result = convert_to_intermediate_code(node->Expr_Stmt);
+        } break;
+        
+        case Ast_Block_Stmt: {
+            Intermediate_Code* ic = 0;
+            for_compound(node->Block_Stmt.stmts, it) {
+                Intermediate_Code* ic_next = convert_to_intermediate_code(it);
+                if (ic) {
+                    ic->next = ic_next;
+                }
+                ic = ic_next;
+                
+                if (!result) { 
+                    result = ic;
+                }
+                result->last = ic;
+            }
+        } break;
+        
         default: unimplemented;
     }
     
     return result;
 }
 
-inline void
-ic_u8(Intermediate_Code* ic, u8 b) {
-    assert(ic->count < fixed_array_count(ic->code));
-    ic->code[ic->count++] = b;
+#define REX_PATTERN 0x40
+#define REX_W bit(3)
+#define REX_R bit(2)
+#define REX_X bit(1)
+#define REX_B bit(0)
+
+void
+x64_rex(Intermediate_Code* ic, Ic_Type t, s64 r, s64 rm) {
+    bool use_rex = false;
+    u8 rex = REX_PATTERN;
+    if (t & (IC_S64 | IC_U32)) {
+        use_rex = true;
+        rex |= REX_W;
+    }
+    
+    // TODO(Alexander): check for this regisetr swap (from intel manual):
+    // "When any REX prefix is used, SPL, BPL, SIL and DIL are used. 
+    // Otherwise, without any REX prefix AH, CH, DH and BH are used."
+    
+    if (r & 8) {
+        use_rex = true;
+        rex |= REX_R;
+    }
+    
+    // TODO(Alexander): TODO: REX_X;
+    
+    if (rm & 8) {
+        use_rex = true;
+        rex |= REX_B;
+    }
+    
+    if (use_rex) {
+        ic_u8(ic, rex);
+    }
 }
-
-inline void
-ic_u16(Intermediate_Code* ic, u16 w) {
-    assert(ic->count < fixed_array_count(ic->code));
-    *((u16*) (ic->code + ic->count)) = w;
-}
-
-inline void
-ic_u32(Intermediate_Code* ic, u32 dw) {
-    assert(ic->count < fixed_array_count(ic->code));
-    *((u32*) (ic->code + ic->count)) = dw;
-    ic->count += 4;
-}
-
-inline void
-ic_u64(Intermediate_Code* ic, u64 qw) {
-    assert(ic->count < fixed_array_count(ic->code));
-    *((u64*) (ic->code + ic->count)) = qw;
-    ic->count += 4;
-}
-
-
-enum {
-    X64_RAX,
-    X64_RCX,
-    X64_RDX,
-    X64_RBX,
-    X64_RSP,
-    X64_RBP,
-    X64_RSI,
-    X64_RDI,
-    X64_R8,
-    X64_R9,
-    X64_R10,
-    X64_R11,
-    X64_R12,
-    X64_R13,
-    X64_R14,
-    X64_R15
-};
 
 inline void
 x64_add(Intermediate_Code* ic, 
@@ -121,21 +163,21 @@ x64_add(Intermediate_Code* ic,
         Ic_Type t2, s64 r2, s64 d2, 
         Ic_Type t3, s64 r3, s64 d3) {
     
-    if (t1 == IC_REG) {
+    if (t1 & IC_REG) {
         x64_mov(ic, t1, r1, d1, t2, r2, d2);
     } else {
         unimplemented;
     }
     
-    switch (t1) {
+    switch (t1 & IC_TF_MASK) {
         case IC_REG: {
-            if (t3 == IC_IMM) {
+            if (t3 & IC_IMM) {
                 // 81 /0 id 	ADD r/m32, imm32 	MI
                 ic_u8(ic, 0x81);
-                ic_u8(ic, 0xC0 | ((u8) r1<<3) | (u8) r3);
+                ic_u8(ic, 0xC0 | (u8) r1);
                 ic_u32(ic, (u32) d3);
                 
-            } else if (t3 == IC_REG) {
+            } else if (t3 & IC_REG) {
                 // 03 /r 	ADD r32, r/m32 	RM
                 ic_u8(ic, 0x03);
                 ic_u8(ic, 0xC0 | ((u8) r1<<3) | (u8) r3);
@@ -148,38 +190,51 @@ x64_add(Intermediate_Code* ic,
     }
 }
 
+void
+x64_modrm(Intermediate_Code* ic, Ic_Type t, s64 d, s64 r, s64 rm=X64_RBP) {
+    if (t & IC_STK) {
+        if (d < S8_MIN || d > S8_MAX) {
+            ic_u8(ic, MODRM_INDIRECT_DISP32 | ((u8) r<<3) | (u8) rm);
+            ic_u32(ic, (u32) d);
+        } else {
+            ic_u8(ic, MODRM_INDIRECT_DISP8 | ((u8) r<<3) | (u8) rm);
+            ic_u8(ic, (u8) d);
+        }
+    } else {
+        ic_u8(ic, MODRM_DIRECT | ((u8) r<<3) | (u8) rm);
+    }
+}
 
-inline void
+void
 x64_mov(Intermediate_Code* ic,
         Ic_Type t1, s64 r1, s64 d1,
         Ic_Type t2, s64 r2, s64 d2) {
     
-    switch (t1) {
+    switch (t1 & IC_TF_MASK) {
         case IC_REG: {
-            
-            if (t2 == IC_IMM) {
+            if (t2 & IC_IMM) {
                 // B8+ rd id 	MOV r32, imm32 	OI
+                x64_rex(ic, t1, r1, 0);
                 ic_u8(ic, 0xB8+(u8)r1);
                 ic_u32(ic, (u32) d2);
                 
-            } else if (t2 == IC_REG || t2 == IC_STACK) {
+            } else if (t2 & (IC_REG | IC_STK)) {
                 // 8B /r 	MOV r32,r/m32 	RM
+                x64_rex(ic, t1, r1, r2);
                 ic_u8(ic, 0x8B);
-                
-                u8 mod = (t2 == IC_STACK) ? MODRM_DIRECT : MODRM_INDIRECT_DISP32;
-                if (t2 == IC_STACK) {
-                    if (d2 < S8_MIN || d2 > S8_MAX) {
-                        ic_u8(ic, MODRM_INDIRECT_DISP32 | ((u8) r1<<3) | X64_RBP);
-                        ic_u32(ic, (u32) d2);
-                    } else {
-                        ic_u8(ic, MODRM_INDIRECT_DISP8 | ((u8) r1<<3) | X64_RBP);
-                        ic_u8(ic, (u8) d2);
-                    }
-                } else {
-                    ic_u8(ic, MODRM_DIRECT | ((u8) r1<<3) | (u8) r2);
-                }
+                x64_modrm(ic, t2, d2, r1, r2);
             } else {
                 assert(0 && "invalid instruction");
+            }
+        } break;
+        
+        case IC_STK: {
+            if (t2 & IC_IMM) {
+                // C7 /0 id 	MOV r/m32, imm32 	MI
+                x64_rex(ic, t1, 0, r1);
+                ic_u8(ic, 0xC7);
+                x64_modrm(ic, t1, d1, 0);
+                ic_u32(ic, (u32) d2);
             }
         } break;
         
@@ -190,8 +245,8 @@ x64_mov(Intermediate_Code* ic,
 inline void
 x64_div(Intermediate_Code* ic, bool remainder) {
     
-    x64_mov(ic, IC_REG, X64_RAX, 0, ic->src0.type, ic->src0.reg, ic->src0.disp);
-    x64_mov(ic, IC_REG, X64_RCX, 0, ic->src1.type, ic->src1.reg, ic->src1.disp);
+    x64_mov(ic, ic->src0.raw + IC_REG, X64_RAX, 0, ic->src0.type, ic->src0.reg, ic->src0.disp);
+    x64_mov(ic, ic->src1.raw + IC_REG, X64_RCX, 0, ic->src1.type, ic->src1.reg, ic->src1.disp);
     ic_u8(ic, 0x99); // CDQ
     
     // F7 /6 	DIV r/m32 	M
@@ -215,12 +270,18 @@ convert_to_x64_machine_code(Intermediate_Code* ic) {
     ic->count = 0;
     switch (ic->opcode) {
         case IC_PRLG: {
-            s64 t = IC_REG << 8 | IC_S64;
+            Ic_Type t = IC_REG + IC_S64;
             x64_mov(ic, t, X64_RBP, 0, t, X64_RSP, 0);
+            
+            // REX.W + 81 /5 id 	SUB r/m64, imm32 	MI
+            ic_u8(ic, REX_PATTERN | REX_W);
+            ic_u8(ic, 0x81);
+            x64_modrm(ic, t, 0, 5, X64_RBP);
+            ic_u32(ic, (u32) -curr_displacement);
         } break;
         
         case IC_EPLG: {
-            
+            ic_u8(ic, 0xC3);
         } break;
         
         case IC_ADD: {
@@ -231,7 +292,9 @@ convert_to_x64_machine_code(Intermediate_Code* ic) {
         } break;
         
         case IC_MOV: {
-            x64_mov(ic, ic->src0.type, ic->src0.reg, ic->src0.disp, ic->src1.type, ic->src1.reg, ic->src1.disp);
+            x64_mov(ic, 
+                    ic->dest.type, ic->dest.reg, ic->dest.disp, 
+                    ic->src0.type, ic->src0.reg, ic->src0.disp);
         } break;
         
         case IC_DIV: {
@@ -252,25 +315,27 @@ void
 test_x64_converter(int srcc, char* srcv[], void* asm_buffer, umm asm_size,
                    void (*asm_make_executable)(void*, umm), bool is_debugger_present) {
     
+    vars_initialize_keywords_and_symbols();
+    
     Tokenizer tokenizer = {};
-    tokenizer_set_source(&tokenizer, string_lit("x + 10"), string_lit("test"));
+    tokenizer_set_source(&tokenizer, string_lit("{ int x = 20; x + 10; }"), string_lit("test"));
     
     Parser parser = {};
     parser.tokenizer = &tokenizer;
     //Ast_File ast_file = parse_file(&parser);
     
-    Ast* expr = parse_expression(&parser);
+    Ast* stmt = parse_block_statement(&parser);
     
-    print_ast(expr, &tokenizer);
+    print_ast(stmt, &tokenizer);
     
     Intermediate_Code* ic_begin = create_ic(IC_PRLG);
     {
-        Intermediate_Code* ic = convert_to_intermediate_code(expr);
+        Intermediate_Code* ic = convert_to_intermediate_code(stmt);
         Intermediate_Code* ic_end = create_ic(IC_EPLG);
         
         ic_begin->next = ic;
         ic_begin->last = ic_end;
-        ic->next = ic_end;
+        ic->last->next = ic_end;
         ic->last = ic_end;
         ic_end->last = ic_end;
     }
@@ -300,7 +365,7 @@ test_x64_converter(int srcc, char* srcv[], void* asm_buffer, umm asm_size,
             printf("0%hhX ", byte);
         }
         
-        if (byte_index % 90 == 89) {
+        if (byte_index % 16 == 15 || byte_index == asm_curr_used - 1) {
             printf("\n");
         }
     }
@@ -308,5 +373,5 @@ test_x64_converter(int srcc, char* srcv[], void* asm_buffer, umm asm_size,
     asm_make_executable(asm_buffer, asm_curr_used);
     asm_main* func = (asm_main*) asm_buffer;
     int jit_exit_code = (int) func();
-    pln("JIT exited with code: %", f_int(jit_exit_code));
+    pln("\nJIT exited with code: %", f_int(jit_exit_code));
 }

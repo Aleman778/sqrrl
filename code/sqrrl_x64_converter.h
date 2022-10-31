@@ -41,15 +41,30 @@ struct Ic_Arg {
     s64 disp; // alt. imm
 };
 
+#define DEF_IC_OPCODES \
+IC(NOOP) \
+IC(PRLG) \
+IC(EPLG) \
+IC(LABEL) \
+IC(ADD) \
+IC(DIV) \
+IC(MOD) \
+IC(MOV) \
+IC(CMP) \
+IC(JNG)
+
 enum Ic_Opcode {
-    IC_NOOP,
-    IC_PRLG,
-    IC_EPLG,
-    IC_ADD,
-    IC_DIV,
-    IC_MOD,
-    IC_MOV,
+#define IC(name) IC_##name,
+    DEF_IC_OPCODES
+#undef IC
 };
+
+global const cstring ic_opcode_names[] = {
+#define IC(name) #name,
+    DEF_IC_OPCODES
+#undef IC
+};
+
 
 struct Intermediate_Code {
     Intermediate_Code* next, *last;
@@ -110,6 +125,11 @@ enum {
     X64_R13,
     X64_R14,
     X64_R15
+};
+
+global const cstring int_register_names[] {
+    "RAX", "RCX", "RDX", "RBX", "RSP", "RBP", "RSI", "RDI",
+    "R8",  "R9",  "R10", "R11", "R12", "R13", "R14", "R15"
 };
 
 inline void x64_mov(Intermediate_Code* ic, 

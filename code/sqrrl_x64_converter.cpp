@@ -115,6 +115,12 @@ convert_to_intermediate_code(Ast* node) {
             }
         } break;
         
+        case Ast_If_Stmt: {
+            
+            
+            
+        } break;
+        
         default: unimplemented;
     }
     
@@ -309,7 +315,31 @@ convert_to_x64_machine_code(Intermediate_Code* ic) {
     }
 }
 
-
+internal void
+string_builder_push(String_Builder* sb, Ic_Arg arg) {
+    // TODO(Alexander): make use of the type
+    switch (arg.type & IC_TF_MASK) {
+        case IC_IMM: {
+            string_builder_push_format(sb, "%", f_s64(arg.disp));
+        } break;
+        
+        case IC_REG: {
+            if (arg.reg < fixed_array_count(int_register_names)) {
+                string_builder_push(sb, int_register_names[arg.reg]);
+            }
+        } break;
+        
+        case IC_STK: {
+            if (arg.disp != 0) {
+                string_builder_push_format(sb, "[RBP % %]", 
+                                           f_char(arg.disp > 0 ? '+' : '-'), 
+                                           f_s64(arg.disp > 0 ? arg.disp : -arg.disp));
+            } else {
+                string_builder_push(sb, "[RBP]");
+            }
+        } break;
+    }
+}
 
 void
 test_x64_converter(int srcc, char* srcv[], void* asm_buffer, umm asm_size,
@@ -346,14 +376,58 @@ test_x64_converter(int srcc, char* srcv[], void* asm_buffer, umm asm_size,
         asm_curr_used = 1;
     }
     
-    Intermediate_Code* curr = ic_begin;
-    while (curr) {
-        convert_to_x64_machine_code(curr);
-        assert((asm_curr_used + curr->count) < asm_size);
-        memcpy((u8*) asm_buffer + asm_curr_used, curr->code, curr->count);
-        asm_curr_used += curr->count;
+    {
+        Intermediate_Code* curr = ic_begin;
+        while (curr) {
+            convert_to_x64_machine_code(curr);
+            assert((asm_curr_used + curr->count) < asm_size);
+            memcpy((u8*) asm_buffer + asm_curr_used, curr->code, curr->count);
+            asm_curr_used += curr->count;
+            
+            curr = curr->next;
+        }
+    }
+    
+    pln("\nIntermediate code:");
+    
+    {
+        String_Builder sb = {};
         
-        curr = curr->next;
+        Intermediate_Code* curr = ic_begin;
+        while (curr) {
+            if (curr->opcode != IC_LABEL) {
+                string_builder_push(&sb, "  ");
+            }
+            
+            if (curr->dest.type) {
+                string_builder_push(&sb, curr->dest);
+                string_builder_push(&sb, " = ");
+            }
+            
+            string_builder_push(&sb, ic_opcode_names[curr->opcode]);
+            
+            if (curr->src0.type) {
+                string_builder_push(&sb, " ");
+                string_builder_push(&sb, curr->src0);
+                
+                if (curr->src1.type) {
+                    string_builder_push(&sb, ", ");
+                    string_builder_push(&sb, curr->src1);
+                    
+                }
+            }
+            
+            curr = curr->next;
+            
+            if (curr) {
+                string_builder_push(&sb, "\n");
+            }
+        }
+        
+        string s = string_builder_to_string_nocopy(&sb);
+        pln("%", f_string(s));
+        
+        string_builder_free(&sb);
     }
     
     pln("\nX64 Machine Code (% bytes):", f_umm(asm_curr_used));

@@ -33,13 +33,22 @@ struct Ic_Arg {
     union {
         Ic_Type type;
         struct {
-            Ic_Raw_Type raw;
-            Ic_Type_Flags flags;
+            Ic_Raw_Type type_raw;
+            Ic_Type_Flags type_flags;
         };
     };
     u8 reg;
     s64 disp; // alt. imm
 };
+
+inline Ic_Arg
+create_ic_reg(Ic_Raw_Type t=IC_S32) {
+    // TODO(Alexander): how to handle register allocation
+    Ic_Arg result = {};
+    result.reg = 0;
+    result.type = t + IC_REG; // TODO(Alexander): hardcoded type
+    return result;
+}
 
 #define DEF_IC_OPCODES \
 IC(NOOP) \
@@ -51,7 +60,13 @@ IC(DIV) \
 IC(MOD) \
 IC(MOV) \
 IC(CMP) \
-IC(JNG)
+IC(SETG) \
+IC(SETNG) \
+IC(JG) \
+IC(JNG) \
+IC(JE) \
+IC(JNE) \
+IC(JMP)
 
 enum Ic_Opcode {
 #define IC(name) IC_##name,
@@ -65,9 +80,19 @@ global const cstring ic_opcode_names[] = {
 #undef IC
 };
 
+inline bool
+ic_is_setcc(Ic_Opcode opcode) {
+    return opcode >= IC_SETG && opcode <= IC_SETNG;
+}
+
+inline Ic_Opcode
+ic_convert_set_to_jump(Ic_Opcode opcode)  {
+    return (Ic_Opcode) (opcode + (IC_JG - IC_SETG));
+}
 
 struct Intermediate_Code {
-    Intermediate_Code* next, *last;
+    Intermediate_Code* next;
+    void* data;
     
     Ic_Opcode opcode;
     Ic_Arg dest, src0, src1;
@@ -100,6 +125,74 @@ ic_u64(Intermediate_Code* ic, u64 qw) {
     assert(ic->count < fixed_array_count(ic->code));
     *((u64*) (ic->code + ic->count)) = qw;
     ic->count += 4;
+}
+
+struct Ic_Basic_Block {
+    Ic_Basic_Block *next;
+    Intermediate_Code *ic_first, *ic_last;
+};
+
+// TODO(Alexander): temporary placed here for now 
+struct Comp_Unit {
+    Intermediate_Code *ic_first, *ic_last;
+    Ic_Basic_Block *bb_first, *bb_last;
+    
+    map(string_id, s64)* stack_displacements;
+    s64 stack_curr_used;
+};
+
+inline Ic_Basic_Block*
+ic_basic_block(Comp_Unit* cu) {
+    // TODO(Alexander): temporary bump allocation for now
+    // TODO(Alexander): maybe give it a unique name for debugging
+    Ic_Basic_Block* result = (Ic_Basic_Block*) calloc(1, sizeof(Ic_Basic_Block));
+    return result;
+}
+
+Intermediate_Code*
+ic_add(Comp_Unit* cu, Ic_Opcode opcode = IC_NOOP, void* data=0) {
+    // TODO(Alexander): temporary bump allocation for now
+    Intermediate_Code* result = (Intermediate_Code*) calloc(1, sizeof(Intermediate_Code));
+    result->opcode = opcode;
+    result->data = data;
+    
+    Ic_Basic_Block* bb;
+    
+    if (opcode == IC_LABEL) {
+        bb = (Ic_Basic_Block*) data;
+        if (!cu->bb_first) {
+            cu->bb_first = bb;
+        }
+        
+        if (cu->bb_last) {
+            cu->bb_last->next = bb;
+        }
+        
+        cu->bb_last = bb;
+    } else {
+        bb = cu->bb_last;
+        
+        if (!bb) {
+            bb = ic_basic_block(cu);
+            cu->bb_first = bb;
+            cu->bb_last = bb;
+        }
+    }
+    
+    if (!bb->ic_first) {
+        bb->ic_first = result;
+    }
+    if (!cu->ic_first) {
+        cu->ic_first = result;
+    }
+    
+    if (bb->ic_last) {
+        bb->ic_last->next = result;
+    }
+    bb->ic_last = result;
+    cu->ic_last = result;
+    
+    return result;
 }
 
 

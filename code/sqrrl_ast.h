@@ -314,6 +314,11 @@ is_ast_none(Ast* ast) {
 }
 
 inline bool
+is_valid_ast(Ast* ast) {
+    return ast && ast->kind != Ast_None;
+}
+
+inline bool
 is_ast_expr(Ast* ast) {
     return ast->kind > Ast_Expr_Begin && ast->kind < Ast_Expr_End;
 }

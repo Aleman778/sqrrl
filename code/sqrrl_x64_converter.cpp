@@ -22,25 +22,14 @@ convert_to_intermediate_code(Comp_Unit* cu, Ast* node) {
             result.disp = map_get(cu->stack_displacements, ident);
         } break;
         
-#if 0
-        case Ast_Ident: {
-            result = ic_add(cu, IC_MOV);
-            result->dest = create_ic_reg();
-            result->src0 = convert_to_ic_arg(cu, node);
-        } break;
-        
-        case Ast_Value: {
-            result = ic_add(cu, IC_MOV);
-            result->dest = create_ic_reg();
-            result->src0 = convert_to_ic_arg(cu, node);
-        } break;
-#endif
-        
         case Ast_Binary_Expr: {
+            Ic_Arg src0 = convert_to_intermediate_code(cu, node->Binary_Expr.first);
+            Ic_Arg src1 = convert_to_intermediate_code(cu, node->Binary_Expr.second);
+            
             Intermediate_Code* ic = ic_add(cu);
             ic->dest = create_ic_reg();
-            ic->src0 = convert_to_intermediate_code(cu, node->Binary_Expr.first);
-            ic->src1 = convert_to_intermediate_code(cu, node->Binary_Expr.second);
+            ic->src0 = src0;
+            ic->src1 = src1;
             result = ic->dest;
             
             Binary_Op op = node->Binary_Expr.op;
@@ -54,6 +43,10 @@ convert_to_intermediate_code(Comp_Unit* cu, Ast* node) {
             }
             
             switch (op) {
+                case BinaryOp_Assign: {
+                    ic->opcode = IC_MOV;
+                    ic->dest.type = 0;
+                } break;
                 case BinaryOp_Add: ic->opcode = IC_ADD; break;
                 case BinaryOp_Divide: ic->opcode = IC_DIV; break;
                 case BinaryOp_Modulo: ic->opcode = IC_MOD; break;
@@ -71,8 +64,8 @@ convert_to_intermediate_code(Comp_Unit* cu, Ast* node) {
             
             if (!is_ast_none(node->Assign_Stmt.expr)) {
                 Intermediate_Code* ic = ic_add(cu, IC_MOV);
-                ic->dest = convert_to_intermediate_code(cu, node->Assign_Stmt.ident);
-                ic->src0 = convert_to_intermediate_code(cu, node->Assign_Stmt.expr);
+                ic->src0 = convert_to_intermediate_code(cu, node->Assign_Stmt.ident);
+                ic->src1 = convert_to_intermediate_code(cu, node->Assign_Stmt.expr);
             }
         } break;
         
@@ -123,18 +116,26 @@ convert_to_intermediate_code(Comp_Unit* cu, Ast* node) {
 }
 
 #define REX_PATTERN 0x40
-#define REX_W bit(3)
-#define REX_R bit(2)
-#define REX_X bit(1)
-#define REX_B bit(0)
+#define REX_FLAG_W bit(3)
+#define REX_FLAG_R bit(2)
+#define REX_FLAG_X bit(1)
+#define REX_FLAG_B bit(0)
+#define REX_FLAG_64_BIT REX_FLAG_W
 
+void
+x64_rex(Intermediate_Code* ic, u8 flags) {
+    ic_u8(ic, REX_PATTERN | flags);
+}
+
+
+#if 0
 void
 x64_rex(Intermediate_Code* ic, Ic_Type t, s64 r, s64 rm) {
     bool use_rex = false;
     u8 rex = REX_PATTERN;
-    if (t & (IC_S64 | IC_U32)) {
+    if (t & (IC_S64 | IC_U64)) {
         use_rex = true;
-        rex |= REX_W;
+        rex |= REX_FLAG_W;
     }
     
     // TODO(Alexander): check for this regisetr swap (from intel manual):
@@ -142,21 +143,24 @@ x64_rex(Intermediate_Code* ic, Ic_Type t, s64 r, s64 rm) {
     // Otherwise, without any REX prefix AH, CH, DH and BH are used."
     
     if (r & 8) {
+        assert(0);
         use_rex = true;
-        rex |= REX_R;
+        rex |= REX_FLAG_R;
     }
     
-    // TODO(Alexander): TODO: REX_X;
+    // TODO(Alexander): TODO: REX_FLAG_X;
     
     if (rm & 8) {
+        assert(0);
         use_rex = true;
-        rex |= REX_B;
+        rex |= REX_FLAG_B;
     }
     
     if (use_rex) {
         ic_u8(ic, rex);
     }
 }
+#endif
 
 void
 x64_modrm(Intermediate_Code* ic, Ic_Type t, s64 d, s64 r, s64 rm=X64_RBP) {
@@ -182,12 +186,16 @@ x64_binary(Intermediate_Code* ic,
     switch (t1 & IC_TF_MASK) {
         case IC_REG: {
             if (t2 & IC_IMM) {
+                assert(t1 & (IC_S32 | IC_U32));
+                
                 // 81 /0 id 	ADD r/m32, imm32 	MI
                 ic_u8(ic, 0x81);
                 ic_u8(ic, 0xC0 | (reg_field << 3) | (u8) r1);
                 ic_u32(ic, (u32) d2);
                 
             } else if (t2 & IC_REG) {
+                assert(t1 & (IC_S32 | IC_U32));
+                
                 // 03 /r 	ADD r32, r/m32 	RM
                 ic_u8(ic, opcode + 3);
                 ic_u8(ic, 0xC0 | ((u8) r1<<3) | (u8) r2);
@@ -198,8 +206,9 @@ x64_binary(Intermediate_Code* ic,
         
         case IC_STK: {
             if (t2 & IC_IMM) {
+                assert(t1 & (IC_S32 | IC_U32));
+                
                 // 81 /0 id 	ADD r/m32, imm32 	MI
-                x64_rex(ic, t1, 0, r1);
                 ic_u8(ic, 0x81);
                 //ic_u8(ic, 0xC7);
                 x64_modrm(ic, t1, d1, reg_field);
@@ -238,13 +247,14 @@ x64_mov(Intermediate_Code* ic,
         case IC_REG: {
             if (t2 & IC_IMM) {
                 // B8+ rd id 	MOV r32, imm32 	OI
-                x64_rex(ic, t1, r1, 0);
                 ic_u8(ic, 0xB8+(u8)r1);
                 ic_u32(ic, (u32) d2);
                 
             } else if (t2 & (IC_REG | IC_STK)) {
                 // 8B /r 	MOV r32,r/m32 	RM
-                x64_rex(ic, t1, r1, r2);
+                if (t1 & (IC_S64 | IC_U64)) {
+                    x64_rex(ic, REX_FLAG_64_BIT);
+                }
                 ic_u8(ic, 0x8B);
                 x64_modrm(ic, t2, d2, r1, r2);
             } else {
@@ -255,10 +265,16 @@ x64_mov(Intermediate_Code* ic,
         case IC_STK: {
             if (t2 & IC_IMM) {
                 // C7 /0 id 	MOV r/m32, imm32 	MI
-                x64_rex(ic, t1, 0, r1);
                 ic_u8(ic, 0xC7);
                 x64_modrm(ic, t1, d1, 0);
                 ic_u32(ic, (u32) d2);
+            } else if (t2 & IC_REG) {
+                // 89 /r 	MOV r/m32,r32 	MR
+                ic_u8(ic, 0x89);
+                x64_modrm(ic, t1, d1, r2);
+                
+            } else {
+                assert(0 && "invalid instruction");
             }
         } break;
         
@@ -288,6 +304,18 @@ x64_div(Intermediate_Code* ic, bool remainder) {
     x64_mov(ic, ic->dest.type, ic->dest.reg, ic->dest.disp, IC_REG, dest_reg, 0);
 }
 
+void
+x64_encode_relative_jump(Intermediate_Code* ic, s64 rip) {
+    Ic_Basic_Block* bb = (Ic_Basic_Block*) ic->data;
+    if (bb->addr != IC_INVALID_ADDR) {
+        // TODO(Alexander): add support for short jumps
+        assert(bb->addr >= S32_MIN && bb->addr <= S32_MAX && "cannot fit addr in rel32");
+        ic_u32(ic, (s32) (bb->addr - rip - ic->count - 4));
+    } else {
+        ic_u32(ic, (s32) 0);
+    }
+}
+
 s64
 convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64 buf_size) {
     
@@ -297,12 +325,14 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64
         ic->count = 0;
         
         switch (ic->opcode) {
+            case IC_NOOP: break;
+            
             case IC_PRLG: {
                 Ic_Type t = IC_REG + IC_S64;
                 x64_mov(ic, t, X64_RBP, 0, t, X64_RSP, 0);
                 
                 // REX.W + 81 /5 id 	SUB r/m64, imm32 	MI
-                ic_u8(ic, REX_PATTERN | REX_W);
+                ic_u8(ic, REX_PATTERN | REX_FLAG_64_BIT);
                 ic_u8(ic, 0x81);
                 x64_modrm(ic, t, 0, 5, X64_RBP);
                 ic_u32(ic, (u32) -stack_usage);
@@ -320,9 +350,9 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64
             } break;
             
             case IC_MOV: {
-                x64_mov(ic, 
-                        ic->dest.type, ic->dest.reg, ic->dest.disp, 
-                        ic->src0.type, ic->src0.reg, ic->src0.disp);
+                x64_mov(ic,
+                        ic->src0.type, ic->src0.reg, ic->src0.disp,
+                        ic->src1.type, ic->src1.reg, ic->src1.disp);
             } break;
             
             case IC_DIV: {
@@ -340,16 +370,16 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64
             } break;
             
             case IC_JNG: {
+                // TODO(Alexander): short jumps
                 ic_u8(ic, 0x0F);
                 ic_u8(ic, 0x8E);
-                Ic_Basic_Block* bb = (Ic_Basic_Block*) ic->data;
-                if (bb->addr != IC_INVALID_ADDR) {
-                    // TODO(Alexander): add support for short jumps
-                    assert(bb->addr >= S32_MIN && bb->addr <= S32_MAX && "cannot fit addr in rel32");
-                    ic_u32(ic, (s32) bb->addr);
-                } else {
-                    ic_u32(ic, (s32) 0);
-                }
+                x64_encode_relative_jump(ic, rip);
+            } break;
+            
+            case IC_JMP: {
+                // TODO(Alexander): short jumps (and indirect jump?)
+                ic_u8(ic, 0xE9);
+                x64_encode_relative_jump(ic, rip);
             } break;
             
             case IC_DEBUG_BREAK: {
@@ -401,14 +431,29 @@ string_builder_push(String_Builder* sb, Ic_Arg arg) {
     }
 }
 
-void
+int
 test_x64_converter(int srcc, char* srcv[], void* asm_buffer, umm asm_size,
                    void (*asm_make_executable)(void*, umm), bool is_debugger_present) {
     
     vars_initialize_keywords_and_symbols();
     
+    string filepath = string_lit("../examples/backend_test.sq");
+    
+    // TODO(Alexander): this is hardcoded for now
+    t_string->size = sizeof(string);
+    t_string->align = alignof(string);
+    t_cstring->size = sizeof(cstring);
+    t_cstring->align = alignof(cstring);
+    
+    // Read entire source file
+    Loaded_Source_File file = read_entire_source_file(filepath);
+    
+    if (!file.is_valid) {
+        return -1;
+    }
+    
     Tokenizer tokenizer = {};
-    tokenizer_set_source(&tokenizer, string_lit("{ int x = 20; if (x > 10) { x + 10; } }"), string_lit("test"));
+    tokenizer_set_source(&tokenizer, file.source, string_lit("test"));
     
     Parser parser = {};
     parser.tokenizer = &tokenizer;
@@ -498,4 +543,6 @@ test_x64_converter(int srcc, char* srcv[], void* asm_buffer, umm asm_size,
     asm_main* func = (asm_main*) asm_buffer;
     int jit_exit_code = (int) func();
     pln("\nJIT exited with code: %", f_int(jit_exit_code));
+    
+    return 0;
 }

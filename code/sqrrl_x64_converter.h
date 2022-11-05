@@ -1,5 +1,5 @@
 
-void test_x64_converter(int argc, char* argv[], void* asm_buffer, umm asm_size,
+ int test_x64_converter(int argc, char* argv[], void* asm_buffer, umm asm_size,
                         void (*asm_make_executable)(void*, umm), bool is_debugger_present);
 
 enum {

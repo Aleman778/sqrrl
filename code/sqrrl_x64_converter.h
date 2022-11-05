@@ -54,6 +54,7 @@ create_ic_reg(Ic_Raw_Type t=IC_S32) {
 IC(NOOP) \
 IC(PRLG) \
 IC(EPLG) \
+IC(DEBUG_BREAK) \
 IC(LABEL) \
 IC(ADD) \
 IC(DIV) \
@@ -130,7 +131,20 @@ ic_u64(Intermediate_Code* ic, u64 qw) {
 struct Ic_Basic_Block {
     Ic_Basic_Block *next;
     Intermediate_Code *ic_first, *ic_last;
+    
+    s64 addr;
 };
+
+#define IC_INVALID_ADDR S64_MIN
+
+inline Ic_Basic_Block*
+ic_basic_block() {
+    // TODO(Alexander): temporary bump allocation for now
+    // TODO(Alexander): maybe give it a unique name for debugging
+    Ic_Basic_Block* result = (Ic_Basic_Block*) calloc(1, sizeof(Ic_Basic_Block));
+    result->addr = IC_INVALID_ADDR;
+    return result;
+}
 
 // TODO(Alexander): temporary placed here for now 
 struct Comp_Unit {
@@ -140,14 +154,6 @@ struct Comp_Unit {
     map(string_id, s64)* stack_displacements;
     s64 stack_curr_used;
 };
-
-inline Ic_Basic_Block*
-ic_basic_block(Comp_Unit* cu) {
-    // TODO(Alexander): temporary bump allocation for now
-    // TODO(Alexander): maybe give it a unique name for debugging
-    Ic_Basic_Block* result = (Ic_Basic_Block*) calloc(1, sizeof(Ic_Basic_Block));
-    return result;
-}
 
 Intermediate_Code*
 ic_add(Comp_Unit* cu, Ic_Opcode opcode = IC_NOOP, void* data=0) {
@@ -168,12 +174,13 @@ ic_add(Comp_Unit* cu, Ic_Opcode opcode = IC_NOOP, void* data=0) {
             cu->bb_last->next = bb;
         }
         
+        bb->ic_last = cu->ic_last;
         cu->bb_last = bb;
     } else {
         bb = cu->bb_last;
         
         if (!bb) {
-            bb = ic_basic_block(cu);
+            bb = ic_basic_block();
             cu->bb_first = bb;
             cu->bb_last = bb;
         }

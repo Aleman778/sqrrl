@@ -339,7 +339,8 @@ find_windows_kits_include_dir() {
 }
 
 
-int main(int argc, char* argv[]) {
+int 
+main(int argc, char* argv[]) {
     // Enable UTF-8 encoding
     SetConsoleOutputCP(65001);
     

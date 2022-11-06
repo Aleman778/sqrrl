@@ -4,19 +4,50 @@
 
 enum {
     IC_Void,
-    IC_S8,
-    IC_U8,
-    IC_S16,
-    IC_U16,
-    IC_S32,
-    IC_U32,
-    IC_S64,
-    IC_U64,
-    IC_F32,
-    IC_F64,
-    IC_MASK= 0xFF,
+    IC_T8 = bit(0),
+    IC_T16 = bit(1),
+    IC_T32 = bit(2),
+    IC_T64 = bit(3),
+    // TODO(Alexander): reserved for now
+    //IC_??? = bit(4),
+    IC_UINT = bit(5),
+    IC_SINT = bit(6),
+    IC_FLOAT = bit(7),
+    IC_RT_MASK = 0xFF,
 };
+
+// raw type flags e.g. u32 =  IC_UINT | IC_T32
+#define IC_S8  (IC_SINT  | IC_T8)
+#define IC_U8  (IC_UINT  | IC_T8)
+#define IC_S16 (IC_SINT  | IC_T16)
+#define IC_U16 (IC_UINT  | IC_T16)
+#define IC_S32 (IC_SINT  | IC_T32)
+#define IC_U32 (IC_UINT  | IC_T32)
+#define IC_S64 (IC_SINT  | IC_T64)
+#define IC_U64 (IC_UINT  | IC_T64)
+#define IC_F32 (IC_FLOAT | IC_T32)
+#define IC_F64 (IC_FLOAT | IC_T64)
+
 typedef u8 Ic_Raw_Type;
+
+
+inline Ic_Raw_Type
+basic_type_to_raw_type(Basic_Type basic) {
+    switch (basic) {
+        case Basic_s8:  return IC_S8;
+        case Basic_u8:  return IC_U8;
+        case Basic_s16: return IC_S16;
+        case Basic_u16: return IC_U16;
+        case Basic_s32: return IC_S32;
+        case Basic_u32: return IC_U32;
+        case Basic_s64: return IC_S64;
+        case Basic_u64: return IC_U64;
+        case Basic_f32: return IC_F32;
+        case Basic_f64: return IC_F64;
+        default: unimplemented;
+    }
+    return IC_Void;
+}
 
 enum {
     IC_IMM = bit(8),
@@ -33,7 +64,7 @@ struct Ic_Arg {
     union {
         Ic_Type type;
         struct {
-            Ic_Raw_Type type_raw;
+            Ic_Raw_Type raw_type;
             Ic_Type_Flags type_flags;
         };
     };
@@ -60,6 +91,8 @@ IC(ADD) \
 IC(DIV) \
 IC(MOD) \
 IC(MOV) \
+IC(MOVSX) \
+IC(MOVZX) \
 IC(CMP) \
 IC(SETG) \
 IC(SETNG) \

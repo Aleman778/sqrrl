@@ -898,6 +898,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         case Ast_Named_Type: {
             string_id ident = ast->Named_Type->Ident;
             result = load_type_declaration(tcx, ident, report_error);
+            ast->type = result;
         } break;
         
         case Ast_Array_Type: {
@@ -1154,6 +1155,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                 result = found_type;
                 
                 string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
+                stmt->Assign_Stmt.ident->type = result;
                 
                 if (tcx->block_depth > 0) {
                     if (!push_local(tcx, ident, expected_type, report_error)) {
@@ -1268,6 +1270,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         
         case Ast_Return_Stmt: {
             result = type_infer_expression(tcx, stmt->Return_Stmt.expr, tcx->return_type, report_error);
+            stmt->type = result;
         } break;
     }
     
@@ -1284,8 +1287,11 @@ type_check_assignment(Type_Context* tcx, Type* a, Type* b) {
     
     switch (a->kind) {
         case TypeKind_Basic: {
-            // TODO(Alexander): do we want't to also check the signedness, like we do here?
-            if (a->Basic.flags != b->Basic.flags || a->size < b->size) {
+            // TODO(Alexander): check signedness for comparisons
+            //if (a->Basic.flags != b->Basic.flags) {
+            //}
+            
+            if (a->size < b->size) {
                 type_error(tcx, string_format("conversion from `%` to `%`, possible loss of data",
                                               f_type(a), f_type(b)));
                 return false;
@@ -1356,6 +1362,12 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
         case Ast_Return_Stmt: {
             Type* found_type = stmt->Return_Stmt.expr->type;
             result = type_check_assignment(tcx, tcx->return_type, found_type);
+        } break;
+        
+        case Ast_Block_Stmt: {
+            for_compound(stmt->Block_Stmt.stmts, it) {
+                type_check_statement(tcx, it);
+            }
         } break;
     }
     

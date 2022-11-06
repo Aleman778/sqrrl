@@ -174,7 +174,6 @@ global Type* t_void = &void_type_definition;
 DEF_BASIC_TYPES
 #undef BASIC
 
-
 void
 string_builder_push(String_Builder* sb, Type* type) {
     if (!type) return;
@@ -258,6 +257,6 @@ print_type(Type* type) {
     string_builder_alloc(&sb, 20);
     string_builder_push(&sb, type);
     string result = string_builder_to_string_nocopy(&sb);
-    pln("%", f_string(result));
+    print_format("%", f_string(result));
     string_builder_free(&sb);
 }

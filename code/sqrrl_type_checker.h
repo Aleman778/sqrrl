@@ -9,7 +9,7 @@ struct Type_Scope {
 };
 
 struct Type_Context {
-    Memory_Arena* type_arena;
+    Memory_Arena type_arena;
     
     map(string_id, Type*)* locals;
     map(string_id, Type*)* globals;

@@ -60,6 +60,30 @@ typedef u8 Ic_Type_Flags;
 
 typedef s16 Ic_Type;
 
+enum {
+    X64_RAX,
+    X64_RCX,
+    X64_RDX,
+    X64_RBX,
+    X64_RSP,
+    X64_RBP,
+    X64_RSI,
+    X64_RDI,
+    X64_R8,
+    X64_R9,
+    X64_R10,
+    X64_R11,
+    X64_R12,
+    X64_R13,
+    X64_R14,
+    X64_R15
+};
+
+global const cstring int_register_names[] {
+    "RAX", "RCX", "RDX", "RBX", "RSP", "RBP", "RSI", "RDI",
+    "R8",  "R9",  "R10", "R11", "R12", "R13", "R14", "R15"
+};
+
 struct Ic_Arg {
     union {
         Ic_Type type;
@@ -73,11 +97,20 @@ struct Ic_Arg {
 };
 
 inline Ic_Arg
-create_ic_reg(Ic_Raw_Type t=IC_S32) {
+ic_reg(Ic_Raw_Type t=IC_S32) {
     // TODO(Alexander): how to handle register allocation
     Ic_Arg result = {};
     result.reg = 0;
     result.type = t + IC_REG; // TODO(Alexander): hardcoded type
+    return result;
+}
+
+inline Ic_Arg
+ic_stk(Ic_Raw_Type t, s64 d) {
+    Ic_Arg result = {};
+    result.type = t + IC_STK;
+    result.reg = X64_RBP; // TODO(Alexander): RBP hardcoded for now
+    result.disp = d;
     return result;
 }
 
@@ -239,31 +272,6 @@ ic_add(Comp_Unit* cu, Ic_Opcode opcode = IC_NOOP, void* data=0) {
 #define MODRM_DIRECT 0xC0
 #define MODRM_INDIRECT_DISP8 0x40
 #define MODRM_INDIRECT_DISP32 0x80
-
-
-enum {
-    X64_RAX,
-    X64_RCX,
-    X64_RDX,
-    X64_RBX,
-    X64_RSP,
-    X64_RBP,
-    X64_RSI,
-    X64_RDI,
-    X64_R8,
-    X64_R9,
-    X64_R10,
-    X64_R11,
-    X64_R12,
-    X64_R13,
-    X64_R14,
-    X64_R15
-};
-
-global const cstring int_register_names[] {
-    "RAX", "RCX", "RDX", "RBX", "RSP", "RBP", "RSI", "RDI",
-    "R8",  "R9",  "R10", "R11", "R12", "R13", "R14", "R15"
-};
 
 inline void x64_mov(Intermediate_Code* ic, 
                     Ic_Type t1, s64 r1, s64 d1, 

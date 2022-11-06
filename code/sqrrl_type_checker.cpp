@@ -96,7 +96,7 @@ type_infer_value(Type_Context* tcx, Value value) {
         case Value_string: {
 #if 0 // TODO(Alexander): maybe string literals should be u8 arrays, for now it's easier to use t_string
             umm char_count = value.data.str.count;
-            Type* result = arena_push_struct(tcx->type_arena, Type);
+            Type* result = arena_push_struct(&tcx->type_arena, Type);
             result->kind = TypeKind_Array;
             result->Array.type = t_u8;
             result->Array.capacity = (smm) char_count;
@@ -430,7 +430,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     } break;
                     
                     case UnaryOp_Address_Of: {
-                        result = arena_push_struct(tcx->type_arena, Type);
+                        result = arena_push_struct(&tcx->type_arena, Type);
                         result->kind = TypeKind_Pointer;
                         result->Pointer = type;
                         result->size = sizeof(umm);
@@ -631,7 +631,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 
                 switch (field_ident) {
                     case Sym_data: {
-                        result = arena_push_struct(tcx->type_arena, Type);
+                        result = arena_push_struct(&tcx->type_arena, Type);
                         result->kind = TypeKind_Pointer;
                         result->Pointer = type->Array.type; 
                     } break;
@@ -920,7 +920,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             
             Type* elem_type = create_type_from_ast(tcx, ast->Array_Type.elem_type, report_error);
             if (elem_type) {
-                result = arena_push_struct(tcx->type_arena, Type);
+                result = arena_push_struct(&tcx->type_arena, Type);
                 result->kind = TypeKind_Array;
                 result->Array.type = elem_type;
                 result->Array.capacity = capacity;
@@ -950,7 +950,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             
             Type* ptr_type = create_type_from_ast(tcx, ast->Pointer_Type, report_error);
             if (ptr_type) {
-                result = arena_push_struct(tcx->type_arena, Type);
+                result = arena_push_struct(&tcx->type_arena, Type);
                 result->kind = TypeKind_Pointer;
                 result->Pointer = ptr_type;
                 result->size = sizeof(smm);
@@ -969,7 +969,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         } break;
         
         case Ast_Function_Type: {
-            result = arena_push_struct(tcx->type_arena, Type);
+            result = arena_push_struct(&tcx->type_arena, Type);
             result->kind = TypeKind_Function;
             result->Function.is_variadic = false;
             Type* return_type = create_type_from_ast(tcx, ast->Function_Type.return_type, report_error);
@@ -1013,7 +1013,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             Ast* fields = ast->Struct_Type.fields;
             Type_Struct_Like struct_like = create_type_struct_like_from_ast(tcx, fields, report_error);
             if (!struct_like.has_error) {
-                result = arena_push_struct(tcx->type_arena, Type);
+                result = arena_push_struct(&tcx->type_arena, Type);
                 result->kind = TypeKind_Struct;
                 result->Struct.types = struct_like.types;
                 result->Struct.idents = struct_like.idents;
@@ -1029,7 +1029,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             Ast* fields = ast->Union_Type.fields;
             Type_Struct_Like struct_like = create_type_struct_like_from_ast(tcx, fields, report_error);
             if (!struct_like.has_error) {
-                result = arena_push_struct(tcx->type_arena, Type);
+                result = arena_push_struct(&tcx->type_arena, Type);
                 result->kind = TypeKind_Union;
                 result->Union.types = struct_like.types;
                 result->Union.idents = struct_like.idents;
@@ -1039,7 +1039,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         } break;
         
         case Ast_Enum_Type: {
-            result = arena_push_struct(tcx->type_arena, Type);
+            result = arena_push_struct(&tcx->type_arena, Type);
             result->kind = TypeKind_Enum;
             
             Type* type;
@@ -1352,7 +1352,9 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
         case Ast_Assign_Stmt: {
             Type* expected_type = stmt->Assign_Stmt.type->type;
             Type* found_type = stmt->Assign_Stmt.expr->type;
-            result = type_check_assignment(tcx, expected_type, found_type);
+            if (expected_type) {
+                result = type_check_assignment(tcx, expected_type, found_type);
+            }
         } break;
         
         case Ast_Expr_Stmt: {
@@ -1410,7 +1412,7 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
         }
     }
     
-    Temporary_Memory temp_memory = begin_temporary_memory(tcx->type_arena);
+    Temporary_Memory temp_memory = begin_temporary_memory(&tcx->type_arena);
     
     if (is_ast_type(ast)) {
         string_id ident = comp_unit->ident;
@@ -1459,7 +1461,7 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
     {
         // Intrinsic syntax: print_format(string format...)
         // e.g. print_format %, lucky number is %\n", "world", 7);
-        Type* type = arena_push_struct(tcx->type_arena, Type);
+        Type* type = arena_push_struct(&tcx->type_arena, Type);
         type->kind = TypeKind_Function;
         type->Function.is_variadic = true;
         
@@ -1480,7 +1482,7 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
     {
         // Intrinsic syntax: debug_break()
         // Inserts a breakpoint (e.g. int3 on x64) to enable debugger
-        Type* type = arena_push_struct(tcx->type_arena, Type);
+        Type* type = arena_push_struct(&tcx->type_arena, Type);
         type->kind = TypeKind_Function;
         type->Function.is_variadic = false;
         
@@ -1497,7 +1499,7 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
     {
         // Intrinsic syntax: assert(s32 expr)
         // Assets that expr is true, used as test case for 
-        Type* type = arena_push_struct(tcx->type_arena, Type);
+        Type* type = arena_push_struct(&tcx->type_arena, Type);
         type->kind = TypeKind_Function;
         type->Function.is_variadic = false;
         
@@ -1518,7 +1520,7 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
     {
         // Intrinsic syntax:  sqrt(f32 num)
         // Assets that expr is true, used as test case for 
-        Type* type = arena_push_struct(tcx->type_arena, Type);
+        Type* type = arena_push_struct(&tcx->type_arena, Type);
         type->kind = TypeKind_Function;
         type->Function.is_variadic = false;
         
@@ -1539,7 +1541,7 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
     {
         // Intrinsic syntax:  random_f32(
         // Assets that expr is true, used as test case for 
-        Type* type = arena_push_struct(tcx->type_arena, Type);
+        Type* type = arena_push_struct(&tcx->type_arena, Type);
         type->kind = TypeKind_Function;
         type->Function.is_variadic = false;
         
@@ -1558,11 +1560,6 @@ s32
 type_check_ast_file(Ast_File* ast_file) {
     Type_Context tcx = {};
     array(Compilation_Unit)* queue = 0;
-    
-    
-    // NOTE(Alexander): store the actual type declarations globally
-    Memory_Arena global_type_arena = {};
-    tcx.type_arena = &global_type_arena;
     
     DEBUG_setup_intrinsic_types(&tcx);
     

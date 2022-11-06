@@ -33,9 +33,8 @@ convert_expr_to_intermediate_code(Comp_Unit* cu, Ast* expr) {
             Type* type = expr->type;
             
             Ic_Raw_Type raw_type = convert_type_to_raw_type(type);
-            result.type = raw_type + IC_STK;
-            result.reg = X64_RBP; // TODO(Alexander): RBP hardcoded for now
-            result.disp = map_get(cu->stack_displacements, ident);
+            s64 disp = map_get(cu->stack_displacements, ident);
+            result = ic_stk(raw_type, disp);
         } break;
         
         case Ast_Paren_Expr: {
@@ -43,8 +42,15 @@ convert_expr_to_intermediate_code(Comp_Unit* cu, Ast* expr) {
         } break;
         
         case Ast_Index_Expr: {
+            Type* type = expr->type;
             
-            
+            result = convert_expr_to_intermediate_code(cu, expr->Index_Expr.array);
+            Ic_Arg index = convert_expr_to_intermediate_code(cu, expr->Index_Expr.index);
+            if (result.type & IC_STK) {
+                if (index.type & IC_IMM) {
+                    result.disp -= type->size * index.disp;
+                }
+            }
         } break;
         
         case Ast_Binary_Expr: {
@@ -53,7 +59,7 @@ convert_expr_to_intermediate_code(Comp_Unit* cu, Ast* expr) {
             assert(src0.raw_type == src1.raw_type);
             
             Intermediate_Code* ic = ic_add(cu);
-            ic->dest = create_ic_reg(src0.raw_type);
+            ic->dest = ic_reg(src0.raw_type);
             ic->src0 = src0;
             ic->src1 = src1;
             result = ic->dest;
@@ -100,7 +106,7 @@ convert_expr_to_intermediate_code(Comp_Unit* cu, Ast* expr) {
                         Intermediate_Code* ic = ic_add(cu, 
                                                        dest->Basic.flags & BasicFlag_Unsigned ? 
                                                        IC_MOVZX : IC_MOVSX);
-                        ic->src0 = create_ic_reg(dest_raw_type);
+                        ic->src0 = ic_reg(dest_raw_type);
                         ic->src1 = src_arg;
                         result = ic->src0;
                         
@@ -129,10 +135,24 @@ convert_stmt_to_intermediate_code(Comp_Unit* cu, Ast* stmt) {
         } break;
         
         case Ast_Assign_Stmt: {
+            Type* type = stmt->type;
             string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
             
-            cu->stack_curr_used -= stmt->type->size;
-            map_put(cu->stack_displacements, ident, cu->stack_curr_used);
+            s64 disp;
+            if (type->kind == TypeKind_Array) {
+                // TODO(Alexander): this is in-place for now, normally it would be a ptr
+                assert(type->Array.capacity > 0);
+                smm capacity = type->Array.capacity;
+                
+                type = type->Array.type;
+                disp = align_forward(cu->stack_curr_used, type->align) + type->size;
+                cu->stack_curr_used = disp + (capacity - 1)*type->size;
+            } else {
+                disp = align_forward(cu->stack_curr_used, type->align) + type->size;
+                cu->stack_curr_used = disp;
+            }
+            
+            map_put(cu->stack_displacements, ident, -disp);
             
             if (!is_ast_none(stmt->Assign_Stmt.expr)) {
                 Ic_Arg src0 = convert_expr_to_intermediate_code(cu, stmt->Assign_Stmt.ident);
@@ -183,7 +203,7 @@ convert_stmt_to_intermediate_code(Comp_Unit* cu, Ast* stmt) {
             // TODO(Alexander): this is platform/architecture specific
             Ic_Arg result = convert_expr_to_intermediate_code(cu, stmt->Return_Stmt.expr);
             Intermediate_Code* ic = ic_add(cu, IC_MOV);
-            ic->src0 = create_ic_reg();
+            ic->src0 = ic_reg();
             ic->src1 = result;
         } break;
         
@@ -427,7 +447,7 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64
                 ic_u8(ic, REX_PATTERN | REX_FLAG_64_BIT);
                 ic_u8(ic, 0x81);
                 x64_modrm(ic, t, 0, 5, X64_RBP);
-                ic_u32(ic, (u32) -stack_usage);
+                ic_u32(ic, (u32) stack_usage);
             } break;
             
             case IC_EPLG: {

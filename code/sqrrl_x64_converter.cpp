@@ -41,6 +41,35 @@ convert_expr_to_intermediate_code(Comp_Unit* cu, Ast* expr) {
             result = convert_expr_to_intermediate_code(cu, expr->Paren_Expr.expr);
         } break;
         
+        case Ast_Array_Expr: {
+            Type* type = expr->type;
+            smm capacity = type->Array.capacity;
+            assert(capacity > 0);
+            
+            type = type->Array.type;
+            
+            // TODO(Alexander): temporary use Memory_Arena
+            smm size = capacity*type->size;
+            void* data = malloc(size);
+            s64 disp = align_forward(cu->stack_curr_used, type->align) + type->size*capacity;
+            
+            Intermediate_Code* ic = ic_add(cu, IC_MEMCPY, data);
+            ic->dest = ic_stk(0, -disp);
+            ic->src0 = ic_imm(0, size);
+            result = ic->dest;
+            
+            u8* curr = (u8*) data;
+            for_compound(expr->Array_Expr.elements, e) {
+                assert(e->kind == Ast_Value);
+                value_store_in_memory(e->type, curr, e->Value.value.data);
+                curr += type->size;
+            }
+            
+            pln("%, ", f_int(*((u64*) data)), f_int(*((u64*) data + 1)), f_int(*((u64*) data + 2)));
+            
+            cu->stack_curr_used = disp;
+        } break;
+        
         case Ast_Index_Expr: {
             Type* type = expr->type;
             
@@ -48,7 +77,7 @@ convert_expr_to_intermediate_code(Comp_Unit* cu, Ast* expr) {
             Ic_Arg index = convert_expr_to_intermediate_code(cu, expr->Index_Expr.index);
             if (result.type & IC_STK) {
                 if (index.type & IC_IMM) {
-                    result.disp -= type->size * index.disp;
+                    result.disp += type->size * index.disp;
                 }
             }
         } break;
@@ -138,11 +167,22 @@ convert_stmt_to_intermediate_code(Comp_Unit* cu, Ast* stmt) {
             Type* type = stmt->type;
             string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
             
+            
+            Ic_Arg src = {};
+            if (!is_ast_none(stmt->Assign_Stmt.expr)) {
+                src = convert_expr_to_intermediate_code(cu, stmt->Assign_Stmt.expr);
+            }
+            
             s64 disp;
             if (type->kind == TypeKind_Array) {
                 // TODO(Alexander): this is in-place for now, normally it would be a ptr
                 assert(type->Array.capacity > 0);
                 smm capacity = type->Array.capacity;
+                
+                if (src.type & IC_STK) {
+                    map_put(cu->stack_displacements, ident, src.disp);
+                    break;
+                }
                 
                 type = type->Array.type;
                 disp = align_forward(cu->stack_curr_used, type->align) + type->size;
@@ -155,12 +195,12 @@ convert_stmt_to_intermediate_code(Comp_Unit* cu, Ast* stmt) {
             map_put(cu->stack_displacements, ident, -disp);
             
             if (!is_ast_none(stmt->Assign_Stmt.expr)) {
-                Ic_Arg src0 = convert_expr_to_intermediate_code(cu, stmt->Assign_Stmt.ident);
-                Ic_Arg src1 = convert_expr_to_intermediate_code(cu, stmt->Assign_Stmt.expr);
+                Ic_Arg dest = convert_expr_to_intermediate_code(cu, stmt->Assign_Stmt.ident);
                 Intermediate_Code* ic = ic_add(cu, IC_MOV);
-                ic->src0 = src0;
-                ic->src1 = src1;
+                ic->src0 = dest;
+                ic->src1 = src;
             }
+            
         } break;
         
         case Ast_Block_Stmt: {
@@ -417,6 +457,21 @@ x64_div(Intermediate_Code* ic, bool remainder) {
 }
 
 void
+x64_lea(Intermediate_Code* ic, s64 r1, s64 r2, s64 d2) {
+    // REX.W + 8D /r 	LEA r64,m 	RM
+    
+    x64_rex(ic, REX_FLAG_W);
+    ic_u8(ic, 0x8D);
+    
+    if (r2 == X64_RIP) {
+        ic_u8(ic, (u8) r1<<3 | (u8) X64_RBP);
+        ic_u32(ic, (u32) d2);
+    } else {
+        x64_modrm(ic, IC_STK, d2, r1);
+    }
+}
+
+void
 x64_encode_relative_jump(Intermediate_Code* ic, s64 rip) {
     Ic_Basic_Block* bb = (Ic_Basic_Block*) ic->data;
     if (bb->addr != IC_INVALID_ADDR) {
@@ -461,6 +516,14 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64
                         ic->src1.type, ic->src1.reg, ic->src1.disp);
             } break;
             
+            case IC_DIV: {
+                x64_div(ic, false);
+            } break;
+            
+            case IC_MOD: {
+                x64_div(ic, true);
+            } break;
+            
             case IC_MOV:
             case IC_MOVZX: {
                 x64_mov(ic,
@@ -478,12 +541,18 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64
                 x64_modrm(ic, t2, d2, r1, r2);
             } break;
             
-            case IC_DIV: {
-                x64_div(ic, false);
-            } break;
-            
-            case IC_MOD: {
-                x64_div(ic, true);
+            case IC_MEMCPY: {
+                // Move RCX bytes from [RSI] to [RDI].
+                x64_mov(ic, IC_S64 + IC_REG, X64_RCX, 0, ic->src0.type, ic->src0.reg, ic->src0.disp);
+                x64_lea(ic, X64_RDI, X64_RBP, ic->dest.disp);
+                
+                // TODO(Alexander): this is a hack using RIP-relative pointer, why +16?
+                s64 disp = (s64) ic->data - ((s64) buf + rip + 16);
+                x64_lea(ic, X64_RSI, X64_RIP, disp);
+                
+                // F3 A4 	REP MOVS m8, m8 	ZO
+                ic_u8(ic, 0xF3);
+                ic_u8(ic, 0xA4);
             } break;
             
             case IC_CMP: {

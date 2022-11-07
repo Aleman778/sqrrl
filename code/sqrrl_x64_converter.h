@@ -76,7 +76,8 @@ enum {
     X64_R12,
     X64_R13,
     X64_R14,
-    X64_R15
+    X64_R15,
+    X64_RIP
 };
 
 global const cstring int_register_names[] {
@@ -114,6 +115,14 @@ ic_stk(Ic_Raw_Type t, s64 d) {
     return result;
 }
 
+inline Ic_Arg
+ic_imm(Ic_Raw_Type t, s64 d) {
+    Ic_Arg result = {};
+    result.type = t + IC_IMM;
+    result.disp = d;
+    return result;
+}
+
 #define DEF_IC_OPCODES \
 IC(NOOP) \
 IC(PRLG) \
@@ -126,6 +135,8 @@ IC(MOD) \
 IC(MOV) \
 IC(MOVSX) \
 IC(MOVZX) \
+IC(MEMCPY) \
+IC(MEMSET) \
 IC(CMP) \
 IC(SETG) \
 IC(SETNG) \
@@ -201,6 +212,12 @@ struct Ic_Basic_Block {
     s64 addr;
 };
 
+struct Ic_Data {
+    Ic_Data *next;
+    
+    
+};
+
 #define IC_INVALID_ADDR S64_MIN
 
 inline Ic_Basic_Block*
@@ -216,6 +233,8 @@ ic_basic_block() {
 struct Comp_Unit {
     Intermediate_Code *ic_first, *ic_last;
     Ic_Basic_Block *bb_first, *bb_last;
+    
+    Ic_Basic_Block *bb_data;
     
     map(string_id, s64)* stack_displacements;
     s64 stack_curr_used;

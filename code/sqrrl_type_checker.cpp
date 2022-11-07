@@ -681,12 +681,27 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 Type* type = parent_type->Array.type;
                 
                 result = parent_type;
+                
+                smm count = 0;
                 for_compound(expr->Array_Expr.elements, it) {
+                    count++;
                     if (!type_infer_expression(tcx, it, type, report_error)) {
                         result = 0;
                         break;
                     }
                 }
+                
+                if (parent_type->Array.capacity > 0) {
+                    if (parent_type->Array.capacity != count) {
+                        type_error(tcx, string_format("array literal expects `%` values found `%`",
+                                                      f_smm(parent_type->Array.capacity), f_smm(count)));
+                        result = 0;
+                    }
+                } else {
+                    parent_type->Array.capacity = count;
+                }
+                
+                expr->type = result;
             } else {
                 type_error(tcx, string_format("cannot assign array literal to non-array type"));
             }
@@ -1339,6 +1354,35 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                 arg_index++;
             }
         } break;
+        
+        case Ast_Binary_Expr: {;
+            type_check_expression(tcx, expr->Binary_Expr.first);
+            type_check_expression(tcx, expr->Binary_Expr.second);
+            
+            // TODO(Alexander): check types
+        } break;
+        
+        case Ast_Index_Expr: {
+            assert(expr->Index_Expr.array);
+            assert(expr->Index_Expr.index);
+            Type* type = expr->Index_Expr.array->type;
+            Value index_value = expr->Index_Expr.index->Value.value;
+            smm index = value_to_smm(index_value);
+            if (index < 0) {
+                type_error(tcx, string_format("invalid index `%`", f_smm(index)));
+                result = 0;
+            }
+            
+            if (type->Array.capacity > 0) {
+                if (index > type->Array.capacity - 1) {
+                    type_error(tcx, string_format("array index `%` exceeds capacity `%`",
+                                                  f_smm(index), f_smm(type->Array.capacity)));
+                }
+            } else {
+                // TODO(Alexander): insert runtime checks
+            }
+            
+        } break;
     }
     
     return result;
@@ -1363,7 +1407,8 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
         
         case Ast_Return_Stmt: {
             Type* found_type = stmt->Return_Stmt.expr->type;
-            result = type_check_assignment(tcx, tcx->return_type, found_type);
+            result = result && type_check_expression(tcx, stmt->Return_Stmt.expr);
+            result = result && type_check_assignment(tcx, tcx->return_type, found_type);
         } break;
         
         case Ast_Block_Stmt: {

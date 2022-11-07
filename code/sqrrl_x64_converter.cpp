@@ -378,7 +378,9 @@ x64_add(Intermediate_Code* ic,
         Ic_Type t3, s64 r3, s64 d3) {
     
     if (t1 & IC_REG) {
-        x64_mov(ic, t1, r1, d1, t2, r2, d2);
+        if (!(t2 & IC_REG)) {
+            x64_mov(ic, t1, r1, d1, t2, r2, d2);
+        }
     } else {
         unimplemented;
     }

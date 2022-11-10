@@ -20,6 +20,12 @@ convert_expr_to_intermediate_code(Comp_Unit* cu, Ast* expr) {
                 Ic_Raw_Type raw_type = convert_type_to_raw_type(expr->type);
                 result.type = raw_type + IC_IMM;
                 result.disp = value_to_s64(expr->Value.value);
+            } else if (is_floating(expr->Value.value)) {
+                Type* type = expr->type;
+                Ic_Raw_Type raw_type = convert_type_to_raw_type(expr->type);
+                void* data = malloc(type->size);
+                value_store_in_memory(type, data, expr->Value.value.data);
+                result = ic_imm(raw_type, (s64) data);
             } else {
                 unimplemented;
             }
@@ -53,9 +59,10 @@ convert_expr_to_intermediate_code(Comp_Unit* cu, Ast* expr) {
             void* data = malloc(size);
             s64 disp = align_forward(cu->stack_curr_used, type->align) + type->size*capacity;
             
-            Intermediate_Code* ic = ic_add(cu, IC_MEMCPY, data);
+            Intermediate_Code* ic = ic_add(cu, IC_MEMCPY);
             ic->dest = ic_stk(0, -disp);
-            ic->src0 = ic_imm(0, size);
+            ic->src0 = ic_imm(0, (s64) data);
+            ic->src1 = ic_imm(0, size);
             result = ic->dest;
             
             u8* curr = (u8*) data;
@@ -86,6 +93,7 @@ convert_expr_to_intermediate_code(Comp_Unit* cu, Ast* expr) {
             Ic_Arg src0 = convert_expr_to_intermediate_code(cu, expr->Binary_Expr.first);
             Ic_Arg src1 = convert_expr_to_intermediate_code(cu, expr->Binary_Expr.second);
             assert(src0.raw_type == src1.raw_type);
+            bool isFloat = src0.type & IC_FLOAT;
             
             Intermediate_Code* ic = ic_add(cu);
             ic->dest = ic_reg(src0.raw_type);
@@ -96,7 +104,7 @@ convert_expr_to_intermediate_code(Comp_Unit* cu, Ast* expr) {
             Binary_Op op = expr->Binary_Expr.op;
             if (binary_is_comparator_table[op]) {
                 result.raw_type = IC_S8;
-                ic->opcode = IC_CMP;
+                ic->opcode = isFloat ? IC_FCMP : IC_CMP;
                 ic->dest = result;
                 
                 ic = ic_add(cu);
@@ -105,16 +113,15 @@ convert_expr_to_intermediate_code(Comp_Unit* cu, Ast* expr) {
             
             switch (op) {
                 case BinaryOp_Assign: {
-                    ic->opcode = IC_MOV;
+                    ic->opcode = isFloat ? IC_FMOV : IC_MOV;
                     ic->dest.type = 0;
                 } break;
-                case BinaryOp_Add: ic->opcode = IC_ADD; break;
-                case BinaryOp_Divide: ic->opcode = IC_DIV; break;
-                case BinaryOp_Modulo: ic->opcode = IC_MOD; break;
+                case BinaryOp_Add: ic->opcode = isFloat ? IC_FADD : IC_ADD; break;
+                case BinaryOp_Divide: ic->opcode = isFloat ? IC_FDIV : IC_DIV; break;
+                case BinaryOp_Modulo: ic->opcode = isFloat ? IC_FMOD : IC_MOD; break;
                 case BinaryOp_Greater_Than: ic->opcode = IC_SETG; break;
                 default: unimplemented;
             }
-            
         } break;
         
         case Ast_Cast_Expr: {
@@ -196,7 +203,7 @@ convert_stmt_to_intermediate_code(Comp_Unit* cu, Ast* stmt) {
             
             if (!is_ast_none(stmt->Assign_Stmt.expr)) {
                 Ic_Arg dest = convert_expr_to_intermediate_code(cu, stmt->Assign_Stmt.ident);
-                Intermediate_Code* ic = ic_add(cu, IC_MOV);
+                Intermediate_Code* ic = ic_add(cu, (dest.type & IC_FLOAT) ? IC_FMOV : IC_MOV);
                 ic->src0 = dest;
                 ic->src1 = src;
             }
@@ -242,8 +249,8 @@ convert_stmt_to_intermediate_code(Comp_Unit* cu, Ast* stmt) {
         case Ast_Return_Stmt: {
             // TODO(Alexander): this is platform/architecture specific
             Ic_Arg result = convert_expr_to_intermediate_code(cu, stmt->Return_Stmt.expr);
-            Intermediate_Code* ic = ic_add(cu, IC_MOV);
-            ic->src0 = ic_reg();
+            Intermediate_Code* ic = ic_add(cu, (result.type & IC_FLOAT) ? IC_FMOV : IC_MOV);
+            ic->src0 = ic_reg(result.raw_type);
             ic->src1 = result;
         } break;
         
@@ -436,6 +443,62 @@ x64_mov(Intermediate_Code* ic,
     }
 }
 
+void
+x64_rip_relative(Intermediate_Code* ic, s64 r, s64 data, s64 rip) {
+    ic_u8(ic, (u8) r<<3 | (u8) X64_RBP);
+    
+    s64 disp = (s64) data - (rip + ic->count + 4);
+    ic_u32(ic, (u32) disp);
+    pln("data: %, disp: %", f_u64_HEX(data), f_s64(disp));
+}
+
+void
+x64_fmov(Intermediate_Code* ic,
+         Ic_Type t1, s64 r1, s64 d1,
+         Ic_Type t2, s64 r2, s64 d2, s64 rip) {
+    assert(t1 & IC_FLOAT);
+    
+    switch (t1 & IC_TF_MASK) {
+        case IC_REG: {
+            if (t2 & (IC_IMM | IC_STK)) {
+                // F3 0F 10 /r MOVSS xmm1, m32 or
+                // F2 0F 10 /r MOVSD xmm1, m64
+                ic_u8(ic, (t1 & IC_T32) ? 0xF3 : 0xF2);
+                ic_u8(ic, 0x0F);
+                ic_u8(ic, 0x10);
+                if (t2 & IC_IMM) {
+                    x64_rip_relative(ic, r1, d2, rip);
+                } else {
+                    x64_modrm(ic, t2, d2, r1);
+                }
+            } else {
+                unimplemented;
+            }
+        } break;
+        
+        case IC_STK: {
+            if (t2 & IC_REG) {
+                // F3 0F 11 /r MOVSS xmm2/m32, xmm1 or
+                // F2 0F 11 /r MOVSD xmm1/m64, xmm2
+                ic_u8(ic, (t1 & IC_T32) ? 0xF3 : 0xF2);
+                ic_u8(ic, 0x0F);
+                ic_u8(ic, 0x11);
+                x64_modrm(ic, t1, d1, r2, r1);
+                
+            } else if (t2 & IC_IMM) {
+                x64_fmov(ic, IC_REG + (t2 & IC_RT_MASK), X64_XMM0, 0, t2, r2, d2, rip);
+                x64_fmov(ic, t1, r1, d1, IC_REG + (t2 & IC_RT_MASK), X64_XMM0, 0, rip);
+            } else {
+                unimplemented;
+            }
+            
+        } break;
+        
+        default: unimplemented;
+    }
+    
+}
+
 inline void
 x64_div(Intermediate_Code* ic, bool remainder) {
     
@@ -456,6 +519,40 @@ x64_div(Intermediate_Code* ic, bool remainder) {
     
     s64 dest_reg = remainder ? X64_RDX : X64_RAX;
     x64_mov(ic, ic->dest.type, ic->dest.reg, ic->dest.disp, IC_REG, dest_reg, 0);
+}
+
+inline void
+x64_fdiv(Intermediate_Code* ic, s64 rip) {
+    s64 t1 = ic->src0.type;
+    s64 r1 = ic->src0.reg;
+    s64 t2 = ic->src1.type;
+    s64 d2 = ic->src1.disp;
+    assert(t1 & IC_FLOAT);
+    
+    if (t1 & IC_STK && t2 & IC_IMM) {
+        x64_fmov(ic, 
+                 ic->dest.type, ic->dest.reg, ic->dest.disp,
+                 ic->src0.type, ic->src0.reg, ic->src0.disp, rip);
+        t1 = ic->dest.type;
+        r1 = ic->dest.reg;
+    }
+    
+    switch (t1 & IC_TF_MASK) {
+        case IC_REG: {
+            if (t2 & IC_IMM) {
+                // F3 0F 5E /r DIVSS xmm1, xmm2/m32
+                // F2 0F 5E /r DIVSD xmm1, xmm2/m64
+                ic_u8(ic, (ic->src0.type & IC_T32) ? 0xF3 : 0xF2);
+                ic_u8(ic, 0x0F);
+                ic_u8(ic, 0x5E);
+                x64_rip_relative(ic, r1, d2, rip);
+            } else {
+                unimplemented;
+            }
+        } break;
+        
+        default: unimplemented;
+    }
 }
 
 void
@@ -543,13 +640,21 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64
                 x64_modrm(ic, t2, d2, r1, r2);
             } break;
             
+            case IC_FMOV: {
+                x64_fmov(ic,
+                         ic->src0.type, ic->src0.reg, ic->src0.disp,
+                         ic->src1.type, ic->src1.reg, ic->src1.disp,
+                         (s64) buf + rip);
+                
+            } break;
+            
             case IC_MEMCPY: {
                 // Move RCX bytes from [RSI] to [RDI].
-                x64_mov(ic, IC_S64 + IC_REG, X64_RCX, 0, ic->src0.type, ic->src0.reg, ic->src0.disp);
+                x64_mov(ic, IC_S64 + IC_REG, X64_RCX, 0, ic->src1.type, ic->src1.reg, ic->src1.disp);
                 x64_lea(ic, X64_RDI, X64_RBP, ic->dest.disp);
                 
                 // TODO(Alexander): this is a hack using RIP-relative pointer, why +16?
-                s64 disp = (s64) ic->data - ((s64) buf + rip + 16);
+                s64 disp = (s64) ic->src0.disp - ((s64) buf + rip + 16);
                 x64_lea(ic, X64_RSI, X64_RIP, disp);
                 
                 // F3 A4 	REP MOVS m8, m8 	ZO
@@ -561,6 +666,10 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64
                 x64_binary(ic,
                            ic->src0.type, ic->src0.reg, ic->src0.disp,
                            ic->src1.type, ic->src1.reg, ic->src1.disp, 7, 0x38);
+            } break;
+            
+            case IC_FDIV: {
+                x64_fdiv(ic, (s64) buf + rip);
             } break;
             
             case IC_JNG: {
@@ -625,6 +734,8 @@ string_builder_push(String_Builder* sb, Ic_Arg arg) {
     }
 }
 
+typedef f32 asm_f32_main(void);
+
 int
 test_x64_converter(int srcc, char* srcv[], void* asm_buffer, umm asm_size,
                    void (*asm_make_executable)(void*, umm), bool is_debugger_present) {
@@ -657,7 +768,8 @@ test_x64_converter(int srcc, char* srcv[], void* asm_buffer, umm asm_size,
     
     
     Type_Context tcx = {};
-    tcx.return_type = t_s32;
+    //tcx.return_type = t_s32;
+    tcx.return_type = t_f32;
     Type* type = type_infer_statement(&tcx, stmt, true);
     if (type) {
         type_check_statement(&tcx, stmt);
@@ -757,10 +869,19 @@ test_x64_converter(int srcc, char* srcv[], void* asm_buffer, umm asm_size,
         }
     }
     
+    
     asm_make_executable(asm_buffer, rip);
-    asm_main* func = (asm_main*) asm_buffer;
-    int jit_exit_code = (int) func();
-    pln("\nJIT exited with code: %", f_int(jit_exit_code));
+    if (tcx.return_type == t_s32) {
+        asm_main* func = (asm_main*) asm_buffer;
+        int jit_exit_code = (int) func();
+        pln("\nJIT exited with code: %", f_int(jit_exit_code));
+    } else if (tcx.return_type == t_f32) {
+        asm_f32_main* func = (asm_f32_main*) asm_buffer;
+        f32 jit_exit_code = (f32) func();
+        pln("\nJIT exited with code: %", f_float(jit_exit_code));
+    } else {
+        pln("\nJIT exited with code: 0");
+    }
     
     return 0;
 }

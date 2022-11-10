@@ -77,12 +77,35 @@ enum {
     X64_R13,
     X64_R14,
     X64_R15,
-    X64_RIP
+    X64_RIP,
+    
+    X64_XMM0 = 0,
+    X64_XMM1 = 1,
+    X64_XMM2 = 2,
+    X64_XMM3 = 3,
+    X64_XMM4 = 4,
+    X64_XMM5 = 5,
+    X64_XMM6 = 6,
+    X64_XMM7 = 7,
+    X64_XMM8 = 8,
+    X64_XMM9 = 9,
+    X64_XMM10 = 10,
+    X64_XMM11 = 11,
+    X64_XMM12 = 12,
+    X64_XMM13 = 13,
+    X64_XMM14 = 14,
+    X64_XMM15 = 15,
 };
 
 global const cstring int_register_names[] {
     "RAX", "RCX", "RDX", "RBX", "RSP", "RBP", "RSI", "RDI",
     "R8",  "R9",  "R10", "R11", "R12", "R13", "R14", "R15"
+};
+
+global const cstring float_register_names[] {
+    "XMM0", "XMM1", "XMM2", "XMM3", "XMM4", "XMM5", 
+    "XMM6", "XMM7", "XMM8", "XMM9", "XMM10", "XMM11", 
+    "XMM12", "XMM13", "XMM14", "XMM15",
 };
 
 struct Ic_Arg {
@@ -138,6 +161,11 @@ IC(MOVZX) \
 IC(MEMCPY) \
 IC(MEMSET) \
 IC(CMP) \
+IC(FMOV) \
+IC(FADD) \
+IC(FDIV) \
+IC(FMOD) \
+IC(FCMP) \
 IC(SETG) \
 IC(SETNG) \
 IC(JG) \

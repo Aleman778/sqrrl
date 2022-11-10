@@ -1293,28 +1293,37 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
 }
 
 bool
-type_check_assignment(Type_Context* tcx, Type* a, Type* b) {
-    assert(a && b);
+type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool comparator=false) {
+    assert(lhs && rhs);
     
-    if (a->kind != b->kind) {
+    if (lhs->kind != rhs->kind) {
         return false;
     }
     
-    switch (a->kind) {
+    switch (lhs->kind) {
         case TypeKind_Basic: {
-            // TODO(Alexander): check signedness for comparisons
-            //if (a->Basic.flags != b->Basic.flags) {
-            //}
+            bool lossy = lhs->size < rhs->size;
             
-            if (a->size < b->size) {
+            // TODO(Alexander): check signedness for comparisons
+            if (comparator && 
+                rhs->Basic.flags & BasicFlag_Floating &&
+                lhs->Basic.flags & BasicFlag_Integer) {
+                lossy = true;
+            }
+            
+            if (rhs->Basic.flags & BasicFlag_Floating) {
+                lossy = lhs->Basic.flags & BasicFlag_Integer;
+            }
+            
+            if (lossy) {
                 type_error(tcx, string_format("conversion from `%` to `%`, possible loss of data",
-                                              f_type(a), f_type(b)));
+                                              f_type(rhs), f_type(lhs)));
                 return false;
             }
         } break;
         
         case TypeKind_Pointer: {
-            return type_check_assignment(tcx, a->Pointer, b->Pointer);
+            return type_check_assignment(tcx, lhs->Pointer, rhs->Pointer, comparator);
         } break;
     }
     

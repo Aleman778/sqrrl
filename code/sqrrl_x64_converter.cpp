@@ -11,7 +11,7 @@ convert_type_to_raw_type(Type* type) {
 }
 
 Ic_Arg
-convert_expr_to_intermediate_code(Comp_Unit* cu, Ast* expr) {
+convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
     Ic_Arg result = {};
     
     switch (expr->kind) {
@@ -164,8 +164,13 @@ convert_expr_to_intermediate_code(Comp_Unit* cu, Ast* expr) {
 }
 
 void
-convert_stmt_to_intermediate_code(Comp_Unit* cu, Ast* stmt) {
+convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt) {
     switch (stmt->kind) {
+        case Ast_Decl_Stmt: {
+            convert_stmt_to_intermediate_code(cu, stmt->Decl_Stmt.stmt);
+        } break;
+        
+        
         case Ast_Expr_Stmt: {
             convert_expr_to_intermediate_code(cu, stmt->Expr_Stmt);
         } break;
@@ -764,46 +769,44 @@ test_x64_converter(int srcc, char* srcv[], void* asm_buffer, umm asm_size,
     parser.tokenizer = &tokenizer;
     //Ast_File ast_file = parse_file(&parser);
     
-    Ast* stmt = parse_block_statement(&parser);
+    Ast_File ast_file = {};
     
+    parse_top_level_declaration(&parser, &ast_file);
+    string_id ident = Sym_main;
+    Ast* main_decl = map_get(ast_file.decls, ident);
     
-    Type_Context tcx = {};
-    //tcx.return_type = t_s32;
-    tcx.return_type = t_f32;
-    Type* type = type_infer_statement(&tcx, stmt, true);
-    if (type) {
-        type_check_statement(&tcx, stmt);
-    } else {
+    s32 error_count = type_check_ast_file(&ast_file);
+    if (error_count > 0) {
         pln("Ast: (partially typed):");
-        print_ast(stmt, &tokenizer);
-        return -1;
-    }
-    
-    
-    if (tcx.error_count > 0) {
+        print_ast(main_decl, &tokenizer);
+        
         pln("Ast: (partially typed):");
-        print_ast(stmt, &tokenizer);
         
         pln("\nExiting due to errors...\n");
         return -1;
     }
     
-    
-    print_ast(stmt, &tokenizer);
+    print_ast(main_decl, &tokenizer);
     
     // Codegen begins here
-    Comp_Unit cu = {};
+    Compilation_Unit* cu = 0;
+    for_array(ast_file.units, comp_unit, _) {
+        if (comp_unit->ast == main_decl) {
+            cu = comp_unit;
+        }
+    }
+    assert(cu);
     
     if (is_debugger_present) {
-        ic_add(&cu, IC_DEBUG_BREAK);
+        ic_add(cu, IC_DEBUG_BREAK);
     }
     
-    ic_add(&cu, IC_PRLG);
-    convert_stmt_to_intermediate_code(&cu, stmt);
-    ic_add(&cu, IC_EPLG);
+    ic_add(cu, IC_PRLG);
+    convert_stmt_to_intermediate_code(cu, cu->ast);
+    ic_add(cu, IC_EPLG);
     
-    s64 rip = convert_to_x64_machine_code(cu.ic_first, cu.stack_curr_used, 0, 0);
-    s64 rip2 = convert_to_x64_machine_code(cu.ic_first, cu.stack_curr_used, 
+    s64 rip = convert_to_x64_machine_code(cu->ic_first, cu->stack_curr_used, 0, 0);
+    s64 rip2 = convert_to_x64_machine_code(cu->ic_first, cu->stack_curr_used, 
                                            (u8*) asm_buffer, (s64) asm_size);
     assert(rip == rip2);
     
@@ -813,7 +816,7 @@ test_x64_converter(int srcc, char* srcv[], void* asm_buffer, umm asm_size,
         String_Builder sb = {};
         
         int bb_index = 0;
-        Intermediate_Code* curr = cu.ic_first;
+        Intermediate_Code* curr = cu->ic_first;
         while (curr) {
             
             if (curr->opcode == IC_LABEL) {
@@ -869,13 +872,17 @@ test_x64_converter(int srcc, char* srcv[], void* asm_buffer, umm asm_size,
         }
     }
     
+    Type* type = cu->ast->type;
+    if (type && type->kind == TypeKind_Function) {
+        type = type->Function.return_type;
+    }
     
     asm_make_executable(asm_buffer, rip);
-    if (tcx.return_type == t_s32) {
+    if (type == t_s32) {
         asm_main* func = (asm_main*) asm_buffer;
         int jit_exit_code = (int) func();
         pln("\nJIT exited with code: %", f_int(jit_exit_code));
-    } else if (tcx.return_type == t_f32) {
+    } else if (type == t_f32) {
         asm_f32_main* func = (asm_f32_main*) asm_buffer;
         f32 jit_exit_code = (f32) func();
         pln("\nJIT exited with code: %", f_float(jit_exit_code));

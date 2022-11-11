@@ -286,11 +286,28 @@ struct Ast {
 
 typedef map(string_id, Ast*) Ast_Decl_Table;
 
+struct Intermediate_Code;
+struct Ic_Basic_Block;
+
+struct Compilation_Unit {
+    Ast* ast;
+    string_id ident;
+    
+    Intermediate_Code *ic_first, *ic_last;
+    Ic_Basic_Block *bb_first, *bb_last;
+    Ic_Basic_Block *bb_data;
+    
+    map(string_id, s64)* stack_displacements;
+    s64 stack_curr_used;
+};
+
 struct Ast_File {
     Ast_Decl_Table* decls;
     Ast* static_block_first; // compound, start of linked list
     Ast* static_block_last; // compound, end of linked list
     s32 error_count;
+    
+    array(Compilation_Unit)* units;
 };
 
 inline string_id

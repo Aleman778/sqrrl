@@ -1,9 +1,4 @@
 
-struct Compilation_Unit {
-    Ast* ast;
-    string_id ident;
-};
-
 struct Type_Scope {
     array(string_id)* locals;
 };

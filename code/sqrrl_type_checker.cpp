@@ -1613,39 +1613,23 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
 s32
 type_check_ast_file(Ast_File* ast_file) {
     Type_Context tcx = {};
-    array(Compilation_Unit)* queue = 0;
     
     DEBUG_setup_intrinsic_types(&tcx);
     
-    // First push decl statements and type declarations
-    for_map(ast_file->decls, it) {
-        string_id ident = it->key;
-        Ast* decl = it->value;
-        Compilation_Unit comp_unit = {};
-        comp_unit.ident = ident;
-        
-        //pln("Push decl `%`", f_string(vars_load_string(ident)));
-        
-        if (decl->kind == Ast_Decl_Stmt) {
-            comp_unit.ast = decl->Decl_Stmt.type;
-        } else {
-            comp_unit.ast = decl;
-        }
-        
-        array_push(queue, comp_unit);
-    }
+    // Push all compilation units to queue
+    array(Compilation_Unit*)* queue = 0;
     
-    // NOTE(Alexander): push actual declarations, makes sure we first try processing the types
-    //                  before the actual declaration
-    for_map(ast_file->decls, it) {
-        string_id ident = it->key;
-        Ast* decl = it->value;
-        //pln("Push decl `%`", f_string(vars_load_string(ident)));
-        
+    for_array(ast_file->units, it, _a) {
+        Ast* decl = it->ast;
+        if (decl->kind != Ast_Decl_Stmt) {
+            array_push(queue, it);
+        }
+    }
+    // Push actual declarations last
+    for_array(ast_file->units, it, _b) {
+        Ast* decl = it->ast;
         if (decl->kind == Ast_Decl_Stmt) {
-            Compilation_Unit comp_unit = {};
-            comp_unit.ast = decl;
-            array_push(queue, comp_unit);
+            array_push(queue, it);
         }
     }
     
@@ -1655,9 +1639,9 @@ type_check_ast_file(Ast_File* ast_file) {
     while (last_queue_count != array_count(queue)) {
         smm queue_count = array_count(queue);
         for (smm queue_index = 0; queue_index < queue_count; queue_index++) {
-            Compilation_Unit comp_unit = queue[queue_index];
+            Compilation_Unit* comp_unit = queue[queue_index];
             
-            if (!type_check_ast(&tcx, &comp_unit, false)) {
+            if (!type_check_ast(&tcx, comp_unit, false)) {
                 // Failed, retry later
                 array_push(queue, comp_unit);
             }
@@ -1669,7 +1653,7 @@ type_check_ast_file(Ast_File* ast_file) {
     }
     
     // NOTE(Alexander): anything left in the queue we report errors for
-    for_array (queue, comp_unit, _) {
+    for_array_v(queue, comp_unit, _) {
         type_check_ast(&tcx, comp_unit, true);
     }
     

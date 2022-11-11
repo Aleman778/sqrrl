@@ -257,19 +257,8 @@ ic_basic_block() {
     return result;
 }
 
-// TODO(Alexander): temporary placed here for now 
-struct Comp_Unit {
-    Intermediate_Code *ic_first, *ic_last;
-    Ic_Basic_Block *bb_first, *bb_last;
-    
-    Ic_Basic_Block *bb_data;
-    
-    map(string_id, s64)* stack_displacements;
-    s64 stack_curr_used;
-};
-
 Intermediate_Code*
-ic_add(Comp_Unit* cu, Ic_Opcode opcode = IC_NOOP, void* data=0) {
+ic_add(Compilation_Unit* cu, Ic_Opcode opcode = IC_NOOP, void* data=0) {
     // TODO(Alexander): temporary bump allocation for now
     Intermediate_Code* result = (Intermediate_Code*) calloc(1, sizeof(Intermediate_Code));
     result->opcode = opcode;

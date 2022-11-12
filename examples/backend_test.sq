@@ -1,13 +1,53 @@
 
+struct v2 {
+    f32 x;
+    f32 y;
+}
+
+struct v3 {
+    f32 x;
+    f32 y;
+    f32 z;
+}
+
 f32
 main() {
+    
+    // SoA - Structure of Arrays
+    struct Mesh {
+        [10]v3 pos;
+        [10]v2 texcoord;
+        [10]v3 normal;
+    }
+    Mesh m = Mesh {};
+    
+    //m.pos[2] = v3 { x: 3.0f, y: 5.0f, z: 1.0f };
+    m.pos[2].y = 10.0f;
+    m.pos[2].x = 15.0f;
+    
+    return m.pos[2].x + m.pos[2].y;
+}
+
+
+f32
+main2() {
+    v3 v = v3 { x: 1.0f, y: 2.0f, z: 3.0f };
+    
+    v.x = 2.0f;
+    
+    
+    return v.x + v.y + v.z;
+}
+
+f32
+main2() {
     f32 x = 12.5f;
     x = x / 23.3f;
-    return x; // ~0.5364806866
+    return x; // 0.536481
 }
 
 s32
-main() { 
+main2() { 
     int x = 20; 
     if (x > 30) { 
         x = x + 10; 
@@ -20,13 +60,13 @@ main() {
 }
 
 s32
-main() {
+main2() {
     []int x = { 10, 20, 30, 40, 50, 60 };
     return x[0] + x[1] + x[2] + x[3] + x[4] + x[5]; // 210
 }
 
 s32
-main() {
+main2() {
     s64 x = (s64) 942300203;
     s64 y = 533333333;
     return (s32) (y + x); // 1475633536

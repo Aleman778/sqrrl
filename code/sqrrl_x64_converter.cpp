@@ -77,6 +77,49 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             cu->stack_curr_used = disp;
         } break;
         
+        case Ast_Struct_Expr: {
+            Type* type = expr->type;
+            assert(type->kind == TypeKind_Struct);
+            
+            // TODO(Alexander): temporary use Memory_Arena
+            u8* data = (u8*) calloc(1, type->size);
+            for_compound(expr->Struct_Expr.fields, field) {
+                assert(field->kind == Ast_Argument);
+                
+                string_id ident = ast_unwrap_ident(field->Argument.ident);
+                Ast* assign = field->Argument.assign;
+                // TODO(Alexander): make it possible to store dynamic things
+                assert(assign->kind == Ast_Value);
+                
+                Struct_Field_Info info = get_field_info(&type->Struct, ident);
+                value_store_in_memory(info.type, data + info.offset, assign->Value.value.data);
+            }
+            
+            s64 disp = align_forward(cu->stack_curr_used, type->align) + type->size;
+            Intermediate_Code* ic = ic_add(cu, IC_MEMCPY);
+            ic->dest = ic_stk(0, -disp);
+            ic->src0 = ic_imm(0, (s64) data);
+            ic->src1 = ic_imm(0, type->size);
+            result = ic->dest;
+        } break;
+        
+        case Ast_Field_Expr: {
+            Type* type = expr->Field_Expr.var->type;
+            assert(type->kind == TypeKind_Struct);
+            
+            string_id ident = ast_unwrap_ident(expr->Field_Expr.field);
+            Struct_Field_Info info = get_field_info(&type->Struct, ident);
+            
+            result = convert_expr_to_intermediate_code(cu, expr->Field_Expr.var);
+            if (result.type & IC_STK) {
+                result.disp += info.offset;
+                result.raw_type = convert_type_to_raw_type(expr->type);
+            } else {
+                unimplemented;
+            }
+            
+        } break;
+        
         case Ast_Index_Expr: {
             Type* type = expr->type;
             
@@ -85,7 +128,11 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             if (result.type & IC_STK) {
                 if (index.type & IC_IMM) {
                     result.disp += type->size * index.disp;
+                } else {
+                    unimplemented;
                 }
+            } else {
+                unimplemented;
             }
         } break;
         
@@ -167,7 +214,10 @@ void
 convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt) {
     switch (stmt->kind) {
         case Ast_Decl_Stmt: {
-            convert_stmt_to_intermediate_code(cu, stmt->Decl_Stmt.stmt);
+            Ast* decl = stmt->Decl_Stmt.stmt;
+            if (is_ast_stmt(decl)) {
+                convert_stmt_to_intermediate_code(cu, decl);
+            }
         } break;
         
         
@@ -463,40 +513,39 @@ x64_fmov(Intermediate_Code* ic,
          Ic_Type t2, s64 r2, s64 d2, s64 rip) {
     assert(t1 & IC_FLOAT);
     
+    
+    if (t1 & IC_STK && (t2 & (IC_IMM | IC_STK))) {
+        Ic_Type tmpt = IC_REG + (t2 & IC_RT_MASK);
+        s64 tmpr = X64_XMM0;
+        x64_fmov(ic, tmpt, tmpr, 0, t2, r2, d2, rip);
+        t2 = tmpt;
+        r2 = tmpr;
+        d2 = 0;
+    }
+    
     switch (t1 & IC_TF_MASK) {
         case IC_REG: {
-            if (t2 & (IC_IMM | IC_STK)) {
-                // F3 0F 10 /r MOVSS xmm1, m32 or
-                // F2 0F 10 /r MOVSD xmm1, m64
-                ic_u8(ic, (t1 & IC_T32) ? 0xF3 : 0xF2);
-                ic_u8(ic, 0x0F);
-                ic_u8(ic, 0x10);
-                if (t2 & IC_IMM) {
-                    x64_rip_relative(ic, r1, d2, rip);
-                } else {
-                    x64_modrm(ic, t2, d2, r1);
-                }
+            // F3 0F 10 /r MOVSS xmm1, m32 or
+            // F2 0F 10 /r MOVSD xmm1, m64
+            ic_u8(ic, (t1 & IC_T32) ? 0xF3 : 0xF2);
+            ic_u8(ic, 0x0F);
+            ic_u8(ic, 0x10);
+            if (t2 & IC_IMM) {
+                x64_rip_relative(ic, r1, d2, rip);
             } else {
-                unimplemented;
+                x64_modrm(ic, t2, d2, r1, r2);
             }
         } break;
         
         case IC_STK: {
-            if (t2 & IC_REG) {
-                // F3 0F 11 /r MOVSS xmm2/m32, xmm1 or
-                // F2 0F 11 /r MOVSD xmm1/m64, xmm2
-                ic_u8(ic, (t1 & IC_T32) ? 0xF3 : 0xF2);
-                ic_u8(ic, 0x0F);
-                ic_u8(ic, 0x11);
-                x64_modrm(ic, t1, d1, r2, r1);
-                
-            } else if (t2 & IC_IMM) {
-                x64_fmov(ic, IC_REG + (t2 & IC_RT_MASK), X64_XMM0, 0, t2, r2, d2, rip);
-                x64_fmov(ic, t1, r1, d1, IC_REG + (t2 & IC_RT_MASK), X64_XMM0, 0, rip);
-            } else {
-                unimplemented;
-            }
+            assert(t2 & IC_REG);
             
+            // F3 0F 11 /r MOVSS xmm2/m32, xmm1 or
+            // F2 0F 11 /r MOVSD xmm1/m64, xmm2
+            ic_u8(ic, (t1 & IC_T32) ? 0xF3 : 0xF2);
+            ic_u8(ic, 0x0F);
+            ic_u8(ic, 0x11);
+            x64_modrm(ic, t1, d1, r2, r1);
         } break;
         
         default: unimplemented;
@@ -527,14 +576,13 @@ x64_div(Intermediate_Code* ic, bool remainder) {
 }
 
 inline void
-x64_fdiv(Intermediate_Code* ic, s64 rip) {
-    s64 t1 = ic->src0.type;
+x64_float_binary(Intermediate_Code* ic, u8 opcode, s64 rip) {
+    Ic_Type t1 = ic->src0.type, t2 = ic->src1.type;
     s64 r1 = ic->src0.reg;
-    s64 t2 = ic->src1.type;
     s64 d2 = ic->src1.disp;
     assert(t1 & IC_FLOAT);
     
-    if (t1 & IC_STK && t2 & IC_IMM) {
+    if (t1 & IC_STK && t2 & (IC_IMM | IC_STK)) {
         x64_fmov(ic, 
                  ic->dest.type, ic->dest.reg, ic->dest.disp,
                  ic->src0.type, ic->src0.reg, ic->src0.disp, rip);
@@ -544,15 +592,16 @@ x64_fdiv(Intermediate_Code* ic, s64 rip) {
     
     switch (t1 & IC_TF_MASK) {
         case IC_REG: {
+            // F3 0F 5E /r DIVSS xmm1, xmm2/m32
+            // F2 0F 5E /r DIVSD xmm1, xmm2/m64
+            ic_u8(ic, (ic->src0.type & IC_T32) ? 0xF3 : 0xF2);
+            ic_u8(ic, 0x0F);
+            ic_u8(ic, opcode);
+            
             if (t2 & IC_IMM) {
-                // F3 0F 5E /r DIVSS xmm1, xmm2/m32
-                // F2 0F 5E /r DIVSD xmm1, xmm2/m64
-                ic_u8(ic, (ic->src0.type & IC_T32) ? 0xF3 : 0xF2);
-                ic_u8(ic, 0x0F);
-                ic_u8(ic, 0x5E);
                 x64_rip_relative(ic, r1, d2, rip);
             } else {
-                unimplemented;
+                x64_modrm(ic, t2, d2, r1);
             }
         } break;
         
@@ -673,8 +722,12 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64
                            ic->src1.type, ic->src1.reg, ic->src1.disp, 7, 0x38);
             } break;
             
+            case IC_FADD: {
+                x64_float_binary(ic, 0x58, (s64) buf + rip);
+            } break;
+            
             case IC_FDIV: {
-                x64_fdiv(ic, (s64) buf + rip);
+                x64_float_binary(ic, 0x5E, (s64) buf + rip);
             } break;
             
             case IC_JNG: {
@@ -722,8 +775,14 @@ string_builder_push(String_Builder* sb, Ic_Arg arg) {
         } break;
         
         case IC_REG: {
-            if (arg.reg < fixed_array_count(int_register_names)) {
-                string_builder_push(sb, int_register_names[arg.reg]);
+            if (arg.raw_type & IC_FLOAT) {
+                if (arg.reg < fixed_array_count(float_register_names)) {
+                    string_builder_push(sb, float_register_names[arg.reg]);
+                }
+            } else {
+                if (arg.reg < fixed_array_count(int_register_names)) {
+                    string_builder_push(sb, int_register_names[arg.reg]);
+                }
             }
         } break;
         
@@ -767,11 +826,8 @@ test_x64_converter(int srcc, char* srcv[], void* asm_buffer, umm asm_size,
     
     Parser parser = {};
     parser.tokenizer = &tokenizer;
-    //Ast_File ast_file = parse_file(&parser);
     
-    Ast_File ast_file = {};
-    
-    parse_top_level_declaration(&parser, &ast_file);
+    Ast_File ast_file = parse_file(&parser);
     string_id ident = Sym_main;
     Ast* main_decl = map_get(ast_file.decls, ident);
     
@@ -791,6 +847,7 @@ test_x64_converter(int srcc, char* srcv[], void* asm_buffer, umm asm_size,
     // Codegen begins here
     Compilation_Unit* cu = 0;
     for_array(ast_file.units, comp_unit, _) {
+        //print_ast(comp_unit->ast, &tokenizer);
         if (comp_unit->ast == main_decl) {
             cu = comp_unit;
         }

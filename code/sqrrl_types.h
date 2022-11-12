@@ -129,6 +129,13 @@ struct Type_Function {
     b32 is_variadic;
 };
 
+struct Type_Array {
+    Type* type;
+    smm capacity;
+    b32 is_dynamic;
+    b32 is_inplace; // NOTE(Alexander): meaning we store array directly rather than a pointer
+};
+
 struct Type {
     Type_Kind kind;
     
@@ -139,12 +146,7 @@ struct Type {
             Limits limits;
         } Basic;
         
-        struct {
-            Type* type;
-            smm capacity;
-            b32 is_dynamic;
-        } Array;
-        
+        Type_Array Array;
         Type_Struct Struct;
         Type_Union Union;
         Type_Enum Enum;
@@ -192,6 +194,10 @@ string_builder_push(String_Builder* sb, Type* type) {
         } break;
         
         case TypeKind_Array: {
+            if (!type->Array.is_inplace) {
+                string_builder_push(sb, "*");
+            }
+            
             if (type->Array.capacity > 0) {
                 string_builder_push_format(sb, "[%]", f_smm(type->Array.capacity));
             } else {

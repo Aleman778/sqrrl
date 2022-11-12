@@ -1,42 +1,25 @@
 
-struct v2 {
-    f32 x;
-    f32 y;
-}
-
-struct v3 {
-    f32 x;
-    f32 y;
-    f32 z;
-}
-
 f32
 main() {
-    
     // SoA - Structure of Arrays
     struct Mesh {
         [10]v3 pos;
         [10]v2 texcoord;
         [10]v3 normal;
     }
+    
     Mesh m = Mesh {};
+    m.pos[2] = v3 { x: 3.0f, y: 5.0f, z: 1.0f };
     
-    //m.pos[2] = v3 { x: 3.0f, y: 5.0f, z: 1.0f };
-    m.pos[2].y = 10.0f;
-    m.pos[2].x = 15.0f;
-    
-    return m.pos[2].x + m.pos[2].y;
+    m.texcoord[2] = v3 { x: 3.0f, y: 5.0f, z: 1.0f };
+    return m.pos[2].x + m.pos[2].y + m.pos[2].z; // 9.0
 }
-
 
 f32
 main2() {
     v3 v = v3 { x: 1.0f, y: 2.0f, z: 3.0f };
-    
     v.x = 2.0f;
-    
-    
-    return v.x + v.y + v.z;
+    return v.x + v.y + v.z; // 7.0
 }
 
 f32
@@ -72,3 +55,15 @@ main2() {
     return (s32) (y + x); // 1475633536
 }
 
+
+
+struct v2 {
+    f32 x;
+    f32 y;
+}
+
+struct v3 {
+    f32 x;
+    f32 y;
+    f32 z;
+}

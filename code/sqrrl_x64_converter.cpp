@@ -1,13 +1,33 @@
 
 Ic_Raw_Type
 convert_type_to_raw_type(Type* type) {
-    Ic_Raw_Type raw_type = IC_S32;
+    Ic_Raw_Type raw_type = IC_PTR;
     if (type->kind == TypeKind_Basic) {
         raw_type = basic_type_to_raw_type(type->Basic.kind);
-    } else if (type->kind == TypeKind_Pointer) {
-        raw_type = IC_U64;
     }
     return raw_type;
+}
+
+void
+convert_assign_to_intermediate(Compilation_Unit* cu, Type* type, Ic_Arg dest, Ic_Arg src) {
+    if (type->kind == TypeKind_Array || type->kind == TypeKind_Struct) {
+        Intermediate_Code* ic = ic_add(cu, IC_MEMSET);
+        ic->dest = dest;
+        ic->src0 = ic_imm(IC_S64, 0);
+        ic->src1 = ic_imm(0, type->size);
+        
+        if (src.type & IC_IMM) {
+            ic->opcode = IC_MEMCPY;
+            ic->src0 = src;
+        }
+        
+    } else {
+        if (src.type) {
+            Intermediate_Code* ic = ic_add(cu, (dest.type & IC_FLOAT) ? IC_FMOV : IC_MOV);
+            ic->src0 = dest;
+            ic->src1 = src;
+        }
+    }
 }
 
 Ic_Arg
@@ -57,13 +77,6 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             // TODO(Alexander): temporary use Memory_Arena
             smm size = capacity*type->size;
             void* data = malloc(size);
-            s64 disp = align_forward(cu->stack_curr_used, type->align) + type->size*capacity;
-            
-            Intermediate_Code* ic = ic_add(cu, IC_MEMCPY);
-            ic->dest = ic_stk(0, -disp);
-            ic->src0 = ic_imm(0, (s64) data);
-            ic->src1 = ic_imm(0, size);
-            result = ic->dest;
             
             u8* curr = (u8*) data;
             for_compound(expr->Array_Expr.elements, e) {
@@ -72,19 +85,21 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 curr += type->size;
             }
             
-            pln("%, ", f_int(*((u64*) data)), f_int(*((u64*) data + 1)), f_int(*((u64*) data + 2)));
-            
-            cu->stack_curr_used = disp;
+            result = ic_imm(IC_PTR, (s64) data);
         } break;
         
         case Ast_Struct_Expr: {
             Type* type = expr->type;
             assert(type->kind == TypeKind_Struct);
             
+            u8* data = 0;
             // TODO(Alexander): temporary use Memory_Arena
-            u8* data = (u8*) calloc(1, type->size);
             for_compound(expr->Struct_Expr.fields, field) {
                 assert(field->kind == Ast_Argument);
+                
+                if (!data) {
+                    data = (u8*) calloc(1, type->size);
+                }
                 
                 string_id ident = ast_unwrap_ident(field->Argument.ident);
                 Ast* assign = field->Argument.assign;
@@ -95,12 +110,9 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 value_store_in_memory(info.type, data + info.offset, assign->Value.value.data);
             }
             
-            s64 disp = align_forward(cu->stack_curr_used, type->align) + type->size;
-            Intermediate_Code* ic = ic_add(cu, IC_MEMCPY);
-            ic->dest = ic_stk(0, -disp);
-            ic->src0 = ic_imm(0, (s64) data);
-            ic->src1 = ic_imm(0, type->size);
-            result = ic->dest;
+            if (data) {
+                result = ic_imm(IC_PTR, (s64) data);
+            }
         } break;
         
         case Ast_Field_Expr: {
@@ -142,32 +154,34 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             assert(src0.raw_type == src1.raw_type);
             bool isFloat = src0.type & IC_FLOAT;
             
-            Intermediate_Code* ic = ic_add(cu);
-            ic->dest = ic_reg(src0.raw_type);
-            ic->src0 = src0;
-            ic->src1 = src1;
-            result = ic->dest;
-            
             Binary_Op op = expr->Binary_Expr.op;
-            if (binary_is_comparator_table[op]) {
-                result.raw_type = IC_S8;
-                ic->opcode = isFloat ? IC_FCMP : IC_CMP;
-                ic->dest = result;
+            if (op == BinaryOp_Assign) {
+                convert_assign_to_intermediate(cu, expr->type, src0, src1);
+            } else {
                 
-                ic = ic_add(cu);
-                ic->dest = result;
-            }
-            
-            switch (op) {
-                case BinaryOp_Assign: {
-                    ic->opcode = isFloat ? IC_FMOV : IC_MOV;
-                    ic->dest.type = 0;
-                } break;
-                case BinaryOp_Add: ic->opcode = isFloat ? IC_FADD : IC_ADD; break;
-                case BinaryOp_Divide: ic->opcode = isFloat ? IC_FDIV : IC_DIV; break;
-                case BinaryOp_Modulo: ic->opcode = isFloat ? IC_FMOD : IC_MOD; break;
-                case BinaryOp_Greater_Than: ic->opcode = IC_SETG; break;
-                default: unimplemented;
+                
+                Intermediate_Code* ic = ic_add(cu);
+                ic->dest = ic_reg(src0.raw_type);
+                ic->src0 = src0;
+                ic->src1 = src1;
+                result = ic->dest;
+                
+                if (binary_is_comparator_table[op]) {
+                    result.raw_type = IC_S8;
+                    ic->opcode = isFloat ? IC_FCMP : IC_CMP;
+                    ic->dest = result;
+                    
+                    ic = ic_add(cu);
+                    ic->dest = result;
+                }
+                
+                switch (op) {
+                    case BinaryOp_Add: ic->opcode = isFloat ? IC_FADD : IC_ADD; break;
+                    case BinaryOp_Divide: ic->opcode = isFloat ? IC_FDIV : IC_DIV; break;
+                    case BinaryOp_Modulo: ic->opcode = isFloat ? IC_FMOD : IC_MOD; break;
+                    case BinaryOp_Greater_Than: ic->opcode = IC_SETG; break;
+                    default: unimplemented;
+                }
             }
         } break;
         
@@ -231,38 +245,16 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt) {
             
             
             Ic_Arg src = {};
-            if (!is_ast_none(stmt->Assign_Stmt.expr)) {
+            if (is_valid_ast(stmt->Assign_Stmt.expr)) {
                 src = convert_expr_to_intermediate_code(cu, stmt->Assign_Stmt.expr);
             }
             
-            s64 disp;
-            if (type->kind == TypeKind_Array) {
-                // TODO(Alexander): this is in-place for now, normally it would be a ptr
-                assert(type->Array.capacity > 0);
-                smm capacity = type->Array.capacity;
-                
-                if (src.type & IC_STK) {
-                    map_put(cu->stack_displacements, ident, src.disp);
-                    break;
-                }
-                
-                type = type->Array.type;
-                disp = align_forward(cu->stack_curr_used, type->align) + type->size;
-                cu->stack_curr_used = disp + (capacity - 1)*type->size;
-            } else {
-                disp = align_forward(cu->stack_curr_used, type->align) + type->size;
-                cu->stack_curr_used = disp;
-            }
-            
+            s64 disp = align_forward(cu->stack_curr_used, type->align) + type->size;
+            cu->stack_curr_used = disp;
             map_put(cu->stack_displacements, ident, -disp);
             
-            if (!is_ast_none(stmt->Assign_Stmt.expr)) {
-                Ic_Arg dest = convert_expr_to_intermediate_code(cu, stmt->Assign_Stmt.ident);
-                Intermediate_Code* ic = ic_add(cu, (dest.type & IC_FLOAT) ? IC_FMOV : IC_MOV);
-                ic->src0 = dest;
-                ic->src1 = src;
-            }
-            
+            Ic_Arg dest = convert_expr_to_intermediate_code(cu, stmt->Assign_Stmt.ident);
+            convert_assign_to_intermediate(cu, stmt->type, dest, src);
         } break;
         
         case Ast_Block_Stmt: {
@@ -618,7 +610,7 @@ x64_lea(Intermediate_Code* ic, s64 r1, s64 r2, s64 d2) {
     
     if (r2 == X64_RIP) {
         ic_u8(ic, (u8) r1<<3 | (u8) X64_RBP);
-        ic_u32(ic, (u32) d2);
+        ic_u32(ic, (u32) (d2 - ic->count - 4));
     } else {
         x64_modrm(ic, IC_STK, d2, r1);
     }
@@ -634,6 +626,27 @@ x64_encode_relative_jump(Intermediate_Code* ic, s64 rip) {
     } else {
         ic_u32(ic, (s32) 0);
     }
+}
+
+void
+x64_string_op(Intermediate_Code* ic, s64 dest, 
+              Ic_Type srct, s64 srcr, s64 srcd, 
+              s64 count, u16 opcode, s64 rip) {
+    // Move RCX bytes from [RSI] to [RDI].
+    x64_mov(ic, IC_S64 + IC_REG, X64_RCX, 0, IC_S64 + IC_IMM, 0, count);
+    x64_lea(ic, X64_RDI, X64_RBP, dest);
+    
+    if (srct & IC_PTR && srct & IC_IMM) {
+        // TODO(Alexander): this is a hack using RIP-relative pointer, why +16?
+        s64 disp = (s64) srcd - rip;
+        x64_lea(ic, X64_RSI, X64_RIP, disp);
+        pln("ic->count = %", f_int(ic->count));
+    } else {
+        x64_mov(ic, IC_S64 + IC_REG, X64_RAX, 0, srct, srcr, srcd);
+    }
+    
+    // e.g. F3 A4 	REP MOVS m8, m8 	ZO
+    ic_u16(ic, opcode);
 }
 
 s64
@@ -703,17 +716,14 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64
             } break;
             
             case IC_MEMCPY: {
-                // Move RCX bytes from [RSI] to [RDI].
-                x64_mov(ic, IC_S64 + IC_REG, X64_RCX, 0, ic->src1.type, ic->src1.reg, ic->src1.disp);
-                x64_lea(ic, X64_RDI, X64_RBP, ic->dest.disp);
-                
-                // TODO(Alexander): this is a hack using RIP-relative pointer, why +16?
-                s64 disp = (s64) ic->src0.disp - ((s64) buf + rip + 16);
-                x64_lea(ic, X64_RSI, X64_RIP, disp);
-                
-                // F3 A4 	REP MOVS m8, m8 	ZO
-                ic_u8(ic, 0xF3);
-                ic_u8(ic, 0xA4);
+                x64_string_op(ic, ic->dest.disp, ic->src0.type, ic->src0.reg, ic->src0.disp,
+                              ic->src1.disp, 0xA4F3, (s64) buf + rip);
+            } break;
+            
+            
+            case IC_MEMSET: {
+                x64_string_op(ic, ic->dest.disp, ic->src0.type, ic->src0.reg, ic->src0.disp,
+                              ic->src1.disp, 0xAAF3, (s64) buf + rip);
             } break;
             
             case IC_CMP: {

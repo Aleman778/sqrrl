@@ -699,6 +699,16 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     }
                 } else {
                     parent_type->Array.capacity = count;
+                    if (!parent_type->Array.is_dynamic) {
+                        if (parent_type->Array.capacity > 0) {
+                            parent_type->Array.is_inplace = true;
+                            parent_type->size = (s32) (parent_type->Array.type->size * 
+                                                       parent_type->Array.capacity);
+                        } else {
+                            // TODO(Alexander): improve this error message
+                            type_error(tcx, string_format("cannot assign empty array literal to fixed-array of unknown capacity, did you mean to use a dynamic array [..]T?"));
+                        }
+                    }
                 }
                 
                 expr->type = result;
@@ -940,11 +950,13 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 result->Array.type = elem_type;
                 result->Array.capacity = capacity;
                 result->Array.is_dynamic = ast->Array_Type.is_dynamic;
+                
                 if (!result->Array.is_dynamic && result->Array.capacity > 0) {
                     // NOTE(Alexander): fixed size arrays with known size should be allocated directly
                     // TODO(Alexander): arch dep
-                    result->size = sizeof(void*);
-                    result->align = alignof(void*);
+                    result->size = (s32) (elem_type->size*result->Array.capacity);
+                    result->align = elem_type->align;
+                    result->Array.is_inplace = true;
                     //result->size = elem_type->size * (s32) result->Array.capacity;
                     //result->align = elem_type->align;
                 } else {
@@ -1163,17 +1175,16 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
             
             if (found_type) {
                 if (expected_type) {
-                    stmt->type = expected_type;
+                    result = expected_type;
                 } else {
-                    stmt->type = found_type;
+                    result = found_type;
                 }
-                result = found_type;
                 
                 string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
                 stmt->Assign_Stmt.ident->type = result;
                 
                 if (tcx->block_depth > 0) {
-                    if (!push_local(tcx, ident, expected_type, report_error)) {
+                    if (!push_local(tcx, ident, result, report_error)) {
                         result = 0;
                     }
                 } else {
@@ -1186,9 +1197,11 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                                                      f_string(vars_load_string(ident))));
                         }
                     } else {
-                        map_put(tcx->globals, ident, expected_type);
+                        map_put(tcx->globals, ident, result);
                     }
                 }
+                
+                stmt->type = result;
             }
             
         } break;
@@ -1322,6 +1335,15 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool comparator=f
             }
         } break;
         
+        case TypeKind_Struct: {
+            // TODO(Alexander): this will not work for anonymous structs
+            if (lhs != rhs) {
+                type_error(tcx, string_format("mismatched types expected `%`, found `%`",
+                                              f_type(lhs), f_type(rhs)));
+                return false;
+            }
+        } break;
+        
         case TypeKind_Pointer: {
             return type_check_assignment(tcx, lhs->Pointer, rhs->Pointer, comparator);
         } break;
@@ -1364,7 +1386,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
             }
         } break;
         
-        case Ast_Binary_Expr: {;
+        case Ast_Binary_Expr: {
             type_check_expression(tcx, expr->Binary_Expr.first);
             type_check_expression(tcx, expr->Binary_Expr.second);
             
@@ -1424,6 +1446,10 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
             for_compound(stmt->Block_Stmt.stmts, it) {
                 type_check_statement(tcx, it);
             }
+        } break;
+        
+        case Ast_Decl_Stmt: {
+            type_check_statement(tcx, stmt->Decl_Stmt.stmt);
         } break;
     }
     
@@ -1500,6 +1526,7 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
     }
     
     
+    map_free(tcx->local_type_table);
     map_free(tcx->locals);
     tcx->block_depth = 0;
     

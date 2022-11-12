@@ -8,8 +8,7 @@ enum {
     IC_T16 = bit(1),
     IC_T32 = bit(2),
     IC_T64 = bit(3),
-    // TODO(Alexander): reserved for now
-    //IC_??? = bit(4),
+    IC_PTR = bit(4),
     IC_UINT = bit(5),
     IC_SINT = bit(6),
     IC_FLOAT = bit(7),
@@ -217,6 +216,7 @@ inline void
 ic_u16(Intermediate_Code* ic, u16 w) {
     assert(ic->count < fixed_array_count(ic->code));
     *((u16*) (ic->code + ic->count)) = w;
+    ic->count += 2;
 }
 
 inline void

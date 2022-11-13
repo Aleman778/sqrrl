@@ -117,12 +117,18 @@ struct Type_Enum {
     Type* type;
 };
 
+enum Calling_Convention {
+    //CConv_Sqrrl = 0, // TODO(Alexander): implement custom calling convention
+    CConv_Windows_X64,
+};
+
 struct Type_Function {
     array(string_id)* arg_idents;
     array(Type*)* arg_types;
     Ident_Mapper* ident_to_index;
     Type* return_type;
-    Ast* block;
+    Calling_Convention cconv;
+    Compilation_Unit* unit;
     Value (*interp_intrinsic)(Interp*, array(Interp_Value)*); // TODO(Alexander): temporary intrinsic definition
     void* intrinsic;
     string_id ident;

@@ -397,7 +397,7 @@ interp_function_call(Interp* interp, string_id ident, Ast* args, Type* function_
                                                    f_int(formal_arg_count)));
             }
             
-            Ast* block = type->Function.block;
+            Ast* block = type->Function.unit->ast;
             if (block) {
                 result = interp_statement(interp, block);
                 // TODO(alexander): only write to result if it is an actual return value!
@@ -942,9 +942,6 @@ interp_declaration_statement(Interp* interp, Ast* ast) {
     assert(ast->kind == Ast_Decl_Stmt);
     
     Type* type = ast->type;
-    if (type->kind == TypeKind_Function) {
-        type->Function.block = ast->Decl_Stmt.stmt;
-    }
     
     assert(ast->Decl_Stmt.ident->kind == Ast_Ident);
     string_id ident = ast->Decl_Stmt.ident->Ident;

@@ -299,6 +299,7 @@ struct Compilation_Unit {
     
     map(string_id, s64)* stack_displacements;
     s64 stack_curr_used;
+    s64 arg_stack_size;
 };
 
 struct Ast_File {

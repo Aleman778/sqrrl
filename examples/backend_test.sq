@@ -1,6 +1,27 @@
 
 f32
+addf(f32 x, f32 y) {
+    return x + y;
+}
+
+f32
 main() {
+    return addf(0.423f, 0.6424f);
+}
+
+int
+add(int x, int y) {
+    return x + y;
+}
+
+int
+main2() {
+    return add(10, 20);
+}
+
+
+f32
+main2() {
     // SoA - Structure of Arrays
     struct Mesh {
         [10]v3 pos;

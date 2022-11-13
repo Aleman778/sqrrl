@@ -48,6 +48,15 @@ basic_type_to_raw_type(Basic_Type basic) {
     return IC_Void;
 }
 
+inline Ic_Raw_Type
+convert_type_to_raw_type(Type* type) {
+    Ic_Raw_Type raw_type = IC_PTR;
+    if (type->kind == TypeKind_Basic) {
+        raw_type = basic_type_to_raw_type(type->Basic.kind);
+    }
+    return raw_type;
+}
+
 enum {
     IC_IMM = bit(8),
     IC_REG = bit(9),
@@ -95,6 +104,7 @@ enum {
     X64_XMM14 = 14,
     X64_XMM15 = 15,
 };
+typedef u8 X64_Reg;
 
 global const cstring int_register_names[] {
     "RAX", "RCX", "RDX", "RBX", "RSP", "RBP", "RSI", "RDI",
@@ -105,6 +115,14 @@ global const cstring float_register_names[] {
     "XMM0", "XMM1", "XMM2", "XMM3", "XMM4", "XMM5", 
     "XMM6", "XMM7", "XMM8", "XMM9", "XMM10", "XMM11", 
     "XMM12", "XMM13", "XMM14", "XMM15",
+};
+
+global const X64_Reg int_arg_registers_ccall_windows[] {
+    X64_RCX, X64_RDX, X64_R8, X64_R9
+};
+
+global const X64_Reg float_arg_registers_ccall_windows[] {
+    X64_XMM0, X64_XMM1, X64_XMM2, X64_XMM3
 };
 
 struct Ic_Arg {
@@ -120,21 +138,31 @@ struct Ic_Arg {
 };
 
 inline Ic_Arg
-ic_reg(Ic_Raw_Type t=IC_S32) {
+ic_reg(Ic_Raw_Type t=IC_S32, u8 reg=0) {
     // TODO(Alexander): how to handle register allocation
     Ic_Arg result = {};
-    result.reg = 0;
+    result.reg = reg;
     result.type = t + IC_REG; // TODO(Alexander): hardcoded type
     return result;
 }
 
 inline Ic_Arg
-ic_stk(Ic_Raw_Type t, s64 d) {
+ic_stk(Ic_Raw_Type t, s64 d, u8 reg=X64_RSP) {
     Ic_Arg result = {};
     result.type = t + IC_STK;
-    result.reg = X64_RBP; // TODO(Alexander): RBP hardcoded for now
+    result.reg = reg;
     result.disp = d;
     return result;
+}
+
+inline Ic_Arg
+ic_stk_push(Compilation_Unit* cu, Type* type, string_id ident=0) {
+    s64 disp = align_forward(cu->stack_curr_used, type->align) + type->size;
+    cu->stack_curr_used = disp;
+    if (ident) {
+        map_put(cu->stack_displacements, ident, -disp);
+    }
+    return ic_stk(convert_type_to_raw_type(type), -disp);
 }
 
 inline Ic_Arg
@@ -151,6 +179,7 @@ IC(PRLG) \
 IC(EPLG) \
 IC(DEBUG_BREAK) \
 IC(LABEL) \
+IC(CALL) \
 IC(ADD) \
 IC(DIV) \
 IC(MOD) \
@@ -203,7 +232,7 @@ struct Intermediate_Code {
     Ic_Arg dest, src0, src1;
     
     u8 count;
-    u8 code[20];
+    u8 code[23];
 };
 
 inline void
@@ -282,9 +311,10 @@ ic_add(Compilation_Unit* cu, Ic_Opcode opcode = IC_NOOP, void* data=0) {
         bb = cu->bb_last;
         
         if (!bb) {
-            bb = ic_basic_block();
-            cu->bb_first = bb;
-            cu->bb_last = bb;
+            unimplemented;
+            //bb = ic_basic_block();
+            //cu->bb_first = bb;
+            //cu->bb_last = bb;
         }
     }
     
@@ -304,6 +334,17 @@ ic_add(Compilation_Unit* cu, Ic_Opcode opcode = IC_NOOP, void* data=0) {
     return result;
 }
 
+#define REX_PATTERN 0x40
+#define REX_FLAG_W bit(3)
+#define REX_FLAG_R bit(2)
+#define REX_FLAG_X bit(1)
+#define REX_FLAG_B bit(0)
+#define REX_FLAG_64_BIT REX_FLAG_W
+
+inline void
+x64_rex(Intermediate_Code* ic, u8 flags) {
+    ic_u8(ic, REX_PATTERN | flags);
+}
 
 #define MODRM_DIRECT 0xC0
 #define MODRM_INDIRECT_DISP8 0x40

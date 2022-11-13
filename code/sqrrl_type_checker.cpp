@@ -1246,7 +1246,10 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                 
                 if (found_type) {
                     if (decl_type->kind == TypeKind_Function) {
-                        decl_type->Function.block = stmt->Decl_Stmt.stmt;
+                        if (!decl_type->Function.unit) {
+                            // TODO(Alexander): we need to resolve this
+                            unimplemented;
+                        }
                     }
                     
                     result = decl_type;
@@ -1359,7 +1362,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
     switch (expr->kind) {
         case Ast_Call_Expr: {
             Type* function_type = expr->Call_Expr.function_type;
-            assert(function_type->kind != TypeKind_Function);
+            assert(function_type->kind == TypeKind_Function);
             
             Type_Function* t_func = &function_type->Function;
             
@@ -1468,7 +1471,7 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
         
         if (type && type->kind == TypeKind_Function) {
             push_type_scope(tcx);
-            type->Function.block = ast->Decl_Stmt.stmt;
+            type->Function.unit = comp_unit;
             
             // Store the arguments in local context
             Type_Function* func = &type->Function;
@@ -1551,7 +1554,7 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
         array_push(type->Function.arg_types, t_string);
         
         string_id ident = vars_save_cstring("print_format");
-        type->Function.block = 0;
+        type->Function.unit = 0;
         type->Function.interp_intrinsic = &interp_intrinsic_print_format;
         type->Function.intrinsic = &print_format;
         type->Function.ident = ident;
@@ -1568,7 +1571,7 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
         type->Function.is_variadic = false;
         
         string_id ident = vars_save_cstring("debug_break");
-        type->Function.block = 0;
+        type->Function.unit = 0;
         type->Function.interp_intrinsic = &interp_intrinsic_debug_break;
         type->Function.intrinsic = &interp_intrinsic_debug_break;
         type->Function.ident = ident;
@@ -1589,7 +1592,7 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
         array_push(type->Function.arg_types, t_s32);
         
         string_id ident = vars_save_cstring("assert");
-        type->Function.block = 0;
+        type->Function.unit = 0;
         type->Function.interp_intrinsic = &interp_intrinsic_assert;
         type->Function.intrinsic = &intrinsic_assert;
         type->Function.ident = ident;
@@ -1610,7 +1613,7 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
         array_push(type->Function.arg_types, t_f32);
         
         string_id ident = vars_save_cstring("sqrt");
-        type->Function.block = 0;
+        type->Function.unit = 0;
         type->Function.interp_intrinsic = 0;
         type->Function.intrinsic = &sqrtf;
         type->Function.ident = ident;
@@ -1627,7 +1630,7 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
         type->Function.is_variadic = false;
         
         string_id ident = vars_save_cstring("random_f32");
-        type->Function.block = 0;
+        type->Function.unit = 0;
         type->Function.interp_intrinsic = 0;
         type->Function.intrinsic = &random_f32;
         type->Function.ident = ident;

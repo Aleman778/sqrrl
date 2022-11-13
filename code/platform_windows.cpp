@@ -365,10 +365,6 @@ main(int argc, char* argv[]) {
     
     bool is_debugger_present = IsDebuggerPresent();
     
-    // NOTE(alexander): here goes any platform specific initialization
-    //return compiler_main_entry(argc, argv, 
-    //asm_buffer, asm_buffer_size, &asm_buffer_prepare_for_execute, is_debugger_present);
-    
-    return test_x64_converter(argc, argv, 
-                              asm_buffer, asm_buffer_size, &asm_buffer_prepare_for_execute, is_debugger_present);
+    return compiler_main_entry(argc, argv, 
+                               asm_buffer, asm_buffer_size, &asm_buffer_prepare_for_execute, is_debugger_present);
 }

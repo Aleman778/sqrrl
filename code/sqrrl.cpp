@@ -2,11 +2,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef int asm_main(void);
-
 #include "sqrrl.h"
 
 #include "sqrrl_basic.cpp"
+
 #include "sqrrl_value.cpp"
 #include "sqrrl_test.cpp"
 #include "sqrrl_tokenizer.cpp"
@@ -21,6 +20,8 @@ typedef int asm_main(void);
 #include "sqrrl_x64_assembler.cpp"
 #include "sqrrl_x64_converter.cpp"
 
+typedef int asm_main(void);
+typedef f32 asm_f32_main(void);
 
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
@@ -56,7 +57,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     } else {
 #if BUILD_DEBUG
         // TODO(Alexander): temporary files for testing
-        filepath = string_lit("../personal/first.sq");
+        //filepath = string_lit("../personal/first.sq");
+        filepath = string_lit("../examples/backend_test.sq");
         //filepath = string_lit("../examples/raytracer/first.sq");
 #else
         if (argc <= 1) {
@@ -176,175 +178,132 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         }
     }
     
-    {
-        // Build bytecode representation of the AST
-        Bc_Builder bytecode_builder = {};
-        bc_build_from_ast(&bytecode_builder, &ast_file);
-        Bytecode* bytecode = &bytecode_builder.code;
-        
-        if (flag_print_bc) {
-            // TODO(Alexander): only counts last memory block
-            pln("Bytecode (code) size (% bytes):\n", f_umm(bytecode_builder.code_arena.curr_used));
-            
-            String_Builder sb = {};
-            for_map (bytecode_builder.declarations, it) {
-                if (it->key.ident == Kw_global) {
-                    continue;
-                }
+    Compilation_Unit* main_cu = 0;
+    for_array(ast_file.units, cu, _) {
+        if (cu->ast->kind == Ast_Decl_Stmt) {
+            Type* type = cu->ast->type;
+            if (type->kind == TypeKind_Function) {
+                convert_procedure_to_intermediate_code(cu, is_debugger_present);
                 
-                Bc_Decl* decl = &it->value;
-                if (decl->kind == BcDecl_Procedure) {
-                    Bc_Basic_Block* first_basic_block = get_bc_basic_block(bytecode, decl->first_byte_offset);
-                    Bc_Instruction* label = get_first_bc_instruction(first_basic_block);
-                    Bc_Register_Mapper register_mapper = {};
-                    
-                    string_builder_push(&sb, "\n");
-                    string_builder_push(&sb, &register_mapper, &label->src0);
-                    string_builder_push(&sb, " ");
-                    string_builder_push(&sb, vars_load_string(it->key.ident));
-                    string_builder_push(&sb, &register_mapper, label->src1.Argument_List, true);
-                    string_builder_push(&sb, " {\n");
-                    string_builder_push(&sb, &register_mapper, first_basic_block, bytecode);
-                    string_builder_push(&sb, "}\n");
-                    
-                } else if (decl->kind == BcDecl_Data) {
-                    string_builder_push(&sb, "%");
-                    string_builder_push(&sb, "%");
-                    string_builder_push(&sb, it->key);
-                    string_builder_push(&sb, " = ");
-                    string_builder_push(&sb, &decl->Data.value);
-                    string_builder_push(&sb, "\n");
+                if (cu->ident == Sym_main) {
+                    main_cu = cu;
                 }
             }
+        }
+    }
+    assert(main_cu);
+    
+    pln("\nIntermediate code:");
+    
+    String_Builder sb = {};
+    for_array(ast_file.units, cu, _2) {
+        if (cu->ast->kind != Ast_Decl_Stmt) continue;
+        
+        if (cu->ast->type->kind == TypeKind_Function) {
+            string_builder_push_format(&sb, "\n%:\n", f_type(cu->ast->type));
             
-            string str = string_builder_to_string_nocopy(&sb);
-            pln("%", f_string(str));
-            string_builder_free(&sb);
+        } else {
+            continue;
         }
         
-        // Interpret the bytecode
-        if (flag_run_bc_interp) {
-            Bc_Interp interp = {};
-            interp.code = &bytecode_builder.code;
-            interp.declarations = bytecode_builder.declarations;
-            int interp_exit_code = (int) bc_interp_bytecode(&interp).signed_int;
-            pln("Bytecode interpreter exited with code: %\n", f_int(interp_exit_code));
-        }
-        
-        // Generate X64 machine code
-        X64_Builder x64_builder = {};
-        x64_builder.label_indices = bytecode_builder.label_indices;
-        x64_builder.bc_register_live_lengths = bytecode_builder.live_lengths;
-        x64_builder.bytecode = &bytecode_builder.code;
-        x64_builder.next_free_virtual_register = bytecode_builder.next_register;
-        x64_builder.is_debugger_present = is_debugger_present;
-        
-        // Make sure to compile entry point function first
-        Bc_Label entry_point_label = { Sym_main, 0 };
-        Bc_Decl* main_decl = &map_get(bytecode_builder.declarations, entry_point_label);
-        assert(main_decl && main_decl->kind == BcDecl_Procedure);
-        
-        Bc_Basic_Block* main_block =
-            get_bc_basic_block(bytecode, main_decl->first_byte_offset);
-        x64_build_procedure(&x64_builder, bytecode, main_block, &main_decl->Procedure);
-        //pln("compiling procedure `%`", f_string(vars_load_string(Sym_main)));
-        
-        for_map (bytecode_builder.declarations, it) {
-            if (it->key.ident == Sym_main || it->key.ident == Kw_global) {
-                continue;
-            }
+        int bb_index = 0;
+        Intermediate_Code* curr = cu->ic_first;
+        while (curr) {
             
-            Bc_Decl* decl = &it->value;
-            if (decl->kind == BcDecl_Procedure) {
-                // TODO(Alexander): to support procedure overloading we should remove this
-                if (it->key.index != 0) continue;
+            if (curr->opcode == IC_LABEL) {
+                if (bb_index > 0) {
+                    string_builder_push_format(&sb, "\nbb%:\n", f_int(bb_index));
+                }
+                bb_index++;
                 
-                //pln("compiling procedure `%`", f_string(vars_load_string(it->key.ident)));
-                Bc_Basic_Block* proc_block =
-                    get_bc_basic_block(bytecode, decl->first_byte_offset);
-                x64_build_procedure(&x64_builder, bytecode, proc_block, &decl->Procedure);
-            } else if (decl->kind == BcDecl_Data) {
-                // TODO(Alexander): we need to store the actual value type in the declarations
-                x64_build_data_storage(&x64_builder, it->key, decl->Data.value.data, decl->Data.type);
-            }
-        }
-        
-        // Print interference graph before register allocation
-        string interference_graph = x64_interference_graph_to_graphviz_dot(&x64_builder);
-        //pln("\nGraphviz interference graph (before):\n%", f_string(interference_graph));
-        DEBUG_write_entire_file("rig_before.dot", 
-                                interference_graph.data, 
-                                (u32) interference_graph.count);
-        
-        if (flag_print_asm_vreg) {
-            // Print the human readable x64 assembly code (before register allocation)
-            String_Builder sb = {};
-            string_builder_push(&sb, x64_builder.first_basic_block, true);
-            
-            string str = string_builder_to_string_nocopy(&sb);
-            pln("\nX64 Assembly (without register allocation):\n%", f_string(str));
-            string_builder_free(&sb);
-        }
-        
-        // Perform register allocation
-        x64_perform_register_allocation(&x64_builder);
-        
-        // Print interference graph before register allocation
-        interference_graph = x64_interference_graph_to_graphviz_dot(&x64_builder);
-        //pln("\nGraphviz interference graph (after):\n%", f_string(interference_graph));
-        DEBUG_write_entire_file("rig_after.dot", 
-                                interference_graph.data, 
-                                (u32) interference_graph.count);
-        
-        if (flag_print_asm) {
-            // Print the human readable x64 assembly code
-            String_Builder sb = {};
-            string_builder_push(&sb, x64_builder.first_basic_block, false);
-            
-            string str = string_builder_to_string_nocopy(&sb);
-            pln("\nX64 Assembly:\n%", f_string(str));
-            string_builder_free(&sb);
-        }
-        
-        // x64 build instruction definitions
-        X64_Instruction_Def_Table* x64_instruction_definitions = parse_x86_64_definitions();
-        
-        // x64 assembler
-        X64_Assembler assembler = {};
-        assembler.bytes = (u8*) asm_buffer;
-        assembler.size = asm_size;
-        assembler.rodata_offsets = x64_builder.rodata_offsets;
-        
-        x64_assemble_to_machine_code(&assembler,
-                                     x64_instruction_definitions,
-                                     x64_builder.first_basic_block);
-        
-        assert(assembler.curr_used + x64_builder.rodata_section_arena.curr_used < assembler.size && 
-               "asm buf out of memory");
-        memcpy(assembler.bytes + assembler.curr_used, 
-               x64_builder.rodata_section_arena.base, 
-               x64_builder.rodata_section_arena.curr_used);
-        
-#if 0
-        pln("\nX64 Machine Code (% bytes):", f_umm(assembler.curr_used));
-        for (int byte_index = 0; byte_index < assembler.curr_used; byte_index++) {
-            u8 byte = assembler.bytes[byte_index];
-            if (byte > 0xF) {
-                printf("%hhX ", byte);
             } else {
-                printf("0%hhX ", byte);
+                string_builder_push(&sb, "  ");
+                
+                
+                if (curr->dest.type) {
+                    string_builder_push(&sb, curr->dest);
+                    string_builder_push(&sb, " = ");
+                }
+                
+                string_builder_push(&sb, ic_opcode_names[curr->opcode]);
+                
+                if (curr->src0.type) {
+                    string_builder_push(&sb, " ");
+                    string_builder_push(&sb, curr->src0);
+                    
+                    if (curr->src1.type) {
+                        string_builder_push(&sb, ", ");
+                        string_builder_push(&sb, curr->src1);
+                        
+                    }
+                }
+                
+                if (curr->next) {
+                    string_builder_push(&sb, "\n");
+                }
             }
             
-            if (byte_index % 90 == 89) {
-                printf("\n");
-            }
+            curr = curr->next;
         }
-#endif
         
-        asm_make_executable(asm_buffer, asm_size);
-        asm_main* func = (asm_main*) asm_buffer;
+        string_builder_push(&sb, "\n");
+    }
+    
+    string s = string_builder_to_string_nocopy(&sb);
+    pln("%", f_string(s));
+    string_builder_free(&sb);
+    
+    s64 rip = 0;
+    for_array(ast_file.units, cu, _3) {
+        rip = convert_to_x64_machine_code(cu->ic_first, cu->stack_curr_used + cu->arg_stack_size, 0, 0, rip);
+    }
+    
+    s64 rip2 = 0;
+    for_array(ast_file.units, cu, _4) {
+        rip2 = convert_to_x64_machine_code(cu->ic_first, cu->stack_curr_used + cu->arg_stack_size,
+                                           (u8*) asm_buffer, (s64) asm_size, rip2);
+    }
+    assert(rip == rip2);
+    
+#if 1
+    pln("\nX64 Machine Code (% bytes):", f_umm(rip));
+    for (int byte_index = 0; byte_index < rip; byte_index++) {
+        u8 byte = ((u8*) asm_buffer)[byte_index];
+        if (byte > 0xF) {
+            printf("%hhX ", byte);
+        } else {
+            printf("0%hhX ", byte);
+        }
+        
+        if (byte_index % 30 == 29) {
+            printf("\n");
+        }
+    }
+#endif
+    
+    //asm_make_executable(asm_buffer, asm_size);
+    //asm_main* func = (asm_main*) asm_buffer;
+    //int jit_exit_code = (int) func();
+    //pln("JIT exited with code: %", f_int(jit_exit_code));
+    
+    Type* type = main_cu->ast->type;
+    if (type && type->kind == TypeKind_Function) {
+        type = type->Function.return_type;
+    }
+    
+    asm_make_executable(asm_buffer, rip);
+    void* asm_buffer_main = (u8*) asm_buffer + main_cu->bb_first->addr;
+    
+    if (type == t_s32) {
+        asm_main* func = (asm_main*) asm_buffer_main;
         int jit_exit_code = (int) func();
-        pln("JIT exited with code: %", f_int(jit_exit_code));
+        pln("\nJIT exited with code: %", f_int(jit_exit_code));
+    } else if (type == t_f32) {
+        asm_f32_main* func = (asm_f32_main*) asm_buffer_main;
+        f32 jit_exit_code = (f32) func();
+        pln("\nJIT exited with code: %", f_float(jit_exit_code));
+    } else {
+        pln("\nJIT exited with code: 0");
     }
     
     return 0;

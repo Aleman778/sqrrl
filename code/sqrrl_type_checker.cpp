@@ -1428,9 +1428,11 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
     
     switch (stmt->kind) {
         case Ast_Assign_Stmt: {
-            Type* expected_type = stmt->Assign_Stmt.type->type;
+            Type* expected_type = stmt->type;
+            assert(expected_type && "compiler bug: assign statement has no type");
+            
             Type* found_type = stmt->Assign_Stmt.expr->type;
-            if (expected_type) {
+            if (found_type) {
                 result = type_check_assignment(tcx, expected_type, found_type);
             }
         } break;

@@ -295,6 +295,7 @@ struct Compilation_Unit {
     
     Intermediate_Code *ic_first, *ic_last;
     Ic_Basic_Block *bb_first, *bb_last;
+    Ic_Basic_Block *bb_return;
     Ic_Basic_Block *bb_data;
     
     map(string_id, s64)* stack_displacements;

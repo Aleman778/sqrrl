@@ -6,6 +6,9 @@ addf(f32 x, f32 y) {
 
 f32
 main() {
+    f32 y = 2.0f;
+    return y;
+    
     return addf(0.423f, 0.6424f);
 }
 

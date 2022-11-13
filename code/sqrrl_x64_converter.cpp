@@ -337,12 +337,11 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt) {
         case Ast_Return_Stmt: {
             // TODO(Alexander): this is platform/architecture specific
             Ic_Arg result = convert_expr_to_intermediate_code(cu, stmt->Return_Stmt.expr);
-            if ((result.type & IC_REG) != 0 || result.reg != X64_RAX) {
-                Intermediate_Code* ic = ic_add(cu, (result.type & IC_FLOAT) ? IC_FMOV : IC_MOV);
-                ic->src0 = ic_reg(result.raw_type);
-                ic->src1 = result;
-                result = ic->src0;
+            if (!(result.type & IC_REG && result.reg == X64_RAX)) {
+                Ic_Arg dest = ic_reg(result.raw_type, X64_RAX);
+                convert_assign_to_intermediate_code(cu, stmt->type, dest, result);
             }
+            ic_add(cu, IC_JMP, cu->bb_return);
         } break;
         
         default: unimplemented;
@@ -355,8 +354,10 @@ convert_procedure_to_intermediate_code(Compilation_Unit* cu, bool debug_break) {
     assert(type->kind == TypeKind_Function);
     Type_Function* proc = &type->Function;
     
-    Ic_Basic_Block* bb = ic_basic_block();
-    ic_add(cu, IC_LABEL, bb);
+    Ic_Basic_Block* bb_begin = ic_basic_block();
+    Ic_Basic_Block* bb_end = ic_basic_block();
+    cu->bb_return = bb_end;
+    ic_add(cu, IC_LABEL, bb_begin);
     
     {
         // Save home registers
@@ -384,6 +385,8 @@ convert_procedure_to_intermediate_code(Compilation_Unit* cu, bool debug_break) {
     
     ic_add(cu, IC_PRLG);
     convert_stmt_to_intermediate_code(cu, cu->ast);
+    
+    ic_add(cu, IC_LABEL, bb_end);
     ic_add(cu, IC_EPLG);
 }
 

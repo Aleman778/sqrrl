@@ -215,10 +215,13 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 
                 arg_index++;
             }
-            
             cu->arg_stack_size = max(cu->arg_stack_size, arg_stack_curr_used);
             
-            ic_add(cu, IC_CALL, proc->unit);
+            Intermediate_Code* ic = ic_add(cu, IC_CALL, proc->unit);
+            if (proc->intrinsic) {
+                ic->dest = ic_imm(IC_S64, (s64) proc->intrinsic);
+            }
+            
             
             if (!result.type && proc->return_type) {
                 Ic_Raw_Type rt = convert_type_to_raw_type(proc->return_type);
@@ -787,8 +790,20 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64
             
             case IC_CALL: {
                 Compilation_Unit* target = (Compilation_Unit*) ic->data;
-                ic_u8(ic, 0xE8);
-                x64_encode_relative_jump_addr(ic, target->bb_first, rip);
+                if (target) {
+                    // E8 cd 	CALL rel32 	D
+                    ic_u8(ic, 0xE8);
+                    x64_encode_relative_jump_addr(ic, target->bb_first, rip);
+                } else {
+                    // REX.W + B8+ rd io 	MOV r64, imm64 	OI
+                    x64_rex(ic, REX_FLAG_W);
+                    ic_u8(ic, 0xB8);
+                    ic_u64(ic, (u64) ic->dest.disp);
+                    
+                    // FF /2 	CALL r/m64 	M 	
+                    ic_u8(ic, 0xFF);
+                    x64_modrm(ic, IC_REG + IC_S64, 0, 2, X64_RAX);
+                }
             } break;
             
             case IC_DEBUG_BREAK: {

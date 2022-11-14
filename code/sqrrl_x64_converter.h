@@ -243,23 +243,23 @@ ic_u8(Intermediate_Code* ic, u8 b) {
 
 inline void
 ic_u16(Intermediate_Code* ic, u16 w) {
-    assert(ic->count < fixed_array_count(ic->code));
+    assert(ic->count + 2 < fixed_array_count(ic->code));
     *((u16*) (ic->code + ic->count)) = w;
     ic->count += 2;
 }
 
 inline void
 ic_u32(Intermediate_Code* ic, u32 dw) {
-    assert(ic->count < fixed_array_count(ic->code));
+    assert(ic->count + 4 < fixed_array_count(ic->code));
     *((u32*) (ic->code + ic->count)) = dw;
     ic->count += 4;
 }
 
 inline void
 ic_u64(Intermediate_Code* ic, u64 qw) {
-    assert(ic->count < fixed_array_count(ic->code));
+    assert(ic->count + 8 < fixed_array_count(ic->code));
     *((u64*) (ic->code + ic->count)) = qw;
-    ic->count += 4;
+    ic->count += 8;
 }
 
 struct Ic_Basic_Block {

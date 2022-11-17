@@ -1,10 +1,14 @@
 
+#define pln(format, ...) print_format(format##"\n", ##__VA_ARGS__)
+
 int
 main() {
-    assert(0);
+    
+    //string s = "Sqrrl compiler";
+    pln("hello world %", 10.5);
     return 0;
 }
-
+#if 0
 
 f32
 addf(f32 x, f32 y) {
@@ -25,7 +29,7 @@ add(int x, int y) {
 }
 
 int
-main2() {
+main0() {
     return add(10, 20);
 }
 
@@ -98,3 +102,4 @@ struct v3 {
     f32 y;
     f32 z;
 }
+#endif

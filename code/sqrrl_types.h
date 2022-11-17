@@ -59,7 +59,6 @@ enum Basic_Type {
 #undef BASIC
 };
 
-
 enum {
     BasicFlag_Invalid = 0,
     BasicFlag_Integer = bit(1),
@@ -182,6 +181,51 @@ global Type* t_void = &void_type_definition;
 DEF_BASIC_TYPES
 #undef BASIC
 
+Format_Type
+convert_type_to_format_type(Type* type) {
+    if (type->kind == TypeKind_Basic) {
+        switch (type->Basic.kind) {
+            case Basic_bool: return FormatType_bool;
+            case Basic_s8: return FormatType_s8;
+            case Basic_s16: return FormatType_s16;
+            case Basic_s32: return FormatType_s32;
+            case Basic_s64: return FormatType_s64;
+            case Basic_int: return FormatType_int;
+            
+            case Basic_u8: return FormatType_u8;
+            case Basic_u16: return FormatType_u16;
+            case Basic_u32: return FormatType_u32;
+            case Basic_u64: return FormatType_u64;
+            case Basic_uint: return FormatType_uint;
+            
+            case Basic_f32: return FormatType_f32;
+            case Basic_f64: return FormatType_f64;
+            
+            case Basic_string: return FormatType_string;
+            case Basic_cstring: return FormatType_cstring;
+        }
+    } else {
+        unimplemented;
+    }
+    
+    return FormatType_None;
+}
+
+Format_Type 
+convert_value_type_to_format_type(Value_Type type) {
+    switch (type) {
+        case Value_boolean: return FormatType_bool;
+        case Value_signed_int: return FormatType_s64;
+        case Value_unsigned_int: return FormatType_u64;
+        case Value_floating: return FormatType_f64;
+        case Value_pointer: return FormatType_smm;
+        //Value_array,
+        case Value_string: return FormatType_string;
+    }
+    
+    return FormatType_None;
+}
+
 void
 string_builder_push(String_Builder* sb, Type* type) {
     if (!type) return;
@@ -272,3 +316,4 @@ print_type(Type* type) {
     print_format("%", f_string(result));
     string_builder_free(&sb);
 }
+

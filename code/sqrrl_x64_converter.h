@@ -8,7 +8,7 @@ enum {
     IC_T16 = bit(1),
     IC_T32 = bit(2),
     IC_T64 = bit(3),
-    IC_PTR = bit(4),
+    // ??? = bit(4), reserved
     IC_UINT = bit(5),
     IC_SINT = bit(6),
     IC_FLOAT = bit(7),
@@ -43,6 +43,8 @@ basic_type_to_raw_type(Basic_Type basic) {
         case Basic_u64: return IC_U64;
         case Basic_f32: return IC_F32;
         case Basic_f64: return IC_F64;
+        case Basic_string:
+        case Basic_cstring: return IC_S64;
         default: unimplemented;
     }
     return IC_Void;
@@ -50,7 +52,7 @@ basic_type_to_raw_type(Basic_Type basic) {
 
 inline Ic_Raw_Type
 convert_type_to_raw_type(Type* type) {
-    Ic_Raw_Type raw_type = IC_PTR;
+    Ic_Raw_Type raw_type = IC_T64;
     if (type->kind == TypeKind_Basic) {
         raw_type = basic_type_to_raw_type(type->Basic.kind);
     }
@@ -184,6 +186,7 @@ IC(ADD) \
 IC(DIV) \
 IC(MOD) \
 IC(MOV) \
+IC(REINTERPRET_CAST) \
 IC(MOVSX) \
 IC(MOVZX) \
 IC(MEMCPY) \
@@ -232,7 +235,7 @@ struct Intermediate_Code {
     Ic_Arg dest, src0, src1;
     
     u8 count;
-    u8 code[23];
+    u8 code[31];
 };
 
 inline void

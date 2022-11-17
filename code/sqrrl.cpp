@@ -279,6 +279,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             printf("\n");
         }
     }
+    printf("\n\n");
 #endif
     
     //asm_make_executable(asm_buffer, asm_size);

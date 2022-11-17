@@ -119,6 +119,7 @@ enum Value_Type {
     Value_pointer,
     Value_array,
     Value_string,
+    Value_cstring,
     Value_memory_string,
     
     // TODO(Alexander): these don't really belong here, should be moved.
@@ -133,6 +134,7 @@ union Value_Data {
     smm pointer;
     Array_Value array;
     string str;
+    cstring cstr;
     Memory_String mstr;
     Ast* ast; // TODO(Alexander): does it make sense to store this here?
     Bc_Basic_Block* basic_block; // TODO(Alexander): does it make sense to store this here?
@@ -230,6 +232,16 @@ is_floating(Value value) {
 inline bool
 is_numeric(Value value) {
     return is_integer(value) && is_floating(value);
+}
+
+inline bool
+is_string(Value value) {
+    return value.type == Value_string;
+}
+
+inline bool
+is_cstring(Value value) {
+    return value.type == Value_cstring;
 }
 
 inline bool

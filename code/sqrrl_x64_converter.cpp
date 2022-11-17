@@ -32,12 +32,24 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 Ic_Raw_Type raw_type = convert_type_to_raw_type(expr->type);
                 result.type = raw_type + IC_IMM;
                 result.disp = value_to_s64(expr->Value.value);
+                
             } else if (is_floating(expr->Value.value)) {
                 Type* type = expr->type;
                 Ic_Raw_Type raw_type = convert_type_to_raw_type(expr->type);
                 void* data = malloc(type->size);
                 value_store_in_memory(type, data, expr->Value.value.data);
                 result = ic_imm(raw_type, (s64) data);
+                
+            } else if (is_string(expr->Value.value)) {
+                Ic_Raw_Type raw_type = IC_T64;
+                string* str = &expr->Value.value.data.str;
+                result = ic_imm(raw_type, (s64) str);
+                
+            } else if (is_cstring(expr->Value.value)) {
+                Ic_Raw_Type raw_type = IC_T64;
+                cstring cstr = expr->Value.value.data.cstr;
+                result = ic_imm(raw_type, (s64) cstr);
+                
             } else {
                 unimplemented;
             }
@@ -77,7 +89,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 curr += type->size;
             }
             
-            result = ic_imm(IC_PTR, (s64) data);
+            result = ic_imm(IC_T64, (s64) data);
         } break;
         
         case Ast_Struct_Expr: {
@@ -103,7 +115,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             }
             
             if (data) {
-                result = ic_imm(IC_PTR, (s64) data);
+                result = ic_imm(IC_T64, (s64) data);
             }
         } break;
         
@@ -194,28 +206,39 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             int actual_arg_index = 0;
             s64 arg_stack_curr_used = 0;
             for_compound(expr->Call_Expr.args, arg) {
-                Type* arg_type = proc->arg_types[actual_arg_index++];
                 Ic_Arg src = convert_expr_to_intermediate_code(cu, arg->Argument.assign);
                 
                 Ic_Arg dest;
                 if (arg_index < 4) {
                     if (src.type & IC_FLOAT) {
-                        dest = ic_reg(src.raw_type, int_arg_registers_ccall_windows[arg_index]);
+                        dest = ic_reg(src.raw_type, float_arg_registers_ccall_windows[arg_index]);
                     } else {
                         dest = ic_reg(src.raw_type, int_arg_registers_ccall_windows[arg_index]);
                     }
                     arg_stack_curr_used += 8;
                 } else {
-                    u64 disp = align_forward(arg_stack_curr_used, arg_type->align) + arg_type->size;
+                    u64 disp = align_forward(arg_stack_curr_used, arg->type->align) + arg->type->size;
                     dest = ic_stk(src.raw_type, disp);
                     arg_stack_curr_used = disp;
                 }
                 
-                convert_assign_to_intermediate_code(cu, proc->return_type, dest, src);
+                convert_assign_to_intermediate_code(cu, arg->type, dest, src);
+                
+                if (arg_index < 4 && proc->is_variadic && (dest.type & IC_FLOAT)) {
+                    Intermediate_Code* ic = ic_add(cu, IC_REINTERPRET_CAST);
+                    ic->src0 = ic_reg(IC_S64, int_arg_registers_ccall_windows[arg_index]);
+                    ic->src1 = dest;
+                }
                 
                 arg_index++;
             }
             cu->arg_stack_size = max(cu->arg_stack_size, arg_stack_curr_used);
+            
+            if (proc->is_variadic) {
+                // NOTE(Alexander): make sure to allocate space for HOME registers
+                // even if they aren't used!
+                cu->arg_stack_size = max(cu->arg_stack_size, 5*8);
+            }
             
             Intermediate_Code* ic = ic_add(cu, IC_CALL, proc->unit);
             if (proc->intrinsic) {
@@ -320,7 +343,7 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt) {
             } else {
                 Intermediate_Code* cmp = ic_add(cu, IC_CMP, bb_else);
                 cmp->src0 = cond;
-                cmp->src1.type = IC_S8 + IC_IMM;
+                cmp->src1 = ic_imm(IC_S8, 0);
                 ic_jump = ic_add(cu, IC_JE);
             }
             
@@ -490,6 +513,14 @@ x64_add(Intermediate_Code* ic,
 }
 
 void
+x64_zero(Intermediate_Code* ic, s64 r) {
+    // REX.W + 33 /r 	XOR r64, r/m64 	RM
+    x64_rex(ic, REX_FLAG_W);
+    ic_u8(ic, 0x33);
+    x64_modrm(ic, IC_S64 + IC_REG, 0, r, r);
+}
+
+void
 x64_mov(Intermediate_Code* ic,
         Ic_Type t1, s64 r1, s64 d1,
         Ic_Type t2, s64 r2, s64 d2) {
@@ -497,15 +528,27 @@ x64_mov(Intermediate_Code* ic,
     switch (t1 & IC_TF_MASK) {
         case IC_REG: {
             if (t2 & IC_IMM) {
-                // B8+ rd id 	MOV r32, imm32 	OI
-                ic_u8(ic, 0xB8+(u8)r1);
-                ic_u32(ic, (u32) d2);
+                if (d2 == 0) {
+                    x64_zero(ic, r1);
+                } else if ((u64) d2 > U32_MAX) {
+                    // REX.W + B8+ rd io 	MOV r64, imm64 	OI
+                    x64_rex(ic, REX_FLAG_W);
+                    ic_u8(ic, 0xB8+(u8)r1);
+                    ic_u64(ic, (u64) d2);
+                } else {
+                    // B8+ rd id 	MOV r32, imm32 	OI
+                    if (r1&8) {
+                        x64_rex(ic, REX_FLAG_B);
+                    }
+                    ic_u8(ic, 0xB8+((u8)r1&7));
+                    ic_u32(ic, (u32) d2);
+                }
                 
             } else if (t2 & (IC_REG | IC_STK)) {
-                // 8B /r 	MOV r32,r/m32 	RM
                 if (t1 & IC_T64) {
                     x64_rex(ic, REX_FLAG_64_BIT);
                 }
+                // 8B /r 	MOV r32,r/m32 	RM
                 ic_u8(ic, 0x8B);
                 x64_modrm(ic, t2, d2, r1, r2);
             } else {
@@ -681,7 +724,7 @@ x64_string_op(Intermediate_Code* ic, s64 dest,
     x64_mov(ic, IC_S64 + IC_REG, X64_RCX, 0, IC_S64 + IC_IMM, 0, count);
     x64_lea(ic, X64_RDI, X64_RBP, dest);
     
-    if (srct & IC_PTR && srct & IC_IMM) {
+    if (srct & IC_T64 && srct & IC_IMM) {
         // TODO(Alexander): this is a hack using RIP-relative pointer, why +16?
         s64 disp = (s64) srcd - rip;
         x64_lea(ic, X64_RSI, X64_RIP, disp);
@@ -695,18 +738,35 @@ x64_string_op(Intermediate_Code* ic, s64 dest,
 
 s64
 convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64 buf_size, s64 rip) {
+    s64 rsp_disp = 0;
+    
     while (ic) {
         ic->count = 0;
+        
+        // HACK(Alexander): fix displacements to account for stack usage
+        if (!buf) {
+            if (ic->dest.type & IC_STK) {
+                ic->dest.disp += rsp_disp;
+            }
+            if (ic->src0.type & IC_STK) {
+                ic->src0.disp += rsp_disp;
+            }
+            if (ic->src1.type & IC_STK) {
+                ic->src1.disp += rsp_disp;
+            }
+        }
         
         switch (ic->opcode) {
             case IC_NOOP: break;
             
             case IC_PRLG: {
                 x64_binary(ic, IC_REG + IC_S64, X64_RSP, 0, IC_IMM + IC_S32, 0, stack_usage, 5, 28);
+                rsp_disp += stack_usage;
             } break;
             
             case IC_EPLG: {
                 x64_binary(ic, IC_REG + IC_S64, X64_RSP, 0, IC_IMM + IC_S32, 0, stack_usage, 0, 0);
+                rsp_disp -= stack_usage;
                 ic_u8(ic, 0xC3);
             } break;
             
@@ -748,6 +808,27 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64
                          ic->src1.type, ic->src1.reg, ic->src1.disp,
                          (s64) buf + rip);
                 
+            } break;
+            
+            case IC_REINTERPRET_CAST: {
+                Ic_Type t1 = ic->src0.type, t2 = ic->src1.type;
+                s64 r1 = ic->src0.reg, d1 = ic->src0.disp, r2 = ic->src1.reg, d2 = ic->src1.disp;
+                
+                if (t1 & (IC_SINT | IC_UINT) && t2 & IC_FLOAT) {
+                    if (t1 & IC_REG) {
+                        // 66 0F 7E /r MOVD r/m32, xmm
+                        ic_u8(ic, 0x66);
+                        if (t1 & IC_T64 || r1&8) {
+                            x64_rex(ic, REX_FLAG_64_BIT | ((u8)r1&8)>>3);
+                        }
+                        ic_u16(ic, 0x7E0F);
+                        x64_modrm(ic, t2, d2, r2&7, r1&7);
+                    } else {
+                        unimplemented;
+                    }
+                } else {
+                    unimplemented;
+                }
             } break;
             
             case IC_MEMCPY: {
@@ -829,12 +910,12 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64
     return rip;
 }
 
-internal void
+void
 string_builder_push(String_Builder* sb, Ic_Arg arg) {
     // TODO(Alexander): make use of the type
     switch (arg.type & IC_TF_MASK) {
         case IC_IMM: {
-            string_builder_push_format(sb, "%", f_s64(arg.disp));
+            string_builder_push_format(sb, "% (0x%)", f_s64(arg.disp), f_u64_HEX(arg.disp));
         } break;
         
         case IC_REG: {
@@ -851,7 +932,8 @@ string_builder_push(String_Builder* sb, Ic_Arg arg) {
         
         case IC_STK: {
             if (arg.disp != 0) {
-                string_builder_push_format(sb, "[RBP % %]", 
+                string_builder_push_format(sb, "[% % %]",
+                                           f_cstring(int_register_names[arg.reg]),
                                            f_char(arg.disp > 0 ? '+' : '-'), 
                                            f_s64(arg.disp > 0 ? arg.disp : -arg.disp));
             } else {

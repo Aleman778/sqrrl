@@ -376,7 +376,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             }
             
             result = normalize_basic_types(result);
-            // TODO(Alexander): value casting isn't save to do in type infer because we might 
+            // TODO(Alexander): value casting isn't safe to do in type infer because we might 
             // now know exactly which type we are dealing with at the moment, so this can 
             // result in problematic casting where data is lost.
             
@@ -385,6 +385,17 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             //
             //expr->Value.value = value_cast(expr->Value.value, result->Basic.kind);
             //}
+            // HACK(Alexander): auto converting string to cstring
+            if (is_string(expr->Value.value)) {
+                if (parent_type && parent_type->kind == TypeKind_Basic &&
+                    parent_type->Basic.kind == Basic_cstring) {
+                    result = parent_type;
+                    expr->Value.value.data.cstr = string_to_cstring(expr->Value.value.data.str);
+                    expr->Value.value.type = Value_cstring;
+                }
+            }
+            
+            
             type_check_value(tcx, result, expr->Value.value);
             expr->type = result;
         } break;
@@ -518,36 +529,40 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         } break;
         
         case Ast_Call_Expr: {
+            
             Type* function_type = type_infer_expression(tcx, 
                                                         expr->Call_Expr.ident, 
                                                         parent_type, 
                                                         report_error);
             
-            if (function_type) {
-                if (function_type->kind != TypeKind_Function) {
-                    if (report_error) {
-                        string_id function_ident = ast_unwrap_ident(expr->Call_Expr.ident);
-                        type_error(tcx, string_format("`%` is not a function", f_var(function_ident)));
-                    }
-                    break;
+            if (!function_type) {
+                break;
+            }
+            if (function_type->kind != TypeKind_Function) {
+                if (report_error) {
+                    string_id function_ident = ast_unwrap_ident(expr->Call_Expr.ident);
+                    type_error(tcx, string_format("`%` is not a function", f_var(function_ident)));
                 }
-                
-                
-                expr->Call_Expr.function_type = function_type;
-                result = function_type->Function.return_type;
-                expr->type = result;
-                
-                // Arguments
-                // TODO(Alexander): nice to have: support for keyworded args, default args
-                Ast* actual_args = expr->Call_Expr.args;
-                Type_Function* func = &function_type->Function;
-                s32 arg_index = 0;
+                break;
+            }
+            
+            
+            expr->Call_Expr.function_type = function_type;
+            result = function_type->Function.return_type;
+            expr->type = result;
+            
+            // Arguments
+            // TODO(Alexander): nice to have: support for keyworded args, default args
+            Type_Function* proc = &function_type->Function;
+            Ast* actual_args = expr->Call_Expr.args;
+            s32 arg_index = 0;
+            {
                 for_compound(actual_args, actual_arg) {
                     Type* formal_type = 0;
                     
-                    if (arg_index < array_count(func->arg_idents)) {
-                        string_id ident = func->arg_idents[arg_index];
-                        formal_type = func->arg_types[arg_index];
+                    if (arg_index < array_count(proc->arg_idents)) {
+                        string_id ident = proc->arg_idents[arg_index];
+                        formal_type = proc->arg_types[arg_index];
                     }
                     
                     constant_folding_of_expressions(actual_arg->Argument.assign);
@@ -555,6 +570,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                                                               actual_arg->Argument.assign, 
                                                               formal_type, 
                                                               report_error);
+                    
+                    
                     if (actual_type) {
                         actual_arg->type = actual_type;
                     } else {
@@ -565,6 +582,41 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     arg_index++;
                 }
             }
+            
+            // HACK(Alexander): for now print_format pushes the format type first then the value 
+            if (result && proc->intrinsic == &print_format) {
+                
+                arg_index = 0;
+                Ast* prev_compound = 0;
+                Ast* curr_compound = actual_args;
+                while (curr_compound && curr_compound->Compound.node) {
+                    Ast* actual_arg = curr_compound->Compound.node;
+                    if (prev_compound) {
+                        Format_Type fmt_type = convert_type_to_format_type(actual_arg->type);
+                        // TODO(Alexander): is it better to use arena from parser instead?
+                        Ast* fmt_arg = arena_push_struct(&tcx->type_arena, Ast);
+                        fmt_arg->kind = Ast_Argument;
+                        fmt_arg->type = t_s32;
+                        
+                        Ast* fmt_value = arena_push_struct(&tcx->type_arena, Ast);
+                        fmt_value->kind = Ast_Value;
+                        fmt_value->type = t_s32;
+                        fmt_value->Value.value = create_signed_int_value(fmt_type);
+                        fmt_arg->Argument.assign = fmt_value;
+                        
+                        Ast* fmt_compound = arena_push_struct(&tcx->type_arena, Ast);
+                        fmt_compound->kind = Ast_Compound;
+                        fmt_compound->Compound.node = fmt_arg;
+                        fmt_compound->Compound.next = curr_compound;
+                        prev_compound->Compound.next = fmt_compound;
+                    }
+                    
+                    prev_compound = curr_compound;
+                    curr_compound = curr_compound->Compound.next;
+                    arg_index++;
+                }
+            }
+            
         } break;
         
         case Ast_Cast_Expr: {
@@ -1331,6 +1383,10 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool comparator=f
                 lossy = lhs->Basic.flags & BasicFlag_Integer;
             }
             
+            if (rhs->Basic.flags & BasicFlag_String) {
+                lossy = (lhs->Basic.flags & BasicFlag_String) == 0;
+            }
+            
             if (lossy) {
                 type_error(tcx, string_format("conversion from `%` to `%`, possible loss of data",
                                               f_type(rhs), f_type(lhs)));
@@ -1365,9 +1421,14 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
             assert(function_type->kind == TypeKind_Function);
             
             Type_Function* t_func = &function_type->Function;
+            int formal_arg_count = (int) array_count(t_func->arg_types);
             
             int arg_index = 0;
             for_compound(expr->Call_Expr.args, arg) {
+                if (arg_index >= formal_arg_count) {
+                    break;
+                }
+                
                 if (arg->Argument.ident && arg->Argument.ident->kind == Ast_Ident) {
                     string_id arg_ident = ast_unwrap_ident(arg->Argument.ident);
                     smm index = map_get_index(t_func->ident_to_index, arg_ident);
@@ -1381,11 +1442,26 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                         break;
                     }
                 }
-                
                 Type* arg_type = t_func->arg_types[arg_index];
                 type_check_assignment(tcx, arg_type, arg->Argument.assign->type);
                 
                 arg_index++;
+            }
+            
+            if (arg_index == 0 && formal_arg_count > 0) {
+                type_error(tcx, string_format("function `%` expected % argument(s)",
+                                              f_var(t_func->ident),
+                                              f_int(formal_arg_count)));
+                result = false;
+                
+            } else if (arg_index != formal_arg_count && !t_func->is_variadic) {
+                
+                // NOTE(Alexander): it is allowed to have more arguments only if the function is variadic
+                type_error(tcx, string_format("function `%` did not take % arguments, expected % arguments", 
+                                              f_var(t_func->ident), 
+                                              f_int(arg_index), 
+                                              f_int(formal_arg_count)));
+                result = false;
             }
         } break;
         
@@ -1553,7 +1629,7 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
         
         string_id arg0_ident = vars_save_cstring("format");
         array_push(type->Function.arg_idents, arg0_ident);
-        array_push(type->Function.arg_types, t_string);
+        array_push(type->Function.arg_types, t_cstring);
         
         string_id ident = vars_save_cstring("print_format");
         type->Function.unit = 0;

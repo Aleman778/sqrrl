@@ -490,30 +490,36 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                             result = first_type;
                         }
                     }
-                }
-                
-                //pln("parent_type: %", f_type(parent_type));
-                //pln("  % + %", f_type(first_type), f_type(second_type));
-                if (first_type->size > second_type->size) {
-                    result = first_type;
-                    second_type = result;
-                } else {
-                    result = second_type;
-                    first_type = result;
-                }
-                
-                if (parent_type && result != parent_type) {
-                    //pln("  % >= %", f_int(first_type->size), f_int(second_type->size));
-                    bool is_parent_floating = false;
-                    if (parent_type->kind == TypeKind_Basic) {
-                        is_parent_floating = is_bitflag_set(parent_type->Basic.flags, BasicFlag_Floating);
+                    
+                    //pln("parent_type: %", f_type(parent_type));
+                    //pln("  % + %", f_type(first_type), f_type(second_type));
+                    if (first_type->size > second_type->size) {
+                        result = first_type;
+                        second_type = result;
+                    } else {
+                        result = second_type;
+                        first_type = result;
                     }
                     
-                    if (parent_type->size >= result->size && 
-                        (is_result_floating == is_parent_floating)) {
+                    if (parent_type && result != parent_type) {
+                        //pln("  % >= %", f_int(first_type->size), f_int(second_type->size));
+                        bool is_parent_floating = false;
+                        if (parent_type->kind == TypeKind_Basic) {
+                            is_parent_floating = is_bitflag_set(parent_type->Basic.flags, BasicFlag_Floating);
+                        }
+                        
+                        if (parent_type->size >= result->size && 
+                            (is_result_floating == is_parent_floating)) {
+                            result = parent_type;
+                            first_type = result;
+                            second_type = result;
+                        }
+                    }
+                } else {
+                    if (parent_type) {
                         result = parent_type;
-                        first_type = result;
-                        second_type = result;
+                    } else {
+                        result = first_type;
                     }
                 }
                 
@@ -720,11 +726,10 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 expr->type = result;
                 
             } else {
-                type_error(tcx, string_format("type `%` doesn't have field `%`", f_type(type), f_var(field_ident)));
+                if (report_error) {
+                    type_error(tcx, string_format("type `%` doesn't have field `%`", f_type(type), f_var(field_ident)));
+                }
             }
-            
-            
-            
         } break;
         
         case Ast_Array_Expr: {
@@ -1469,6 +1474,13 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
             type_check_expression(tcx, expr->Binary_Expr.first);
             type_check_expression(tcx, expr->Binary_Expr.second);
             
+            Binary_Op op = expr->Binary_Expr.op;
+            if (is_binary_assign(op)) {
+                type_check_assignment(tcx, 
+                                      expr->Binary_Expr.first->type, 
+                                      expr->Binary_Expr.second->type, 
+                                      binary_is_comparator_table[op]);
+            }
             // TODO(Alexander): check types
         } break;
         

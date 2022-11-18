@@ -5,7 +5,7 @@ convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg des
     if (type->kind == TypeKind_Array || type->kind == TypeKind_Struct) {
         Intermediate_Code* ic = ic_add(cu, IC_MEMSET);
         ic->dest = dest;
-        ic->src0 = ic_imm(IC_S64, 0);
+        ic->src0 = ic_imm(IC_U8, 0);
         ic->src1 = ic_imm(0, type->size);
         
         if (src.type & IC_IMM) {

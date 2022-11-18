@@ -2,13 +2,13 @@
 #define pln(format, ...) print_format(format##"\n", ##__VA_ARGS__)
 
 int
-main() {
+main2() {
     
     //string s = "Sqrrl compiler";
     pln("hello world %", 10.5);
     return 0;
 }
-#if 0
+#if 1
 
 f32
 addf(f32 x, f32 y) {
@@ -33,7 +33,6 @@ main0() {
     return add(10, 20);
 }
 
-
 f32
 main2() {
     // SoA - Structure of Arrays
@@ -45,8 +44,8 @@ main2() {
     
     Mesh m = Mesh {};
     m.pos[2] = v3 { x: 3.0f, y: 5.0f, z: 1.0f };
+    m.texcoord[2] = v2 { x: 3.0f, y: 5.0f };
     
-    m.texcoord[2] = v3 { x: 3.0f, y: 5.0f, z: 1.0f };
     return m.pos[2].x + m.pos[2].y + m.pos[2].z; // 9.0
 }
 

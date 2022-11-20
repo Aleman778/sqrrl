@@ -1,14 +1,51 @@
 
 #define pln(format, ...) print_format(format##"\n", ##__VA_ARGS__)
 
+#define PRINT_AST 1
+
+inline v3
+vec3_add(v3 a, v3 b) {
+    v3 result;
+    result.x = a.x + b.x;
+    result.y = a.y + b.y;
+    result.z = a.z + b.z;
+    return result;
+}
+
+f32
+main() {
+    v3 v = v3 { x: 2, y: 3, z: 4};
+    
+    v = vec3_add(v, v);
+    
+    return v.x + v.y + v.z;
+}
+#if 0
+
+int
+main2() {
+    
+    //int x = 10;
+    //int y = 20;
+    
+    s32 y = 9;
+    f32 x = 10.5f + (f32) y;
+    //f32 y = 20.4;
+    
+    if (20 > (s32) x) {
+        return 9999;
+    }
+    
+    return 0;
+}
+
 int
 main2() {
     
     //string s = "Sqrrl compiler";
-    pln("hello world %", 10.5);
+    pln("hello world %, %", 10.5, 4); // TODO: fix multiple args overwrits return addr
     return 0;
 }
-#if 1
 
 f32
 addf(f32 x, f32 y) {
@@ -18,9 +55,14 @@ addf(f32 x, f32 y) {
 f32
 main2() {
     f32 y = 2.0f;
-    return y;
+    return y; // 2.0
     
-    return addf(0.423f, 0.6424f);
+    return addf(0.423f, 0.6424f); // not reachable
+}
+
+f32
+main2() {
+    return addf(0.423f, 0.6424f); // 1.065400
 }
 
 int
@@ -29,7 +71,7 @@ add(int x, int y) {
 }
 
 int
-main0() {
+main2() {
     return add(10, 20);
 }
 
@@ -89,6 +131,9 @@ main2() {
     return (s32) (y + x); // 1475633536
 }
 
+#endif
+
+
 
 
 struct v2 {
@@ -101,4 +146,3 @@ struct v3 {
     f32 y;
     f32 z;
 }
-#endif

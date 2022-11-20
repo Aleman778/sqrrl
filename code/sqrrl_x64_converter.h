@@ -1,74 +1,4 @@
 
- int test_x64_converter(int argc, char* argv[], void* asm_buffer, umm asm_size,
-                        void (*asm_make_executable)(void*, umm), bool is_debugger_present);
-
-enum {
-    IC_Void,
-    IC_T8 = bit(0),
-    IC_T16 = bit(1),
-    IC_T32 = bit(2),
-    IC_T64 = bit(3),
-    // ??? = bit(4), reserved
-    IC_UINT = bit(5),
-    IC_SINT = bit(6),
-    IC_FLOAT = bit(7),
-    IC_RT_MASK = 0xFF,
-};
-
-// raw type flags e.g. u32 =  IC_UINT | IC_T32
-#define IC_S8  (IC_SINT  | IC_T8)
-#define IC_U8  (IC_UINT  | IC_T8)
-#define IC_S16 (IC_SINT  | IC_T16)
-#define IC_U16 (IC_UINT  | IC_T16)
-#define IC_S32 (IC_SINT  | IC_T32)
-#define IC_U32 (IC_UINT  | IC_T32)
-#define IC_S64 (IC_SINT  | IC_T64)
-#define IC_U64 (IC_UINT  | IC_T64)
-#define IC_F32 (IC_FLOAT | IC_T32)
-#define IC_F64 (IC_FLOAT | IC_T64)
-
-typedef u8 Ic_Raw_Type;
-
-
-inline Ic_Raw_Type
-basic_type_to_raw_type(Basic_Type basic) {
-    switch (basic) {
-        case Basic_s8:  return IC_S8;
-        case Basic_u8:  return IC_U8;
-        case Basic_s16: return IC_S16;
-        case Basic_u16: return IC_U16;
-        case Basic_s32: return IC_S32;
-        case Basic_u32: return IC_U32;
-        case Basic_s64: return IC_S64;
-        case Basic_u64: return IC_U64;
-        case Basic_f32: return IC_F32;
-        case Basic_f64: return IC_F64;
-        case Basic_string:
-        case Basic_cstring: return IC_S64;
-        default: unimplemented;
-    }
-    return IC_Void;
-}
-
-inline Ic_Raw_Type
-convert_type_to_raw_type(Type* type) {
-    Ic_Raw_Type raw_type = IC_T64;
-    if (type->kind == TypeKind_Basic) {
-        raw_type = basic_type_to_raw_type(type->Basic.kind);
-    }
-    return raw_type;
-}
-
-enum {
-    IC_IMM = bit(8),
-    IC_REG = bit(9),
-    IC_STK = bit(10),
-};
-typedef u8 Ic_Type_Flags;
-
-#define IC_TF_MASK 0xFF00
-
-typedef s16 Ic_Type;
 
 enum {
     X64_RAX,
@@ -127,17 +57,6 @@ global const X64_Reg float_arg_registers_ccall_windows[] {
     X64_XMM0, X64_XMM1, X64_XMM2, X64_XMM3
 };
 
-struct Ic_Arg {
-    union {
-        Ic_Type type;
-        struct {
-            Ic_Raw_Type raw_type;
-            Ic_Type_Flags type_flags;
-        };
-    };
-    u8 reg;
-    s64 disp; // alt. imm
-};
 
 inline Ic_Arg
 ic_reg(Ic_Raw_Type t=IC_S32, u8 reg=0) {
@@ -175,51 +94,65 @@ ic_imm(Ic_Raw_Type t, s64 d) {
     return result;
 }
 
-#define DEF_IC_OPCODES \
-IC(NOOP) \
-IC(PRLG) \
-IC(EPLG) \
-IC(DEBUG_BREAK) \
-IC(LABEL) \
-IC(CALL) \
-IC(ADD) \
-IC(DIV) \
-IC(MOD) \
-IC(MOV) \
-IC(REINTERPRET_CAST) \
-IC(MOVSX) \
-IC(MOVZX) \
-IC(MEMCPY) \
-IC(MEMSET) \
-IC(CMP) \
-IC(FMOV) \
-IC(FADD) \
-IC(FDIV) \
-IC(FMOD) \
-IC(FCMP) \
-IC(SETG) \
-IC(SETNG) \
-IC(JG) \
-IC(JNG) \
-IC(JE) \
-IC(JNE) \
-IC(JMP)
+enum X64_Jump_Opcode {
+    X64_JMP,
+    X64_JA,
+    X64_JAE,
+    X64_JB,
+    X64_JBE,
+    X64_JC,
+    X64_JE,
+    X64_JG,
+    X64_JGE,
+    X64_JL,
+    X64_JLE,
+    X64_JNA,
+    X64_JNAE,
+    X64_JNB,
+    X64_JNBE,
+    X64_JNC,
+    X64_JNE,
+    X64_JNG,
+    X64_JNGE,
+    X64_JNL,
+    X64_JNLE,
+    X64_JNO,
+    X64_JNP,
+    X64_JNS,
+    X64_JNZ,
+    X64_JO,
+    X64_JP,
+    X64_JPE,
+    X64_JPO,
+    X64_JS,
+    X64_JMP_COUNT
+};
 
-enum Ic_Opcode {
-#define IC(name) IC_##name,
+global const X64_Jump_Opcode ic_jmp_to_x64_jmp[] = {
+#define IC(name) X64_JMP,
+#define IC_JMP(name) X64_##name,
     DEF_IC_OPCODES
+#undef IC_JMP
 #undef IC
 };
 
-global const cstring ic_opcode_names[] = {
-#define IC(name) #name,
-    DEF_IC_OPCODES
-#undef IC
+global const u8 x64_jmp_opcodes[] = {
+    // Short jump
+    0xEB, 0x77, 0x73, 0x72, 0x76, 0x72, 0x74, 0x7F, 0x7D, 0x7C, 0x7E, 0x76,
+    0x72, 0x73, 0x77, 0x73, 0x75, 0x7E, 0x7C, 0x7D, 0x7F, 0x71, 0x7B, 0x79,
+    0x75, 0x70, 0x7A, 0x7A, 0x7B, 0x78,
+    
+    // Long jump
+    0xE9, 0x0F, 0x87, 0x0F, 0x83, 0x0F, 0x82, 0x0F, 0x86, 0x0F, 0x82, 0x0F,
+    0x84, 0x0F, 0x8F, 0x0F, 0x8D, 0x0F, 0x8C, 0x0F, 0x8E, 0x0F, 0x86, 0x0F,
+    0x82, 0x0F, 0x83, 0x0F, 0x87, 0x0F, 0x83, 0x0F, 0x85, 0x0F, 0x8E, 0x0F,
+    0x8C, 0x0F, 0x8D, 0x0F, 0x8F, 0x0F, 0x81, 0x0F, 0x8B, 0x0F, 0x89, 0x0F,
+    0x85, 0x0F, 0x80, 0x0F, 0x8A, 0x0F, 0x8A, 0x0F, 0x8B, 0x0F, 0x88,
 };
 
 inline bool
 ic_is_setcc(Ic_Opcode opcode) {
-    return opcode >= IC_SETG && opcode <= IC_SETNG;
+    return opcode >= IC_SETG && opcode <= IC_SETNL;
 }
 
 inline Ic_Opcode
@@ -227,67 +160,6 @@ ic_convert_set_to_jump(Ic_Opcode opcode)  {
     return (Ic_Opcode) (opcode + (IC_JG - IC_SETG));
 }
 
-struct Intermediate_Code {
-    Intermediate_Code* next;
-    void* data;
-    
-    Ic_Opcode opcode;
-    Ic_Arg dest, src0, src1;
-    
-    u8 count;
-    u8 code[31];
-};
-
-inline void
-ic_u8(Intermediate_Code* ic, u8 b) {
-    assert(ic->count < fixed_array_count(ic->code));
-    ic->code[ic->count++] = b;
-}
-
-inline void
-ic_u16(Intermediate_Code* ic, u16 w) {
-    assert(ic->count + 2 < fixed_array_count(ic->code));
-    *((u16*) (ic->code + ic->count)) = w;
-    ic->count += 2;
-}
-
-inline void
-ic_u32(Intermediate_Code* ic, u32 dw) {
-    assert(ic->count + 4 < fixed_array_count(ic->code));
-    *((u32*) (ic->code + ic->count)) = dw;
-    ic->count += 4;
-}
-
-inline void
-ic_u64(Intermediate_Code* ic, u64 qw) {
-    assert(ic->count + 8 < fixed_array_count(ic->code));
-    *((u64*) (ic->code + ic->count)) = qw;
-    ic->count += 8;
-}
-
-struct Ic_Basic_Block {
-    Ic_Basic_Block *next;
-    Intermediate_Code *ic_first, *ic_last;
-    
-    s64 addr;
-};
-
-struct Ic_Data {
-    Ic_Data *next;
-    
-    
-};
-
-#define IC_INVALID_ADDR S64_MIN
-
-inline Ic_Basic_Block*
-ic_basic_block() {
-    // TODO(Alexander): temporary bump allocation for now
-    // TODO(Alexander): maybe give it a unique name for debugging
-    Ic_Basic_Block* result = (Ic_Basic_Block*) calloc(1, sizeof(Ic_Basic_Block));
-    result->addr = IC_INVALID_ADDR;
-    return result;
-}
 
 Intermediate_Code*
 ic_add(Compilation_Unit* cu, Ic_Opcode opcode = IC_NOOP, void* data=0) {
@@ -337,6 +209,15 @@ ic_add(Compilation_Unit* cu, Ic_Opcode opcode = IC_NOOP, void* data=0) {
     return result;
 }
 
+inline void
+ic_mov(Compilation_Unit* cu, Ic_Arg dest, Ic_Arg src) {
+    assert(dest.raw_type == src.raw_type);
+    
+    Intermediate_Code* ic = ic_add(cu, (dest.type & IC_FLOAT) ? IC_FMOV : IC_MOV);
+    ic->src0 = dest;
+    ic->src1 = src;
+}
+
 #define REX_PATTERN 0x40
 #define REX_FLAG_W bit(3)
 #define REX_FLAG_R bit(2)
@@ -361,3 +242,6 @@ inline void x64_add(Intermediate_Code* ic,
                     Ic_Type t1, s64 r1, s64 d1, 
                     Ic_Type t2, s64 r2, s64 d2, 
                     Ic_Type t3, s64 r3, s64 d3);
+
+void convert_procedure_to_intermediate_code(Compilation_Unit* cu, bool insert_debug_break);
+s64 convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64 buf_size, s64 rip);

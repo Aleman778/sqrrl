@@ -153,7 +153,7 @@ Ast* ident;                                     \
 })                                              \
 AST_GROUP(Type_End,    "type")
 
-// NOTE(Alexander): iterate through a compound ast node, usage:
+// NOTE(Alexander): iterate through a compound AST node, usage:
 // Ast* compound = parse_compound(interp, ...)
 // compound_iterator(compound, it) {
 //     // `it` can be used as the ast node pointer
@@ -286,13 +286,11 @@ struct Ast {
 
 typedef map(string_id, Ast*) Ast_Decl_Table;
 
-struct Intermediate_Code;
-struct Ic_Basic_Block;
-
 struct Compilation_Unit {
     Ast* ast;
     string_id ident;
     
+    Ic_Arg ic_return;
     Intermediate_Code *ic_first, *ic_last;
     Ic_Basic_Block *bb_first, *bb_last;
     Ic_Basic_Block *bb_return;

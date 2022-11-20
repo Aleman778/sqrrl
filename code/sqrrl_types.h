@@ -121,6 +121,9 @@ enum Calling_Convention {
     CConv_Windows_X64,
 };
 
+// NOTE(Alexander): forward declare
+struct Compilation_Unit;
+
 struct Type_Function {
     array(string_id)* arg_idents;
     array(Type*)* arg_types;

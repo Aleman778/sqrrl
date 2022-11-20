@@ -370,21 +370,16 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             if (!result) {
                 if (parent_type) {
                     result = parent_type;
+                    if (result->kind == TypeKind_Basic) {
+                        expr->Value.value = value_cast(expr->Value.value, result->Basic.kind);
+                    }
                 } else {
                     result = type_infer_value(tcx, expr->Value.value);
                 }
             }
             
             result = normalize_basic_types(result);
-            // TODO(Alexander): value casting isn't safe to do in type infer because we might 
-            // now know exactly which type we are dealing with at the moment, so this can 
-            // result in problematic casting where data is lost.
             
-            //if (result && result->kind == TypeKind_Basic &&
-            //is_bitflag_set(result->Basic.flags, BasicFlag_Floating | BasicFlag_Integer)) {
-            //
-            //expr->Value.value = value_cast(expr->Value.value, result->Basic.kind);
-            //}
             // HACK(Alexander): auto converting string to cstring
             if (is_string(expr->Value.value)) {
                 if (parent_type && parent_type->kind == TypeKind_Basic &&
@@ -458,80 +453,94 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         } break;
         
         case Ast_Binary_Expr: {
+            
+            Type* second_type = 0;
             Type* first_type = type_infer_expression(tcx, 
-                                                     expr->Binary_Expr.first, 
-                                                     parent_type,
+                                                     expr->Binary_Expr.first,
+                                                     0,
                                                      report_error);
-            Type* second_type = type_infer_expression(tcx, 
-                                                      expr->Binary_Expr.second, 
-                                                      parent_type,
-                                                      report_error);
+            if (first_type) {
+                second_type = type_infer_expression(tcx, 
+                                                    expr->Binary_Expr.second,
+                                                    first_type,
+                                                    report_error);
+            }
             
-            
-            if (first_type && second_type) {
+            if (is_binary_assign(expr->Binary_Expr.op)) {
+                if (first_type && second_type) {
+                    result = first_type;
+                }
+            } else {
                 
-                bool is_result_floating = false;
-                if (first_type->kind == TypeKind_Basic && 
-                    second_type->kind == TypeKind_Basic) {
+                if (first_type && second_type) {
+                    // TODO(Alexander): refactor this later when the AST storage gets updated
+                    //Ast* fmt_arg = arena_push_struct(&tcx->type_arena, Ast);
                     
-                    bool is_first_floating = is_bitflag_set(first_type->Basic.flags, BasicFlag_Floating);
-                    bool is_second_floating = is_bitflag_set(second_type->Basic.flags, BasicFlag_Floating);
-                    
-                    // NOTE(Alexander): Type rules
-                    // float + int -> float + float;
-                    // int + float -> float + float;
-                    if (is_first_floating || is_second_floating) {
-                        is_result_floating = true;
-                        if (!is_first_floating) {
-                            first_type = second_type;
+                    bool is_result_floating = false;
+                    if (first_type->kind == TypeKind_Basic && 
+                        second_type->kind == TypeKind_Basic) {
+                        
+                        bool is_first_floating = is_bitflag_set(first_type->Basic.flags, BasicFlag_Floating);
+                        bool is_second_floating = is_bitflag_set(second_type->Basic.flags, BasicFlag_Floating);
+                        
+                        // NOTE(Alexander): Type rules
+                        // float + int -> float + float;
+                        // int + float -> float + float;
+                        if (is_first_floating || is_second_floating) {
+                            is_result_floating = true;
+                            if (!is_first_floating) {
+                                first_type = second_type;
+                                result = second_type;
+                            } else if (!is_second_floating) {
+                                first_type = first_type;
+                                result = first_type;
+                            }
+                        }
+                        
+                        //pln("parent_type: %", f_type(parent_type));
+                        //pln("  % + %", f_type(first_type), f_type(second_type));
+                        if (first_type->size > second_type->size) {
+                            result = first_type;
+                            second_type = result;
+                        } else {
                             result = second_type;
-                        } else if (!is_second_floating) {
-                            first_type = first_type;
+                            first_type = result;
+                        }
+                        
+                        if (parent_type && result != parent_type) {
+                            //pln("  % >= %", f_int(first_type->size), f_int(second_type->size));
+                            bool is_parent_floating = false;
+                            if (parent_type->kind == TypeKind_Basic) {
+                                is_parent_floating = is_bitflag_set(parent_type->Basic.flags, BasicFlag_Floating);
+                            }
+                            
+                            if (parent_type->size >= result->size && 
+                                (is_result_floating == is_parent_floating)) {
+                                result = parent_type;
+                                first_type = result;
+                                second_type = result;
+                            }
+                        }
+                    } else {
+                        if (parent_type) {
+                            result = parent_type;
+                        } else {
                             result = first_type;
                         }
                     }
-                    
-                    //pln("parent_type: %", f_type(parent_type));
-                    //pln("  % + %", f_type(first_type), f_type(second_type));
-                    if (first_type->size > second_type->size) {
-                        result = first_type;
-                        second_type = result;
-                    } else {
-                        result = second_type;
-                        first_type = result;
-                    }
-                    
-                    if (parent_type && result != parent_type) {
-                        //pln("  % >= %", f_int(first_type->size), f_int(second_type->size));
-                        bool is_parent_floating = false;
-                        if (parent_type->kind == TypeKind_Basic) {
-                            is_parent_floating = is_bitflag_set(parent_type->Basic.flags, BasicFlag_Floating);
-                        }
-                        
-                        if (parent_type->size >= result->size && 
-                            (is_result_floating == is_parent_floating)) {
-                            result = parent_type;
-                            first_type = result;
-                            second_type = result;
-                        }
-                    }
-                } else {
-                    if (parent_type) {
-                        result = parent_type;
-                    } else {
-                        result = first_type;
-                    }
                 }
-                
-                expr->Binary_Expr.first->type = first_type;
-                expr->Binary_Expr.second->type = second_type;
-                //pln("-> %", f_type(result));
-                
-                if (binary_is_comparator_table[expr->Binary_Expr.op]) {
-                    result = t_bool;
-                }
-                expr->type = result;
             }
+            
+            // TODO(Alexander): we don't want to change types without doing explicit cast
+            // otherwise the backend gets confused and outputs wrong code.
+            //expr->Binary_Expr.first->type = first_type;
+            //expr->Binary_Expr.second->type = second_type;
+            //pln("-> %", f_type(result));
+            
+            if (binary_is_comparator_table[expr->Binary_Expr.op]) {
+                result = t_bool;
+            }
+            expr->type = result;
         } break;
         
         case Ast_Call_Expr: {
@@ -599,7 +608,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     Ast* actual_arg = curr_compound->Compound.node;
                     if (prev_compound) {
                         Format_Type fmt_type = convert_type_to_format_type(actual_arg->type);
-                        // TODO(Alexander): is it better to use arena from parser instead?
+                        // TODO(Alexander): refactor this later when the AST storage gets updated
                         Ast* fmt_arg = arena_push_struct(&tcx->type_arena, Ast);
                         fmt_arg->kind = Ast_Argument;
                         fmt_arg->type = t_s32;
@@ -1233,6 +1242,12 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
             if (found_type) {
                 if (expected_type) {
                     result = expected_type;
+                    
+                    //if (stmt->Assign_Stmt.expr && 
+                    //stmt->Assign_Stmt.expr->kind == Ast_Value) {
+                    //stmt->Assign_Stmt.expr->type = result;
+                    //}
+                    
                 } else {
                     result = found_type;
                 }
@@ -1375,20 +1390,30 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool comparator=f
     
     switch (lhs->kind) {
         case TypeKind_Basic: {
-            bool lossy = lhs->size < rhs->size;
             
-            // TODO(Alexander): check signedness for comparisons
             if (comparator && 
-                rhs->Basic.flags & BasicFlag_Floating &&
-                lhs->Basic.flags & BasicFlag_Integer) {
-                lossy = true;
+                lhs->Basic.flags & BasicFlag_Integer &&
+                rhs->Basic.flags & BasicFlag_Integer) {
+                if ((lhs->Basic.flags & BasicFlag_Unsigned) != (rhs->Basic.flags & BasicFlag_Unsigned)) {
+                    type_error(tcx, string_lit("comparison with both signed and unsigned integers"));
+                    return false;
+                }
             }
             
-            if (rhs->Basic.flags & BasicFlag_Floating) {
+            bool lossy = lhs->size < rhs->size;
+            if (!lossy && lhs->Basic.flags & BasicFlag_Floating) {
+                lossy = rhs->Basic.flags & BasicFlag_Integer;
+            }
+            
+            if (!lossy && rhs->Basic.flags & BasicFlag_Floating) {
                 lossy = lhs->Basic.flags & BasicFlag_Integer;
             }
             
-            if (rhs->Basic.flags & BasicFlag_String) {
+            if (!lossy && rhs->Basic.flags & BasicFlag_Integer) {
+                lossy = lhs->Basic.flags & BasicFlag_Floating;
+            }
+            
+            if (!lossy && rhs->Basic.flags & BasicFlag_String) {
                 lossy = (lhs->Basic.flags & BasicFlag_String) == 0;
             }
             
@@ -1475,13 +1500,10 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
             type_check_expression(tcx, expr->Binary_Expr.second);
             
             Binary_Op op = expr->Binary_Expr.op;
-            if (is_binary_assign(op)) {
-                type_check_assignment(tcx, 
-                                      expr->Binary_Expr.first->type, 
-                                      expr->Binary_Expr.second->type, 
-                                      binary_is_comparator_table[op]);
-            }
-            // TODO(Alexander): check types
+            type_check_assignment(tcx, 
+                                  expr->Binary_Expr.first->type, 
+                                  expr->Binary_Expr.second->type, 
+                                  binary_is_comparator_table[op]);
         } break;
         
         case Ast_Index_Expr: {
@@ -1516,6 +1538,9 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
     
     switch (stmt->kind) {
         case Ast_Assign_Stmt: {
+            if (stmt->Assign_Stmt.expr) {
+                type_check_expression(tcx, stmt->Assign_Stmt.expr);
+            }
             Type* expected_type = stmt->type;
             assert(expected_type && "compiler bug: assign statement has no type");
             
@@ -1544,6 +1569,31 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
         case Ast_Decl_Stmt: {
             type_check_statement(tcx, stmt->Decl_Stmt.stmt);
         } break;
+        
+        case Ast_If_Stmt: {
+            type_check_expression(tcx, stmt->If_Stmt.cond);
+            type_check_expression(tcx, stmt->If_Stmt.then_block);
+            type_check_expression(tcx, stmt->If_Stmt.else_block);
+            // TODO(Alexander): check that the condition is a boolean
+        } break;
+        
+        case Ast_For_Stmt: {
+            type_check_expression(tcx, stmt->For_Stmt.init);
+            type_check_expression(tcx, stmt->For_Stmt.cond);
+            type_check_expression(tcx, stmt->For_Stmt.update);
+            type_check_expression(tcx, stmt->For_Stmt.block);
+            // TODO(Alexander): check that the condition is a boolean
+        } break;
+        
+        case Ast_While_Stmt: {
+            type_check_expression(tcx, stmt->While_Stmt.cond);
+            type_check_expression(tcx, stmt->While_Stmt.block);
+            // TODO(Alexander): check that the condition is a boolean
+        } break;
+        
+        case Ast_None: break;
+        
+        default: assert(0 && stmt->kind);
     }
     
     return result;

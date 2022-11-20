@@ -1,5 +1,4 @@
 
-
 void
 convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg dest, Ic_Arg src) {
     if (type->kind == TypeKind_Array || type->kind == TypeKind_Struct) {
@@ -8,16 +7,13 @@ convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg des
         ic->src0 = ic_imm(IC_U8, 0);
         ic->src1 = ic_imm(0, type->size);
         
-        if (src.type & IC_IMM) {
+        if (src.type & (IC_IMM | IC_STK)) {
             ic->opcode = IC_MEMCPY;
             ic->src0 = src;
         }
-        
     } else {
         if (src.type) {
-            Intermediate_Code* ic = ic_add(cu, (dest.type & IC_FLOAT) ? IC_FMOV : IC_MOV);
-            ic->src0 = dest;
-            ic->src1 = src;
+            ic_mov(cu, dest, src);
         }
     }
 }
@@ -181,9 +177,12 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 
                 switch (op) {
                     case BinaryOp_Add: ic->opcode = isFloat ? IC_FADD : IC_ADD; break;
+                    case BinaryOp_Subtract: ic->opcode = isFloat ? IC_FSUB : IC_SUB; break;
+                    case BinaryOp_Multiply: ic->opcode = isFloat ? IC_FMUL : IC_MUL; break;
                     case BinaryOp_Divide: ic->opcode = isFloat ? IC_FDIV : IC_DIV; break;
                     case BinaryOp_Modulo: ic->opcode = isFloat ? IC_FMOD : IC_MOD; break;
                     case BinaryOp_Greater_Than: ic->opcode = IC_SETG; break;
+                    case BinaryOp_Less_Than: ic->opcode = IC_SETL; break;
                     default: unimplemented;
                 }
             }
@@ -194,46 +193,66 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                    expr->Call_Expr.function_type->kind == TypeKind_Function);
             Type_Function* proc = &expr->Call_Expr.function_type->Function;
             
-            int arg_index = 0;
-            if (proc->return_type && proc->return_type->size > 8) {
-                Ic_Arg src = ic_stk_push(cu, proc->return_type);
-                convert_assign_to_intermediate_code(cu, proc->return_type, 
-                                                    ic_reg(src.raw_type, X64_RCX), src);
-                arg_index++;
-                result = src;
+            s64 arg_stack_curr_used = 0;
+            array(Ic_Arg)* arguments = 0;
+            
+            // Setup return type
+            if (proc->return_type) {
+                Type* type = proc->return_type;
+                
+                if (type->size > 8) {
+                    // NOTE(Alexander): if return argument cannot fit in RAX/ XMM0 then
+                    //                  pass a poitner to it as the first argument
+                    arg_stack_curr_used = align_forward(arg_stack_curr_used, type->align) + type->size;
+                    Ic_Arg src = ic_stk(convert_type_to_raw_type(type), arg_stack_curr_used);
+                    array_push(arguments, src);
+                    result = src;
+                } else {
+                    Ic_Raw_Type rt = convert_type_to_raw_type(proc->return_type);
+                    result = ic_reg(rt, X64_RAX); // NOTE: RAX == 0 && XMM0 == 0
+                }
             }
             
-            int actual_arg_index = 0;
-            s64 arg_stack_curr_used = 0;
+            // Setup arguments
             for_compound(expr->Call_Expr.args, arg) {
                 Ic_Arg src = convert_expr_to_intermediate_code(cu, arg->Argument.assign);
-                
+                array_push(arguments, src);
+            }
+            
+            // Store arguments according to the windows calling convention
+            for_array_reverse(arguments, arg, arg_index) {
                 Ic_Arg dest;
                 if (arg_index < 4) {
-                    if (src.type & IC_FLOAT) {
-                        dest = ic_reg(src.raw_type, float_arg_registers_ccall_windows[arg_index]);
+                    if (arg->type & IC_FLOAT) {
+                        dest = ic_reg(arg->raw_type, float_arg_registers_ccall_windows[arg_index]);
                     } else {
-                        dest = ic_reg(src.raw_type, int_arg_registers_ccall_windows[arg_index]);
+                        dest = ic_reg(arg->raw_type, int_arg_registers_ccall_windows[arg_index]);
                     }
                     arg_stack_curr_used += 8;
+                    if (arg->type & (IC_UINT | IC_SINT | IC_FLOAT)) {
+                        ic_mov(cu, dest, *arg);
+                    } else if (arg->type & IC_T64) {
+                        Intermediate_Code* ic = ic_add(cu, IC_LEA);
+                        ic->src0 = dest;
+                        ic->src1 = *arg;
+                    } else {
+                        unimplemented;
+                    }
+                    
+                    
+                    if (arg->type & IC_FLOAT) {
+                        Intermediate_Code* ic = ic_add(cu, IC_REINTERP_F2S);
+                        ic->src0 = ic_reg(IC_S64, int_arg_registers_ccall_windows[arg_index]);
+                        ic->src1 = dest;
+                    }
                 } else {
-                    u64 disp = align_forward(arg_stack_curr_used, arg->type->align) + arg->type->size;
-                    dest = ic_stk(src.raw_type, disp);
-                    arg_stack_curr_used = disp;
+                    s32 size = sizeof_raw_type(arg->raw_type);
+                    arg_stack_curr_used = align_forward(arg_stack_curr_used, size) + size;
+                    dest = ic_stk(arg->raw_type, arg_stack_curr_used);
                 }
-                
-                convert_assign_to_intermediate_code(cu, arg->type, dest, src);
-                
-                if (arg_index < 4 && proc->is_variadic && (dest.type & IC_FLOAT)) {
-                    Intermediate_Code* ic = ic_add(cu, IC_REINTERPRET_CAST);
-                    ic->src0 = ic_reg(IC_S64, int_arg_registers_ccall_windows[arg_index]);
-                    ic->src1 = dest;
-                }
-                
-                arg_index++;
             }
-            cu->arg_stack_size = max(cu->arg_stack_size, arg_stack_curr_used);
             
+            cu->arg_stack_size = max(cu->arg_stack_size, arg_stack_curr_used);
             if (proc->is_variadic) {
                 // NOTE(Alexander): make sure to allocate space for HOME registers
                 // even if they aren't used!
@@ -244,44 +263,59 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             if (proc->intrinsic) {
                 ic->dest = ic_imm(IC_S64, (s64) proc->intrinsic);
             }
-            
-            
-            if (!result.type && proc->return_type) {
-                Ic_Raw_Type rt = convert_type_to_raw_type(proc->return_type);
-                result = ic_reg(rt, X64_RAX); // NOTE: RAX == 0 && XMM0 == 0
-            }
         } break;
         
         case Ast_Cast_Expr: {
             assert(expr->Cast_Expr.expr);
-            Type* dest = expr->type;
-            Type* src = expr->Cast_Expr.expr->type;
+            Type* t_dest = expr->type;
+            Type* t_src = expr->Cast_Expr.expr->type;
             
-            Ic_Arg src_arg = convert_expr_to_intermediate_code(cu, expr->Cast_Expr.expr);
-            result = src_arg;
+            Ic_Arg src = convert_expr_to_intermediate_code(cu, expr->Cast_Expr.expr);
+            result = src;
             
-            pln("cast from % to %", f_type(src), f_type(dest));
+            pln("cast from % to %", f_type(t_src), f_type(t_dest));
             
-            if (dest->kind == TypeKind_Basic && src->kind == TypeKind_Basic) {
-                Ic_Raw_Type dest_raw_type = basic_type_to_raw_type(dest->Basic.kind);
+            if (t_dest->kind == TypeKind_Basic && t_src->kind == TypeKind_Basic) {
+                Ic_Raw_Type dest_raw_type = basic_type_to_raw_type(t_dest->Basic.kind);
                 
-                if (dest->Basic.flags & BasicFlag_Integer && src->Basic.flags & BasicFlag_Integer) {
-                    if (dest->size > src->size) {
-                        Intermediate_Code* ic = ic_add(cu, 
-                                                       dest->Basic.flags & BasicFlag_Unsigned ? 
-                                                       IC_MOVZX : IC_MOVSX);
+                if (t_src->Basic.flags & BasicFlag_Integer) {
+                    if (t_dest->Basic.flags & BasicFlag_Integer) {
+                        if (t_dest->size > t_src->size) {
+                            Intermediate_Code* ic = ic_add(cu, 
+                                                           t_dest->Basic.flags & BasicFlag_Unsigned ? 
+                                                           IC_MOVZX : IC_MOVSX);
+                            ic->src0 = ic_reg(dest_raw_type);
+                            ic->src1 = src;
+                            result = ic->src0;
+                            
+                        }
+                        
+                        // TODO(Alexander): do we need truncation instruction?!?!?
+                        // else if (t_dest->size < t_src->size) {
+                        // unimplemented;
+                        // }
+                    } else if (t_dest->Basic.flags & BasicFlag_Floating) {
+                        Intermediate_Code* ic = ic_add(cu, IC_CAST_S2F);
                         ic->src0 = ic_reg(dest_raw_type);
-                        ic->src1 = src_arg;
+                        ic->src1 = src;
                         result = ic->src0;
-                        
-                    } else if (dest->size < src->size) {
-                        
+                    } else {
+                        assert(0 && "invalid type cast");
+                    }
+                } else if (t_src->Basic.flags & BasicFlag_Floating) {
+                    if (t_dest->Basic.flags & BasicFlag_Integer) {
+                        Intermediate_Code* ic = ic_add(cu, IC_CAST_F2S);
+                        ic->src0 = ic_reg(dest_raw_type);
+                        ic->src1 = src;
+                        result = ic->src0;
+                    } else if (t_dest->Basic.flags & BasicFlag_Floating) {
+                        unimplemented;
+                    } else {
+                        assert(0 && "invalid type cast");
                     }
                 } else {
                     unimplemented;
                 }
-            } else {
-                unimplemented;
             }
         } break;
         
@@ -337,6 +371,7 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt) {
             if (ic_jump && ic_is_setcc(ic_jump->opcode)) {
                 switch (ic_jump->opcode) {
                     case IC_SETG: ic_jump->opcode = IC_JNG; break;
+                    case IC_SETL: ic_jump->opcode = IC_JNL; break;
                     default: unimplemented;
                 }
                 ic_jump->data = bb_else;
@@ -363,9 +398,8 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt) {
         case Ast_Return_Stmt: {
             // TODO(Alexander): this is platform/architecture specific
             Ic_Arg result = convert_expr_to_intermediate_code(cu, stmt->Return_Stmt.expr);
-            if (!(result.type & IC_REG && result.reg == X64_RAX)) {
-                Ic_Arg dest = ic_reg(result.raw_type, X64_RAX);
-                convert_assign_to_intermediate_code(cu, stmt->type, dest, result);
+            if (cu->ic_return.type) {
+                convert_assign_to_intermediate_code(cu, stmt->type, cu->ic_return, result);
             }
             ic_add(cu, IC_JMP, cu->bb_return);
         } break;
@@ -374,42 +408,87 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt) {
     }
 }
 
+struct X64_Arg_Copy {
+    Type* type;
+    Ic_Arg dest;
+    Ic_Arg src;
+};
+
 void
-convert_procedure_to_intermediate_code(Compilation_Unit* cu, bool debug_break) {
-    Type* type = cu->ast->type;
-    assert(type->kind == TypeKind_Function);
-    Type_Function* proc = &type->Function;
+convert_procedure_to_intermediate_code(Compilation_Unit* cu, bool insert_debug_break) {
+    assert(cu->ast->type->kind == TypeKind_Function);
+    Type_Function* proc = &cu->ast->type->Function;
     
     Ic_Basic_Block* bb_begin = ic_basic_block();
     Ic_Basic_Block* bb_end = ic_basic_block();
     cu->bb_return = bb_end;
     ic_add(cu, IC_LABEL, bb_begin);
     
-    {
-        // Save home registers
-        for_array_v(proc->arg_types, arg_type, arg_index) {
-            int disp = (arg_index + 1)*8;
-            map_put(cu->stack_displacements, proc->arg_idents[arg_index], disp);
-            
-            if (arg_index < 4) {
-                Ic_Raw_Type rt = convert_type_to_raw_type(arg_type);
-                Ic_Arg dest = ic_stk(rt, disp, X64_RSP);
-                Ic_Arg src;
-                if (rt & IC_FLOAT) {
-                    src = ic_reg(rt, int_arg_registers_ccall_windows[arg_index]);
-                } else {
-                    src= ic_reg(rt, int_arg_registers_ccall_windows[arg_index]);
-                }
-                convert_assign_to_intermediate_code(cu, arg_type, dest, src);
-            }
+    // Save home registers
+    array(Ic_Arg)* home_register = 0;
+    array(X64_Arg_Copy)* copy_args = 0;
+    int arg_index = 0;
+    
+    if (proc->return_type) {
+        Ic_Raw_Type rt = convert_type_to_raw_type(proc->return_type);
+        
+        if (proc->return_type->size > 8) {
+            rt |= IC_SINT; // TODO(Alexander): strange way of disable ptr dereference
+            cu->ic_return = ic_stk(rt, 8);
+            array_push(home_register, cu->ic_return);
+            arg_index++;
+        } else {
+            cu->ic_return = ic_reg(rt, X64_RAX); // NOTE: RAX == XMM0
         }
     }
     
-    if (debug_break) {
+    // Save HOME registers
+    for_array_v(proc->arg_types, type, type_index) {
+        Ic_Raw_Type rt = convert_type_to_raw_type(type);
+        s64 disp = (arg_index + 1)*8;
+        Ic_Arg dest = ic_stk(rt, disp, X64_RSP);
+        
+        if (arg_index < 4) {
+            array_push(home_register, dest);
+        }
+        
+        int size = type->size;
+        if (size != 1 && size != 2 && size != 4 && size != 8) {
+            Ic_Arg src = dest;
+            cu->stack_curr_used = align_forward(cu->stack_curr_used, type->align) + size;
+            disp = -cu->stack_curr_used;
+            dest = ic_stk(rt, disp);
+            src.type |= IC_SINT; // TODO(Alexander): strange way of disable ptr dereference
+            
+            X64_Arg_Copy copy = { type, dest, src };
+            array_push(copy_args, copy);
+        }
+        
+        map_put(cu->stack_displacements, proc->arg_idents[type_index], disp);
+        arg_index++;
+    }
+    
+    for_array_reverse(home_register, arg, reg_index) {
+        if (reg_index < 4) {
+            Ic_Arg src;
+            if (arg->raw_type & IC_FLOAT) {
+                src = ic_reg(arg->raw_type, float_arg_registers_ccall_windows[reg_index]);
+            } else {
+                src = ic_reg(arg->raw_type, int_arg_registers_ccall_windows[reg_index]);
+            }
+            ic_mov(cu, *arg, src);
+        }
+    }
+    
+    if (insert_debug_break) {
         ic_add(cu, IC_DEBUG_BREAK);
     }
     
     ic_add(cu, IC_PRLG);
+    for_array(copy_args, c, _) {
+        convert_assign_to_intermediate_code(cu, c->type, c->dest, c->src);
+    }
+    
     convert_stmt_to_intermediate_code(cu, cu->ast);
     
     ic_add(cu, IC_LABEL, bb_end);
@@ -441,7 +520,7 @@ inline void
 x64_binary(Intermediate_Code* ic,
            Ic_Type t1, s64 r1, s64 d1, 
            Ic_Type t2, s64 r2, s64 d2,
-           s8 reg_field, s8 opcode) {
+           u8 reg_field, u8 opcode) {
     
     switch (t1 & IC_TF_MASK) {
         case IC_REG: {
@@ -485,8 +564,15 @@ x64_binary(Intermediate_Code* ic,
                 //ic_u8(ic, 0xC7);
                 x64_modrm(ic, t1, d1, reg_field);
                 ic_u32(ic, (u32) d2);
+            } else if (t2 & IC_REG) {
+                // 01 /r 	ADD r/m32, r32 	MR
+                ic_u8(ic, opcode + 1);
+                x64_modrm(ic, t1, d1, r2, r1);
+            } else if (t2 & IC_STK) {
+                x64_mov(ic, IC_REG + (t2 & IC_RT_MASK), X64_RAX, 0, t2, r2, d2);
+                x64_binary(ic, t1, r1, d1, IC_REG + (t1 & IC_RT_MASK), X64_RAX, 0, reg_field, opcode);
             } else {
-                unimplemented;
+                assert(0 && "invalid instruction");
             }
         } break;
         
@@ -499,7 +585,8 @@ inline void
 x64_add(Intermediate_Code* ic, 
         Ic_Type t1, s64 r1, s64 d1, 
         Ic_Type t2, s64 r2, s64 d2, 
-        Ic_Type t3, s64 r3, s64 d3) {
+        Ic_Type t3, s64 r3, s64 d3, 
+        u8 reg_field, u8 opcode) {
     
     if (t1 & IC_REG) {
         if (!(t2 & IC_REG)) {
@@ -509,7 +596,7 @@ x64_add(Intermediate_Code* ic,
         unimplemented;
     }
     
-    x64_binary(ic, t1, r1, d1, t3, r3, d3, 0, 0);
+    x64_binary(ic, t1, r1, d1, t3, r3, d3, reg_field, opcode);
 }
 
 void
@@ -564,8 +651,11 @@ x64_mov(Intermediate_Code* ic,
                 ic_u32(ic, (u32) d2);
             } else if (t2 & IC_REG) {
                 // 89 /r 	MOV r/m32,r32 	MR
+                if ((t2 & IC_T64) || (r2 & 8)) {
+                    x64_rex(ic, t2&IC_T64|((u8) r2&8)>>1);
+                }
                 ic_u8(ic, 0x89);
-                x64_modrm(ic, t1, d1, r2, r1);
+                x64_modrm(ic, t1, d1, r2&7, r1);
             } else if (t2 & IC_STK) {
                 // NOTE(Alexander): x64 doesn't allow MOV STK, STK, move to tmp reg
                 // TODO(Alexander): reg hardcoded RAX
@@ -659,54 +749,71 @@ x64_div(Intermediate_Code* ic, bool remainder) {
 inline void
 x64_float_binary(Intermediate_Code* ic, u8 opcode, s64 rip) {
     Ic_Type t1 = ic->src0.type, t2 = ic->src1.type;
-    s64 r1 = ic->src0.reg;
+    s64 r1 = ic->src0.reg, r2 = ic->src1.reg;
     s64 d2 = ic->src1.disp;
     assert(t1 & IC_FLOAT);
     
-    if (t1 & IC_STK && t2 & (IC_IMM | IC_STK)) {
-        x64_fmov(ic, 
-                 ic->dest.type, ic->dest.reg, ic->dest.disp,
-                 ic->src0.type, ic->src0.reg, ic->src0.disp, rip);
-        t1 = ic->dest.type;
-        r1 = ic->dest.reg;
+    if (t1 & IC_STK) {
+        if (t2 & (IC_IMM | IC_STK)) {
+            x64_fmov(ic, 
+                     ic->dest.type, ic->dest.reg, ic->dest.disp,
+                     ic->src0.type, ic->src0.reg, ic->src0.disp, rip);
+            t1 = ic->dest.type;
+            r1 = ic->dest.reg;
+        } else if (t2 & IC_REG && r1 != r1) {
+            x64_fmov(ic, 
+                     ic->dest.type, ic->dest.reg, ic->dest.disp,
+                     ic->src1.type, ic->src1.reg, ic->src1.disp, rip);
+        }
     }
     
-    switch (t1 & IC_TF_MASK) {
-        case IC_REG: {
-            // F3 0F 5E /r DIVSS xmm1, xmm2/m32
-            // F2 0F 5E /r DIVSD xmm1, xmm2/m64
-            ic_u8(ic, (ic->src0.type & IC_T32) ? 0xF3 : 0xF2);
-            ic_u8(ic, 0x0F);
-            ic_u8(ic, opcode);
-            
-            if (t2 & IC_IMM) {
-                x64_rip_relative(ic, r1, d2, rip);
-            } else {
-                x64_modrm(ic, t2, d2, r1);
-            }
-        } break;
-        
-        default: unimplemented;
+    // F3 0F 5E /r DIVSS xmm1, xmm2/m32
+    // F2 0F 5E /r DIVSD xmm1, xmm2/m64
+    ic_u8(ic, (ic->src0.type & IC_T32) ? 0xF3 : 0xF2);
+    ic_u8(ic, 0x0F);
+    ic_u8(ic, opcode);
+    
+    if (t2 & IC_IMM) {
+        x64_rip_relative(ic, r1, d2, rip);
+    } else {
+        x64_modrm(ic, t2, d2, r1, r2);
     }
 }
+
+inline void
+x64_convert_type(Intermediate_Code* ic, u8 opcode) {
+    Ic_Type t1 = ic->src0.type, t2 = ic->src1.type;
+    s64 r1 = ic->src0.reg, d1 = ic->src0.disp, r2 = ic->src1.reg, d2 = ic->src1.disp;
+    assert(t1 & IC_REG);
+    assert(t2 & (IC_REG | IC_STK));
+    
+    // F3 0F 2D /r CVTSS2SI r32, xmm1/m32
+    ic_u8(ic, t2 & IC_T64 ? 0xF2 : 0xF3);
+    if (t1 & IC_T64) {
+        x64_rex(ic, REX_FLAG_64_BIT);
+    }
+    ic_u16(ic, 0x0F|(opcode<<8));
+    x64_modrm(ic, t2, d2, r1, r2);
+}
+
 
 void
 x64_lea(Intermediate_Code* ic, s64 r1, s64 r2, s64 d2) {
     // REX.W + 8D /r 	LEA r64,m 	RM
     
-    x64_rex(ic, REX_FLAG_W);
+    x64_rex(ic, REX_FLAG_W|((u8)r1&8)>>1);
     ic_u8(ic, 0x8D);
     
     if (r2 == X64_RIP) {
         ic_u8(ic, (u8) r1<<3 | (u8) X64_RBP);
         ic_u32(ic, (u32) (d2 - ic->count - 4));
     } else {
-        x64_modrm(ic, IC_STK, d2, r1);
+        x64_modrm(ic, IC_STK, d2, r1&7);
     }
 }
 
 void
-x64_encode_relative_jump_addr(Intermediate_Code* ic, Ic_Basic_Block* bb, s64 rip) {
+x64_jump(Intermediate_Code* ic, Ic_Basic_Block* bb, s64 rip) {
     if (bb && bb->addr != IC_INVALID_ADDR) {
         // TODO(Alexander): add support for short jumps
         assert(bb->addr >= S32_MIN && bb->addr <= S32_MAX && "cannot fit addr in rel32");
@@ -717,20 +824,28 @@ x64_encode_relative_jump_addr(Intermediate_Code* ic, Ic_Basic_Block* bb, s64 rip
 }
 
 void
-x64_string_op(Intermediate_Code* ic, s64 dest, 
+x64_string_op(Intermediate_Code* ic, s64 destt, s64 destd, 
               Ic_Type srct, s64 srcr, s64 srcd, 
-              s64 count, u16 opcode, s64 rip) {
+              s64 count, u16 opcode, s64 rip, s64 src_int_reg=X64_RAX) {
     // Move RCX bytes from [RSI] to [RDI].
     x64_mov(ic, IC_S64 + IC_REG, X64_RCX, 0, IC_S64 + IC_IMM, 0, count);
-    x64_lea(ic, X64_RDI, X64_RBP, dest);
     
-    if (srct & IC_T64 && srct & IC_IMM) {
-        // TODO(Alexander): this is a hack using RIP-relative pointer, why +16?
-        s64 disp = (s64) srcd - rip;
-        x64_lea(ic, X64_RSI, X64_RIP, disp);
+    if (destt & (IC_UINT | IC_SINT)) {
+        x64_mov(ic, IC_S64 + IC_REG, X64_RDI, 0, IC_S64 + IC_STK, X64_RSP, destd);
     } else {
-        x64_mov(ic, IC_S64 + IC_REG, X64_RAX, 0, srct, srcr, srcd);
+        x64_lea(ic, X64_RDI, X64_RBP, destd);
     }
+    
+    if (srct & (IC_UINT | IC_SINT)) {
+        x64_mov(ic, IC_S64 + IC_REG, src_int_reg, 0, srct, srcr, srcd);
+    } else if (srct & IC_T64) {
+        if (srct & IC_IMM) {
+            s64 disp = (s64) srcd - rip;
+            x64_lea(ic, X64_RSI, X64_RIP, disp);
+        } else {
+            x64_lea(ic, X64_RSI, srcr, srcd);
+        }
+    } 
     
     // e.g. F3 A4 	REP MOVS m8, m8 	ZO
     ic_u16(ic, opcode);
@@ -774,7 +889,14 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64
                 x64_add(ic, 
                         ic->dest.type, ic->dest.reg, ic->dest.disp,
                         ic->src0.type, ic->src0.reg, ic->src0.disp,
-                        ic->src1.type, ic->src1.reg, ic->src1.disp);
+                        ic->src1.type, ic->src1.reg, ic->src1.disp, 0, 0);
+            } break;
+            
+            case IC_SUB: {
+                x64_add(ic, 
+                        ic->dest.type, ic->dest.reg, ic->dest.disp,
+                        ic->src0.type, ic->src0.reg, ic->src0.disp,
+                        ic->src1.type, ic->src1.reg, ic->src1.disp, 5, 28);
             } break;
             
             case IC_DIV: {
@@ -810,7 +932,7 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64
                 
             } break;
             
-            case IC_REINTERPRET_CAST: {
+            case IC_REINTERP_F2S: {
                 Ic_Type t1 = ic->src0.type, t2 = ic->src1.type;
                 s64 r1 = ic->src0.reg, d1 = ic->src0.disp, r2 = ic->src1.reg, d2 = ic->src1.disp;
                 
@@ -831,20 +953,40 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64
                 }
             } break;
             
-            case IC_MEMCPY: {
-                x64_string_op(ic, ic->dest.disp, ic->src0.type, ic->src0.reg, ic->src0.disp,
-                              ic->src1.disp, 0xA4F3, (s64) buf + rip);
+            case IC_CAST_F2S: {
+                x64_convert_type(ic, 0x2C);
             } break;
             
+            case IC_CAST_S2F: {
+                x64_convert_type(ic, 0x2A);
+            } break;
+            
+            case IC_MEMCPY: {
+                x64_string_op(ic, ic->dest.type, ic->dest.disp, ic->src0.type, ic->src0.reg, ic->src0.disp,
+                              ic->src1.disp, 0xA4F3, (s64) buf + rip, X64_RSI);
+            } break;
             
             case IC_MEMSET: {
-                x64_string_op(ic, ic->dest.disp, ic->src0.type, ic->src0.reg, ic->src0.disp,
+                x64_string_op(ic, ic->dest.type, ic->dest.disp, ic->src0.type, ic->src0.reg, ic->src0.disp,
                               ic->src1.disp, 0xAAF3, (s64) buf + rip);
             } break;
             
+            case IC_LEA: {
+                x64_lea(ic, ic->src0.reg, ic->src1.reg, ic->src1.disp);
+            } break;
+            
             case IC_CMP: {
-                x64_binary(ic,
-                           ic->src0.type, ic->src0.reg, ic->src0.disp,
+                Ic_Type t1 = ic->src0.type, t2 = ic->src1.type;
+                s64 r1 = ic->src0.reg, d1 = ic->src0.disp;
+                if (t1 & IC_IMM) {
+                    Ic_Type tmpt = IC_REG + (ic->src0.type & IC_RT_MASK);
+                    s64 tmpr = (t2 & IC_REG) ? X64_RCX : X64_RAX, tmpd = 0;
+                    x64_mov(ic, tmpt, tmpr, tmpd, ic->src0.type, ic->src0.reg, ic->src0.disp);
+                    t1 = tmpt;
+                    r1 = tmpr;
+                    d1 = tmpd;
+                }
+                x64_binary(ic, t1, r1, d1,
                            ic->src1.type, ic->src1.reg, ic->src1.disp, 7, 0x38);
             } break;
             
@@ -852,21 +994,31 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64
                 x64_float_binary(ic, 0x58, (s64) buf + rip);
             } break;
             
+            case IC_FSUB: {
+                x64_float_binary(ic, 0x5C, (s64) buf + rip);
+            } break;
+            
             case IC_FDIV: {
                 x64_float_binary(ic, 0x5E, (s64) buf + rip);
             } break;
             
             case IC_JNG: {
-                // TODO(Alexander): short jumps
                 ic_u8(ic, 0x0F);
                 ic_u8(ic, 0x8E);
-                x64_encode_relative_jump_addr(ic, (Ic_Basic_Block*) ic->data, rip);
+                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
+            } break;
+            
+            case IC_JNL: {
+                // TODO(Alexander): short jumps
+                ic_u8(ic, 0x0F);
+                ic_u8(ic, 0x8D);
+                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
             } break;
             
             case IC_JMP: {
                 // TODO(Alexander): short jumps (and indirect jump?)
                 ic_u8(ic, 0xE9);
-                x64_encode_relative_jump_addr(ic, (Ic_Basic_Block*) ic->data, rip);
+                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
             } break;
             
             case IC_CALL: {
@@ -874,7 +1026,7 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64
                 if (target) {
                     // E8 cd 	CALL rel32 	D
                     ic_u8(ic, 0xE8);
-                    x64_encode_relative_jump_addr(ic, target->bb_first, rip);
+                    x64_jump(ic, target->bb_first, rip);
                 } else {
                     // REX.W + B8+ rd io 	MOV r64, imm64 	OI
                     x64_rex(ic, REX_FLAG_W);

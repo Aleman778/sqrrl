@@ -1450,7 +1450,7 @@ parse_complex_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_M
                 next_token(parser);
                 
                 // TODO(alexander): check what the base type is, e.g. cannot be struct type as return type
-                // TODO(alexander): maybe should be it's own ast node
+                // TODO(alexander): maybe should be it's own AST node
                 Ast* function = push_ast_node(parser);
                 function->kind = Ast_Function_Type;
                 

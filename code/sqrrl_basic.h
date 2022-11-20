@@ -528,9 +528,10 @@ it = arr[++it_index])
 
 
 #define for_array_reverse(arr, it, it_index) \
-int it_index = 0; \
-for (auto it = arr ? &array_last(arr) : arr; \
-it && it_index >= arr; \
+int it_index = (int) array_count(arr) - 1; \
+if (arr) \
+for (auto it = &array_last(arr); \
+it && it_index >= 0; \
 it_index--, it--)
 
 // NOTE(Alexander): hash maps

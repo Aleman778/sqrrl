@@ -21,8 +21,10 @@ intrinsic_assert(int expr) {
 }
 
 int
-run_compiler_tests(string filename, void* asm_buffer, umm asm_size, 
-                   void (*asm_make_executable)(void*, umm)) {
+run_compiler_tests(string filename, 
+                   void* asm_buffer, umm asm_size, 
+                   void (*asm_make_executable)(void*, umm),
+                   bool is_debugger_present) {
     
     is_test_mode = true;
     
@@ -60,74 +62,35 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
     Interp interp = {};
     interp_ast_declarations(&interp, ast_file.decls);
     
-    // Compile to sqrrl bytecode
-    Bc_Builder bytecode_builder = {};
-    bc_build_from_ast(&bytecode_builder, &ast_file);
-    
-    // Prepare bytecode interpreter
-    Bc_Interp bc_interp = {};
-    bc_interp.code = &bytecode_builder.code;
-    bc_interp.declarations = bytecode_builder.declarations;
-    
-    // Compile to X64 instructions
-    X64_Builder x64_builder = {};
-    x64_builder.label_indices = bytecode_builder.label_indices;
-    x64_builder.bc_register_live_lengths = bytecode_builder.live_lengths;
-    x64_builder.bytecode = &bytecode_builder.code;
-    x64_builder.next_free_virtual_register = bytecode_builder.next_register;
-    
-    for_map (bytecode_builder.declarations, it) {
-        if (it->key.ident == Kw_global) {
-            continue;
-        }
-        
-        Bc_Decl* decl = &it->value;
-        
-        if (decl->kind == BcDecl_Procedure) {
-            if (it->key.index != 0) continue;
-            
-            //pln("compiling function `%`", f_string(vars_load_string(it->key.ident)));
-            Bc_Basic_Block* first_basic_block = get_bc_basic_block(&bytecode_builder.code, decl->first_byte_offset);
-            
-            String_Builder test_sb = {};
-            //string_builder_push(&test_sb, &register_mapper, first_basic_block, &bytecode_builder.code);
-            //pln("%", f_string(string_builder_to_string_nocopy(&test_sb)));
-            //string_builder_free(&test_sb);
-            x64_build_procedure(&x64_builder, 
-                                &bytecode_builder.code, 
-                                first_basic_block, 
-                                &decl->Procedure);
-        } else if (decl->kind == BcDecl_Data) {
-            // TODO(Alexander): we need to store the actual value type in the declarations
-            x64_build_data_storage(&x64_builder, it->key, decl->Data.value.data, decl->Data.type);
+    // Convert to intermediate code
+    for_array(ast_file.units, cu, _) {
+        if (cu->ast->kind == Ast_Decl_Stmt) {
+            Type* type = cu->ast->type;
+            if (type->kind == TypeKind_Function) {
+                convert_procedure_to_intermediate_code(cu, is_debugger_present);
+            }
         }
     }
     
-    // Perform register allocation
-    x64_perform_register_allocation(&x64_builder);
+    // Convert to X64 machine code
+    s64 rip = 0;
+    for_array(ast_file.units, cu, _3) {
+        rip = convert_to_x64_machine_code(cu->ic_first, cu->stack_curr_used + cu->arg_stack_size, 0, 0, rip);
+    }
     
-    // x64 build instruction definitions
-    X64_Instruction_Def_Table* x64_instruction_definitions = parse_x86_64_definitions();
-    
-    // Assemble to X64 machine code
-    X64_Assembler assembler = {};
-    assembler.bytes = (u8*) asm_buffer;
-    assembler.size = asm_size;
-    assembler.rodata_offsets = x64_builder.rodata_offsets;
-    
-    x64_assemble_to_machine_code(&assembler,
-                                 x64_instruction_definitions,
-                                 x64_builder.first_basic_block);
-    memcpy(assembler.bytes + assembler.curr_used, 
-           x64_builder.rodata_section_arena.base, 
-           x64_builder.rodata_section_arena.curr_used);
+    s64 rip2 = 0;
+    for_array(ast_file.units, cu, _4) {
+        rip2 = convert_to_x64_machine_code(cu->ic_first, cu->stack_curr_used + cu->arg_stack_size,
+                                           (u8*) asm_buffer, (s64) asm_size, rip2);
+    }
+    assert(rip == rip2);
     
     asm_make_executable(asm_buffer, asm_size);
     
     // Collect all the test to run
     map(string_id, Test_Result)* tests = 0;
-    for_map(ast_file.decls, it) {
-        Ast* decl = it->value;
+    for_array(ast_file.units, unit, _2) {
+        Ast* decl = unit->ast;
         
         if (decl->kind == Ast_Decl_Stmt && decl->Decl_Stmt.type &&
             decl->Decl_Stmt.type->kind == Ast_Function_Type) {
@@ -141,15 +104,14 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
                 if (attr_ident == Sym_test_proc) {
                     // TODO(Alexander): check the expr part for exec mode
                     Test_Execution_Modes modes = (TestExecutionMode_Interp |
-                                                  TestExecutionMode_Bc_Interp |
                                                   TestExecutionMode_X64);
                     
                     Test_Result test = {};
-                    test.ast = decl;
-                    test.ident = it->key;
+                    test.unit = unit;
                     test.modes = modes;
                     
-                    map_put(tests, test.ident, test);
+                    assert(map_key_exists(tests, unit->ident) && "duplicate test name");
+                    map_put(tests, unit->ident, test);
                 }
             }
             
@@ -177,12 +139,13 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
         curr_test = test;
         
         const umm test_name_max_count = 50;
-        string test_name = vars_load_string(test->ident);
+        Compilation_Unit* unit = test->unit;
+        string test_name = vars_load_string(unit->ident);
         
         // Interpreter
         if (is_bitflag_set(test->modes, TestExecutionMode_Interp)) {
             u32 prev_num_failed = test->num_failed;
-            interp_function_call(&interp, test->ident, 0, test->ast->type);
+            interp_function_call(&interp, unit->ident, 0, unit->ast->type);
             if (interp.error_count > 0) {
                 test->num_failed += interp.error_count;
                 test->num_tests +=  interp.error_count;
@@ -197,33 +160,11 @@ run_compiler_tests(string filename, void* asm_buffer, umm asm_size,
             }
         }
         
-        // Bytecode interpreter
-        if (is_bitflag_set(test->modes, TestExecutionMode_Bc_Interp)) {
-            u32 prev_num_failed = test->num_failed;
-            bc_interp_bytecode(&bc_interp, test->ident);
-            if (prev_num_failed != test->num_failed) {
-                // Log the error and bytecode
-                Bc_Label label = {};
-                label.ident = test->ident;
-                Bc_Decl* decl = &map_get(bc_interp.declarations, label);
-                if (decl && decl->kind == BcDecl_Procedure) {
-                    string_builder_push(sb_failure_log, "\n\xE2\x9D\x8C ");
-                    string_builder_push_format(sb_failure_log, 
-                                               "Bytecode interpreter failed procedure `%`\n",
-                                               f_string(test_name));
-                    
-                    Bc_Register_Mapper register_mapper = {};
-                    Bc_Basic_Block* first_basic_block = get_bc_basic_block(&bytecode_builder.code, decl->first_byte_offset);
-                    string_builder_push(sb_failure_log, &register_mapper, 
-                                        first_basic_block, &bytecode_builder.code);
-                }
-            }
-        }
-        
         // X64
         if (is_bitflag_set(test->modes, TestExecutionMode_X64)) {
             u32 prev_num_failed = test->num_failed;
-            umm offset = map_get(assembler.label_offsets, test->ident);
+            
+            s64 offset = unit->bb_first->addr;
             //pln("Running `%` at memory location: 0x%", f_string(vars_load_string(test->ident)),
             //f_u64_HEX((u8*) asm_buffer + offset));
             asm_test* test_func = (asm_test*) ((u8*) asm_buffer + offset);

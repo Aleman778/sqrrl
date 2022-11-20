@@ -48,7 +48,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             } else {
                 filepath = string_lit("../tests/first.sq");
             }
-            return run_compiler_tests(filepath, asm_buffer, asm_size, asm_make_executable);
+            return run_compiler_tests(filepath, asm_buffer, asm_size, asm_make_executable,
+                                      is_debugger_present);
         }
 #endif
         
@@ -137,8 +138,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     if (ast_file.error_count > 0) {
         if (flag_print_ast) {
             pln("AST (without types):");
-            for_map(ast_file.decls, decl) {
-                print_ast(decl->value, &tokenizer);
+            for_array(ast_file.units, unit, _) {
+                print_ast(unit->ast, &tokenizer);
             }
         }
         
@@ -150,8 +151,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     if (type_check_ast_file(&ast_file) != 0) {
         if (flag_print_ast) {
             pln("AST (not fully typed):");
-            for_map(ast_file.decls, decl) {
-                print_ast(decl->value, &tokenizer);
+            for_array(ast_file.units, unit, _) {
+                print_ast(unit->ast, &tokenizer);
             }
         }
         
@@ -161,8 +162,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     if (flag_print_ast) {
         pln("AST:");
-        for_map(ast_file.decls, decl) {
-            print_ast(decl->value, &tokenizer);
+        for_array(ast_file.units, unit, _) {
+            print_ast(unit->ast, &tokenizer);
         }
     }
     

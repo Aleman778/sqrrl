@@ -12,14 +12,24 @@ vec3_add(v3 a, v3 b) {
     return result;
 }
 
+inline int
+arr_add([]int x) {
+    return x[0] + x[1] + x[2];
+}
+
+int
+main2() {
+    []int x = {1, 2, 3};
+    return arr_add(([]int) x); //
+}
+
 f32
 main() {
-    v3 v = v3 { x: 2, y: 3, z: 4};
-    
+    v3 v = v3 { x: 2, y: 3, z: 5 };
     v = vec3_add(v, v);
-    
-    return v.x + v.y + v.z;
+    return v.x + v.y + v.z; // 20.0
 }
+
 #if 0
 
 int

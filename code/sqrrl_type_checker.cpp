@@ -758,9 +758,11 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 }
                 
                 if (parent_type->Array.capacity > 0) {
-                    if (parent_type->Array.capacity != count) {
-                        type_error(tcx, string_format("array literal expects `%` values found `%`",
-                                                      f_smm(parent_type->Array.capacity), f_smm(count)));
+                    if (parent_type->Array.capacity < count) {
+                        if (report_error) {
+                            type_error(tcx, string_format("array literal expects at least `%` values, found `%`",
+                                                          f_smm(parent_type->Array.capacity), f_smm(count)));
+                        }
                         result = 0;
                     }
                 } else {
@@ -771,15 +773,19 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                             parent_type->size = (s32) (parent_type->Array.type->size * 
                                                        parent_type->Array.capacity);
                         } else {
-                            // TODO(Alexander): improve this error message
-                            type_error(tcx, string_format("cannot assign empty array literal to fixed-array of unknown capacity, did you mean to use a dynamic array [..]T?"));
+                            if (report_error) {
+                                // TODO(Alexander): improve this error message
+                                type_error(tcx, string_format("cannot assign empty array literal to fixed-array of unknown capacity, did you mean to use a dynamic array [..]T?"));
+                            }
                         }
                     }
                 }
                 
                 expr->type = result;
             } else {
-                type_error(tcx, string_format("cannot assign array literal to non-array type"));
+                if (report_error) {
+                    type_error(tcx, string_format("cannot assign array literal to non-array type"));
+                }
             }
         } break;
         

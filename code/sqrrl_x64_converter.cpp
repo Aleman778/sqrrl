@@ -76,7 +76,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             
             // TODO(Alexander): temporary use Memory_Arena
             smm size = capacity*type->size;
-            void* data = malloc(size);
+            void* data = calloc(1, size);
             
             u8* curr = (u8*) data;
             for_compound(expr->Array_Expr.elements, e) {
@@ -134,17 +134,35 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
         
         case Ast_Index_Expr: {
             Type* type = expr->type;
+            assert(expr->Index_Expr.array->type->kind == TypeKind_Array);
+            Type_Array* array_type = &expr->Index_Expr.array->type->Array;
             
-            result = convert_expr_to_intermediate_code(cu, expr->Index_Expr.array);
+            Ic_Raw_Type rt = convert_type_to_raw_type(type);
+            Ic_Arg arr = convert_expr_to_intermediate_code(cu, expr->Index_Expr.array);
             Ic_Arg index = convert_expr_to_intermediate_code(cu, expr->Index_Expr.index);
-            if (result.type & IC_STK) {
+            
+            if (array_type->capacity == 0 || array_type->is_dynamic) {
+                // Array is stored as "wide" pointer
+                ic_mov(cu, ic_reg(arr.raw_type, X64_RDX), arr);
                 if (index.type & IC_IMM) {
-                    result.disp += type->size * index.disp;
+                    result = ic_stk(rt, type->size * index.disp, X64_RDX);
                 } else {
                     unimplemented;
                 }
+                
             } else {
-                unimplemented;
+                // Array is stored in place
+                result = arr;
+                result.raw_type = rt;
+                if (result.type & IC_STK) {
+                    if (index.type & IC_IMM) {
+                        result.disp += type->size * index.disp;
+                    } else {
+                        unimplemented;
+                    }
+                } else {
+                    unimplemented;
+                }
             }
         } break;
         
@@ -221,6 +239,8 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             
             // Store arguments according to the windows calling convention
             for_array_reverse(arguments, arg, arg_index) {
+                s32 size = sizeof_raw_type(arg->raw_type);
+                bool store_ptr = !(size == 1 || size == 2 || size == 4 || size == 8);
                 Ic_Arg dest;
                 if (arg_index < 4) {
                     if (arg->type & IC_FLOAT) {
@@ -228,27 +248,25 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     } else {
                         dest = ic_reg(arg->raw_type, int_arg_registers_ccall_windows[arg_index]);
                     }
-                    arg_stack_curr_used += 8;
-                    if (arg->type & (IC_UINT | IC_SINT | IC_FLOAT)) {
-                        ic_mov(cu, dest, *arg);
-                    } else if (arg->type & IC_T64) {
-                        Intermediate_Code* ic = ic_add(cu, IC_LEA);
-                        ic->src0 = dest;
-                        ic->src1 = *arg;
-                    } else {
-                        unimplemented;
-                    }
-                    
-                    
-                    if (arg->type & IC_FLOAT) {
-                        Intermediate_Code* ic = ic_add(cu, IC_REINTERP_F2S);
-                        ic->src0 = ic_reg(IC_S64, int_arg_registers_ccall_windows[arg_index]);
-                        ic->src1 = dest;
-                    }
                 } else {
-                    s32 size = sizeof_raw_type(arg->raw_type);
-                    arg_stack_curr_used = align_forward(arg_stack_curr_used, size) + size;
+                    s32 actual_size = store_ptr ? 8 : size;
+                    arg_stack_curr_used = align_forward(arg_stack_curr_used, actual_size) + actual_size;
                     dest = ic_stk(arg->raw_type, arg_stack_curr_used);
+                }
+                
+                arg_stack_curr_used += 8;
+                if (store_ptr) {
+                    Intermediate_Code* ic = ic_add(cu, IC_LEA);
+                    ic->src0 = dest;
+                    ic->src1 = *arg;
+                } else {
+                    ic_mov(cu, dest, *arg);
+                }
+                
+                if (arg->type & IC_FLOAT) {
+                    Intermediate_Code* ic = ic_add(cu, IC_REINTERP_F2S);
+                    ic->src0 = ic_reg(IC_S64, int_arg_registers_ccall_windows[arg_index]);
+                    ic->src1 = dest;
                 }
             }
             
@@ -316,7 +334,25 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 } else {
                     unimplemented;
                 }
+            } else if (t_dest->kind == TypeKind_Array && t_src->kind == TypeKind_Array) {
+                if (t_src->Array.capacity > 0) {
+                    if (t_dest->Array.capacity == 0) {
+                        // convert inplace array to "wide"-pointer array
+                        // TODO(Alexander): we can improve this by e.g. clearing it and 
+                        // also passing multiple values as arguments
+                        result = ic_stk_push(cu, t_dest);
+                        Intermediate_Code* copy_ptr = ic_add(cu, IC_LEA);
+                        copy_ptr->src0 = ic_reg(result.raw_type);
+                        copy_ptr->src1 = src;
+                        ic_mov(cu, result, copy_ptr->src0);
+                        ic_mov(cu, ic_stk(result.raw_type, result.disp + 8), ic_imm(result.raw_type, t_src->Array.capacity));
+                        // TODO(Alexander): set capacity if dynamic array
+                    }
+                } else {
+                    unimplemented;
+                }
             }
+            
         } break;
         
         default: unimplemented;
@@ -860,13 +896,13 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64
         
         // HACK(Alexander): fix displacements to account for stack usage
         if (!buf) {
-            if (ic->dest.type & IC_STK) {
+            if (ic->dest.type & IC_STK && ic->dest.reg == X64_RSP) {
                 ic->dest.disp += rsp_disp;
             }
-            if (ic->src0.type & IC_STK) {
+            if (ic->src0.type & IC_STK && ic->src0.reg == X64_RSP) {
                 ic->src0.disp += rsp_disp;
             }
-            if (ic->src1.type & IC_STK) {
+            if (ic->src1.type & IC_STK && ic->src1.reg == X64_RSP) {
                 ic->src1.disp += rsp_disp;
             }
         }

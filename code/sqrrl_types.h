@@ -247,15 +247,15 @@ string_builder_push(String_Builder* sb, Type* type) {
         } break;
         
         case TypeKind_Array: {
-            if (!type->Array.is_inplace) {
-                string_builder_push(sb, "*");
-            }
-            
+            string_builder_push(sb, "[");
             if (type->Array.capacity > 0) {
-                string_builder_push_format(sb, "[%]", f_smm(type->Array.capacity));
-            } else {
-                string_builder_push(sb, "[..]");
+                string_builder_push_format(sb, "%", f_smm(type->Array.capacity));
             }
+            if (type->Array.is_dynamic) {
+                string_builder_push(sb, "..");
+            }
+            string_builder_push(sb, "]");
+            
             string_builder_push(sb, type->Array.type);
         } break;
         

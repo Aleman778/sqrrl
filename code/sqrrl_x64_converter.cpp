@@ -34,17 +34,17 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 Ic_Raw_Type raw_type = convert_type_to_raw_type(expr->type);
                 void* data = malloc(type->size);
                 value_store_in_memory(type, data, expr->Value.value.data);
-                result = ic_imm(raw_type, (s64) data);
+                result = ic_data(raw_type, (s64) data);
                 
             } else if (is_string(expr->Value.value)) {
                 Ic_Raw_Type raw_type = IC_T64;
                 string* str = &expr->Value.value.data.str;
-                result = ic_imm(raw_type, (s64) str);
+                result = ic_data(raw_type, (s64) str);
                 
             } else if (is_cstring(expr->Value.value)) {
-                Ic_Raw_Type raw_type = IC_T64;
+                Ic_Raw_Type raw_type = IC_S64;
                 cstring cstr = expr->Value.value.data.cstr;
-                result = ic_imm(raw_type, (s64) cstr);
+                result = ic_data(raw_type, (s64) cstr);
                 
             } else {
                 unimplemented;
@@ -85,7 +85,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 curr += type->size;
             }
             
-            result = ic_imm(IC_T64, (s64) data);
+            result = ic_data(IC_T64, (s64) data);
         } break;
         
         case Ast_Struct_Expr: {
@@ -111,7 +111,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             }
             
             if (data) {
-                result = ic_imm(IC_T64, (s64) data);
+                result = ic_data(IC_T64, (s64) data);
             }
         } break;
         
@@ -239,8 +239,6 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             
             // Store arguments according to the windows calling convention
             for_array_reverse(arguments, arg, arg_index) {
-                s32 size = sizeof_raw_type(arg->raw_type);
-                bool store_ptr = !(size == 1 || size == 2 || size == 4 || size == 8);
                 Ic_Arg dest;
                 if (arg_index < 4) {
                     if (arg->type & IC_FLOAT) {
@@ -249,18 +247,21 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                         dest = ic_reg(arg->raw_type, int_arg_registers_ccall_windows[arg_index]);
                     }
                 } else {
-                    s32 actual_size = store_ptr ? 8 : size;
+                    s32 actual_size = sizeof_raw_type(arg->raw_type);
                     arg_stack_curr_used = align_forward(arg_stack_curr_used, actual_size) + actual_size;
                     dest = ic_stk(arg->raw_type, arg_stack_curr_used);
                 }
                 
-                arg_stack_curr_used += 8;
-                if (store_ptr) {
+                if (arg->raw_type & (IC_FLOAT)) {
+                    Intermediate_Code* ic = ic_add(cu, IC_FMOV);
+                    ic->src0 = dest;
+                    ic->src1 = *arg;
+                } else if (arg->raw_type & (IC_SINT | IC_UINT)) {
+                    ic_mov(cu, dest, *arg);
+                } else {
                     Intermediate_Code* ic = ic_add(cu, IC_LEA);
                     ic->src0 = dest;
                     ic->src1 = *arg;
-                } else {
-                    ic_mov(cu, dest, *arg);
                 }
                 
                 if (arg->type & IC_FLOAT) {
@@ -306,12 +307,11 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                             ic->src1 = src;
                             result = ic->src0;
                             
+                        } else {
+                            // TODO(Alexander): do we need truncation instruction?
+                            result.raw_type = dest_raw_type;
                         }
                         
-                        // TODO(Alexander): do we need truncation instruction?!?!?
-                        // else if (t_dest->size < t_src->size) {
-                        // unimplemented;
-                        // }
                     } else if (t_dest->Basic.flags & BasicFlag_Floating) {
                         Intermediate_Code* ic = ic_add(cu, IC_CAST_S2F);
                         ic->src0 = ic_reg(dest_raw_type);
@@ -529,6 +529,12 @@ convert_procedure_to_intermediate_code(Compilation_Unit* cu, bool insert_debug_b
     
     ic_add(cu, IC_LABEL, bb_end);
     ic_add(cu, IC_EPLG);
+    
+    
+    // Align stack by 16-bytes (excluding 8 bytes for return address)
+    s64 stack_size = cu->stack_curr_used + cu->arg_stack_size + 8;
+    s64 aligned_size = align_forward(stack_size, 16);
+    cu->stack_curr_used = aligned_size - cu->arg_stack_size - 8;
 }
 
 void

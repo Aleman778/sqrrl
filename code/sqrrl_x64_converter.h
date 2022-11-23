@@ -94,6 +94,15 @@ ic_imm(Ic_Raw_Type t, s64 d) {
     return result;
 }
 
+inline Ic_Arg
+ic_data(Ic_Raw_Type t, s64 ptr) {
+    Ic_Arg result = {};
+    result.type = t + IC_IMM;
+    result.reg = X64_RIP;
+    result.disp = ptr;
+    return result;
+}
+
 enum X64_Jump_Opcode {
     X64_JMP,
     X64_JA,

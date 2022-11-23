@@ -87,12 +87,7 @@ typedef u8 Ic_Raw_Type;
 
 inline s32
 sizeof_raw_type(Ic_Raw_Type rt) {
-    // TODO(Alexander): MSVC specific intrinsic!
-    unsigned long index = 0;
-    if (!_BitScanForward(&index, (unsigned long) rt)) {
-        return 0;
-    }
-    return (index + 1)*8;
+    return rt & 0xF;
 }
 
 inline Ic_Raw_Type

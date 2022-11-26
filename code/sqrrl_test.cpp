@@ -72,15 +72,34 @@ run_compiler_tests(string filename,
         }
     }
     
+    // Compute the actual stack displacement for each Ic_Arg
+    for_array(ast_file.units, cu, _2) {
+        Intermediate_Code* ic = cu->ic_first;
+        while (ic) {
+            if (ic->dest.type & IC_STK && ic->dest.reg == X64_RSP) {
+                ic->dest.disp = compute_stk_displacement(cu, ic->dest);
+            }
+            if (ic->src0.type & IC_STK && ic->src0.reg == X64_RSP) {
+                ic->src0.disp = compute_stk_displacement(cu, ic->src0);
+            }
+            if (ic->src1.type & IC_STK && ic->src1.reg == X64_RSP) {
+                ic->src1.disp = compute_stk_displacement(cu, ic->src1);
+            }
+        }
+        
+        cu->stk_usage = cu->stk_locals + cu->stk_args + cu->stk_caller_args;
+    }
+    
+    
     // Convert to X64 machine code
     s64 rip = 0;
     for_array(ast_file.units, cu, _3) {
-        rip = convert_to_x64_machine_code(cu->ic_first, cu->stack_curr_used + cu->arg_stack_size, 0, 0, rip);
+        rip = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage, 0, 0, rip);
     }
     
     s64 rip2 = 0;
     for_array(ast_file.units, cu, _4) {
-        rip2 = convert_to_x64_machine_code(cu->ic_first, cu->stack_curr_used + cu->arg_stack_size,
+        rip2 = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage,
                                            (u8*) asm_buffer, (s64) asm_size, rip2);
     }
     assert(rip == rip2);
@@ -89,7 +108,7 @@ run_compiler_tests(string filename,
     
     // Collect all the test to run
     map(string_id, Test_Result)* tests = 0;
-    for_array(ast_file.units, unit, _2) {
+    for_array(ast_file.units, unit, _5) {
         Ast* decl = unit->ast;
         
         if (decl->kind == Ast_Decl_Stmt && decl->Decl_Stmt.type &&

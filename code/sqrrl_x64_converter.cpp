@@ -53,14 +53,13 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
         
         case Ast_Ident: {
             string_id ident = ast_unwrap_ident(expr);
-            assert(map_key_exists(cu->stack_displacements, ident));
+            assert(map_key_exists(cu->locals, ident));
             
             assert(expr->type);
             Type* type = expr->type;
             
             Ic_Raw_Type raw_type = convert_type_to_raw_type(type);
-            s64 disp = map_get(cu->stack_displacements, ident);
-            result = ic_stk(raw_type, disp);
+            result = map_get(cu->locals, ident);
         } break;
         
         case Ast_Paren_Expr: {
@@ -145,7 +144,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 // Array is stored as "wide" pointer
                 ic_mov(cu, ic_reg(arr.raw_type, X64_RDX), arr);
                 if (index.type & IC_IMM) {
-                    result = ic_stk(rt, type->size * index.disp, X64_RDX);
+                    result = ic_stk(rt, type->size*index.disp, IcStkArea_None, X64_RDX);
                 } else {
                     unimplemented;
                 }
@@ -211,71 +210,86 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                    expr->Call_Expr.function_type->kind == TypeKind_Function);
             Type_Function* proc = &expr->Call_Expr.function_type->Function;
             
-            s64 arg_stack_curr_used = 0;
-            array(Ic_Arg)* arguments = 0;
+            s64 stk_args = 0;
+            array(X64_Arg_Copy)* copy_args = 0;
             
             // Setup return type
             if (proc->return_type) {
                 Type* type = proc->return_type;
+                Ic_Raw_Type rt = convert_type_to_raw_type(type);
                 
                 if (type->size > 8) {
                     // NOTE(Alexander): if return argument cannot fit in RAX/ XMM0 then
-                    //                  pass a poitner to it as the first argument
-                    arg_stack_curr_used = align_forward(arg_stack_curr_used, type->align) + type->size;
-                    Ic_Arg src = ic_stk(convert_type_to_raw_type(type), arg_stack_curr_used);
-                    array_push(arguments, src);
+                    //                  pass a pointer to it as the first argument
+                    s64 disp = stk_args;
+                    stk_args += 8;
+                    Ic_Arg src = ic_stk(rt, disp, IcStkArea_Args);
+                    
+                    X64_Arg_Copy copy = {};
+                    copy.type = proc->return_type;
+                    copy.src = src;
+                    copy.dest = src;
+                    array_push(copy_args, copy);
+                    
                     result = src;
                 } else {
-                    Ic_Raw_Type rt = convert_type_to_raw_type(proc->return_type);
                     result = ic_reg(rt, X64_RAX); // NOTE: RAX == 0 && XMM0 == 0
                 }
             }
             
+            
             // Setup arguments
             for_compound(expr->Call_Expr.args, arg) {
+                Ic_Raw_Type rt = convert_type_to_raw_type(arg->type);
                 Ic_Arg src = convert_expr_to_intermediate_code(cu, arg->Argument.assign);
-                array_push(arguments, src);
+                s64 disp = stk_args;
+                stk_args += 8;
+                Ic_Arg dest = ic_stk(rt, disp, IcStkArea_Args);
+                
+                X64_Arg_Copy copy = {};
+                copy.type = proc->return_type;
+                copy.src = src;
+                copy.dest = dest;
+                array_push(copy_args, copy);
             }
             
             // Store arguments according to the windows calling convention
-            for_array_reverse(arguments, arg, arg_index) {
+            for_array_reverse(copy_args, arg, arg_index) {
                 Ic_Arg dest;
                 if (arg_index < 4) {
-                    if (arg->type & IC_FLOAT) {
-                        dest = ic_reg(arg->raw_type, float_arg_registers_ccall_windows[arg_index]);
+                    if (arg->src.type & IC_FLOAT) {
+                        dest = ic_reg(arg->src.raw_type, float_arg_registers_ccall_windows[arg_index]);
                     } else {
-                        dest = ic_reg(arg->raw_type, int_arg_registers_ccall_windows[arg_index]);
+                        dest = ic_reg(arg->src.raw_type, int_arg_registers_ccall_windows[arg_index]);
                     }
                 } else {
-                    s32 actual_size = sizeof_raw_type(arg->raw_type);
-                    arg_stack_curr_used = align_forward(arg_stack_curr_used, actual_size) + actual_size;
-                    dest = ic_stk(arg->raw_type, arg_stack_curr_used);
+                    dest = arg->dest;
                 }
                 
-                if (arg->raw_type & (IC_FLOAT)) {
+                if (arg->src.type & IC_FLOAT) {
                     Intermediate_Code* ic = ic_add(cu, IC_FMOV);
                     ic->src0 = dest;
-                    ic->src1 = *arg;
-                } else if (arg->raw_type & (IC_SINT | IC_UINT)) {
-                    ic_mov(cu, dest, *arg);
+                    ic->src1 = arg->src;
+                } else if (arg->src.type & (IC_SINT | IC_UINT)) {
+                    ic_mov(cu, dest, arg->src);
                 } else {
                     Intermediate_Code* ic = ic_add(cu, IC_LEA);
                     ic->src0 = dest;
-                    ic->src1 = *arg;
+                    ic->src1 = arg->src;
                 }
                 
-                if (arg->type & IC_FLOAT) {
+                if (arg->src.type & IC_FLOAT) {
                     Intermediate_Code* ic = ic_add(cu, IC_REINTERP_F2S);
                     ic->src0 = ic_reg(IC_S64, int_arg_registers_ccall_windows[arg_index]);
                     ic->src1 = dest;
                 }
             }
             
-            cu->arg_stack_size = max(cu->arg_stack_size, arg_stack_curr_used);
+            cu->stk_args = max(cu->stk_args, stk_args);
             if (proc->is_variadic) {
                 // NOTE(Alexander): make sure to allocate space for HOME registers
                 // even if they aren't used!
-                cu->arg_stack_size = max(cu->arg_stack_size, 5*8);
+                cu->stk_args = max(cu->stk_args, 4*8);
             }
             
             Intermediate_Code* ic = ic_add(cu, IC_CALL, proc->unit);
@@ -340,12 +354,13 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                         // convert inplace array to "wide"-pointer array
                         // TODO(Alexander): we can improve this by e.g. clearing it and 
                         // also passing multiple values as arguments
-                        result = ic_stk_push(cu, t_dest);
+                        result = ic_push_local(cu, t_dest);
                         Intermediate_Code* copy_ptr = ic_add(cu, IC_LEA);
                         copy_ptr->src0 = ic_reg(result.raw_type);
                         copy_ptr->src1 = src;
                         ic_mov(cu, result, copy_ptr->src0);
-                        ic_mov(cu, ic_stk(result.raw_type, result.disp + 8), ic_imm(result.raw_type, t_src->Array.capacity));
+                        ic_mov(cu, ic_stk_offset(IC_S64, result, 8),
+                               ic_imm(IC_S64, t_src->Array.capacity));
                         // TODO(Alexander): set capacity if dynamic array
                     }
                 } else {
@@ -386,9 +401,8 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt) {
                 src = convert_expr_to_intermediate_code(cu, stmt->Assign_Stmt.expr);
             }
             
-            s64 disp = align_forward(cu->stack_curr_used, type->align) + type->size;
-            cu->stack_curr_used = disp;
-            map_put(cu->stack_displacements, ident, -disp);
+            // NOTE(Alexander): push local first then it can be found elsewhere
+            ic_push_local(cu, type, ident);
             
             Ic_Arg dest = convert_expr_to_intermediate_code(cu, stmt->Assign_Stmt.ident);
             convert_assign_to_intermediate_code(cu, stmt->type, dest, src);
@@ -444,12 +458,6 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt) {
     }
 }
 
-struct X64_Arg_Copy {
-    Type* type;
-    Ic_Arg dest;
-    Ic_Arg src;
-};
-
 void
 convert_procedure_to_intermediate_code(Compilation_Unit* cu, bool insert_debug_break) {
     assert(cu->ast->type->kind == TypeKind_Function);
@@ -470,8 +478,8 @@ convert_procedure_to_intermediate_code(Compilation_Unit* cu, bool insert_debug_b
         
         if (proc->return_type->size > 8) {
             rt |= IC_SINT; // TODO(Alexander): strange way of disable ptr dereference
-            cu->ic_return = ic_stk(rt, 8);
-            array_push(home_register, cu->ic_return);
+            array_push(home_register, ic_stk(rt, 8));
+            cu->ic_return = ic_stk(rt, 0, IcStkArea_Caller_Args);
             arg_index++;
         } else {
             cu->ic_return = ic_reg(rt, X64_RAX); // NOTE: RAX == XMM0
@@ -481,26 +489,26 @@ convert_procedure_to_intermediate_code(Compilation_Unit* cu, bool insert_debug_b
     // Save HOME registers
     for_array_v(proc->arg_types, type, type_index) {
         Ic_Raw_Type rt = convert_type_to_raw_type(type);
-        s64 disp = (arg_index + 1)*8;
-        Ic_Arg dest = ic_stk(rt, disp, X64_RSP);
+        s64 disp = arg_index*8;
         
         if (arg_index < 4) {
+            // None is used because this code is outside the stack frame
+            Ic_Arg dest = ic_stk(rt, disp + 8, IcStkArea_None);
             array_push(home_register, dest);
         }
+        Ic_Arg dest = ic_stk(rt, disp, IcStkArea_Caller_Args);
         
         int size = type->size;
         if (size != 1 && size != 2 && size != 4 && size != 8) {
             Ic_Arg src = dest;
-            cu->stack_curr_used = align_forward(cu->stack_curr_used, type->align) + size;
-            disp = -cu->stack_curr_used;
-            dest = ic_stk(rt, disp);
+            dest = ic_push_local(cu, type);
             src.type |= IC_SINT; // TODO(Alexander): strange way of disable ptr dereference
             
             X64_Arg_Copy copy = { type, dest, src };
             array_push(copy_args, copy);
         }
         
-        map_put(cu->stack_displacements, proc->arg_idents[type_index], disp);
+        map_put(cu->locals, proc->arg_idents[type_index], dest);
         arg_index++;
     }
     
@@ -530,11 +538,11 @@ convert_procedure_to_intermediate_code(Compilation_Unit* cu, bool insert_debug_b
     ic_add(cu, IC_LABEL, bb_end);
     ic_add(cu, IC_EPLG);
     
-    
     // Align stack by 16-bytes (excluding 8 bytes for return address)
-    s64 stack_size = cu->stack_curr_used + cu->arg_stack_size + 8;
-    s64 aligned_size = align_forward(stack_size, 16);
-    cu->stack_curr_used = aligned_size - cu->arg_stack_size - 8;
+    cu->stk_usage = cu->stk_locals + cu->stk_args + 8;
+    cu->stk_usage = align_forward(cu->stk_usage, 16);
+    cu->stk_locals = cu->stk_usage - (cu->stk_args);
+    cu->stk_usage -= 8;
 }
 
 void
@@ -894,36 +902,27 @@ x64_string_op(Intermediate_Code* ic, s64 destt, s64 destd,
 }
 
 s64
-convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64 buf_size, s64 rip) {
-    s64 rsp_disp = 0;
+convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 buf_size, s64 rip) {
+    
+    // We arrange the stack so arguments have positive displacement
+    // and local variables have negative displacement.
+    // But we are only allowed to write to RSP with positive displacement.
+    // The rsp_adjust subtracts the arguments stack usage so they will
+    // come first then followed by the local variables.
+    s64 rsp_adjust = 0;
     
     while (ic) {
         ic->count = 0;
-        
-        // HACK(Alexander): fix displacements to account for stack usage
-        if (!buf) {
-            if (ic->dest.type & IC_STK && ic->dest.reg == X64_RSP) {
-                ic->dest.disp += rsp_disp;
-            }
-            if (ic->src0.type & IC_STK && ic->src0.reg == X64_RSP) {
-                ic->src0.disp += rsp_disp;
-            }
-            if (ic->src1.type & IC_STK && ic->src1.reg == X64_RSP) {
-                ic->src1.disp += rsp_disp;
-            }
-        }
         
         switch (ic->opcode) {
             case IC_NOOP: break;
             
             case IC_PRLG: {
-                x64_binary(ic, IC_REG + IC_S64, X64_RSP, 0, IC_IMM + IC_S32, 0, stack_usage, 5, 28);
-                rsp_disp += stack_usage;
+                x64_binary(ic, IC_REG + IC_S64, X64_RSP, 0, IC_IMM + IC_S32, 0, stk_usage, 5, 28);
             } break;
             
             case IC_EPLG: {
-                x64_binary(ic, IC_REG + IC_S64, X64_RSP, 0, IC_IMM + IC_S32, 0, stack_usage, 0, 0);
-                rsp_disp -= stack_usage;
+                x64_binary(ic, IC_REG + IC_S64, X64_RSP, 0, IC_IMM + IC_S32, 0, stk_usage, 0, 0);
                 ic_u8(ic, 0xC3);
             } break;
             

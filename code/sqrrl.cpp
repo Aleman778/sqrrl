@@ -194,8 +194,27 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     assert(main_cu);
     
-    pln("\nIntermediate code:");
     
+    // Compute the actual stack displacement for each Ic_Arg
+    for_array(ast_file.units, cu, _3) {
+        Intermediate_Code* ic = cu->ic_first;
+        while (ic) {
+            if (ic->dest.type & IC_STK && ic->dest.reg == X64_RSP) {
+                ic->dest.disp = compute_stk_displacement(cu, ic->dest);
+            }
+            if (ic->src0.type & IC_STK && ic->src0.reg == X64_RSP) {
+                ic->src0.disp = compute_stk_displacement(cu, ic->src0);
+            }
+            if (ic->src1.type & IC_STK && ic->src1.reg == X64_RSP) {
+                ic->src1.disp = compute_stk_displacement(cu, ic->src1);
+            }
+            
+            ic = ic->next;
+        }
+    }
+    
+    
+    pln("\nIntermediate code:");
     String_Builder sb = {};
     for_array(ast_file.units, cu, _2) {
         if (cu->ast->kind != Ast_Decl_Stmt) continue;
@@ -219,7 +238,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 
             } else {
                 string_builder_push(&sb, "  ");
-                
                 
                 if (curr->dest.type) {
                     string_builder_push(&sb, curr->dest);
@@ -254,19 +272,20 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     pln("%", f_string(s));
     string_builder_free(&sb);
     
+    // Convert to X64 machine code
     s64 rip = 0;
-    for_array(ast_file.units, cu, _3) {
-        rip = convert_to_x64_machine_code(cu->ic_first, cu->stack_curr_used + cu->arg_stack_size, 0, 0, rip);
+    for_array(ast_file.units, cu, _4) {
+        rip = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage, 0, 0, rip);
     }
     
     s64 rip2 = 0;
-    for_array(ast_file.units, cu, _4) {
-        rip2 = convert_to_x64_machine_code(cu->ic_first, cu->stack_curr_used + cu->arg_stack_size,
+    for_array(ast_file.units, cu, _5) {
+        rip2 = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage,
                                            (u8*) asm_buffer, (s64) asm_size, rip2);
     }
     assert(rip == rip2);
     
-#if 1
+#if 0
     pln("\nX64 Machine Code (% bytes):", f_umm(rip));
     for (int byte_index = 0; byte_index < rip; byte_index++) {
         u8 byte = ((u8*) asm_buffer)[byte_index];

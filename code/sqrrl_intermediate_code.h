@@ -84,7 +84,6 @@ enum {
 
 typedef u8 Ic_Raw_Type;
 
-
 inline s32
 sizeof_raw_type(Ic_Raw_Type rt) {
     return rt & 0xF;
@@ -130,6 +129,18 @@ typedef u8 Ic_Type_Flags;
 
 typedef s16 Ic_Type;
 
+enum Ic_Stk_Area {
+    IcStkArea_None,
+    IcStkArea_Caller_Args,
+    IcStkArea_Args,
+    IcStkArea_Locals,
+};
+
+struct Ic_Stk_Entry {
+    s64 disp;
+    Ic_Stk_Area area;
+};
+
 struct Ic_Arg {
     union {
         Ic_Type type;
@@ -139,7 +150,15 @@ struct Ic_Arg {
         };
     };
     u8 reg;
-    s64 disp; // alt. imm
+    union {
+        s64 disp; // alt. imm
+        
+        // unresolved stk disp
+        struct {
+            s32 disp;
+            s32 area; // Ic_Stk_Area
+        } stk;
+    };
 };
 
 

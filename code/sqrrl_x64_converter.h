@@ -57,6 +57,11 @@ global const X64_Reg float_arg_registers_ccall_windows[] {
     X64_XMM0, X64_XMM1, X64_XMM2, X64_XMM3
 };
 
+struct X64_Arg_Copy {
+    Type* type;
+    Ic_Arg dest;
+    Ic_Arg src;
+};
 
 inline Ic_Arg
 ic_reg(Ic_Raw_Type t=IC_S32, u8 reg=0) {
@@ -67,23 +72,51 @@ ic_reg(Ic_Raw_Type t=IC_S32, u8 reg=0) {
     return result;
 }
 
+inline s64
+compute_stk_displacement(Compilation_Unit* cu, Ic_Arg arg) {
+    //assert(arg.stk_entry_index < array_count(cu->stk_entries));
+    //Ic_Stk_Entry stk = cu->stk_entries[arg.stk_entry_index];
+    
+    switch (arg.stk.area) {
+        case IcStkArea_None:
+        case IcStkArea_Args: return arg.stk.disp;
+        case IcStkArea_Locals: return arg.stk.disp + cu->stk_args;
+        case IcStkArea_Caller_Args: return arg.stk.disp + cu->stk_args + cu->stk_locals;
+        
+        default: assert(0 && "invalid stack allocation");
+    }
+    
+    return 0;
+}
+
 inline Ic_Arg
-ic_stk(Ic_Raw_Type t, s64 d, u8 reg=X64_RSP) {
+ic_stk(Ic_Raw_Type raw_type, s64 disp, Ic_Stk_Area area=IcStkArea_None, u8 reg=X64_RSP) {
     Ic_Arg result = {};
-    result.type = t + IC_STK;
+    result.type = raw_type + IC_STK;
     result.reg = reg;
-    result.disp = d;
+    result.stk.area = area;
+    result.stk.disp = safe_truncate_s64(disp);
     return result;
 }
 
 inline Ic_Arg
-ic_stk_push(Compilation_Unit* cu, Type* type, string_id ident=0) {
-    s64 disp = align_forward(cu->stack_curr_used, type->align) + type->size;
-    cu->stack_curr_used = disp;
+ic_stk_offset(Ic_Raw_Type raw_type, Ic_Arg stk, s64 disp) {
+    Ic_Arg result = stk;
+    result.type = raw_type + IC_STK;
+    result.stk.disp += safe_truncate_s64(disp);
+    return result;
+}
+
+inline Ic_Arg
+ic_push_local(Compilation_Unit* cu, Type* type, string_id ident=0) {
+    s64 disp = align_forward(cu->stk_locals, type->align);
+    cu->stk_locals = disp + type->size;
+    
+    Ic_Arg result = ic_stk(convert_type_to_raw_type(type), disp, IcStkArea_Locals);
     if (ident) {
-        map_put(cu->stack_displacements, ident, -disp);
+        map_put(cu->locals, ident, result);
     }
-    return ic_stk(convert_type_to_raw_type(type), -disp);
+    return result;
 }
 
 inline Ic_Arg

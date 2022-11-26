@@ -3,6 +3,16 @@
 
 #define PRINT_AST 1
 
+int
+main() {
+    
+    //string s = "Sqrrl compiler";
+    pln("hello world %, %", 10.5, 10); // TODO: fix multiple args overwrits return addr
+    return 0;
+}
+
+#if 0
+
 inline v3
 vec3_add(v3 a, v3 b) {
     v3 result;
@@ -10,6 +20,13 @@ vec3_add(v3 a, v3 b) {
     result.y = a.y + b.y;
     result.z = a.z + b.z;
     return result;
+}
+
+f32
+main2() {
+    v3 v = v3 { x: 2, y: 3, z: 5 };
+    v = vec3_add(v, v);
+    return v.x + v.y + v.z; // 20.0
 }
 
 inline int
@@ -24,17 +41,14 @@ main2() {
 }
 
 f32
-main() {
+main2() {
     v3 v = v3 { x: 2, y: 3, z: 5 };
     v = vec3_add(v, v);
     return v.x + v.y + v.z; // 20.0
 }
 
-#if 0
-
 int
 main2() {
-    
     //int x = 10;
     //int y = 20;
     
@@ -43,18 +57,10 @@ main2() {
     //f32 y = 20.4;
     
     if (20 > (s32) x) {
-        return 9999;
+        return 9999; // expect 9999
     }
     
-    return 0;
-}
-
-int
-main2() {
-    
-    //string s = "Sqrrl compiler";
-    pln("hello world %, %", 10.5, 4); // TODO: fix multiple args overwrits return addr
-    return 0;
+    return 0; // not executed
 }
 
 f32

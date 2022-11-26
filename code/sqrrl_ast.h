@@ -295,10 +295,13 @@ struct Compilation_Unit {
     Ic_Basic_Block *bb_first, *bb_last;
     Ic_Basic_Block *bb_return;
     Ic_Basic_Block *bb_data;
+    map(string_id, Ic_Arg)* locals;
     
-    map(string_id, s64)* stack_displacements;
-    s64 stack_curr_used;
-    s64 arg_stack_size;
+    s64 stk_args = 0;
+    s64 stk_locals = 0;
+    s64 stk_caller_args = 0;
+    array(Ic_Stk_Entry)* stk_entries;
+    s64 stk_usage;
 };
 
 struct Ast_File {

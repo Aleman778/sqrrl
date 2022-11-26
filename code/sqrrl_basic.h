@@ -132,6 +132,24 @@ random_f32() {
     return (f32) rand() / (RAND_MAX + 1.0f);
 }
 
+inline u32
+safe_truncate_u64(u64 value) {
+    assert(value <= U32_MAX && "u64 cannot fit in u32");
+    return (u32) value;
+}
+
+inline s32
+safe_truncate_s64(s64 value) {
+    assert(value >= S32_MIN && value <= S32_MAX && "s64 cannot fit in s32");
+    return (u32) value;
+}
+
+inline u32
+safe_cast_u32(s32 value) {
+    assert(value < 0 && "s32 value was negative");
+    return (u32) value;
+}
+
 inline umm
 cstring_count(cstring str) {
     return (umm) strlen(str);

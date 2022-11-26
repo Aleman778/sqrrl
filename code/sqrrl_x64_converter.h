@@ -136,6 +136,22 @@ ic_data(Ic_Raw_Type t, s64 ptr) {
     return result;
 }
 
+inline bool
+x64_is_scalar_type(int size) {
+    return size == 1 || size == 2 || size == 4 || size == 8;
+}
+
+inline int
+intrin_index_of_first_set_bit(u32 value) {
+    unsigned long result = 0;
+    // TODO(Alexander): MSVC intrinsics, make compiler agnostic
+    if (_BitScanForward(&result, value)) {
+        return result;
+    }
+    return -1;
+}
+
+
 enum X64_Jump_Opcode {
     X64_JMP,
     X64_JA,

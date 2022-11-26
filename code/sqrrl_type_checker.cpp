@@ -704,7 +704,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     } break;
                     
                     case Sym_count: {
-                        result = t_smm;
+                        result = normalize_basic_types(t_smm);
                         
                         if (type->Array.capacity > 0) {
                             Value capacity = {};
@@ -718,7 +718,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     
                     case Sym_capacity: {
                         if (type->Array.is_dynamic) {
-                            result = t_smm;
+                            result = normalize_basic_types(t_smm);
                         }
                     } break;
                 }
@@ -1289,6 +1289,8 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         } break;
         
         case Ast_Block_Stmt: {
+            result = t_void;
+            
             push_type_scope(tcx);
             
             // TODO(Alexander): create a new scope
@@ -1396,7 +1398,6 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool comparator=f
     
     switch (lhs->kind) {
         case TypeKind_Basic: {
-            
             if (comparator && 
                 lhs->Basic.flags & BasicFlag_Integer &&
                 rhs->Basic.flags & BasicFlag_Integer) {
@@ -1578,22 +1579,22 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
         
         case Ast_If_Stmt: {
             type_check_expression(tcx, stmt->If_Stmt.cond);
-            type_check_expression(tcx, stmt->If_Stmt.then_block);
-            type_check_expression(tcx, stmt->If_Stmt.else_block);
+            type_check_statement(tcx, stmt->If_Stmt.then_block);
+            type_check_statement(tcx, stmt->If_Stmt.else_block);
             // TODO(Alexander): check that the condition is a boolean
         } break;
         
         case Ast_For_Stmt: {
-            type_check_expression(tcx, stmt->For_Stmt.init);
+            type_check_statement(tcx, stmt->For_Stmt.init);
             type_check_expression(tcx, stmt->For_Stmt.cond);
             type_check_expression(tcx, stmt->For_Stmt.update);
-            type_check_expression(tcx, stmt->For_Stmt.block);
+            type_check_statement(tcx, stmt->For_Stmt.block);
             // TODO(Alexander): check that the condition is a boolean
         } break;
         
         case Ast_While_Stmt: {
             type_check_expression(tcx, stmt->While_Stmt.cond);
-            type_check_expression(tcx, stmt->While_Stmt.block);
+            type_check_statement(tcx, stmt->While_Stmt.block);
             // TODO(Alexander): check that the condition is a boolean
         } break;
         

@@ -3,15 +3,52 @@
 
 #define PRINT_AST 1
 
+
 int
 main() {
+    []int x = { 1, 2, 3, 4, 5};
+    
+    for (int i = 0; i < (int) x.count; i += 1) {
+        print_format("%", x[i]);
+        if (i < (s32) x.count - 1) {
+            print_format(", ");
+        }
+    }
+}
+
+int
+main2() {
+    int count = 0;
+    while (count < 15) {
+        count += 1;
+    }
+    
+    return count; // 15
+}
+
+
+int
+main2() {
+    int count = 0;
+    for (int i = 0; i < 10; i += 1) {
+        count += 1;
+    }
+    
+    return count; // 10
+}
+
+
+
+#if 0
+
+int
+main2() {
     
     //string s = "Sqrrl compiler";
     pln("hello world %, %", 10.5, 10); // TODO: fix multiple args overwrits return addr
     return 0;
 }
 
-#if 0
 
 inline v3
 vec3_add(v3 a, v3 b) {

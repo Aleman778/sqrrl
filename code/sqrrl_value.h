@@ -43,8 +43,8 @@ BINOP(Modulo_Assign,      %=, 1,  Assoc_Right, false, mod) \
 BINOP(Bitwise_And_Assign, &=, 1,  Assoc_Right, false, and) \
 BINOP(Bitwise_Or_Assign,  |=, 1,  Assoc_Right, false, or) \
 BINOP(Bitwise_Xor_Assign, ^=, 1,  Assoc_Right, false, xor) \
-BINOP(Shift_Left_Assign,  <<, 1,  Assoc_Right, false, shl) \
-BINOP(Shift_Right_Assign, >>, 1,  Assoc_Right, false, shr) \
+BINOP(Shift_Left_Assign,  <<=, 1,  Assoc_Right, false, shl) \
+BINOP(Shift_Right_Assign, >>=, 1,  Assoc_Right, false, shr) \
 BINOP(Count,               !, 0,  Assoc_Left,  false, noop)
 
 enum Assoc {

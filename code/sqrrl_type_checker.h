@@ -75,8 +75,10 @@ push_type_scope(Type_Context* tcx) {
 void
 pop_type_scope(Type_Context* tcx) {
     assert(tcx->active_scope);
-    for_array(tcx->active_scope->locals, ident, _) {
-        map_remove(tcx->locals, ident);
+    for_array_v(tcx->active_scope->locals, ident, _) {
+        if (!map_remove(tcx->locals, ident)) {
+            assert(0 && "compiler bug; local variable couldn't be freed");
+        }
     }
     array_free(tcx->active_scope->locals);
     array_pop(tcx->scopes);

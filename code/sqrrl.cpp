@@ -178,6 +178,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             pln("AST interpreter exited with code 0\n");
         }
     }
+    pln("sizeof Ic_Arg: %", f_smm(sizeof(Ic_Arg)));
     
     Compilation_Unit* main_cu = 0;
     for_array(ast_file.units, cu, _) {
@@ -285,7 +286,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     assert(rip == rip2);
     
-#if 0
+#if 1
     pln("\nX64 Machine Code (% bytes):", f_umm(rip));
     for (int byte_index = 0; byte_index < rip; byte_index++) {
         u8 byte = ((u8*) asm_buffer)[byte_index];

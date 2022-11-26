@@ -157,7 +157,20 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     if (index.type & IC_IMM) {
                         result.disp += type->size * index.disp;
                     } else {
-                        unimplemented;
+                        if (index.type & IC_STK) {
+                            Ic_Arg tmp = ic_reg(rt);
+                            ic_mov(cu, tmp, index);
+                            index = tmp;
+                        }
+                        
+                        if (x64_is_scalar_type(type->size)) {
+                            // SIB: RSP + RBP * scale
+                            result.scale = (u8) intrin_index_of_first_set_bit(type->size);
+                            result.index = index.reg;
+                        } else {
+                            
+                            
+                        }
                     }
                 } else {
                     unimplemented;
@@ -172,37 +185,57 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             bool isFloat = src0.type & IC_FLOAT;
             
             Binary_Op op = expr->Binary_Expr.op;
-            if (op == BinaryOp_Assign) {
-                convert_assign_to_intermediate_code(cu, expr->type, src0, src1);
-            } else {
-                
-                
-                Intermediate_Code* ic = ic_add(cu);
-                ic->dest = ic_reg(src0.raw_type);
-                ic->src0 = src0;
-                ic->src1 = src1;
-                result = ic->dest;
-                
-                if (binary_is_comparator_table[op]) {
-                    result.raw_type = IC_S8;
-                    ic->opcode = isFloat ? IC_FCMP : IC_CMP;
-                    ic->dest = result;
-                    
-                    ic = ic_add(cu);
-                    ic->dest = result;
-                }
-                
+            bool is_assign = is_binary_assign(op);
+            if (is_assign) {
                 switch (op) {
-                    case BinaryOp_Add: ic->opcode = isFloat ? IC_FADD : IC_ADD; break;
-                    case BinaryOp_Subtract: ic->opcode = isFloat ? IC_FSUB : IC_SUB; break;
-                    case BinaryOp_Multiply: ic->opcode = isFloat ? IC_FMUL : IC_MUL; break;
-                    case BinaryOp_Divide: ic->opcode = isFloat ? IC_FDIV : IC_DIV; break;
-                    case BinaryOp_Modulo: ic->opcode = isFloat ? IC_FMOD : IC_MOD; break;
-                    case BinaryOp_Greater_Than: ic->opcode = IC_SETG; break;
-                    case BinaryOp_Less_Than: ic->opcode = IC_SETL; break;
-                    default: unimplemented;
+                    case BinaryOp_Add_Assign: op = BinaryOp_Add; break;
+                    case BinaryOp_Subtract_Assign: op = BinaryOp_Subtract; break;
+                    case BinaryOp_Multiply_Assign: op = BinaryOp_Multiply; break;
+                    case BinaryOp_Divide_Assign: op = BinaryOp_Divide; break;
+                    case BinaryOp_Modulo_Assign: op = BinaryOp_Modulo; break;
+                    case BinaryOp_Bitwise_And_Assign: op = BinaryOp_Bitwise_And; break;
+                    case BinaryOp_Bitwise_Or_Assign: op = BinaryOp_Bitwise_Or; break;
+                    case BinaryOp_Bitwise_Xor_Assign: op = BinaryOp_Bitwise_Xor; break;
+                    case BinaryOp_Shift_Left_Assign: op = BinaryOp_Shift_Left; break;
+                    case BinaryOp_Shift_Right_Assign: op = BinaryOp_Shift_Right; break;
+                    
+                    default: assert(0 && "invalid assign op");
                 }
             }
+            
+            Intermediate_Code* ic = ic_add(cu);
+            ic->dest = ic_reg(src0.raw_type);
+            ic->src0 = src0;
+            ic->src1 = src1;
+            result = ic->dest;
+            
+            if (binary_is_comparator_table[op]) {
+                result.raw_type = IC_S8;
+                ic->opcode = isFloat ? IC_FCMP : IC_CMP;
+                ic->dest = result;
+                
+                ic = ic_add(cu);
+                ic->dest = result;
+            }
+            
+            switch (op) {
+                case BinaryOp_Add: ic->opcode = isFloat ? IC_FADD : IC_ADD; break;
+                case BinaryOp_Subtract: ic->opcode = isFloat ? IC_FSUB : IC_SUB; break;
+                case BinaryOp_Multiply: ic->opcode = isFloat ? IC_FMUL : IC_MUL; break;
+                case BinaryOp_Divide: ic->opcode = isFloat ? IC_FDIV : IC_DIV; break;
+                case BinaryOp_Modulo: ic->opcode = isFloat ? IC_FMOD : IC_MOD; break;
+                case BinaryOp_Greater_Than: ic->opcode = IC_SETG; break;
+                case BinaryOp_Less_Than: ic->opcode = IC_SETL; break;
+                case BinaryOp_None: break;
+                
+                default: unimplemented;
+            }
+            
+            if (is_assign) {
+                convert_assign_to_intermediate_code(cu, expr->type, src0, result);
+            }
+            
+            
         } break;
         
         case Ast_Call_Expr: {
@@ -376,6 +409,23 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
     return result;
 }
 
+inline void
+convert_ic_to_conditional_jump(Compilation_Unit* cu, Intermediate_Code* code, Ic_Arg cond, Ic_Basic_Block* false_target) {
+    if (code && ic_is_setcc(code->opcode)) {
+        switch (code->opcode) {
+            case IC_SETG: code->opcode = IC_JNG; break;
+            case IC_SETL: code->opcode = IC_JNL; break;
+            default: unimplemented;
+        }
+        code->data = false_target;
+    } else {
+        Intermediate_Code* cmp = ic_add(cu, IC_CMP, false_target);
+        cmp->src0 = cond;
+        cmp->src1 = ic_imm(IC_S8, 0);
+        code = ic_add(cu, IC_JE);
+    }
+}
+
 void
 convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt) {
     switch (stmt->kind) {
@@ -386,7 +436,6 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt) {
             }
         } break;
         
-        
         case Ast_Expr_Stmt: {
             convert_expr_to_intermediate_code(cu, stmt->Expr_Stmt);
         } break;
@@ -394,7 +443,6 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt) {
         case Ast_Assign_Stmt: {
             Type* type = stmt->type;
             string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
-            
             
             Ic_Arg src = {};
             if (is_valid_ast(stmt->Assign_Stmt.expr)) {
@@ -418,19 +466,7 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt) {
             Ic_Basic_Block* bb_else = ic_basic_block();
             Ic_Arg cond = convert_expr_to_intermediate_code(cu, stmt->If_Stmt.cond);
             Intermediate_Code* ic_jump = cu->ic_last;
-            if (ic_jump && ic_is_setcc(ic_jump->opcode)) {
-                switch (ic_jump->opcode) {
-                    case IC_SETG: ic_jump->opcode = IC_JNG; break;
-                    case IC_SETL: ic_jump->opcode = IC_JNL; break;
-                    default: unimplemented;
-                }
-                ic_jump->data = bb_else;
-            } else {
-                Intermediate_Code* cmp = ic_add(cu, IC_CMP, bb_else);
-                cmp->src0 = cond;
-                cmp->src1 = ic_imm(IC_S8, 0);
-                ic_jump = ic_add(cu, IC_JE);
-            }
+            convert_ic_to_conditional_jump(cu, cu->ic_last, cond, bb_else);
             
             convert_stmt_to_intermediate_code(cu, stmt->If_Stmt.then_block);
             
@@ -443,6 +479,35 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt) {
             } else {
                 ic_add(cu, IC_LABEL, bb_else);
             }
+        } break;
+        
+        case Ast_For_Stmt: {
+            Ic_Basic_Block* bb_enter = ic_basic_block();
+            Ic_Basic_Block* bb_exit = ic_basic_block();
+            
+            convert_stmt_to_intermediate_code(cu, stmt->For_Stmt.init);
+            
+            ic_add(cu, IC_LABEL, bb_enter);
+            Ic_Arg cond = convert_expr_to_intermediate_code(cu, stmt->For_Stmt.cond);
+            convert_ic_to_conditional_jump(cu, cu->ic_last, cond, bb_exit);
+            
+            convert_stmt_to_intermediate_code(cu, stmt->For_Stmt.block);
+            convert_expr_to_intermediate_code(cu, stmt->For_Stmt.update);
+            ic_add(cu, IC_JMP, bb_enter);
+            ic_add(cu, IC_LABEL, bb_exit);
+        } break;
+        
+        case Ast_While_Stmt: {
+            Ic_Basic_Block* bb_enter = ic_basic_block();
+            Ic_Basic_Block* bb_exit = ic_basic_block();
+            
+            ic_add(cu, IC_LABEL, bb_enter);
+            Ic_Arg cond = convert_expr_to_intermediate_code(cu, stmt->While_Stmt.cond);
+            convert_ic_to_conditional_jump(cu, cu->ic_last, cond, bb_exit);
+            
+            convert_stmt_to_intermediate_code(cu, stmt->While_Stmt.block);
+            ic_add(cu, IC_JMP, bb_enter);
+            ic_add(cu, IC_LABEL, bb_exit);
         } break;
         
         case Ast_Return_Stmt: {
@@ -543,6 +608,11 @@ convert_procedure_to_intermediate_code(Compilation_Unit* cu, bool insert_debug_b
     cu->stk_usage = align_forward(cu->stk_usage, 16);
     cu->stk_locals = cu->stk_usage - (cu->stk_args);
     cu->stk_usage -= 8;
+}
+
+void
+x64_sib(Intermediate_Code* ic, u8 scale, u8 index, u8 base) {
+    ic_u8(ic, scale << 6 | index << 3 | base);
 }
 
 void

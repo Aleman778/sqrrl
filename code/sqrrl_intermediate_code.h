@@ -150,6 +150,8 @@ struct Ic_Arg {
         };
     };
     u8 reg;
+    u8 scale;
+    u8 index;
     union {
         s64 disp; // alt. imm
         

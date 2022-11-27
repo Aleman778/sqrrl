@@ -200,13 +200,13 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     for_array(ast_file.units, cu, _3) {
         Intermediate_Code* ic = cu->ic_first;
         while (ic) {
-            if (ic->dest.type & IC_STK && ic->dest.reg == X64_RSP) {
+            if (ic->dest.type & IC_STK) {
                 ic->dest.disp = compute_stk_displacement(cu, ic->dest);
             }
-            if (ic->src0.type & IC_STK && ic->src0.reg == X64_RSP) {
+            if (ic->src0.type & IC_STK) {
                 ic->src0.disp = compute_stk_displacement(cu, ic->src0);
             }
-            if (ic->src1.type & IC_STK && ic->src1.reg == X64_RSP) {
+            if (ic->src1.type & IC_STK) {
                 ic->src1.disp = compute_stk_displacement(cu, ic->src1);
             }
             

@@ -421,6 +421,17 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         } break;
         
         case Ast_Unary_Expr: {
+            if (parent_type) {
+                if (expr->Unary_Expr.op == UnaryOp_Dereference) {
+                    Type* new_parent_type = arena_push_struct(&tcx->type_arena, Type);
+                    new_parent_type->kind = TypeKind_Pointer;
+                    new_parent_type->Pointer = parent_type;
+                    new_parent_type->size = sizeof(umm);
+                    new_parent_type->align = alignof(umm);
+                    parent_type = new_parent_type;
+                }
+            }
+            
             Type* type = type_infer_expression(tcx, expr->Unary_Expr.first, parent_type, report_error);
             
             if (type) {
@@ -1389,10 +1400,13 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
 }
 
 bool
-type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool comparator=false) {
+type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool comparator=false, bool report_error=true) {
     assert(lhs && rhs);
     
     if (lhs->kind != rhs->kind) {
+        if (report_error) {
+            type_error_mismatch(tcx, lhs, rhs);
+        }
         return false;
     }
     
@@ -1402,7 +1416,9 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool comparator=f
                 lhs->Basic.flags & BasicFlag_Integer &&
                 rhs->Basic.flags & BasicFlag_Integer) {
                 if ((lhs->Basic.flags & BasicFlag_Unsigned) != (rhs->Basic.flags & BasicFlag_Unsigned)) {
-                    type_error(tcx, string_lit("comparison with both signed and unsigned integers"));
+                    if (report_error) {
+                        type_error(tcx, string_lit("comparison with both signed and unsigned integers"));
+                    }
                     return false;
                 }
             }
@@ -1425,8 +1441,10 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool comparator=f
             }
             
             if (lossy) {
-                type_error(tcx, string_format("conversion from `%` to `%`, possible loss of data",
-                                              f_type(rhs), f_type(lhs)));
+                if (report_error) {
+                    type_error(tcx, string_format("conversion from `%` to `%`, possible loss of data",
+                                                  f_type(rhs), f_type(lhs)));
+                }
                 return false;
             }
         } break;
@@ -1434,14 +1452,19 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool comparator=f
         case TypeKind_Struct: {
             // TODO(Alexander): this will not work for anonymous structs
             if (lhs != rhs) {
-                type_error(tcx, string_format("mismatched types expected `%`, found `%`",
-                                              f_type(lhs), f_type(rhs)));
+                if (report_error) {
+                    type_error_mismatch(tcx, lhs, rhs);
+                }
                 return false;
             }
         } break;
         
         case TypeKind_Pointer: {
-            return type_check_assignment(tcx, lhs->Pointer, rhs->Pointer, comparator);
+            bool success = type_check_assignment(tcx, lhs->Pointer, rhs->Pointer, comparator, false);
+            if (!success) {
+                type_error_mismatch(tcx, lhs, rhs);
+                return false;
+            }
         } break;
     }
     
@@ -1638,7 +1661,6 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
             }
             
             tcx->return_type = type->Function.return_type;
-            pop_type_scope(tcx);
         }
     }
     
@@ -1676,8 +1698,13 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
     }
     
     
+    while (tcx->active_scope) {
+        pop_type_scope(tcx);
+    }
+    
     map_free(tcx->local_type_table);
     map_free(tcx->locals);
+    
     tcx->block_depth = 0;
     
     return result;

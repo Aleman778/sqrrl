@@ -210,14 +210,8 @@ global const u8 x64_jmp_opcodes[] = {
 
 inline bool
 ic_is_setcc(Ic_Opcode opcode) {
-    return opcode >= IC_SETG && opcode <= IC_SETNL;
+    return opcode >= IC_SETE && opcode <= IC_SETLE;
 }
-
-inline Ic_Opcode
-ic_convert_set_to_jump(Ic_Opcode opcode)  {
-    return (Ic_Opcode) (opcode + (IC_JG - IC_SETG));
-}
-
 
 Intermediate_Code*
 ic_add(Compilation_Unit* cu, Ic_Opcode opcode = IC_NOOP, void* data=0) {

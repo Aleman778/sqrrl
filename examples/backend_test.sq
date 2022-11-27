@@ -4,6 +4,17 @@
 #define PRINT_AST 1
 
 
+f32
+main2() {
+    v3 x = v3 { x: 1, y: 2, z: 3};
+    v3* y = &x;
+    y -= 1000;
+    
+    return *(y + 1004).y; // 3 (not recommended of course)
+}
+
+#if 1
+
 int
 main() {
     []int x = { 1, 2, 3, 4, 5};
@@ -38,17 +49,15 @@ main2() {
 }
 
 
-
-#if 0
-
+#if 0 // FIXME!!!!
 int
 main2() {
     
-    //string s = "Sqrrl compiler";
-    pln("hello world %, %", 10.5, 10); // TODO: fix multiple args overwrits return addr
+    string s = "Sqrrl compiler"; // TODO: strings as format arg
+    pln("hello world [%]: %, %", "Sqrrl", 10.5, 10);
     return 0;
 }
-
+#endif
 
 inline v3
 vec3_add(v3 a, v3 b) {

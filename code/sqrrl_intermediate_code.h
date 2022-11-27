@@ -6,12 +6,15 @@ IC(EPLG) \
 IC(DEBUG_BREAK) \
 IC(LABEL) \
 IC(CALL) \
+IC(NEG) \
+IC(NOT) \
 IC(ADD) \
 IC(SUB) \
 IC(MUL) \
 IC(DIV) \
 IC(MOD) \
 IC(MOV) \
+IC(LEA) \
 IC(CAST_F2S) \
 IC(CAST_S2F) \
 IC(REINTERP_F2S) \
@@ -19,8 +22,8 @@ IC(MOVSX) \
 IC(MOVZX) \
 IC(MEMCPY) \
 IC(MEMSET) \
-IC(LEA) \
 IC(CMP) \
+IC(TEST) \
 IC(FMOV) \
 IC(FADD) \
 IC(FSUB) \
@@ -28,17 +31,19 @@ IC(FMUL) \
 IC(FDIV) \
 IC(FMOD) \
 IC(FCMP) \
+IC(SETE) \
+IC(SETNE) \
 IC(SETG) \
-IC(SETNG) \
+IC(SETGE) \
 IC(SETL) \
-IC(SETNL) \
+IC(SETLE) \
 IC_JMP(JMP) \
-IC_JMP(JG) \
-IC_JMP(JNG) \
-IC_JMP(JL) \
-IC_JMP(JNL) \
 IC_JMP(JE) \
 IC_JMP(JNE) \
+IC_JMP(JNG) \
+IC_JMP(JNGE) \
+IC_JMP(JNL) \
+IC_JMP(JNLE) \
 
 enum Ic_Opcode {
 #define IC(name) IC_##name,
@@ -93,6 +98,7 @@ inline Ic_Raw_Type
 basic_type_to_raw_type(Basic_Type basic) {
     switch (basic) {
         case Basic_s8:  return IC_S8;
+        case Basic_bool:  
         case Basic_u8:  return IC_U8;
         case Basic_s16: return IC_S16;
         case Basic_u16: return IC_U16;

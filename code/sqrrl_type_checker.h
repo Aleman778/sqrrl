@@ -35,6 +35,12 @@ type_error(Type_Context* tcx, string message) {
 }
 
 inline void
+type_error_mismatch(Type_Context* tcx, Type* expected, Type* found) {
+    type_error(tcx, string_format("mismatched types expected `%`, found `%`",
+                                  f_type(expected), f_type(found)));
+}
+
+inline void
 type_warning(Type_Context* tcx, string message) {
     Span_Data span = {};
     string filename = string_lit("examples/demo.sq"); // TODO: store names of source files somewhere!

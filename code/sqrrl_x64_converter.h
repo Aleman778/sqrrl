@@ -293,7 +293,8 @@ inline void x64_mov(Intermediate_Code* ic,
 inline void x64_add(Intermediate_Code* ic, 
                     Ic_Type t1, s64 r1, s64 d1, 
                     Ic_Type t2, s64 r2, s64 d2, 
-                    Ic_Type t3, s64 r3, s64 d3);
+                    Ic_Type t3, s64 r3, s64 d3,
+                    u8 reg_field, u8 opcode);
 
 void convert_procedure_to_intermediate_code(Compilation_Unit* cu, bool insert_debug_break);
 s64 convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64 buf_size, s64 rip);

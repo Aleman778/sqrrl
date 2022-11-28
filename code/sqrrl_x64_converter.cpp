@@ -205,7 +205,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 case UnaryOp_Logical_Not: {
                     assert(src.type & IC_STK | IC_REG);
                     
-                    result = ic_reg(cu, X64_RAX);
+                    result = ic_reg(src.raw_type, X64_RAX);
                     if (src.type & IC_STK) {
                         Ic_Arg tmp = ic_reg(src.raw_type, X64_RDX);
                         ic_mov(cu, tmp, src);
@@ -215,22 +215,20 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     Ic_Basic_Block* bb_unset = ic_basic_block();
                     Ic_Basic_Block* bb_exit = ic_basic_block();
                     
-                    Intermediate_Code* ic = ic_add(ic, IC_TEST);
+                    Intermediate_Code* ic = ic_add(cu, IC_TEST);
                     ic->src0 = src;
                     ic->src1 = src;
                     
-                    ic_add(ic, IC_JNE, bb_unset);
-                    
-                    // set
-                    ic_add(ic, IC_JNE, bb_unset);
+                    // unset
+                    ic_add(cu, IC_JNE, bb_unset);
                     ic_mov(cu, result, ic_imm(rt, 1));
-                    ic_add(ic, IC_JMP, bb_exit);
+                    ic_add(cu, IC_JMP, bb_exit);
                     
                     // unset
-                    ic_add(ic, IC_LABEL, bb_unset);
+                    ic_add(cu, IC_LABEL, bb_unset);
                     ic_mov(cu, result, ic_imm(rt, 0));
                     
-                    ic_add(ic, IC_LABEL, bb_unset);
+                    ic_add(cu, IC_LABEL, bb_exit);
                     
                 } break;
                 
@@ -615,7 +613,9 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt) {
             // TODO(Alexander): this is platform/architecture specific
             Ic_Arg result = convert_expr_to_intermediate_code(cu, stmt->Return_Stmt.expr);
             if (cu->ic_return.type) {
-                convert_assign_to_intermediate_code(cu, stmt->type, cu->ic_return, result);
+                if (!(result.reg == 0 && result.type & (IC_FLOAT | IC_SINT | IC_UINT))) {
+                    convert_assign_to_intermediate_code(cu, stmt->type, cu->ic_return, result);
+                }
             }
             ic_add(cu, IC_JMP, cu->bb_return);
         } break;
@@ -735,6 +735,20 @@ x64_modrm(Intermediate_Code* ic, Ic_Type t, s64 d, s64 r, s64 rm=X64_RSP) {
     } else {
         ic_u8(ic, MODRM_DIRECT | (((u8) r&7)<<3) | (u8) rm&7);
     }
+}
+
+inline void
+x64_unary(Intermediate_Code* ic, Ic_Type t, s64 r, s64 d, u8 reg_field) {
+    if (ic->dest.type & IC_REG) {
+        x64_mov(ic, ic->dest.type, ic->dest.reg, ic->dest.disp, t, r, d);
+        t = ic->dest.type;
+        r = ic->dest.reg;
+        d = ic->dest.disp;
+    }
+    
+    // F7 /3 	NEG r/m32 	M
+    ic_u8(ic, 0xF7);
+    x64_modrm(ic, t, d, reg_field, r);
 }
 
 inline void
@@ -1117,6 +1131,14 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                 ic_u8(ic, 0xC3);
             } break;
             
+            case IC_NEG: {
+                x64_unary(ic, ic->src0.type, ic->src0.reg, ic->src0.disp, 3);
+            } break;
+            
+            case IC_NOT: {
+                x64_unary(ic, ic->src0.type, ic->src0.reg, ic->src0.disp, 2);
+            } break;
+            
             case IC_ADD: {
                 x64_add(ic, 
                         ic->dest.type, ic->dest.reg, ic->dest.disp,
@@ -1226,6 +1248,15 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                            ic->src1.type, ic->src1.reg, ic->src1.disp, 7, 0x38);
             } break;
             
+            case IC_TEST: {
+                assert(ic->src0.type & (IC_REG | IC_STK));
+                assert(ic->src1.type & IC_REG);
+                
+                // 85 /r 	TEST r/m32, r32 	MR
+                ic_u8(ic, 0x85);
+                x64_modrm(ic, ic->src0.type, ic->src0.disp, ic->src1.reg, ic->src0.reg);
+            } break;
+            
             case IC_FADD: {
                 x64_float_binary(ic, 0x58, (s64) buf + rip);
             } break;
@@ -1236,6 +1267,12 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
             
             case IC_FDIV: {
                 x64_float_binary(ic, 0x5E, (s64) buf + rip);
+            } break;
+            
+            case IC_JNE: {
+                ic_u8(ic, 0x0F);
+                ic_u8(ic, 0x85);
+                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
             } break;
             
             case IC_JNG: {

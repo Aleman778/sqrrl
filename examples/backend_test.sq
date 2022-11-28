@@ -3,6 +3,21 @@
 
 #define PRINT_AST 1
 
+int
+main() {
+    //int y = 10;
+    //int x = 10 + y;
+    //return x;
+    
+    bool x = false;
+    pln("x = %", !x);
+    
+    return !x;
+}
+
+
+
+#if 0
 
 f32
 main2() {
@@ -13,10 +28,8 @@ main2() {
     return *(y + 1004).y; // 3 (not recommended of course)
 }
 
-#if 1
-
 int
-main() {
+main2() {
     []int x = { 1, 2, 3, 4, 5};
     
     for (int i = 0; i < (int) x.count; i += 1) {

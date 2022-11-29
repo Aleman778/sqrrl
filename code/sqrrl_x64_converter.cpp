@@ -205,12 +205,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 case UnaryOp_Logical_Not: {
                     assert(src.type & IC_STK | IC_REG);
                     
-                    result = ic_reg(src.raw_type, X64_RAX);
-                    if (src.type & IC_STK) {
-                        Ic_Arg tmp = ic_reg(src.raw_type, X64_RDX);
-                        ic_mov(cu, tmp, src);
-                        src = tmp;
-                    }
+                    src = ic_reg_mov(cu, X64_RAX, src);
                     
                     Ic_Basic_Block* bb_unset = ic_basic_block();
                     Ic_Basic_Block* bb_exit = ic_basic_block();
@@ -275,61 +270,92 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             bool isFloat = src0.type & IC_FLOAT;
             
             Binary_Op op = expr->Binary_Expr.op;
-            bool is_assign = is_binary_assign(op);
-            if (is_assign) {
-                switch (op) {
-                    case BinaryOp_Assign: op = BinaryOp_None; break;
-                    case BinaryOp_Add_Assign: op = BinaryOp_Add; break;
-                    case BinaryOp_Subtract_Assign: op = BinaryOp_Subtract; break;
-                    case BinaryOp_Multiply_Assign: op = BinaryOp_Multiply; break;
-                    case BinaryOp_Divide_Assign: op = BinaryOp_Divide; break;
-                    case BinaryOp_Modulo_Assign: op = BinaryOp_Modulo; break;
-                    case BinaryOp_Bitwise_And_Assign: op = BinaryOp_Bitwise_And; break;
-                    case BinaryOp_Bitwise_Or_Assign: op = BinaryOp_Bitwise_Or; break;
-                    case BinaryOp_Bitwise_Xor_Assign: op = BinaryOp_Bitwise_Xor; break;
-                    case BinaryOp_Shift_Left_Assign: op = BinaryOp_Shift_Left; break;
-                    case BinaryOp_Shift_Right_Assign: op = BinaryOp_Shift_Right; break;
+            
+            if (op == BinaryOp_Logical_Or) {
+                Intermediate_Code* test_lhs, *test_rhs;
+                Ic_Basic_Block* bb_true = ic_basic_block();
+                Ic_Basic_Block* bb_exit = ic_basic_block();
+                
+                result = ic_reg_mov(cu, X64_RAX, src0);
+                test_lhs = ic_add(cu, IC_TEST);
+                test_lhs->src0 = result;
+                test_lhs->src1 = result;
+                ic_add(cu, IC_JNE, bb_true);
+                
+                ic_reg_mov(cu, X64_RAX, src1);
+                test_rhs = ic_add(cu, IC_TEST);
+                test_rhs->src0 = result;
+                test_rhs->src1 = result;
+                ic_add(cu, IC_JNE, bb_true);
+                
+                // false
+                ic_mov(cu, result, ic_imm(result.raw_type, 0));
+                ic_add(cu, IC_JMP, bb_exit);
+                
+                // true
+                ic_add(cu, IC_LABEL, bb_true);
+                ic_mov(cu, result, ic_imm(result.raw_type, 1));
+                ic_add(cu, IC_JMP, bb_exit);
+                ic_add(cu, IC_LABEL, bb_exit);
+                
+                
+            } else {
+                
+                bool is_assign = is_binary_assign(op);
+                if (is_assign) {
+                    switch (op) {
+                        case BinaryOp_Assign: op = BinaryOp_None; break;
+                        case BinaryOp_Add_Assign: op = BinaryOp_Add; break;
+                        case BinaryOp_Subtract_Assign: op = BinaryOp_Subtract; break;
+                        case BinaryOp_Multiply_Assign: op = BinaryOp_Multiply; break;
+                        case BinaryOp_Divide_Assign: op = BinaryOp_Divide; break;
+                        case BinaryOp_Modulo_Assign: op = BinaryOp_Modulo; break;
+                        case BinaryOp_Bitwise_And_Assign: op = BinaryOp_Bitwise_And; break;
+                        case BinaryOp_Bitwise_Or_Assign: op = BinaryOp_Bitwise_Or; break;
+                        case BinaryOp_Bitwise_Xor_Assign: op = BinaryOp_Bitwise_Xor; break;
+                        case BinaryOp_Shift_Left_Assign: op = BinaryOp_Shift_Left; break;
+                        case BinaryOp_Shift_Right_Assign: op = BinaryOp_Shift_Right; break;
+                        
+                        default: assert(0 && "invalid assign op");
+                    }
+                }
+                
+                Intermediate_Code* ic = ic_add(cu);
+                ic->dest = ic_reg(src0.raw_type);
+                ic->src0 = src0;
+                ic->src1 = src1;
+                result = ic->dest;
+                
+                if (binary_is_comparator_table[op]) {
+                    result.raw_type = IC_S8;
+                    ic->opcode = isFloat ? IC_FCMP : IC_CMP;
+                    ic->dest = result;
                     
-                    default: assert(0 && "invalid assign op");
+                    ic = ic_add(cu);
+                    ic->dest = result;
+                }
+                
+                switch (op) {
+                    case BinaryOp_Add: ic->opcode = isFloat ? IC_FADD : IC_ADD; break;
+                    case BinaryOp_Subtract: ic->opcode = isFloat ? IC_FSUB : IC_SUB; break;
+                    case BinaryOp_Multiply: ic->opcode = isFloat ? IC_FMUL : IC_MUL; break;
+                    case BinaryOp_Divide: ic->opcode = isFloat ? IC_FDIV : IC_DIV; break;
+                    case BinaryOp_Modulo: ic->opcode = isFloat ? IC_FMOD : IC_MOD; break;
+                    case BinaryOp_Equals: ic->opcode = IC_SETE; break;
+                    case BinaryOp_Not_Equals: ic->opcode = IC_SETNE; break;
+                    case BinaryOp_Greater_Than: ic->opcode = isFloat ? IC_SETA : IC_SETG; break;
+                    case BinaryOp_Greater_Equals: ic->opcode = isFloat ? IC_SETAE : IC_SETGE; break;
+                    case BinaryOp_Less_Than: ic->opcode = isFloat ? IC_SETB : IC_SETL; break;
+                    case BinaryOp_Less_Equals: ic->opcode = isFloat ? IC_SETBE : IC_SETLE; break;
+                    case BinaryOp_None: break;
+                    
+                    default: unimplemented;
+                }
+                
+                if (is_assign) {
+                    convert_assign_to_intermediate_code(cu, expr->type, src0, result);
                 }
             }
-            
-            Intermediate_Code* ic = ic_add(cu);
-            ic->dest = ic_reg(src0.raw_type);
-            ic->src0 = src0;
-            ic->src1 = src1;
-            result = ic->dest;
-            
-            if (binary_is_comparator_table[op]) {
-                result.raw_type = IC_S8;
-                ic->opcode = isFloat ? IC_FCMP : IC_CMP;
-                ic->dest = result;
-                
-                ic = ic_add(cu);
-                ic->dest = result;
-            }
-            
-            switch (op) {
-                case BinaryOp_Add: ic->opcode = isFloat ? IC_FADD : IC_ADD; break;
-                case BinaryOp_Subtract: ic->opcode = isFloat ? IC_FSUB : IC_SUB; break;
-                case BinaryOp_Multiply: ic->opcode = isFloat ? IC_FMUL : IC_MUL; break;
-                case BinaryOp_Divide: ic->opcode = isFloat ? IC_FDIV : IC_DIV; break;
-                case BinaryOp_Modulo: ic->opcode = isFloat ? IC_FMOD : IC_MOD; break;
-                case BinaryOp_Equals: ic->opcode = IC_SETE; break;
-                case BinaryOp_Not_Equals: ic->opcode = IC_SETNE; break;
-                case BinaryOp_Greater_Than: ic->opcode = IC_SETG; break;
-                case BinaryOp_Greater_Equals: ic->opcode = IC_SETGE; break;
-                case BinaryOp_Less_Than: ic->opcode = IC_SETL; break;
-                case BinaryOp_Less_Equals: ic->opcode = IC_SETLE; break;
-                case BinaryOp_None: break;
-                
-                default: unimplemented;
-            }
-            
-            if (is_assign) {
-                convert_assign_to_intermediate_code(cu, expr->type, src0, result);
-            }
-            
             
         } break;
         
@@ -337,6 +363,13 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             assert(expr->Call_Expr.function_type && 
                    expr->Call_Expr.function_type->kind == TypeKind_Function);
             Type_Function* proc = &expr->Call_Expr.function_type->Function;
+            
+            if (proc->intrinsic) {
+                if (proc->intrinsic == &interp_intrinsic_debug_break) {
+                    ic_add(cu, IC_DEBUG_BREAK);
+                    break;
+                }
+            }
             
             s64 stk_args = 0;
             array(X64_Arg_Copy)* copy_args = 0;
@@ -514,6 +547,11 @@ convert_ic_to_conditional_jump(Compilation_Unit* cu, Intermediate_Code* code, Ic
             case IC_SETGE: code->opcode = IC_JNGE; break;
             case IC_SETL: code->opcode = IC_JNL; break;
             case IC_SETLE: code->opcode = IC_JNLE; break;
+            case IC_SETA: code->opcode = IC_JNA; break;
+            case IC_SETAE: code->opcode = IC_JNAE; break;
+            case IC_SETB: code->opcode = IC_JNB; break;
+            case IC_SETBE: code->opcode = IC_JNBE; break;
+            
             default: unimplemented;
         }
         code->data = false_target;
@@ -1265,26 +1303,126 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                 x64_float_binary(ic, 0x5C, (s64) buf + rip);
             } break;
             
+            case IC_FMUL: {
+                x64_float_binary(ic, 0x59, (s64) buf + rip);
+            } break;
+            
             case IC_FDIV: {
                 x64_float_binary(ic, 0x5E, (s64) buf + rip);
             } break;
             
+            case IC_FCMP: {
+                s64 r1 = ic->src0.reg;
+                if (ic->src0.type & IC_STK) {
+                    x64_fmov(ic, 
+                             IC_REG + (ic->src0.type & IC_RT_MASK), X64_XMM1, 0,
+                             ic->src0.type, ic->src0.reg, ic->src0.disp, 
+                             (s64) buf + rip);
+                    r1 = X64_XMM1;
+                }
+                
+                // NP 0F 2E /r UCOMISS xmm1, xmm2/m32
+                if (ic->src0.type & IC_T64) {
+                    ic_u8(ic, 0x66);
+                }
+                ic_u16(ic, 0x2F0F);
+                x64_modrm(ic, ic->src1.type, ic->src1.disp, r1, ic->src1.reg);
+            } break;
+            
+            case IC_SETA: {
+                ic_u16(ic, 0x970F);
+                ic_u8(ic, 0xC0); // RAX
+            } break;
+            
+            case IC_SETAE: {
+                ic_u16(ic, 0x930F);
+                ic_u8(ic, 0xC0); // RAX
+            } break;
+            
+            case IC_SETB: {
+                ic_u16(ic, 0x920F);
+                ic_u8(ic, 0xC0); // RAX
+            } break;
+            
+            case IC_SETBE: {
+                ic_u16(ic, 0x960F);
+                ic_u8(ic, 0xC0); // RAX
+            } break;
+            
+            case IC_SETG: {
+                ic_u16(ic, 0x9F0F);
+                ic_u8(ic, 0xC0); // RAX
+            } break;
+            
+            case IC_SETGE: {
+                ic_u16(ic, 0x9D0F);
+                ic_u8(ic, 0xC0); // RAX
+            } break;
+            
+            case IC_SETL: {
+                ic_u16(ic, 0x9C0F);
+                ic_u8(ic, 0xC0); // RAX
+            } break;
+            
+            case IC_SETLE: {
+                ic_u16(ic, 0x9E0F);
+                ic_u8(ic, 0xC0); // RAX
+            } break;
+            
+            case IC_JNA: {
+                ic_u16(ic, 0x860F);
+                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
+            } break;
+            
+            case IC_JNAE: {
+                ic_u16(ic, 0x820F);
+                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
+            } break;
+            
+            case IC_JNB: {
+                ic_u16(ic, 0x830F);
+                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
+            } break;
+            
+            case IC_JNBE: {
+                ic_u16(ic, 0x870F);
+                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
+            } break;
+            
+            //case IC_JZ:
+            case IC_JE: {
+                ic_u16(ic, 0x840F);
+                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
+            } break;
+            
+            //case IC_JNZ:
             case IC_JNE: {
-                ic_u8(ic, 0x0F);
-                ic_u8(ic, 0x85);
+                ic_u16(ic, 0x850F);
                 x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
             } break;
             
+            //case IC_JLE:
             case IC_JNG: {
-                ic_u8(ic, 0x0F);
-                ic_u8(ic, 0x8E);
+                ic_u16(ic, 0x8E0F);
                 x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
             } break;
             
+            //case IC_JL:
+            case IC_JNGE: {
+                ic_u16(ic, 0x8C0F);
+                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
+            } break;
+            
+            //case IC_JGE:
             case IC_JNL: {
                 // TODO(Alexander): short jumps
-                ic_u8(ic, 0x0F);
-                ic_u8(ic, 0x8D);
+                ic_u16(ic, 0x8D0F);
+                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
+            } break;
+            
+            case IC_JNLE: {
+                // TODO(Alexander): short jumps
+                ic_u16(ic, 0x8F0F);
                 x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
             } break;
             

@@ -1536,6 +1536,15 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                                   binary_is_comparator_table[op]);
         } break;
         
+        case Ast_Cast_Expr: {
+            type_check_expression(tcx, expr->Cast_Expr.expr);
+            // TODO(Alexander): do we want any checking here?
+        } break;
+        
+        case Ast_Paren_Expr: {
+            type_check_expression(tcx, expr->Paren_Expr.expr);
+        } break;
+        
         case Ast_Index_Expr: {
             assert(expr->Index_Expr.array);
             assert(expr->Index_Expr.index);

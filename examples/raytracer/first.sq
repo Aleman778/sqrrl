@@ -18,7 +18,7 @@ random_f32_between(f32 minimum, f32 maximum) {
 
 #include "vecmath.sq"
 
-//#define PRINT_AST 1
+#define PRINT_AST 1
 //#define PRINT_BYTECODE 1
 //#define PRINT_ASM_VREG 1
 //#define PRINT_ASM 1
@@ -96,7 +96,7 @@ ray_color(ray r, [2]Sphere spheres, int depth) {
     Hit_Result found_hit;
     found_hit.t = -1.0f;
     
-    for (int i = 0; i < spheres.count; i += 1) {
+    for (int i = 0; i < (int) spheres.count; i += 1) {
         Hit_Result hit = hit_sphere(spheres[i], r, t_min, t_max);
         if (hit.t > 0.0f) {
             t_max = hit.t;
@@ -123,7 +123,7 @@ main() {
     
     f32 aspect_ratio = 16.0f / 9.0f;
     int image_width = 400;
-    int image_height = (int) (image_width / aspect_ratio);
+    int image_height = (int) (image_width / (s32) aspect_ratio);
     int samples_per_pixel = 100;
     int max_ray_depth = 50;
     
@@ -178,6 +178,8 @@ main() {
             }
             
             color = vec3_scale(color, 1.0f/(f32) samples_per_pixel);
+            
+            debug_break();
             
             // Write the color
             int ir = (int) (254.999f * color.x);

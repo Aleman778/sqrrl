@@ -270,6 +270,15 @@ ic_mov(Compilation_Unit* cu, Ic_Arg dest, Ic_Arg src) {
     ic->src1 = src;
 }
 
+inline Ic_Arg
+ic_reg_mov(Compilation_Unit* cu, u8 dest_reg, Ic_Arg src) {
+    Ic_Arg result = ic_reg(src.raw_type, dest_reg);
+    if ((src.type & IC_REG && src.reg != dest_reg) || (src.type & (IC_STK | IC_IMM))) {
+        ic_mov(cu, result, src);
+    }
+    return result;
+}
+
 #define REX_PATTERN 0x40
 #define REX_FLAG_W bit(3)
 #define REX_FLAG_R bit(2)

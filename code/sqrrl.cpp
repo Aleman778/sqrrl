@@ -59,8 +59,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
 #if BUILD_DEBUG
         // TODO(Alexander): temporary files for testing
         //filepath = string_lit("../personal/first.sq");
-        filepath = string_lit("../examples/backend_test.sq");
-        //filepath = string_lit("../examples/raytracer/first.sq");
+        //filepath = string_lit("../examples/backend_test.sq");
+        filepath = string_lit("../examples/raytracer/first.sq");
 #else
         if (argc <= 1) {
             pln("Usage: sqrrl file.sq");
@@ -185,9 +185,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         if (cu->ast->kind == Ast_Decl_Stmt) {
             Type* type = cu->ast->type;
             if (type->kind == TypeKind_Function) {
-                convert_procedure_to_intermediate_code(cu, is_debugger_present);
+                bool is_main = cu->ident == Sym_main;
+                convert_procedure_to_intermediate_code(cu, is_debugger_present && is_main);
                 
-                if (cu->ident == Sym_main) {
+                if (is_main) {
                     main_cu = cu;
                 }
             }

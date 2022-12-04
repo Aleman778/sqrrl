@@ -639,7 +639,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     
                     prev_compound = curr_compound;
                     curr_compound = curr_compound->Compound.next;
-                    arg_index++;
                 }
             }
             
@@ -662,7 +661,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         } break;
         
         case Ast_Index_Expr: {
-            type_infer_expression(tcx, expr->Index_Expr.index, parent_type, report_error);
+            type_infer_expression(tcx, expr->Index_Expr.index, t_smm, report_error);
             Type* type = type_infer_expression(tcx, expr->Index_Expr.array, parent_type, report_error);
             if (type) {
                 if (type->kind == TypeKind_Array) {
@@ -1485,25 +1484,25 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
             
             int arg_index = 0;
             for_compound(expr->Call_Expr.args, arg) {
-                if (arg_index >= formal_arg_count) {
-                    break;
-                }
+                type_check_expression(tcx, arg->Argument.assign);
                 
-                if (arg->Argument.ident && arg->Argument.ident->kind == Ast_Ident) {
-                    string_id arg_ident = ast_unwrap_ident(arg->Argument.ident);
-                    smm index = map_get_index(t_func->ident_to_index, arg_ident);
-                    if (index > 0) {
-                        arg_index = t_func->ident_to_index[index].value;
-                        assert(arg_index < array_count(t_func->arg_types));
-                    } else {
-                        type_error(tcx, string_format("undeclared parameter with name `%`", 
-                                                      f_var(arg_ident)));
-                        result = false;
-                        break;
+                if (arg_index < formal_arg_count) {
+                    if (arg->Argument.ident && arg->Argument.ident->kind == Ast_Ident) {
+                        string_id arg_ident = ast_unwrap_ident(arg->Argument.ident);
+                        smm index = map_get_index(t_func->ident_to_index, arg_ident);
+                        if (index > 0) {
+                            arg_index = t_func->ident_to_index[index].value;
+                            assert(arg_index < array_count(t_func->arg_types));
+                        } else {
+                            type_error(tcx, string_format("undeclared parameter with name `%`", 
+                                                          f_var(arg_ident)));
+                            result = false;
+                            break;
+                        }
                     }
+                    Type* arg_type = t_func->arg_types[arg_index];
+                    type_check_assignment(tcx, arg_type, arg->Argument.assign->type);
                 }
-                Type* arg_type = t_func->arg_types[arg_index];
-                type_check_assignment(tcx, arg_type, arg->Argument.assign->type);
                 
                 arg_index++;
             }

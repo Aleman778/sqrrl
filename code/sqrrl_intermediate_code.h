@@ -69,6 +69,10 @@ global const cstring ic_opcode_names[] = {
 #undef IC
 };
 
+inline bool
+ic_is_setcc(Ic_Opcode opcode) {
+    return opcode >= IC_SETA && opcode <= IC_SETLE;
+}
 
 enum {
     IC_Void = 0,

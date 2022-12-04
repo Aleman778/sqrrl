@@ -281,6 +281,7 @@ struct Ast {
         Ast* children[5];
     };
     Type* type;
+    Token token;
     Span span;
 };
 

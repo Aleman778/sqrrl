@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "sqrrl.h"
 
@@ -26,6 +27,10 @@ typedef f32 asm_f32_main(void);
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm), bool is_debugger_present) {
+    
+    // TODO(Alexander): temporary use of C runtime RNG
+    srand((uint) time(0));
+    rand();
     
     {
         // Put dummy file as index 0
@@ -178,7 +183,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             pln("AST interpreter exited with code 0\n");
         }
     }
-    pln("sizeof Ic_Arg: %", f_smm(sizeof(Ic_Arg)));
     
     Compilation_Unit* main_cu = 0;
     for_array(ast_file.units, cu, _) {
@@ -195,7 +199,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         }
     }
     assert(main_cu);
-    
     
     // Compute the actual stack displacement for each Ic_Arg
     for_array(ast_file.units, cu, _3) {
@@ -215,64 +218,65 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         }
     }
     
-    
-    pln("\nIntermediate code:");
-    String_Builder sb = {};
-    for_array(ast_file.units, cu, _2) {
-        if (cu->ast->kind != Ast_Decl_Stmt) continue;
-        
-        if (cu->ast->type->kind == TypeKind_Function) {
-            string_builder_push_format(&sb, "\n%:\n", f_type(cu->ast->type));
+    if (flag_print_bc) {
+        pln("\nIntermediate code:");
+        String_Builder sb = {};
+        for_array(ast_file.units, cu, _2) {
+            if (cu->ast->kind != Ast_Decl_Stmt) continue;
             
-        } else {
-            continue;
-        }
-        
-        int bb_index = 0;
-        Intermediate_Code* curr = cu->ic_first;
-        while (curr) {
-            
-            if (curr->opcode == IC_LABEL) {
-                if (bb_index > 0) {
-                    string_builder_push_format(&sb, "\nbb%:\n", f_int(bb_index));
-                }
-                bb_index++;
+            if (cu->ast->type->kind == TypeKind_Function) {
+                string_builder_push_format(&sb, "\n%:\n", f_type(cu->ast->type));
                 
             } else {
-                string_builder_push(&sb, "  ");
+                continue;
+            }
+            
+            int bb_index = 0;
+            Intermediate_Code* curr = cu->ic_first;
+            while (curr) {
                 
-                if (curr->dest.type) {
-                    string_builder_push(&sb, curr->dest);
-                    string_builder_push(&sb, " = ");
-                }
-                
-                string_builder_push(&sb, ic_opcode_names[curr->opcode]);
-                
-                if (curr->src0.type) {
-                    string_builder_push(&sb, " ");
-                    string_builder_push(&sb, curr->src0);
+                if (curr->opcode == IC_LABEL) {
+                    if (bb_index > 0) {
+                        string_builder_push_format(&sb, "\nbb%:\n", f_int(bb_index));
+                    }
+                    bb_index++;
                     
-                    if (curr->src1.type) {
-                        string_builder_push(&sb, ", ");
-                        string_builder_push(&sb, curr->src1);
+                } else {
+                    string_builder_push(&sb, "  ");
+                    
+                    if (curr->dest.type) {
+                        string_builder_push(&sb, curr->dest);
+                        string_builder_push(&sb, " = ");
+                    }
+                    
+                    string_builder_push(&sb, ic_opcode_names[curr->opcode]);
+                    
+                    if (curr->src0.type) {
+                        string_builder_push(&sb, " ");
+                        string_builder_push(&sb, curr->src0);
                         
+                        if (curr->src1.type) {
+                            string_builder_push(&sb, ", ");
+                            string_builder_push(&sb, curr->src1);
+                            
+                        }
+                    }
+                    
+                    if (curr->next) {
+                        string_builder_push(&sb, "\n");
                     }
                 }
                 
-                if (curr->next) {
-                    string_builder_push(&sb, "\n");
-                }
+                curr = curr->next;
             }
             
-            curr = curr->next;
+            string_builder_push(&sb, "\n");
         }
         
-        string_builder_push(&sb, "\n");
+        string s = string_builder_to_string_nocopy(&sb);
+        pln("%", f_string(s));
+        string_builder_free(&sb);
     }
-    
-    string s = string_builder_to_string_nocopy(&sb);
-    pln("%", f_string(s));
-    string_builder_free(&sb);
     
     // Convert to X64 machine code
     s64 rip = 0;
@@ -287,7 +291,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     assert(rip == rip2);
     
-#if 1
+#if 0
     pln("\nX64 Machine Code (% bytes):", f_umm(rip));
     for (int byte_index = 0; byte_index < rip; byte_index++) {
         u8 byte = ((u8*) asm_buffer)[byte_index];
@@ -326,6 +330,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         f32 jit_exit_code = (f32) func();
         pln("\nJIT exited with code: %", f_float(jit_exit_code));
     } else {
+        asm_main* func = (asm_main*) asm_buffer_main;
+        func();
         pln("\nJIT exited with code: 0");
     }
     

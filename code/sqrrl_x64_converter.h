@@ -208,11 +208,6 @@ global const u8 x64_jmp_opcodes[] = {
     0x85, 0x0F, 0x80, 0x0F, 0x8A, 0x0F, 0x8A, 0x0F, 0x8B, 0x0F, 0x88,
 };
 
-inline bool
-ic_is_setcc(Ic_Opcode opcode) {
-    return opcode >= IC_SETE && opcode <= IC_SETLE;
-}
-
 Intermediate_Code*
 ic_add(Compilation_Unit* cu, Ic_Opcode opcode = IC_NOOP, void* data=0) {
     // TODO(Alexander): temporary bump allocation for now
@@ -304,6 +299,8 @@ inline void x64_add(Intermediate_Code* ic,
                     Ic_Type t2, s64 r2, s64 d2, 
                     Ic_Type t3, s64 r3, s64 d3,
                     u8 reg_field, u8 opcode);
+
+Ic_Arg convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr);
 
 void convert_procedure_to_intermediate_code(Compilation_Unit* cu, bool insert_debug_break);
 s64 convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64 buf_size, s64 rip);

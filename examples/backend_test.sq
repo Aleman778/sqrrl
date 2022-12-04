@@ -2,15 +2,111 @@
 #define pln(format, ...) print_format(format##"\n", ##__VA_ARGS__)
 
 #define PRINT_AST 1
+#define PRINT_BYTECODE 1
 
-int
+
+
+inline f32
 main() {
-    //int y = 10;
-    //int x = 10 + y;
-    //return x;
+    f32 discriminant = -2.0f;
+    f32 cmp = 0.0f;
+    if (discriminant < cmp) {
+        return 10.0f;
+    }
+    
+    return 20.0f;
+    
+    //v3 v = v3 { x:-1.775321, y: 0.996044, z: -1.000000 };
+    //return v.x*v.x + v.y*v.y + v.z*v.z;
 }
 
-main() {
+#if 0
+
+f32 
+af() {
+    return 3;
+}
+
+f32 
+bf() {
+    return 9;
+}
+
+f32 
+cf() {
+    return 2;
+}
+
+f32 
+df() {
+    return 4;
+}
+
+f32 
+ef() {
+    return 7;
+}
+
+f32 
+main2() {
+    int image_width = 40;
+    int x = 20;
+    //pln("%", random_f32());
+    f32 u = ((f32) x + 0.5f) / (f32) image_width;
+    return u;
+}
+
+f32
+main2() {
+    //x + y + z() + w() + a;
+    
+    //mov RAX, x;
+    //add RAX, y;
+    //mov [RBP], RAX;
+    //RAX = call z(); // clobbers most registers
+    //add [RBP], RAX;
+    //add RAX, w;
+    //add RAX, a;
+    
+    
+    f32 a = 3;
+    f32 b = 9;
+    f32 c = 2;
+    f32 d = 4;
+    f32 e = 7;
+    
+    //return a + b + c + d + e;
+    //return af() + bf() + cf() + df() + ef();
+    //return a + bf() + c + df() + e;
+    return af() + b + cf() + d + ef();
+}
+
+inline v3
+vec3(f32 x, f32 y, f32 z) {
+    v3 result;
+    result.x = x;
+    result.y = y;
+    result.z = z;
+    return result;
+}
+
+
+inline void
+main2() {
+    //v3 v = v3 { x: 1.0f, y: 2.0f, z: 3.0f };
+    v3 v = vec3(1.0f, 2.0f, 3.0f);
+    pln("vec3(%, %, %)", v.x, v.y, v.z);
+}
+
+int
+main2() {
+    int y = 10;
+    int x = 10 + y;
+    return x;
+}
+
+int
+main2() {
     bool x = false;
     pln("x = %", !x);
     
@@ -18,8 +114,6 @@ main() {
 }
 
 
-
-#if 0
 
 f32
 main2() {
@@ -209,9 +303,6 @@ main2() {
 }
 
 #endif
-
-
-
 
 struct v2 {
     f32 x;

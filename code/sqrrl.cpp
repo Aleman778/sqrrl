@@ -14,11 +14,6 @@
 #include "sqrrl_parser.cpp"
 #include "sqrrl_type_checker.cpp"
 #include "sqrrl_interp.cpp"
-#include "sqrrl_bytecode_builder.cpp"
-#include "sqrrl_bytecode_interp.cpp"
-#include "sqrrl_x64_builder.cpp"
-#include "sqrrl_x64_insn_def.cpp"
-#include "sqrrl_x64_assembler.cpp"
 #include "sqrrl_x64_converter.cpp"
 
 typedef int asm_main(void);

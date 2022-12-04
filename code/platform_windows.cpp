@@ -339,7 +339,8 @@ find_windows_kits_include_dir() {
 }
 
 
-int main(int argc, char* argv[]) {
+int 
+main(int argc, char* argv[]) {
     // Enable UTF-8 encoding
     SetConsoleOutputCP(65001);
     
@@ -364,7 +365,6 @@ int main(int argc, char* argv[]) {
     
     bool is_debugger_present = IsDebuggerPresent();
     
-    // NOTE(alexander): here goes any platform specific initialization
     return compiler_main_entry(argc, argv, 
                                asm_buffer, asm_buffer_size, &asm_buffer_prepare_for_execute, is_debugger_present);
 }

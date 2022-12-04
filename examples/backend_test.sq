@@ -1,0 +1,383 @@
+
+#define pln(format, ...) print_format(format##"\n", ##__VA_ARGS__)
+
+#define PRINT_AST 1
+#define PRINT_BYTECODE 1
+
+
+
+
+inline v3
+vec3_add(v3 a, v3 b) {
+    v3 result;
+    result.x = a.x + b.x;
+    result.y = a.y + b.y;
+    result.z = a.z + b.z;
+    return result;
+}
+inline v3
+vec3(f32 x, f32 y, f32 z) {
+    v3 result;
+    result.x = x;
+    result.y = y;
+    result.z = z;
+    return result;
+}
+
+inline void
+print_vec3(v3 v) {
+    pln("vec3(%, %, %)", v.x, v.y, v.z);
+}
+
+
+int
+main() {
+    
+    //bool x = false || false;
+    //if (x) {
+    //pln("x is true");
+    //} else {
+    //pln("y is false");
+    //}
+    
+    //f32 root = -100.0f;
+    //f32 t_min = 0.0f;
+    //f32 t_max = 10000000000000000000.0f;
+    
+    //if (root < t_min || root >= t_max) {
+    //pln("root = %", root);
+    //}
+    //return 0;
+    
+    f32 x = -20.0f;
+    //f32 y = 0.0f;
+    if (x >= 20.0f) {
+        return 20;
+    }
+    
+    return 0;
+    
+    
+    //v3 v;
+    //v3 w = v3 { x: 1.0f, y: 2.0f, z: 3.0f };
+    
+    //v3 w = vec3(1.0f, 2.0f, 3.0f);
+    //v3 color = vec3_add(v, w);
+    //v3 color = vec3_add(v, vec3(1.0f, 2.0f, 3.0f));
+    //print_vec3(color);
+    
+    //f32 x = 10.0f;
+    //f32 y = 20.0f;
+    //f32 z = 30.0f;
+    //v = vec3(x + 5.0f, y + 5.0f, z + 5.0f);
+    //print_vec3(v);
+    
+    //f32 x = 10.0f;
+    //return -x;
+    
+    //f32 discriminant = -2.0f;
+    //f32 cmp = 0.0f;
+    //if (discriminant < cmp) {
+    //return 10.0f;
+    //}
+    //
+    //return 20.0f;
+    
+    //v3 v = v3 { x:-1.775321, y: 0.996044, z: -1.000000 };
+    //return v.x*v.x + v.y*v.y + v.z*v.z;
+}
+
+#if 0
+
+f32 
+af() {
+    return 3;
+}
+
+f32 
+bf() {
+    return 9;
+}
+
+f32 
+cf() {
+    return 2;
+}
+
+f32 
+df() {
+    return 4;
+}
+
+f32 
+ef() {
+    return 7;
+}
+
+f32 
+main2() {
+    int image_width = 40;
+    int x = 20;
+    //pln("%", random_f32());
+    f32 u = ((f32) x + 0.5f) / (f32) image_width;
+    return u;
+}
+
+f32
+main2() {
+    //x + y + z() + w() + a;
+    
+    //mov RAX, x;
+    //add RAX, y;
+    //mov [RBP], RAX;
+    //RAX = call z(); // clobbers most registers
+    //add [RBP], RAX;
+    //add RAX, w;
+    //add RAX, a;
+    
+    
+    f32 a = 3;
+    f32 b = 9;
+    f32 c = 2;
+    f32 d = 4;
+    f32 e = 7;
+    
+    //return a + b + c + d + e;
+    //return af() + bf() + cf() + df() + ef();
+    //return a + bf() + c + df() + e;
+    return af() + b + cf() + d + ef();
+}
+
+inline v3
+vec3(f32 x, f32 y, f32 z) {
+    v3 result;
+    result.x = x;
+    result.y = y;
+    result.z = z;
+    return result;
+}
+
+
+inline void
+main2() {
+    //v3 v = v3 { x: 1.0f, y: 2.0f, z: 3.0f };
+    v3 v = vec3(1.0f, 2.0f, 3.0f);
+    pln("vec3(%, %, %)", v.x, v.y, v.z);
+}
+
+int
+main2() {
+    int y = 10;
+    int x = 10 + y;
+    return x;
+}
+
+int
+main2() {
+    bool x = false;
+    pln("x = %", !x);
+    
+    return !x;
+}
+
+
+
+f32
+main2() {
+    v3 x = v3 { x: 1, y: 2, z: 3};
+    v3* y = &x;
+    y -= 1000;
+    
+    return *(y + 1004).y; // 3 (not recommended of course)
+}
+
+int
+main2() {
+    []int x = { 1, 2, 3, 4, 5};
+    
+    for (int i = 0; i < (int) x.count; i += 1) {
+        print_format("%", x[i]);
+        if (i < (s32) x.count - 1) {
+            print_format(", ");
+        }
+    }
+}
+
+int
+main2() {
+    int count = 0;
+    while (count < 15) {
+        count += 1;
+    }
+    
+    return count; // 15
+}
+
+
+int
+main2() {
+    int count = 0;
+    for (int i = 0; i < 10; i += 1) {
+        count += 1;
+    }
+    
+    return count; // 10
+}
+
+
+#if 0 // FIXME!!!!
+int
+main2() {
+    
+    string s = "Sqrrl compiler"; // TODO: strings as format arg
+    pln("hello world [%]: %, %", "Sqrrl", 10.5, 10);
+    return 0;
+}
+#endif
+
+inline v3
+vec3_add(v3 a, v3 b) {
+    v3 result;
+    result.x = a.x + b.x;
+    result.y = a.y + b.y;
+    result.z = a.z + b.z;
+    return result;
+}
+
+f32
+main2() {
+    v3 v = v3 { x: 2, y: 3, z: 5 };
+    v = vec3_add(v, v);
+    return v.x + v.y + v.z; // 20.0
+}
+
+inline int
+arr_add([]int x) {
+    return x[0] + x[1] + x[2];
+}
+
+int
+main2() {
+    []int x = {1, 2, 3};
+    return arr_add(([]int) x); //
+}
+
+f32
+main2() {
+    v3 v = v3 { x: 2, y: 3, z: 5 };
+    v = vec3_add(v, v);
+    return v.x + v.y + v.z; // 20.0
+}
+
+int
+main2() {
+    //int x = 10;
+    //int y = 20;
+    
+    s32 y = 9;
+    f32 x = 10.5f + (f32) y;
+    //f32 y = 20.4;
+    
+    if (20 > (s32) x) {
+        return 9999; // expect 9999
+    }
+    
+    return 0; // not executed
+}
+
+f32
+addf(f32 x, f32 y) {
+    return x + y;
+}
+
+f32
+main2() {
+    f32 y = 2.0f;
+    return y; // 2.0
+    
+    return addf(0.423f, 0.6424f); // not reachable
+}
+
+f32
+main2() {
+    return addf(0.423f, 0.6424f); // 1.065400
+}
+
+int
+add(int x, int y) {
+    return x + y;
+}
+
+int
+main2() {
+    return add(10, 20);
+}
+
+f32
+main2() {
+    // SoA - Structure of Arrays
+    struct Mesh {
+        [10]v3 pos;
+        [10]v2 texcoord;
+        [10]v3 normal;
+    }
+    
+    Mesh m = Mesh {};
+    m.pos[2] = v3 { x: 3.0f, y: 5.0f, z: 1.0f };
+    m.texcoord[2] = v2 { x: 3.0f, y: 5.0f };
+    
+    return m.pos[2].x + m.pos[2].y + m.pos[2].z; // 9.0
+}
+
+f32
+main2() {
+    v3 v = v3 { x: 1.0f, y: 2.0f, z: 3.0f };
+    v.x = 2.0f;
+    return v.x + v.y + v.z; // 7.0
+}
+
+f32
+main2() {
+    f32 x = 12.5f;
+    x = x / 23.3f;
+    return x; // 0.536481
+}
+
+s32
+main2() { 
+    int x = 20; 
+    if (x > 30) { 
+        x = x + 10; 
+    } else {
+        x = x + 5;
+    }
+    
+    x = x + 10;
+    return x; // 35
+}
+
+s32
+main2() {
+    []int x = { 10, 20, 30, 40, 50, 60 };
+    return x[0] + x[1] + x[2] + x[3] + x[4] + x[5]; // 210
+}
+
+s32
+main2() {
+    s64 x = (s64) 942300203;
+    s64 y = 533333333;
+    return (s32) (y + x); // 1475633536
+}
+
+#endif
+
+struct v2 {
+    f32 x;
+    f32 y;
+}
+
+struct v3 {
+    f32 x;
+    f32 y;
+    f32 z;
+}

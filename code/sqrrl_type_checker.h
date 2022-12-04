@@ -1,15 +1,10 @@
 
-struct Compilation_Unit {
-    Ast* ast;
-    string_id ident;
-};
-
 struct Type_Scope {
     array(string_id)* locals;
 };
 
 struct Type_Context {
-    Memory_Arena* type_arena;
+    Memory_Arena type_arena;
     
     map(string_id, Type*)* locals;
     map(string_id, Type*)* globals;
@@ -31,12 +26,23 @@ struct Type_Context {
 };
 
 inline void
-type_error(Type_Context* tcx, string message) {
+type_error(Type_Context* tcx, string message, Token* token=0) {
     Span_Data span = {};
     string filename = string_lit("examples/demo.sq"); // TODO: store names of source files somewhere!
-    pln("%:%:%: error: %\n", f_string(filename), f_smm(span.begin_line), f_smm(span.begin_column), f_string(message));
+    
+    if (token) {
+        pln("%:%:%: ", f_string(token->file), f_smm(token->line + 1), f_smm(token->column + 1));
+    }
+    
+    pln("error: %\n", f_string(message));
     DEBUG_log_backtrace();
     tcx->error_count++;
+}
+
+inline void
+type_error_mismatch(Type_Context* tcx, Type* expected, Type* found, Token* token=0) {
+    type_error(tcx, string_format("mismatched types expected `%`, found `%`",
+                                  f_type(expected), f_type(found)), token);
 }
 
 inline void
@@ -49,7 +55,7 @@ type_warning(Type_Context* tcx, string message) {
 }
 
 bool
-push_local(Type_Context* tcx, string_id ident, Type* type, bool report_error) {
+push_local(Type_Context* tcx, string_id ident, Type* type, bool report_error, Token* token=0) {
     assert(tcx->block_depth > 0);
     assert(tcx->active_scope);
     
@@ -57,7 +63,7 @@ push_local(Type_Context* tcx, string_id ident, Type* type, bool report_error) {
         if (report_error) {
             type_error(tcx,
                        string_format("cannot redeclare previous local variable `%`",
-                                     f_string(vars_load_string(ident))));
+                                     f_string(vars_load_string(ident))), token);
         }
         return false;
         
@@ -80,8 +86,10 @@ push_type_scope(Type_Context* tcx) {
 void
 pop_type_scope(Type_Context* tcx) {
     assert(tcx->active_scope);
-    for_array(tcx->active_scope->locals, ident, _) {
-        map_remove(tcx->locals, ident);
+    for_array_v(tcx->active_scope->locals, ident, _) {
+        if (!map_remove(tcx->locals, ident)) {
+            assert(0 && "compiler bug; local variable couldn't be freed");
+        }
     }
     array_free(tcx->active_scope->locals);
     array_pop(tcx->scopes);

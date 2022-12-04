@@ -1450,7 +1450,7 @@ parse_complex_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_M
                 next_token(parser);
                 
                 // TODO(alexander): check what the base type is, e.g. cannot be struct type as return type
-                // TODO(alexander): maybe should be it's own ast node
+                // TODO(alexander): maybe should be it's own AST node
                 Ast* function = push_ast_node(parser);
                 function->kind = Ast_Function_Type;
                 
@@ -1581,25 +1581,53 @@ parse_top_level_declaration(Parser* parser, Ast_File* ast_file) {
     switch (decl->kind) {
         case Ast_Decl_Stmt: {
             string_id ident = ast_unwrap_ident(decl->Decl_Stmt.ident);
+            // TODO(Alexander): decls is deprecated use units instead
             map_put(ast_file->decls, ident, decl);
+            
+            Compilation_Unit comp_unit = {};
+            comp_unit.ident = ident;
+            
+            //pln("Push decl `%`", f_string(vars_load_string(ident)));
+            
+            comp_unit.ast = decl->Decl_Stmt.type;
+            array_push(ast_file->units, comp_unit);
+            
+            comp_unit.ast = decl;
+            array_push(ast_file->units, comp_unit);
         } break;
         
         case Ast_Assign_Stmt: {
             string_id ident = ast_unwrap_ident(decl->Assign_Stmt.ident);
+            // TODO(Alexander): decls is deprecated use units instead
             map_put(ast_file->decls, ident, decl);
+            
+            Compilation_Unit comp_unit = {};
+            comp_unit.ident = ident;
+            comp_unit.ast = decl;
+            array_push(ast_file->units, comp_unit);
+            
             push_static_ast_node(parser, ast_file, decl);
         } break;
         
         case Ast_Typedef: {
+            Compilation_Unit comp_unit = {};
+            comp_unit.ast = decl;
+            
             if (is_ast_compound(decl->Typedef.ident)) {
                 
                 for_compound(decl->Typedef.ident, part) {
                     string_id ident = ast_unwrap_ident(part);
                     map_put(ast_file->decls, ident, decl);
+                    
+                    comp_unit.ident = ident;
+                    array_push(ast_file->units, comp_unit);
                 }
             } else {
                 string_id ident = ast_unwrap_ident(decl->Typedef.ident);
                 map_put(ast_file->decls, ident, decl);
+                comp_unit.ident = ident;
+                array_push(ast_file->units, comp_unit);
+                
             }
         } break;
         

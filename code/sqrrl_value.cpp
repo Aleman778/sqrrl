@@ -53,7 +53,6 @@ value_store_in_memory(Type* type, void* dest, Value_Data src) {
     }
 }
 
-
 Value_Type 
 value_type_from_basic_flags(u32 flags) {
     Value_Type result = Value_void;

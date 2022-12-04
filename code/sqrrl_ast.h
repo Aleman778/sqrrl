@@ -153,7 +153,7 @@ Ast* ident;                                     \
 })                                              \
 AST_GROUP(Type_End,    "type")
 
-// NOTE(Alexander): iterate through a compound ast node, usage:
+// NOTE(Alexander): iterate through a compound AST node, usage:
 // Ast* compound = parse_compound(interp, ...)
 // compound_iterator(compound, it) {
 //     // `it` can be used as the ast node pointer
@@ -281,16 +281,37 @@ struct Ast {
         Ast* children[5];
     };
     Type* type;
+    Token token;
     Span span;
 };
 
 typedef map(string_id, Ast*) Ast_Decl_Table;
+
+struct Compilation_Unit {
+    Ast* ast;
+    string_id ident;
+    
+    Ic_Arg ic_return;
+    Intermediate_Code *ic_first, *ic_last;
+    Ic_Basic_Block *bb_first, *bb_last;
+    Ic_Basic_Block *bb_return;
+    Ic_Basic_Block *bb_data;
+    map(string_id, Ic_Arg)* locals;
+    
+    s64 stk_args = 0;
+    s64 stk_locals = 0;
+    s64 stk_caller_args = 0;
+    array(Ic_Stk_Entry)* stk_entries;
+    s64 stk_usage;
+};
 
 struct Ast_File {
     Ast_Decl_Table* decls;
     Ast* static_block_first; // compound, start of linked list
     Ast* static_block_last; // compound, end of linked list
     s32 error_count;
+    
+    array(Compilation_Unit)* units;
 };
 
 inline string_id
@@ -310,7 +331,12 @@ should_ast_stmt_end_with_semicolon(Ast* node) {
 
 inline bool
 is_ast_none(Ast* ast) {
-    return ast->kind == Ast_None;
+    return ast && ast->kind == Ast_None;
+}
+
+inline bool
+is_valid_ast(Ast* ast) {
+    return ast && ast->kind != Ast_None;
 }
 
 inline bool

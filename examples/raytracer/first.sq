@@ -16,12 +16,37 @@ random_f32_between(f32 minimum, f32 maximum) {
     return minimum + (maximum-minimum)*random_f32();
 }
 
+f32
+clamp_f32(f32 v, f32 min, f32 max) {
+    if (v < min) {
+        v = min;
+    } else if (v > max) {
+        v = max;
+    }
+    return v;
+}
+
 #include "vecmath.sq"
 
 //#define PRINT_AST 1
 //#define PRINT_BYTECODE 1
 //#define PRINT_ASM_VREG 1
 //#define PRINT_ASM 1
+
+v3
+random_v3_in_unit_sphere() {
+    while (true) {
+        v3 v;
+        v.x = random_f32();
+        v.y = random_f32();
+        v.z = random_f32();
+        if (vec3_length_squared(v) >= 1.0f) {
+            continue;
+        }
+        
+        return v;
+    }
+}
 
 v3
 ray_sky_color(ray r) {
@@ -31,8 +56,12 @@ ray_sky_color(ray r) {
     f32 t = 0.5f*(dir.y + 1.0f);
     f32 t_inv = 1.0f-t;
     
-    v3 sky_color_0 = vec3(0.98f, 0.61f, 0.51f);
+    //v3 sky_color_0 = vec3(0.98f, 0.61f, 0.51f);
+    //v3 sky_color_1 = vec3(52.0f/255.0f, 94.0f/255.0f, 173.0f/255.0f);
+    
+    v3 sky_color_0 = vec3(1.0f, 1.0f, 1.0f);
     v3 sky_color_1 = vec3(0.5f, 0.7f, 1.0f);
+    
     v3 color_0 = vec3_scale(sky_color_0, t_inv);
     v3 color_1 = vec3_scale(sky_color_1, t);
     v3 color = vec3_add(color_0, color_1);
@@ -53,39 +82,27 @@ struct Sphere {
 Hit_Result
 hit_sphere(Sphere sphere, ray r, f32 t_min, f32 t_max) {
     Hit_Result result;
-    result.t = 0.0f-1.0f;
+    result.t = -1.0f;
     
     v3 oc = vec3_sub(r.origin, sphere.p);
     
-    //print_vec3(r.direction);
     f32 a = vec3_length_squared(r.direction);
     f32 half_b = vec3_dot(oc, r.direction);
     f32 c = vec3_length_squared(oc) - sphere.radius*sphere.radius;
-    f32 discriminant = half_b*half_b;
-    discriminant -= a*c;
-    //pln("a = %, half_b = %, c = %, discriminant = %", a, half_b, c, discriminant);
+    f32 discriminant = half_b*half_b - a*c;
     
-    f32 cmp = 0.0f;
-    if (discriminant < cmp) {
+    if (discriminant < 0.0f) {
         return result;
     }
     
-    //pln("positive discriminant, %", discriminant);
-    
     f32 sqrt_discriminant = sqrt(discriminant);
-    f32 root = (0.0f-half_b - sqrt_discriminant) / a;
-    //pln("sqrt_discriminant = %", sqrt_discriminant);
-    
-    //pln("1: t_min (%) < root (%) < t_max (%)", t_min, root, t_max);
+    f32 root = (-half_b - sqrt_discriminant) / a;
     if (root < t_min || root >= t_max) {
-        root = (0.0f-half_b + sqrt_discriminant) / a;
-        //pln("2: t_min (%) < root (%) < t_max (%)", t_min, root, t_max);
+        root = (-half_b + sqrt_discriminant) / a;
         if (root < t_min || root >= t_max) {
             return result;
         }
     }
-    
-    //pln("hit sphere!!!");
     
     result.t = root;
     result.p = ray_at(r, root);
@@ -101,7 +118,7 @@ ray_color(ray r, [2]Sphere spheres, int depth) {
         return vec3(0.0f, 0.0f, 0.0f);
     }
     
-    f32 t_min = 0.0f;
+    f32 t_min = 0.001f;
     f32 t_max = INF_F32;
     
     Hit_Result found_hit;
@@ -119,10 +136,12 @@ ray_color(ray r, [2]Sphere spheres, int depth) {
     
     v3 color;
     if (found_hit.t > 0.0f) {
-        //pln("detected hit! t = %", found_hit.t);
-        color.x += 0.5f*(found_hit.normal.x + 1.0f);
-        color.y += 0.5f*(found_hit.normal.y + 1.0f);
-        color.z += 0.5f*(found_hit.normal.z + 1.0f);
+        ray r_bounce;
+        r_bounce.origin = vec3_add(r.origin, vec3_scale(r.direction, found_hit.t));
+        r_bounce.direction = vec3_add(found_hit.normal, random_v3_in_unit_sphere());
+        
+        depth -= 1;
+        color = vec3_scale(ray_color(r_bounce, spheres, depth), 0.5f);
     } else {
         //color = vec3_add(color, ray_sky_color(r));
         color = ray_sky_color(r);
@@ -139,7 +158,6 @@ main() {
     f32 aspect_ratio = 16.0f / 9.0f;
     int image_width = 400;
     int image_height = (int) ((f32) image_width / aspect_ratio);
-    int samples_per_pixel = 1;
     int max_ray_depth = 50;
     
     //pln("resolution: % x %", image_width, image_height);
@@ -168,6 +186,7 @@ main() {
     spheres[1].p = vec3(0.0f, -100.5f, -1.0f);
     spheres[1].radius = 100.0f;
     
+    int samples_per_pixel = 100;
     for (int y = image_height-1; y >= 0; y -= 1) {
         for (int x = 0; x < image_width; x += 1) {
             // TODO(Alexander): bug (image_width) breaks
@@ -196,12 +215,19 @@ main() {
                 color = vec3_add(color, c);
             }
             
-            color = vec3_scale(color, 1.0f/(f32) samples_per_pixel);
+            
+            f32 scale = 1.0f / (f32) samples_per_pixel;
+            //color = vec3_scale(color, scale);
+            
+            // Divide the color by the number of samples and gamma-correct for gamma=2.0.
+            color.x = sqrt(scale * color.x);
+            color.y = sqrt(scale * color.y);
+            color.z = sqrt(scale * color.z);
             
             // Write the color
-            int ir = (int) (254.999f * color.x);
-            int ig = (int) (254.999f * color.y);
-            int ib = (int) (254.999f * color.z);
+            int ir = (int) (256.0f*clamp_f32(color.x, 0.0f, 0.999f));
+            int ig = (int) (256.0f*clamp_f32(color.y, 0.0f, 0.999f));
+            int ib = (int) (256.0f*clamp_f32(color.z, 0.0f, 0.999f));
             
             pln("% % %", ir, ig, ib);
             //return 0;

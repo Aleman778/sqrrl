@@ -1364,6 +1364,11 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
             }
         } break;
         
+        case Ast_Break_Stmt:
+        case Ast_Continue_Stmt: {
+            result = t_void;
+        } break;
+        
         case Ast_For_Stmt: {
             push_type_scope(tcx);
             
@@ -1613,6 +1618,11 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
             type_check_statement(tcx, stmt->If_Stmt.then_block);
             type_check_statement(tcx, stmt->If_Stmt.else_block);
             // TODO(Alexander): check that the condition is a boolean
+        } break;
+        
+        case Ast_Break_Stmt:
+        case Ast_Continue_Stmt: {
+            // TODO(Alexander): check that this statement is inside a loop
         } break;
         
         case Ast_For_Stmt: {

@@ -30,6 +30,7 @@ IC(FSUB) \
 IC(FMUL) \
 IC(FDIV) \
 IC(FMOD) \
+IC(FXOR) \
 IC(FCMP) \
 IC(SETA) \
 IC(SETAE) \

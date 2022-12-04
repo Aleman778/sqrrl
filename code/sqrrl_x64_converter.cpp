@@ -362,10 +362,29 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 case UnaryOp_Negate: {
                     assert(src.type & IC_STK | IC_REG);
                     
-                    Intermediate_Code* ic = ic_add(cu, IC_NEG);
-                    ic->dest = ic_reg(rt);
-                    ic->src0 = src;
-                    result = ic->dest;
+                    if (src.type & IC_FLOAT) {
+                        Type* type = expr->type;
+                        void* data = malloc(type->size);
+                        if (type == t_f64) {
+                            u64* values = (u64*) data;
+                            for (int i = 0; i < 2; i++) *values++ = 0x8000000000000000ull;
+                        } else {
+                            u32* values = (u32*) data;
+                            for (int i = 0; i < 4; i++) *values++ = 0x80000000;
+                        }
+                        
+                        Intermediate_Code* ic = ic_add(cu, IC_FXOR);
+                        ic->dest = ic_reg(rt);
+                        ic->src0 = src;
+                        ic->src1 = ic_data(rt, (s64) data);
+                        result = ic->dest;
+                        
+                    } else {
+                        Intermediate_Code* ic = ic_add(cu, IC_NEG);
+                        ic->dest = ic_reg(rt);
+                        ic->src0 = src;
+                        result = ic->dest;
+                    }
                 } break;
                 
                 case UnaryOp_Logical_Not: {
@@ -456,7 +475,9 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     //                  pass a pointer to it as the first argument
                     s64 disp = stk_args;
                     stk_args += 8;
-                    Ic_Arg src = ic_stk(rt, disp, IcStkArea_Args);
+                    // TODO(Alexander): we should use argument stack but this has to be allocated last
+                    //Ic_Arg src = ic_stk(rt, disp, IcStkArea_Args);
+                    Ic_Arg src = ic_push_local(cu, type);
                     
                     X64_Arg_Copy copy = {};
                     copy.type = proc->return_type;
@@ -480,7 +501,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 Ic_Arg dest = ic_stk(rt, disp, IcStkArea_Args);
                 
                 X64_Arg_Copy copy = {};
-                copy.type = proc->return_type;
+                copy.type = arg->type;
                 copy.src = src;
                 copy.dest = dest;
                 array_push(copy_args, copy);
@@ -626,10 +647,10 @@ convert_ic_to_conditional_jump(Compilation_Unit* cu, Intermediate_Code* code, Ic
         }
         code->data = false_target;
     } else {
-        Intermediate_Code* cmp = ic_add(cu, IC_CMP, false_target);
+        Intermediate_Code* cmp = ic_add(cu, IC_CMP);
         cmp->src0 = cond;
         cmp->src1 = ic_imm(IC_S8, 0);
-        code = ic_add(cu, IC_JE);
+        code = ic_add(cu, IC_JE, false_target);
     }
 }
 
@@ -1121,14 +1142,14 @@ x64_div(Intermediate_Code* ic, bool remainder) {
 }
 
 inline void
-x64_float_binary(Intermediate_Code* ic, u8 opcode, s64 rip) {
+x64_float_binary(Intermediate_Code* ic, u8 opcode, s64 rip, s64 prefix_opcode=-1) {
+    
     Ic_Type t1 = ic->src0.type, t2 = ic->src1.type;
     s64 r1 = ic->src0.reg, r2 = ic->src1.reg;
     s64 d1 = ic->src0.disp, d2 = ic->src1.disp;
     assert(t1 & IC_FLOAT);
     // NOTE(Alexander): assumes destination to be a register
     assert(ic->dest.type & IC_REG);
-    
     
     // Make sure first argument is a register
     switch (t1 & IC_TF_MASK) {
@@ -1168,7 +1189,12 @@ x64_float_binary(Intermediate_Code* ic, u8 opcode, s64 rip) {
     
     // F3 0F 5E /r DIVSS xmm1, xmm2/m32
     // F2 0F 5E /r DIVSD xmm1, xmm2/m64
-    ic_u8(ic, (t1 & IC_T32) ? 0xF3 : 0xF2);
+    if (prefix_opcode == -1) {
+        prefix_opcode = (t1 & IC_T32) ? 0xF3 : 0xF2;
+    }
+    if (prefix_opcode >= 0) {
+        ic_u8(ic, (u8) prefix_opcode);
+    }
     ic_u8(ic, 0x0F);
     ic_u8(ic, opcode);
     
@@ -1408,9 +1434,15 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                 assert(ic->src0.type & (IC_REG | IC_STK));
                 assert(ic->src1.type & IC_REG);
                 
-                // 85 /r 	TEST r/m32, r32 	MR
-                ic_u8(ic, 0x85);
-                x64_modrm(ic, ic->src0.type, ic->src0.disp, ic->src1.reg, ic->src0.reg);
+                if (ic->src0.type & IC_T8) {
+                    // 85 /r 	TEST r/m32, r32 	MR
+                    ic_u8(ic, 0x84);
+                    x64_modrm(ic, ic->src0.type, ic->src0.disp, ic->src1.reg, ic->src0.reg);
+                } else {
+                    // 85 /r 	TEST r/m32, r32 	MR
+                    ic_u8(ic, 0x85);
+                    x64_modrm(ic, ic->src0.type, ic->src0.disp, ic->src1.reg, ic->src0.reg);
+                }
             } break;
             
             case IC_FADD: {
@@ -1429,22 +1461,40 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                 x64_float_binary(ic, 0x5E, (s64) buf + rip);
             } break;
             
+            case IC_FXOR: {
+                x64_float_binary(ic, 0x57, (s64) buf + rip, ic->dest.type & IC_T64 ? 0x66 : -2);
+            } break;
+            
             case IC_FCMP: {
-                s64 r1 = ic->src0.reg;
-                if (ic->src0.type & IC_STK) {
-                    x64_fmov(ic, 
-                             IC_REG + (ic->src0.type & IC_RT_MASK), X64_XMM1, 0,
+                Ic_Type t1 = ic->src0.type, t2 = ic->src1.type;
+                s64 r1 = ic->src0.reg, r2 = ic->src1.reg;
+                s64 d2 = ic->src1.disp;
+                
+                if (t1 & IC_STK) {
+                    Ic_Type tmpt = IC_REG + (ic->src0.type & IC_RT_MASK);
+                    x64_fmov(ic, tmpt, X64_XMM1, 0,
                              ic->src0.type, ic->src0.reg, ic->src0.disp, 
                              (s64) buf + rip);
+                    t1 = tmpt;
                     r1 = X64_XMM1;
                 }
+                
+                if (t2 & (IC_STK | IC_IMM)) {
+                    Ic_Type tmpt = IC_REG + (ic->src1.type & IC_RT_MASK);
+                    x64_fmov(ic, tmpt, X64_XMM2, 0,
+                             ic->src1.type, ic->src1.reg, ic->src1.disp, 
+                             (s64) buf + rip);
+                    t2 = tmpt;
+                    r2 = X64_XMM2;
+                }
+                
                 
                 // NP 0F 2E /r UCOMISS xmm1, xmm2/m32
                 if (ic->src0.type & IC_T64) {
                     ic_u8(ic, 0x66);
                 }
                 ic_u16(ic, 0x2F0F);
-                x64_modrm(ic, ic->src1.type, ic->src1.disp, r1, ic->src1.reg);
+                x64_modrm(ic, t2, d2, r1, r2);
             } break;
             
             case IC_SETA: {

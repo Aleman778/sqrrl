@@ -6,15 +6,82 @@
 
 
 
-inline f32
+
+inline v3
+vec3_add(v3 a, v3 b) {
+    v3 result;
+    result.x = a.x + b.x;
+    result.y = a.y + b.y;
+    result.z = a.z + b.z;
+    return result;
+}
+inline v3
+vec3(f32 x, f32 y, f32 z) {
+    v3 result;
+    result.x = x;
+    result.y = y;
+    result.z = z;
+    return result;
+}
+
+inline void
+print_vec3(v3 v) {
+    pln("vec3(%, %, %)", v.x, v.y, v.z);
+}
+
+
+int
 main() {
-    f32 discriminant = -2.0f;
-    f32 cmp = 0.0f;
-    if (discriminant < cmp) {
-        return 10.0f;
+    
+    //bool x = false || false;
+    //if (x) {
+    //pln("x is true");
+    //} else {
+    //pln("y is false");
+    //}
+    
+    //f32 root = -100.0f;
+    //f32 t_min = 0.0f;
+    //f32 t_max = 10000000000000000000.0f;
+    
+    //if (root < t_min || root >= t_max) {
+    //pln("root = %", root);
+    //}
+    //return 0;
+    
+    f32 x = -20.0f;
+    //f32 y = 0.0f;
+    if (x >= 20.0f) {
+        return 20;
     }
     
-    return 20.0f;
+    return 0;
+    
+    
+    //v3 v;
+    //v3 w = v3 { x: 1.0f, y: 2.0f, z: 3.0f };
+    
+    //v3 w = vec3(1.0f, 2.0f, 3.0f);
+    //v3 color = vec3_add(v, w);
+    //v3 color = vec3_add(v, vec3(1.0f, 2.0f, 3.0f));
+    //print_vec3(color);
+    
+    //f32 x = 10.0f;
+    //f32 y = 20.0f;
+    //f32 z = 30.0f;
+    //v = vec3(x + 5.0f, y + 5.0f, z + 5.0f);
+    //print_vec3(v);
+    
+    //f32 x = 10.0f;
+    //return -x;
+    
+    //f32 discriminant = -2.0f;
+    //f32 cmp = 0.0f;
+    //if (discriminant < cmp) {
+    //return 10.0f;
+    //}
+    //
+    //return 20.0f;
     
     //v3 v = v3 { x:-1.775321, y: 0.996044, z: -1.000000 };
     //return v.x*v.x + v.y*v.y + v.z*v.z;

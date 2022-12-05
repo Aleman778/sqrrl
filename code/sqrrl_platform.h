@@ -11,7 +11,7 @@ struct Canonicalized_Path {
 };
 
 Canonicalized_Path
-DEBUG_get_canonicalized_path(cstring filepath, cstring curr_file_dir = 0);
+DEBUG_get_canonicalized_path(cstring filename, cstring working_directory, cstring curr_file_dir = 0);
 
 Canonicalized_Path
 DEBUG_get_system_canonicalized_path(cstring filepath);

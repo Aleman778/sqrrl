@@ -66,19 +66,17 @@ get_source_file_by_path(cstring filepath) {
 
 Loaded_Source_File
 read_entire_source_file(string filename, Loaded_Source_File* current_file = 0) {
-    // TODO(Alexander): hackish way to join two paths!!! Use OS service for this later.
-    filename = string_concat(working_directory, filename);
-    
     cstring curr_file_path = 0;
     if (current_file) {
         curr_file_path = string_to_cstring(current_file->filedir);
     }
     
+    // TODO(Alexander): add temporary allocator for better performance
     cstring cfilename = string_to_cstring(filename);
-    string_free(filename);
-    
-    Canonicalized_Path canonicalized_path = DEBUG_get_canonicalized_path(cfilename, curr_file_path);
+    cstring cworking_dir = string_to_cstring(working_directory);
+    Canonicalized_Path canonicalized_path = DEBUG_get_canonicalized_path(cfilename, cworking_dir, curr_file_path);
     cstring_free(cfilename);
+    cstring_free(cworking_dir);
     if (curr_file_path) {
         cstring_free(curr_file_path);
     }

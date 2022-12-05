@@ -115,14 +115,12 @@ canonicalize_path(cstring filepath) {
 }
 
 Canonicalized_Path
-DEBUG_get_canonicalized_path(cstring filename, cstring curr_file_dir) {
+DEBUG_get_canonicalized_path(cstring filename, cstring working_dir, cstring curr_file_dir) {
     // searches first in curr file directory (optionally), else in current working directory.
+    cstring filepath = 0;
     
     // NOTE(Alexander): we aren't case sentitive in windows
-    filename = cstring_to_lower_ascii(filename);
-    
     cstring relative_filepath = 0;
-    cstring filepath = filename;
     if (curr_file_dir) {
         
         relative_filepath = cstring_concat(curr_file_dir, filename);
@@ -135,13 +133,22 @@ DEBUG_get_canonicalized_path(cstring filename, cstring curr_file_dir) {
         }
     }
     
+    cstring absolute_filepath = 0;
+    if (!filepath) {
+        absolute_filepath = cstring_concat(working_dir, filename);
+        cstring_to_lower_ascii_nocopy(absolute_filepath);
+        filepath = absolute_filepath;
+    }
+    
     Canonicalized_Path result = canonicalize_path(filepath);
     
-    
     //pln("path: `%`\nname: `%`", f_cstring(result.fullpath), f_cstring(result.file_part));
-    cstring_free(filename);
     if (relative_filepath) {
         cstring_free(relative_filepath);
+    }
+    
+    if (absolute_filepath) {
+        cstring_free(absolute_filepath);
     }
     
     return result;

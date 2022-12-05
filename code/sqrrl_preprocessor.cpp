@@ -308,6 +308,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                         preprocessor->is_system_header = prev_system_header_flag;
                         preprocessor->abort_curr_file = false; // if #pragma once hit then restore it
                     } else {
+                        pln("imported by: %:%:%\n\n", f_string(t->file), f_umm(t->line_number), f_umm(t->column_number));
                         preprocessor->error_count++;
                     }
                 }

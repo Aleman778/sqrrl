@@ -168,17 +168,28 @@ cstring_free(cstring str) {
     free((void*) str);
 }
 
+cstring
+cstring_to_lower_ascii_nocopy(char* dest, cstring src, umm count) {
+    for (umm i = 0; i < count; i++) {
+        char c = src[i];
+        char is_upper = (u8) (c >= 'A' && c <= 'Z');
+        dest[i] = is_upper * (c - 'A' + 'a') + !is_upper * c;
+    }
+    dest[count] = 0;
+    return (cstring) dest;
+}
+
+inline cstring
+cstring_to_lower_ascii_nocopy(cstring str) {
+    return cstring_to_lower_ascii_nocopy((char*) str, str, cstring_count(str));
+}
+
+
 inline cstring
 cstring_to_lower_ascii(cstring str) {
     umm count = cstring_count(str);
     char* result = (char*) malloc(count + 1);
-    for (umm i = 0; i < count; i++) {
-        char c = str[i];
-        char is_upper = (u8) (c >= 'A' && c <= 'Z');
-        result[i] = is_upper * (c - 'A' + 'a') + !is_upper * c;
-    }
-    result[count] = 0;
-    return (cstring) result;
+    return cstring_to_lower_ascii_nocopy(result, str, count);
 }
 
 inline cstring

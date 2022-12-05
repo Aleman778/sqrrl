@@ -85,8 +85,17 @@ type_infer_value(Type_Context* tcx, Value value) {
     switch (value.type) {
         case Value_void: return t_void;
         case Value_boolean: return t_bool;
-        case Value_signed_int: return t_int;
-        case Value_unsigned_int: return t_uint;
+        
+        case Value_signed_int: {
+            s64 val = value_to_s64(value);
+            return (val < S32_MIN || val > S32_MAX) ? t_s64 : t_int;
+        } break;
+        
+        case Value_unsigned_int: {
+            u64 val = value_to_u64(value);
+            return (val > U32_MAX) ? t_u64 : t_uint;
+        } break;
+        
         case Value_floating: return t_f64;
         
         // TODO(Alexander): complex types require potentially building new types
@@ -389,7 +398,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     expr->Value.value.type = Value_cstring;
                 }
             }
-            
             
             type_check_value(tcx, result, expr->Value.value);
             expr->type = result;

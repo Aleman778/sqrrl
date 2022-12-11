@@ -216,8 +216,8 @@ cstring_concat(cstring a, cstring b) {
 
 // NOTE(Alexander): strings
 struct string {
-    umm count;
     u8* data;
+    umm count;
 };
 
 

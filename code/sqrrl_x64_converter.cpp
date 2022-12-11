@@ -1,7 +1,7 @@
 
 void
 convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg dest, Ic_Arg src) {
-    if (type->kind == TypeKind_Array || type->kind == TypeKind_Struct) {
+    if (type->kind == TypeKind_Array || type->kind == TypeKind_Struct || (type->kind == TypeKind_Basic && type->Basic.kind == Basic_string)) {
         Intermediate_Code* ic = ic_add(cu, IC_MEMSET);
         ic->dest = dest;
         ic->src0 = ic_imm(IC_U8, 0);
@@ -204,7 +204,8 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 
             } else if (is_string(expr->Value.value)) {
                 Ic_Raw_Type raw_type = IC_T64;
-                string* str = &expr->Value.value.data.str;
+                string* str = (string*) malloc(sizeof(string));
+                *str = expr->Value.value.data.str;
                 result = ic_data(raw_type, (s64) str);
                 
             } else if (is_cstring(expr->Value.value)) {
@@ -282,19 +283,35 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
         
         case Ast_Field_Expr: {
             Type* type = expr->Field_Expr.var->type;
-            assert(type->kind == TypeKind_Struct);
-            
             string_id ident = ast_unwrap_ident(expr->Field_Expr.field);
-            Struct_Field_Info info = get_field_info(&type->Struct, ident);
             
             result = convert_expr_to_intermediate_code(cu, expr->Field_Expr.var);
-            if (result.type & IC_STK) {
+            assert(result.type & IC_STK);
+            
+            if (type->kind == TypeKind_Struct) {
+                Struct_Field_Info info = get_field_info(&type->Struct, ident);
                 result.disp += info.offset;
                 result.raw_type = convert_type_to_raw_type(expr->type);
+            } else if (type->kind == TypeKind_Array || type == t_string) {
+                // TODO(Alexander): this has hardcoded sizes and types for now
+                switch (ident) {
+                    case Sym_data: {
+                        result.raw_type = IC_T64;
+                    } break;
+                    
+                    case Sym_count: {
+                        result.raw_type = IC_S64;
+                        result.disp += 8;
+                    } break;
+                    
+                    case Sym_capacity: {
+                        result.raw_type = IC_S64;
+                        result.disp += 16;
+                    } break;
+                }
             } else {
-                unimplemented;
+                assert(0 && "invalid type for field expr");
             }
-            
         } break;
         
         case Ast_Index_Expr: {
@@ -1021,6 +1038,11 @@ x64_mov(Intermediate_Code* ic,
         case IC_STK: {
             if (t2 & IC_IMM) {
                 // C7 /0 id 	MOV r/m32, imm32 	MI
+                if (t1 & IC_T64) {
+                    x64_rex(ic, REX_FLAG_64_BIT);
+                }
+                assert((u64) d2 <= U32_MAX && "unimplemented");
+                
                 ic_u8(ic, 0xC7);
                 x64_modrm(ic, t1, d1, 0, r1);
                 ic_u32(ic, (u32) d2);
@@ -1228,15 +1250,15 @@ x64_convert_type(Intermediate_Code* ic, u8 opcode) {
 
 
 void
-x64_lea(Intermediate_Code* ic, s64 r1, s64 r2, s64 d2) {
+x64_lea(Intermediate_Code* ic, s64 r1, s64 r2, s64 d2, s64 rip) {
     // REX.W + 8D /r 	LEA r64,m 	RM
     
     x64_rex(ic, REX_FLAG_W|((u8)r1&8)>>1);
     ic_u8(ic, 0x8D);
     
     if (r2 == X64_RIP) {
-        ic_u8(ic, (u8) r1<<3 | (u8) X64_RBP);
-        ic_u32(ic, (u32) (d2 - ic->count - 4));
+        ic_u8(ic, (u8) (r1&7)<<3 | (u8) X64_RBP);
+        ic_u32(ic, (u32) (d2 - rip - ic->count - 4));
     } else {
         x64_modrm(ic, IC_STK, d2, r1&7, r2);
     }
@@ -1264,18 +1286,17 @@ x64_string_op(Intermediate_Code* ic,
     if (destt & (IC_UINT | IC_SINT)) {
         x64_mov(ic, IC_S64 + IC_REG, X64_RDI, 0, IC_S64 + IC_STK, X64_RSP, destd);
     } else {
-        x64_lea(ic, X64_RDI, destr, destd);
+        x64_lea(ic, X64_RDI, destr, destd, rip);
     }
     
     if (srct & (IC_UINT | IC_SINT)) {
         x64_mov(ic, IC_S64 + IC_REG, src_int_reg, 0, srct, srcr, srcd);
     } else if (srct & IC_T64) {
-        if (srct & IC_IMM) {
-            s64 disp = (s64) srcd - rip;
-            x64_lea(ic, X64_RSI, X64_RIP, disp);
-        } else {
-            x64_lea(ic, X64_RSI, srcr, srcd);
-        }
+        //if (srct & IC_IMM) {
+        //x64_lea(ic, X64_RSI, X64_RIP, disp, rip);
+        //} else {
+        x64_lea(ic, X64_RSI, srcr, srcd, rip);
+        //}
     } else {
         unimplemented;
     }
@@ -1412,7 +1433,7 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
             } break;
             
             case IC_LEA: {
-                x64_lea(ic, ic->src0.reg, ic->src1.reg, ic->src1.disp);
+                x64_lea(ic, ic->src0.reg, ic->src1.reg, ic->src1.disp, (s64) buf + rip);
             } break;
             
             case IC_CMP: {

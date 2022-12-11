@@ -740,6 +740,23 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                         }
                     } break;
                 }
+            } else if (type->kind == TypeKind_Basic && type->Basic.kind == Basic_string) {
+                // NOTE(Alexander): string are actually structs that has 2 fields
+                // - data: the actual underlying storage pointer (not a cstring not null terminated)
+                // - count: the number of characters in the string
+                
+                
+                switch (field_ident) {
+                    case Sym_data: {
+                        result = arena_push_struct(&tcx->type_arena, Type);
+                        result->kind = TypeKind_Pointer;
+                        result->Pointer = t_u8;
+                    } break;
+                    
+                    case Sym_count: {
+                        result = normalize_basic_types(t_smm);
+                    } break;
+                }
                 
             } else {
                 if (report_error) {
@@ -1561,17 +1578,22 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
             assert(expr->Index_Expr.array);
             assert(expr->Index_Expr.index);
             Type* type = expr->Index_Expr.array->type;
-            Value index_value = expr->Index_Expr.index->Value.value;
-            smm index = value_to_smm(index_value);
-            if (index < 0) {
-                type_error(tcx, string_format("invalid index `%`", f_smm(index)));
-                result = 0;
-            }
             
-            if (type->Array.capacity > 0) {
-                if (index > type->Array.capacity - 1) {
-                    type_error(tcx, string_format("array index `%` exceeds capacity `%`",
-                                                  f_smm(index), f_smm(type->Array.capacity)));
+            if (expr->Index_Expr.index->kind == Ast_Value) {
+                Value index_value = expr->Index_Expr.index->Value.value;
+                smm index = value_to_smm(index_value);
+                if (index < 0) {
+                    type_error(tcx, string_format("invalid index `%`", f_smm(index)));
+                    result = 0;
+                }
+                
+                if (type->Array.capacity > 0) {
+                    if (index > type->Array.capacity - 1) {
+                        type_error(tcx, string_format("array index `%` exceeds capacity `%`",
+                                                      f_smm(index), f_smm(type->Array.capacity)));
+                    }
+                } else {
+                    // TODO(Alexander): insert runtime checks
                 }
             } else {
                 // TODO(Alexander): insert runtime checks

@@ -105,7 +105,6 @@ get_field_info(Type_Struct* t_struct, string_id ident) {
     return result;
 }
 
-
 struct Type_Union {
     array(Type*)* types;
     array(string_id)* idents;

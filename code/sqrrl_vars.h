@@ -104,6 +104,8 @@ VAR(pop)      \
 VAR(data)     \
 VAR(count)    \
 VAR(capacity) \
+VAR(pln)      \
+VAR(format)   \
 
 
 typedef u32 string_id;

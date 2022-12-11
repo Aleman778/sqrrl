@@ -19,6 +19,7 @@
 typedef int asm_main(void);
 typedef f32 asm_f32_main(void);
 
+
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm), bool is_debugger_present) {
@@ -97,6 +98,21 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
     Preprocessor preprocessor = {};
+    {
+        // Create global pln macro
+        Preprocessor_Macro pln_macro = {};
+        pln_macro.source = string_lit("print_format(format##\"\\n\", ##__VA_ARGS__)");
+        pln("%", f_string(pln_macro.source));
+        string_id format_id = Sym_format;
+        map_put(pln_macro.arg_mapper, format_id, 0);
+        pln_macro.is_functional = true;
+        pln_macro.is_variadic = true;
+        pln_macro.is_valid = true;
+        
+        string_id pln_id = Sym_pln;
+        map_put(preprocessor.macros, pln_id, pln_macro);
+    }
+    
     string preprocessed_source = preprocess_file(&preprocessor, file.source, file.abspath, file.index);
     
     bool flag_print_ast = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_AST));

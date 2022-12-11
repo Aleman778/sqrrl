@@ -1,7 +1,5 @@
 // Based on https://raytracing.github.io/books/RayTracingInOneWeekend.html
 
-#define pln(format, ...) print_format(format##"\n", ##__VA_ARGS__)
-
 #define PI_F32 3.1415926535897932385f
 #define INF_F32 100000000000000000000000000000000000.0f
 
@@ -186,7 +184,7 @@ main() {
     spheres[1].p = vec3(0.0f, -100.5f, -1.0f);
     spheres[1].radius = 100.0f;
     
-    int samples_per_pixel = 100;
+    int samples_per_pixel = 1;
     for (int y = image_height-1; y >= 0; y -= 1) {
         for (int x = 0; x < image_width; x += 1) {
             // TODO(Alexander): bug (image_width) breaks

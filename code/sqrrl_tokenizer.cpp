@@ -295,7 +295,6 @@ scan_number(Tokenizer* tokenizer, Token& token) {
         scan_while(tokenizer, &is_ident_continue);
     }
     
-    
     return;
 }
 
@@ -376,6 +375,15 @@ advance_token(Tokenizer* tokenizer) {
         token.type = Token_Whitespace;
         advance_utf32_at_end = false;
         
+    } else if (*tokenizer->curr == '\n' || *tokenizer->curr == '\r') {
+        bool crlf = *tokenizer->curr == '\r';
+        utf8_advance_character(tokenizer);
+        if (crlf && *tokenizer->curr == '\n') {
+            utf8_advance_character(tokenizer);
+        }
+        token.type = Token_Newline;
+        advance_utf32_at_end = false;
+        
     } else if (is_ident_start(*tokenizer->curr)) {
         utf8_advance_character(tokenizer);
         scan_while(tokenizer, &is_ident_continue);
@@ -387,7 +395,8 @@ advance_token(Tokenizer* tokenizer) {
         
         if (*tokenizer->curr == '/') {
             do utf8_advance_character(tokenizer);
-            while (tokenizer->curr < tokenizer->end && *tokenizer->curr != '\n');
+            while (tokenizer->curr < tokenizer->end &&
+                   !(*tokenizer->curr == '\n' || *tokenizer->curr == '\r'));
             token.type = Token_Line_Comment;
             
         } else if (*tokenizer->curr == '*') {

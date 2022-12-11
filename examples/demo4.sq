@@ -4,13 +4,12 @@
 #define _MSC_FULL_VER 192930133
 #define _M_AMD64 100
 #define _AMD64_
-#define _M_IX86 600
+#define _M_IX86 100 
 
-#define NOCOMM // no COM API crap
-#define WIN32_LEAN_AND_MEAN // maybe we will get rid of some garbage?
+//#define NOCOMM // no COM API crap
+//#define WIN32_LEAN_AND_MEAN // maybe we will get rid of some garbage?
 
-//#include <windows.h>
-#include <winuser.h>
+#include <windows.h>
 
 int
 main() {

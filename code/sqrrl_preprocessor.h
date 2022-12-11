@@ -21,6 +21,12 @@ struct Replacement_List {
     b32 success;
 };
 
+enum If_Stk_Status {
+    IfStk_Not_Taken = 0,
+    IfStk_Taken,
+    IfStk_Prev_Taken,
+};
+
 struct Preprocessor {
     Tokenizer* tokenizer;
     
@@ -30,7 +36,7 @@ struct Preprocessor {
     String_Builder output;
     array(Source_Group)* source_groups;
     
-    array(bool)* if_result_stack;
+    array(If_Stk_Status)* if_result_stack;
     b32 curr_branch_taken;
     
     u32 curr_file_index;

@@ -95,7 +95,12 @@ VAR(__int8)   \
 VAR(__int16)  \
 VAR(__int32)  \
 VAR(__int64)  \
+VAR(__ptr32)  \
+VAR(__ptr64)  \
 VAR(__pragma) \
+VAR(__inline) \
+VAR(__forceinline) \
+VAR(__unaligned) \
 VAR(__cdecl)  \
 VAR(__fastcall) \
 VAR(pack)     \

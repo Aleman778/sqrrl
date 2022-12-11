@@ -33,6 +33,7 @@ TOKEN(Backslash,               "\\")                \
 TOKEN(Line_Comment,            "line comment")      \
 TOKEN(Block_Comment,           "block comment")     \
 TOKEN(Whitespace,              "whitespace")        \
+TOKEN(Newline,                 "newline")        \
 TOKEN(Ident,                   "identifier")        \
 TOKEN(Raw_Ident,               "identifier")        \
 TOKEN(Int,                     "number")            \
@@ -292,10 +293,8 @@ inline bool
 is_whitespace(u32 c) { // NOTE(alexander): takes utf-32 character as input
     // NOTE(alexander): newlines are not included, they are used to count number of lines etc.
     return (c == 0x0009)  // \t
-        || (c == 0x000A)  // \n
         || (c == 0x000B)  // vertical tab
         || (c == 0x000C)  // form feed
-        || (c == 0x000D)  // \r
         || (c == 0x0020)  // space
         || (c == 0x0085)  // NEXT LINE from latin1
         || (c == 0x200E)  // LEFT-TO-RIGHT MARK
@@ -343,6 +342,7 @@ is_semantical_token(Token token) {
         case Token_Line_Comment:
         case Token_Block_Comment:
         case Token_Whitespace:
+        case Token_Newline:
         case Token_Invalid:
         case Token_Error: {
             return false;

@@ -905,6 +905,12 @@ parse_formal_struct_or_union_argument(Parser* parser) {
     result->Argument.type = parse_type(parser);
     result->Argument.ident = parse_identifier(parser, false);
     
+    if (parser->c_compatibility_mode &&
+        next_token_if_matched(parser, Token_Open_Bracket, false)) {
+        // C-style array
+        result->Argument.type = parse_array_type(parser, result->Argument.type);
+    }
+    
     if (result->Argument.ident && 
         next_token_if_matched(parser, Token_Comma, false)) {
         
@@ -916,6 +922,14 @@ parse_formal_struct_or_union_argument(Parser* parser) {
         do {
             curr->kind = Ast_Compound;
             curr->Compound.node = parse_identifier(parser);
+            
+            if (parser->c_compatibility_mode &&
+                next_token_if_matched(parser, Token_Open_Bracket, false)) {
+                unimplemented;
+                // C-style array
+                //result->Argument.type = parse_array_type(parser, result->Argument.type);
+            }
+            
             curr->Compound.next = push_ast_node(parser);
             curr = curr->Compound.next;
         } while (next_token_if_matched(parser, Token_Comma, false));
@@ -1126,11 +1140,41 @@ parse_type_modifiers(Parser* parser, Ast* result) {
             volatile_type->kind = Ast_Volatile_Type;
             volatile_type->Volatile_Type = result;
             result = volatile_type;
+        } else if (parser->c_compatibility_mode && parse_keyword(parser, Sym___unaligned, false)) {
+            Ast* volatile_type = push_ast_node(parser);
+            volatile_type->kind = Ast_Volatile_Type;
+            volatile_type->Volatile_Type = result;
+            result = volatile_type;
         } else {
             break;
         }
     }
     
+    return result;
+}
+
+inline Ast* 
+parse_array_type(Parser* parser, Ast* elem_type, Ast_Decl_Modifier mods) {
+    assert(parser->current_token.type == Token_Open_Bracket);
+    
+    if (elem_type->kind == Ast_Ident) {
+        Ast* tmp_type = push_ast_node(parser);
+        tmp_type->kind = Ast_Named_Type;
+        tmp_type->Named_Type = elem_type;
+        tmp_type->span = elem_type->span;
+        elem_type = tmp_type;
+    }
+    
+    Ast* result = push_ast_node(parser);
+    result->kind = Ast_Array_Type;
+    result->Array_Type.shape = parse_atom(parser, false);
+    result->Array_Type.is_dynamic = next_token_if_matched(parser, Token_Range, false);
+    next_token_if_matched(parser, Token_Close_Bracket);
+    
+    if (!elem_type) {
+        elem_type = parse_type(parser, true, mods);
+    }
+    result->Array_Type.elem_type = elem_type;
     return result;
 }
 
@@ -1145,13 +1189,7 @@ parse_type(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
     
     if (token.type == Token_Open_Bracket) {
         next_token(parser);
-        Ast* result = push_ast_node(parser);
-        result->kind = Ast_Array_Type;
-        result->Array_Type.shape = parse_atom(parser, false);
-        result->Array_Type.is_dynamic = next_token_if_matched(parser, Token_Range, false);
-        next_token_if_matched(parser, Token_Close_Bracket);
-        result->Array_Type.elem_type = parse_type(parser, true, mods);
-        return result;
+        return parse_array_type(parser, 0, mods);
     }
     
     
@@ -1473,6 +1511,15 @@ parse_complex_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_M
             result->kind = Ast_Pointer_Type;
             result->Pointer_Type = base_type;
             
+            token = peek_token(parser);
+            if (parser->c_compatibility_mode && token.type == Token_Ident) {
+                string_id ident = vars_save_string(token.source);
+                if (ident == Sym___ptr32 || ident == Sym___ptr64) {
+                    // TODO(Alexander): discard these I don't think they are useful
+                    next_token(parser);
+                }
+            }
+            
             result = parse_complex_type(parser, result, false, mods);
         } break;
     }
@@ -1525,12 +1572,14 @@ parse_top_level_declaration(Parser* parser, Ast_File* ast_file) {
         
         string_id id = vars_save_string(token.source);
         switch (id) {
+            case Sym___inline:
             case Kw_inline: {
                 next_token(parser);
                 // TODO(alexander): check if we already have inline/always_inline/no_inline bit set
                 mods |= AstDeclModifier_Inline;
             } continue;
             
+            case Sym___forceinline:
             case Kw_always_inline: {
                 next_token(parser);
                 // TODO(alexander): check if we already have inline/always_inline/no_inline bit set
@@ -1616,11 +1665,18 @@ parse_top_level_declaration(Parser* parser, Ast_File* ast_file) {
             if (is_ast_compound(decl->Typedef.ident)) {
                 
                 for_compound(decl->Typedef.ident, part) {
-                    string_id ident = ast_unwrap_ident(part);
-                    map_put(ast_file->decls, ident, decl);
-                    
-                    comp_unit.ident = ident;
-                    array_push(ast_file->units, comp_unit);
+                    if (part->kind == Ast_Binary_Expr) {
+                        //string_id ident1 = ast_unwrap_ident(part->Binary_Expr.first);
+                        //string_id ident2 = ast_unwrap_ident(part->Binary_Expr.second);
+                        pln("%", f_ast(part));
+                        
+                    } else {
+                        string_id ident = ast_unwrap_ident(part);
+                        map_put(ast_file->decls, ident, decl);
+                        
+                        comp_unit.ident = ident;
+                        array_push(ast_file->units, comp_unit);
+                    }
                 }
             } else {
                 string_id ident = ast_unwrap_ident(decl->Typedef.ident);

@@ -143,7 +143,7 @@ preprocess_parse_define(Preprocessor* preprocessor, Tokenizer* t) {
         token = advance_token(t);
     }
     
-    if (token.type != Token_Whitespace && token.type != Token_Backslash) {
+    if (token.type != Token_Whitespace && token.type != Token_Newline && token.type != Token_Backslash) {
         preprocess_error(preprocessor, string_format("expected `whitespace`, found `%`", f_token(token.type)));
         return;
     }
@@ -206,10 +206,10 @@ preprocess_parse_define(Preprocessor* preprocessor, Tokenizer* t) {
 }
 
 internal inline bool
-check_if_curr_branch_is_taken(array(bool)* if_stack) {
+check_if_curr_branch_is_taken(array(If_Stk_Status)* if_stack) {
     bool result = true;
     for_array_v (if_stack, it, _) {
-        result = result && it;
+        result = result && (it == IfStk_Taken);
     }
     return result;
 }
@@ -223,9 +223,9 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
         
         switch (symbol) {
             case Sym_define: {
-                //if (preprocessor->curr_branch_taken) {
-                preprocess_parse_define(preprocessor, t);
-                //}
+                if (preprocessor->curr_branch_taken) {
+                    preprocess_parse_define(preprocessor, t);
+                }
             } break;
             
             case Sym_undef: {
@@ -318,24 +318,27 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
             case Kw_if: {
                 if (preprocessor->curr_branch_taken) {
                     Value value = preprocess_parse_and_eval_constant_expression(preprocessor, t);
-                    array_push(preprocessor->if_result_stack, value_to_bool(value));
+                    array_push(preprocessor->if_result_stack, 
+                               value_to_bool(value) ? IfStk_Taken : IfStk_Not_Taken);
                     
                     preprocessor->curr_branch_taken =
                         check_if_curr_branch_is_taken(preprocessor->if_result_stack);
                 } else {
-                    array_push(preprocessor->if_result_stack, false);
+                    array_push(preprocessor->if_result_stack, IfStk_Not_Taken);
                 }
             } break;
             
             case Sym_elif: {
                 if (array_count(preprocessor->if_result_stack) > 0) {
-                    bool last_result = array_last(preprocessor->if_result_stack);
+                    If_Stk_Status last_result = array_last(preprocessor->if_result_stack);
                     if (last_result) {
                         preprocessor->curr_branch_taken = false;
+                        array_last(preprocessor->if_result_stack) = IfStk_Prev_Taken;
                     } else {
                         
                         Value value = preprocess_parse_and_eval_constant_expression(preprocessor, t);
-                        array_last(preprocessor->if_result_stack) = value_to_bool(value);
+                        array_last(preprocessor->if_result_stack) = 
+                            value_to_bool(value) ? IfStk_Taken : IfStk_Not_Taken;
                         
                         preprocessor->curr_branch_taken =
                             check_if_curr_branch_is_taken(preprocessor->if_result_stack);
@@ -347,11 +350,12 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
             
             case Kw_else: {
                 if (array_count(preprocessor->if_result_stack) > 0) {
-                    bool last_result = array_last(preprocessor->if_result_stack);
+                    If_Stk_Status last_result = array_last(preprocessor->if_result_stack);
                     if (last_result) {
                         preprocessor->curr_branch_taken = false;
+                        array_last(preprocessor->if_result_stack) = IfStk_Prev_Taken;
                     } else {
-                        array_last(preprocessor->if_result_stack) = !last_result;
+                        array_last(preprocessor->if_result_stack) = IfStk_Taken;
                         preprocessor->curr_branch_taken =
                             check_if_curr_branch_is_taken(preprocessor->if_result_stack);
                     }
@@ -382,7 +386,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                     if (symbol == Sym_ifndef) {
                         value = !value;
                     }
-                    array_push(preprocessor->if_result_stack, value);
+                    array_push(preprocessor->if_result_stack, value ? IfStk_Taken : IfStk_Not_Taken);
                     preprocessor->curr_branch_taken =
                         check_if_curr_branch_is_taken(preprocessor->if_result_stack);
                     
@@ -404,11 +408,6 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
 
 internal Preprocessor_Line
 preprocess_splice_next_line(Preprocessor* preprocessor, Tokenizer* t) {
-    
-    // TODO(Alexander): this can be improved by using the already implemented tokenizer
-    // the only problem right now with the tokenizer is that it doesn't care about new
-    // lines it will simply skip them and we cannot tell easily where new line started/ ended.
-    
     if (t->curr != t->end) {
         t->line_number++;
     }
@@ -417,18 +416,12 @@ preprocess_splice_next_line(Preprocessor* preprocessor, Tokenizer* t) {
     result.curr_line_number = t->line_number;
     
     t->curr = t->end;
-    
-    umm target_line_number = t->line_number + 1;
     u8* begin = t->curr;
-    
-    int block_comment_depth = 0;
-    int paren_depth = 0;
-    
-    // Use tokenizer to find where the next line ends
     t->end = t->end_of_file;
     t->next = t->curr;
     utf8_advance_character(t);
     
+    umm target_line_number = t->line_number + 1;
     Token token = advance_token(t);
     while (is_token_valid(token) && t->line_number < target_line_number) {
         if (token.type == Token_Backslash) {
@@ -437,74 +430,8 @@ preprocess_splice_next_line(Preprocessor* preprocessor, Tokenizer* t) {
         token = advance_token(t);
     }
     
+    // restore tokenizer to beginning of this line
     t->end = t->curr;
-    
-    if (token.type == Token_Whitespace) {
-        // NOTE(Alexander): tokenizer doesn't stop at newline character so we need to find its
-        for (int i = (int) token.source.count - 1; i >= 0; i--) {
-            char c = token.source.data[i];
-            if (c == '\n' || c == '\r') {
-                //t->end = token.source.data + i + 1;
-                //break;
-            }
-        }
-    }
-    
-    
-    
-#if 0
-    while (curr < t->end_of_file && curr_line_number < next_line_number) {
-        Utf8_To_Utf32_Result character = utf8_convert_to_utf32(curr, t->end_of_file);
-        if (character.num_bytes == 0) {
-            preprocess_error(preprocessor, string_lit("invalid utf-8 formatting detected"));
-            break;
-        }
-        
-        // TODO(Alexander): make sure this works with UTF-8 strings
-        if (character.num_bytes == 1) {
-            u8 c = *curr;
-            u8 cn = (curr + 1) < t->end_of_file ? *(curr + 1) : 0;
-            
-            
-            if (c == '/' && cn == '*') {
-                block_comment_depth++;
-                curr++;
-                
-            } else if (c == '*' && cn == '/') {
-                if (block_comment_depth > 0) {
-                    block_comment_depth--;
-                }
-                curr++;
-                
-            } else if (c == '\\') {
-                next_line_number++;
-                
-            } else if (c == '\r') {
-                curr_line_number++;
-                if (block_comment_depth > 0) {
-                    next_line_number = curr_line_number + 1;;
-                }
-                
-                if (cn == '\n') {
-                    curr++; // TODO(Alexander): is this okay?
-                }
-            } else if (c == '\n') {
-                curr_line_number++;
-                if (block_comment_depth > 0) {
-                    next_line_number = curr_line_number + 1;;
-                }
-                
-                if (cn == '\r') {
-                    curr++; // TODO(Alexander): is this okay?
-                }
-            }
-        }
-        
-        curr += character.num_bytes;
-    }
-#endif
-    
-    
     t->curr = begin;
     t->next = t->curr;
     t->curr_line = t->curr;
@@ -820,8 +747,8 @@ preprocess_line(Preprocessor* preprocessor, String_Builder* sb, Tokenizer* t) {
     return true;
 }
 
-internal Token
-preprocess_next_semantical_token(Tokenizer* t, String_Builder* sb, Token token, bool consume_next_token=true) {
+internal inline string
+preprocess_get_non_semantical_token_source(Tokenizer* t) {
     
     Token next_token = advance_token(t);
     
@@ -834,12 +761,7 @@ preprocess_next_semantical_token(Tokenizer* t, String_Builder* sb, Token token, 
         next_token = advance_token(t);
     }
     
-    if (consume_next_token && next_token.type != Token_Concatenator) {
-        string_builder_push(sb, token.source);
-    }
-    string_builder_push(sb, non_semantical_text);
-    
-    return next_token;
+    return non_semantical_text;
 }
 
 internal void
@@ -862,59 +784,86 @@ preprocess_finalize_code(string source) {
     
     String_Builder sb = {};
     
+    umm sb_prev_used = 0;
     Token prev_token = {};
     Token token = advance_token(t);
     
     while (is_token_valid(token)) {
         switch (token.type) {
             case Token_Directive: {
-                
-                prev_token = token;
                 token = advance_semantical_token(t);
-                string_builder_push_format(&sb, "\"%\"", f_string(token.source));
+                
+                if (prev_token.type == Token_String) {
+                    sb.curr_used = sb_prev_used;
+                    preprocess_push_concatenated_strings(&sb, prev_token, token);
+                } else {
+                    sb_prev_used = sb.curr_used;
+                    string_builder_push_format(&sb, "\"%\"", f_string(token.source));
+                }
+                
+                string str = string_view(sb.data + sb_prev_used,
+                                         sb.data + sb.curr_used);
+                prev_token.source = string_copy(str); // TODO(Alexander): temp. allocate
+                prev_token.type = Token_String;
                 
                 token = advance_token(t);
-                prev_token = {};
             } break;
             
             case Token_Concatenator: {
                 Token next_token = advance_semantical_token(t);
+                sb.curr_used = sb_prev_used;
                 
                 if (prev_token.type == Token_String || next_token.type == Token_String) {
                     preprocess_push_concatenated_strings(&sb, prev_token, next_token);
+                    prev_token.type = Token_String;
                 } else {
                     string_builder_push(&sb, prev_token.source);
                     string_builder_push(&sb, next_token.source);
+                    prev_token.type = Token_Ident;
                 }
                 
+                string str = string_view(sb.data + sb_prev_used,
+                                         sb.data + sb.curr_used);
+                prev_token.source = string_copy(str); // TODO(Alexander): temp. allocate
+                
                 token = advance_token(t);
-                prev_token = {};
             } break;
             
             case Token_String: {
-                prev_token = token;
-                token = preprocess_next_semantical_token(t, &sb, token, false);
+                // TODO(Alexander): for now we use num_hashes to mark where this 
+                // string begins in the finalized string
                 
-                if (token.type == Token_String) {
+                if (prev_token.type == Token_String) {
+                    sb.curr_used = sb_prev_used;
                     preprocess_push_concatenated_strings(&sb, prev_token, token);
-                    
-                    token = advance_token(t);
-                    prev_token = {};
+                    string str = string_view(sb.data + sb_prev_used,
+                                             sb.data + sb.curr_used);
+                    token.source = string_copy(str); // TODO(Alexander): temp. allocate
                 } else {
-                    if (token.type != Token_Concatenator) {
-                        string_builder_push(&sb, prev_token.source);
-                    }
+                    sb_prev_used = sb.curr_used;
+                    string_builder_push(&sb, token.source);
                 }
+                
+                prev_token = token;
+                token = advance_token(t);
             } break;
             
             case Token_Backslash: {
-                prev_token = token;
                 token = advance_token(t);
             } break;
             
             default: {
-                prev_token = token;
-                token = preprocess_next_semantical_token(t, &sb, token);
+                if (is_semantical_token(token)) {
+                    sb_prev_used = sb.curr_used;
+                    prev_token = token;
+                }
+                
+                string_builder_push(&sb, token.source);
+                token = advance_token(t);
+                while (!is_semantical_token(token) && is_token_valid(token)) {
+                    string_builder_push(&sb, token.source);
+                    token = advance_token(t);
+                }
             } break;
         }
     }
@@ -957,6 +906,17 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath, int 
     
     while (tokenizer.curr < tokenizer.end_of_file) {
         u8* curr_line = curr;
+        
+        
+        
+        //if (tokenizer.line_number == 937) {
+        //pln("%", f_string(tokenizer.file));
+        //if (string_equals(string_lit("winnt.h"), tokenizer.file)) {
+        //
+        //__debugbreak();
+        //}
+        //}
+        
         
         Preprocessor_Line line = preprocess_splice_next_line(preprocessor, &tokenizer);
         curr += line.substring.count;

@@ -80,7 +80,7 @@ parse_error_expected_type(Parser* parser, Token found) {
 
 inline void
 parse_error_unexpected_token(Parser* parser, Token_Type expected, Token found) {
-    parse_error(parser, found, string_format("expected token `%` found `%`", f_token(expected), f_token(found.type)));
+    parse_error(parser, found, string_format("expected token `%` found `%`", f_token(expected), f_string(found.source)));
 }
 
 inline void
@@ -102,6 +102,8 @@ Ast* parse_atom(Parser* parser, bool report_error=true);
 Ast* parse_expression(Parser* parser, bool report_error=true, u8 min_prec=1, Ast* atom_expr=0);
 Ast* parse_statement(Parser* parser, bool report_error=true, Ast_Decl_Modifier mods=0);
 Ast* parse_block_or_single_statement(Parser* parser, bool report_error=true);
+
+inline Ast* parse_array_type(Parser* parser, Ast* elem_type, Ast_Decl_Modifier mods=0);
 Ast* parse_type(Parser* parser, bool report_error=true, Ast_Decl_Modifier mods=0);
 Ast* parse_complex_type(Parser* parser, Ast* base_type, bool report_error=true, Ast_Decl_Modifier mods=0);
 

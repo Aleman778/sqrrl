@@ -24,3 +24,14 @@ main() {
     //MessageBox(0, "Hello world from Sqrrl!", "Description", 0);
 }
 
+
+#define TEST2(_NewItem) TEST("This function or variable has been superceded by newer library "  \
+"or operating system functionality. Consider using " #_NewItem " " \
+"instead. See online help for details.")
+
+#define TEST(msg) "error: " ## msg
+
+int main2() {
+    pln("\n" TEST2(hello_world));
+    pln("hello");
+}

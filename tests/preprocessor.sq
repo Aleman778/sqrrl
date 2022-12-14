@@ -77,9 +77,9 @@ main() {
 #endif
     
 #if (!defined(_MSVC_LANG) || _MSVC_LANG < 201703l) // [
-    pln("9.1 OK!");
-#else
     pln("9.1 fail");
+#else
+    pln("9.1 OK!");
 #endif
     
     // if elif endif
@@ -107,7 +107,8 @@ main() {
 #define INC(x) (x + 1)
 #define ONE_PLUS_ONE (1 + 1)
 #define DEF_AST_NODE(name) pln("%", f_int(name))
-#define AST_IDENT   DEF_AST_NODE(INC(1) + ONE_PLUS_ONE + MA + MA)
+    //#define AST_IDENT   DEF_AST_NODE(INC(1) + ONE_PLUS_ONE + MA + MA)
+#define AST_IDENT   DEF_AST_NODE(10)
     
 #define MA MB
 #define MB MC

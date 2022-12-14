@@ -1123,22 +1123,35 @@ x64_fmov(Intermediate_Code* ic,
 
 inline void
 x64_mul(Intermediate_Code* ic) {
-    // TODO(Alexander): add this instruction!
-    // 0F AF /r 	IMUL r32, r/m32 	RM
-    
-    
     assert(ic->dest.type & IC_REG);
     assert(ic->src0.type & (IC_REG | IC_STK));
-    assert(ic->src1.type & IC_IMM);
-    // 69 /r id 	IMUL r32, r/m32, imm32 	RMI
-    if (ic->dest.type & IC_T64) {
-        x64_rex(ic, REX_FLAG_64_BIT);
-    }
     
-    ic_u8(ic, 0x69);
-    x64_modrm(ic, ic->src0.type, ic->src0.disp, ic->dest.reg, ic->src0.reg);
-    assert(ic->src1.disp >= S32_MIN && ic->src1.disp <= S32_MAX && "cannot fit in imm32");
-    ic_u32(ic, (u32) ic->src1.disp);
+    if (ic->src1.type & IC_IMM) {
+        // 69 /r id 	IMUL r32, r/m32, imm32 	RMI
+        if (ic->dest.type & IC_T64) {
+            x64_rex(ic, REX_FLAG_64_BIT);
+        }
+        
+        ic_u8(ic, 0x69);
+        x64_modrm(ic, ic->src0.type, ic->src0.disp, ic->dest.reg, ic->src0.reg);
+        assert(ic->src1.disp >= S32_MIN && ic->src1.disp <= S32_MAX && "cannot fit in imm32");
+        ic_u32(ic, (u32) ic->src1.disp);
+    } else {
+        Ic_Type t1 = ic->src0.type;
+        s64 r1 = ic->src0.reg;
+        s64 d1 = ic->src0.disp;
+        
+        if (ic->src0.type & IC_STK || ic->src0.reg == ic->dest.reg) {
+            x64_mov(ic, ic->dest.type, ic->dest.reg, ic->dest.disp, t1, r1, d1);
+            t1 = ic->dest.type;
+            r1 = ic->dest.reg;
+            d1 = ic->dest.disp;
+        }
+        
+        // 0F AF /r 	IMUL r32, r/m32
+        ic_u16(ic, 0xAF0F);
+        x64_modrm(ic, ic->src1.type, ic->src1.disp, r1, ic->src1.reg);
+    }
 }
 
 inline void

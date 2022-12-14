@@ -471,7 +471,7 @@ preprocess_actual_argument_next_token(Preprocessor* preprocessor, Tokenizer* t, 
 }
 
 internal Replacement_List
-preprocess_parse_actual_arguments(Preprocessor* preprocessor, Tokenizer* t, Preprocessor_Macro parent_macro) {
+preprocess_parse_actual_arguments(Preprocessor* preprocessor, Tokenizer* t, Preprocessor_Macro parent_macro, Replacement_List args) {
     Replacement_List result = {};
     result.success = true;
     
@@ -491,7 +491,7 @@ preprocess_parse_actual_arguments(Preprocessor* preprocessor, Tokenizer* t, Prep
             
             if (token.type == Token_Ident) {
                 string_id ident = vars_save_string(token.source);
-                if (!preprocess_try_expand_ident(preprocessor, &sb, t, parent_macro, {}, ident)) {
+                if (!preprocess_try_expand_ident(preprocessor, &sb, t, parent_macro, args, ident)) {
                     string_builder_push(&sb, token.source);
                 }
             } else {
@@ -591,6 +591,13 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
         }
         
         return true;
+    } else {
+        smm arg_index = map_get_index(parent_macro.arg_mapper, ident);
+        if (arg_index != -1) {
+            assert(array_count(args.list) > arg_index);
+            string_builder_push(sb, args.list[arg_index]);
+            return true;
+        }
     }
     
     Preprocessor_Macro macro = map_get(preprocessor->macros, ident);
@@ -605,7 +612,7 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
             Token token = preprocess_actual_argument_next_token(preprocessor, t, &paren_depth);
             
             if (token.type == Token_Open_Paren) {
-                macro_args = preprocess_parse_actual_arguments(preprocessor, t, parent_macro);
+                macro_args = preprocess_parse_actual_arguments(preprocessor, t, parent_macro, args);
                 if (!macro_args.success) {
                     return false;
                 }
@@ -639,7 +646,7 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
         preprocess_expand_macro(preprocessor, sb, &tokenizer, macro, macro_args);
         
         string expanded_source = string_view(sb->data + first_used, sb->data + sb->curr_used);
-#if 0
+#if 1
         pln("Expanding macro `%` to:\n`%`", f_string(vars_load_string(ident)), f_string(expanded_source));
 #endif
         
@@ -674,7 +681,6 @@ preprocess_expand_macro(Preprocessor* preprocessor,
                     string arg_source = args.list[arg_index];
                     string_builder_push(sb, arg_source);
                 } else {
-                    
                     if (!preprocess_try_expand_ident(preprocessor, sb, t, macro, args, ident)) {
                         string_builder_push(sb, token.source);
                     }

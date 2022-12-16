@@ -59,10 +59,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     } else {
 #if BUILD_DEBUG
         // TODO(Alexander): temporary files for testing
-        filepath = string_lit("../personal/first.sq");
+        //filepath = string_lit("../personal/first.sq");
         //filepath = string_lit("../examples/backend_test.sq");
         //filepath = string_lit("../examples/raytracer/first.sq");
-        //filepath = string_lit("../examples/demo4.sq");
+        filepath = string_lit("../examples/demo4.sq");
         //filepath = string_lit("../tests/preprocessor.sq");
 #else
         if (argc <= 1) {
@@ -103,7 +103,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         // Create global pln macro
         Preprocessor_Macro pln_macro = {};
         pln_macro.source = string_lit("print_format(format##\"\\n\", ##__VA_ARGS__)");
-        pln("%", f_string(pln_macro.source));
         string_id format_id = Sym_format;
         map_put(pln_macro.arg_mapper, format_id, 0);
         pln_macro.is_functional = true;

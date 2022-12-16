@@ -280,6 +280,15 @@ string_compare(string a, string b) {
 }
 #define string_equals(a, b) (string_compare(a, b) == 0)
 
+inline bool
+string_begins_with(string str, string substr) {
+    if (str.count < substr.count) {
+        return false;
+    }
+    str.count = substr.count;
+    return string_equals(str, substr);
+}
+
 inline void
 string_to_lower_ascii_no_copy(string* str) {
     for (umm i = 0; i < str->count; i++) {

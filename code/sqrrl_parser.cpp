@@ -1157,7 +1157,7 @@ inline Ast*
 parse_array_type(Parser* parser, Ast* elem_type, Ast_Decl_Modifier mods) {
     assert(parser->current_token.type == Token_Open_Bracket);
     
-    if (elem_type->kind == Ast_Ident) {
+    if (elem_type && elem_type->kind == Ast_Ident) {
         Ast* tmp_type = push_ast_node(parser);
         tmp_type->kind = Ast_Named_Type;
         tmp_type->Named_Type = elem_type;

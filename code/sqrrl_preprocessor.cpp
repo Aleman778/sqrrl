@@ -297,7 +297,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                     }
                     
                     if (included_file.is_valid) {
-                        
+                        u32 curr_file_index = preprocessor->curr_file_index; // remember this so we don't loose it
                         preprocessor->curr_file_index = included_file.index;
                         u32 prev_num_includes = map_get(preprocessor->loaded_file_indices, included_file.index);
                         map_put(preprocessor->loaded_file_indices, included_file.index, prev_num_includes + 1);
@@ -307,6 +307,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                                         included_file.filename, included_file.index);
                         preprocessor->is_system_header = prev_system_header_flag;
                         preprocessor->abort_curr_file = false; // if #pragma once hit then restore it
+                        preprocessor->curr_file_index = curr_file_index;
                     } else {
                         pln("imported by: %:%:%\n\n", f_string(t->file), f_umm(t->line_number), f_umm(t->column_number));
                         preprocessor->error_count++;
@@ -646,7 +647,7 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
         preprocess_expand_macro(preprocessor, sb, &tokenizer, macro, macro_args);
         
         string expanded_source = string_view(sb->data + first_used, sb->data + sb->curr_used);
-#if 1
+#if 0
         pln("Expanding macro `%` to:\n`%`", f_string(vars_load_string(ident)), f_string(expanded_source));
 #endif
         
@@ -914,6 +915,9 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath, int 
         u8* curr_line = curr;
         
         
+        //if (string_equals(string_lit("winuser.h"), tokenizer.file)) {
+        //__debugbreak();
+        //}
         
         //if (tokenizer.line_number == 937) {
         //pln("%", f_string(tokenizer.file));

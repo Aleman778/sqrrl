@@ -7,6 +7,7 @@
 #define PATH_MAX 260 // TODO(alexander): this shouldn't be used, just for debug code!!!
 #endif
 
+global cstring windows_system_header_shared = 0;
 global array(cstring)* windows_system_header_dirs = 0;
 //global cstring working_directory = "";
 
@@ -141,6 +142,25 @@ DEBUG_get_canonicalized_path(cstring filename, cstring working_dir, cstring curr
     }
     
     Canonicalized_Path result = canonicalize_path(filepath);
+    
+    HANDLE file_handle = CreateFileA(result.fullpath, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+    if (file_handle != INVALID_HANDLE_VALUE) {
+        CloseHandle(file_handle);
+    } else {
+        // TODO(Alexander): this is a hack to work around windows headers uses 
+        // shared as working dir, we need to support multiple contexts for this.
+        //bool poppack = string_equals(string_lit(filename), string_lit("poppack.h"));
+        //if (poppack) {
+        for_array_v(windows_system_header_dirs, dir, _) {
+            if (string_begins_with(string_lit(curr_file_dir), string_lit(dir))) {
+                cstring tmp_path = cstring_concat(windows_system_header_shared, filename);
+                result = canonicalize_path(tmp_path);
+                cstring_free(tmp_path);
+                break;
+            }
+        }
+    }
+    
     
     //pln("path: `%`\nname: `%`", f_cstring(result.fullpath), f_cstring(result.file_part));
     if (relative_filepath) {
@@ -357,9 +377,10 @@ main(int argc, char* argv[]) {
     cstring windows_system_headers_root_dir = find_windows_kits_include_dir();
     
     if (windows_system_headers_root_dir != 0) {
+        windows_system_header_shared = cstring_concat(windows_system_headers_root_dir, "shared\\");
         array_push(windows_system_header_dirs, cstring_concat(windows_system_headers_root_dir, "um\\"));
         array_push(windows_system_header_dirs, cstring_concat(windows_system_headers_root_dir, "ucrt\\"));
-        array_push(windows_system_header_dirs, cstring_concat(windows_system_headers_root_dir, "shared\\"));
+        array_push(windows_system_header_dirs, windows_system_header_shared);
         array_push(windows_system_header_dirs, cstring_concat(windows_system_headers_root_dir, "winrt\\"));
         array_push(windows_system_header_dirs, cstring_concat(windows_system_headers_root_dir, "cppwinrt\\"));
         cstring_free(windows_system_headers_root_dir);

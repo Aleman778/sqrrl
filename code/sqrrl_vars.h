@@ -101,8 +101,10 @@ VAR(__pragma) \
 VAR(__inline) \
 VAR(__forceinline) \
 VAR(__unaligned) \
+VAR(__declspec)  \
 VAR(__cdecl)  \
 VAR(__fastcall) \
+VAR(__stdcall) \
 VAR(pack)     \
 VAR(push)     \
 VAR(pop)      \
@@ -111,7 +113,7 @@ VAR(count)    \
 VAR(capacity) \
 VAR(pln)      \
 VAR(format)   \
-
+VAR(link)
 
 typedef u32 string_id;
 

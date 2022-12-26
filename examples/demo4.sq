@@ -1,25 +1,55 @@
 
+#if 0
 // Windows needs to know abit about our compilation target
 #define _MSC_VER 1929
 #define _MSC_FULL_VER 192930133
+
 #define _M_AMD64 100
 #define _AMD64_
 #define _M_IX86 100 
 
+#define WINDOWS_IGNORE_PACKING_MISMATCH 1 // windows.h has strange assertions that compiler has a hard time parsing
+#define WINVER 0x0A00
+#define _WIN32_WINNT 0x0A00
+
+
+
 #define NOCOMM // no COM API crap
 #define WIN32_LEAN_AND_MEAN // maybe we will get rid of some garbage?
 
-#include <windows.h>
+#include "windows.h"
+
+#else
+#include "tinywindows.h"
+#endif
+
+//#define PRINT_AST 1
+#define PRINT_BYTECODE 1
+
+LRESULT CALLBACK
+win32_main_callback(HWND window, UINT message, WPARAM w_param, LPARAM l_param) {
+    pln("Callback");
+    return DefWindowProcA(window, message, w_param, l_param);
+}
+
 
 int
 main() {
-    WNDCLASSA wndclass = {};
+    HMODULE h_instance = GetModuleHandleA(0);
+    pln("err: %", GetLastError());
+    FreeConsole();
+    
+    WNDCLASSA wndclass;
     wndclass.style = CS_HREDRAW | CS_VREDRAW;
     wndclass.lpfnWndProc = win32_main_callback;
     wndclass.hInstance = h_instance;
     wndclass.lpszClassName = "PlatfomerWindowClass";
     
-    if (RegisterClass(&wndclass)) {
+    pln("err: %", GetLastError());
+    if (RegisterClassA(&wndclass)) {
+        pln("err: %", GetLastError());
+        cstring s = wndclass.lpszClassName;
+        pln("wndclass: %", s);
         HWND window = CreateWindowExA(0,
                                       wndclass.lpszClassName,
                                       "Platformer",
@@ -30,5 +60,17 @@ main() {
                                       0, 0,
                                       h_instance,
                                       0);
+        pln("err: %", GetLastError());
+        ShowWindow(window, SW_SHOW);
+        pln("err: %", GetLastError());
+        
+        //MessageBoxA(0, "Hello world from Sqrrl Language", "Hello world", 0);
+        
+        //while (true) {
+        
+        //}
+    } else {
+        pln("Failed to create a window")
     }
+    
 }

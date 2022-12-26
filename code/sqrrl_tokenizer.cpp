@@ -519,10 +519,7 @@ advance_token(Tokenizer* tokenizer) {
             } break;
             
             case '*': {
-                if (*tokenizer->next == '*') {
-                    utf8_advance_character(tokenizer);
-                    token.type = Token_Pow;
-                } else if (*tokenizer->next == '=') {
+                if (*tokenizer->next == '=') {
                     utf8_advance_character(tokenizer);
                     token.type = Token_Mul_Assign;
                 } else {

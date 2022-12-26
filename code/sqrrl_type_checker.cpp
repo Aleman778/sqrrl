@@ -245,6 +245,10 @@ type_check_value(Type_Context* tcx, Type* type, Value value) {
                 is_bitflag_set(type->Basic.flags, BasicFlag_String);
         } break;
         
+        case Value_cstring: {
+            result = type->kind == TypeKind_Basic && type->Basic.kind == Basic_cstring;
+        } break;
+        
         case Value_ast_node: {
             compiler_bug("It shouldn't be possible to use ast node as a type");
         } break;
@@ -261,7 +265,10 @@ type_check_value(Type_Context* tcx, Type* type, Value value) {
 // TODO(Alexander): this is a compile opt technique, this belongs in different file
 Value
 constant_folding_of_expressions(Ast* ast) {
-    assert(is_ast_expr(ast) || ast->kind == Ast_Value || ast->kind == Ast_Ident || ast->kind == Ast_None);
+    assert(is_ast_expr(ast) || 
+           ast->kind == Ast_Value || 
+           ast->kind == Ast_Ident || 
+           ast->kind == Ast_None);
     Value result = {};
     
     switch (ast->kind) {
@@ -351,6 +358,10 @@ constant_folding_of_expressions(Ast* ast) {
                     result = third;
                 }
             }
+        } break;
+        
+        case Ast_Paren_Expr: {
+            result = constant_folding_of_expressions(ast->Paren_Expr.expr);
         } break;
     }
     
@@ -552,7 +563,24 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             
             // TODO(Alexander): we don't want to change types without doing explicit cast
             // otherwise the backend gets confused and outputs wrong code.
-            //expr->Binary_Expr.first->type = first_type;
+            if (!type_equals(expr->Binary_Expr.first->type, first_type)) {
+                if (expr->Binary_Expr.first->kind == Ast_Value) {
+                    expr->Binary_Expr.first->type = first_type;
+                } else {
+                    Ast* cast_node = arena_push_struct(&tcx->type_arena, Ast);
+                    cast_node->kind = Ast_Cast_Expr;
+                    cast_node->Cast_Expr.expr = expr->Binary_Expr.first;
+                    cast_node->type = first_type;
+                    expr->Binary_Expr.first->type = first_type;
+                }
+            }
+            
+            if (!type_equals(expr->Binary_Expr.second->type, second_type)) {
+                if (expr->Binary_Expr.second->kind == Ast_Value) {
+                    expr->Binary_Expr.second->type = second_type;
+                }
+            }
+            //
             //expr->Binary_Expr.second->type = second_type;
             //pln("-> %", f_type(result));
             
@@ -819,6 +847,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 expr->type = result;
             } else {
                 if (report_error) {
+                    pln("%", f_ast(expr));
                     type_error(tcx, string_format("cannot assign array literal to non-array type"));
                 }
             }
@@ -1022,6 +1051,16 @@ load_type_declaration(Type_Context* tcx, string_id ident, bool report_error) {
 }
 
 Type*
+type_wrap_pointer(Type_Context* tcx, Type* type) {
+    Type* result = arena_push_struct(&tcx->type_arena, Type);
+    result->kind = TypeKind_Pointer;
+    result->Pointer = type;
+    result->size = sizeof(smm);
+    result->align = alignof(smm);
+    return result;
+}
+
+Type*
 create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
     assert(is_ast_type(ast));
     
@@ -1084,11 +1123,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             
             Type* ptr_type = create_type_from_ast(tcx, ast->Pointer_Type, report_error);
             if (ptr_type) {
-                result = arena_push_struct(&tcx->type_arena, Type);
-                result->kind = TypeKind_Pointer;
-                result->Pointer = ptr_type;
-                result->size = sizeof(smm);
-                result->align = alignof(smm);
+                result = type_wrap_pointer(tcx, ptr_type);
             }
         } break;
         
@@ -1137,10 +1172,62 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 }
             }
             
-            assert(ast->Function_Type.ident && ast->Function_Type.ident->kind == Ast_Ident);
-            result->Function.ident = ast_unwrap_ident(ast->Function_Type.ident);
+            if (ast->Function_Type.ident && ast->Function_Type.ident->kind == Ast_Ident) {
+                result->Function.ident = ast_unwrap_ident(ast->Function_Type.ident);
+            }
             result->size = sizeof(smm);
             result->align = alignof(smm);
+            
+            for_compound(ast->Function_Type.attributes, attr) {
+                string_id ident = ast_unwrap_ident(attr->Attribute.ident);
+                if (ident == Sym_link) {
+                    bool error = false;
+                    if (!result->Function.ident) {
+                        error = true;
+                    }
+                    
+                    // TODO(Alexander): we need a better way to read attributes
+                    Ast* link = attr->Attribute.expr;
+                    if (link && link->kind == Ast_Call_Expr) {
+                        
+                        Ast* first_arg = link->Call_Expr.args ? link->Call_Expr.args->Compound.node : 0;
+                        if (first_arg && first_arg->kind == Ast_Argument) {
+                            
+                            Ast* target = first_arg->Argument.assign;
+                            if (target && target->kind == Ast_Value &&
+                                target->Value.value.type == Value_string) {
+                                
+                                cstring library = string_to_cstring(target->Value.value.data.str);
+                                vars_load_string(result->Function.ident);
+                                //pln("LoadLibraryA(\"%\")", f_cstring(library));
+                                
+                                cstring name = string_to_cstring(vars_load_string(result->Function.ident));
+                                func->intrinsic = DEBUG_get_external_procedure_address(library, name); 
+                                pln("% = 0x%", f_cstring(name), f_u64_HEX(func->intrinsic));
+                                if (!func->intrinsic) {
+                                    type_error(tcx,
+                                               string_format("procedure `%` is not found in library `%`",
+                                                             f_cstring(name),
+                                                             f_cstring(library)));
+                                }
+                                
+                                cstring_free(library);
+                                cstring_free(name);
+                            } else {
+                                error = true;
+                            }
+                        } else {
+                            error = true;
+                        }
+                    } else {
+                        error = true;
+                    }
+                    
+                    if (error) {
+                        type_error(tcx, string_lit("@link attribute is malformed"));
+                    }
+                }
+            }
         } break;
         
         case Ast_Struct_Type: {
@@ -1236,11 +1323,48 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         
         case Ast_Typedef: {
             if (ast->Typedef.ident->kind == Ast_Compound) {
-                // NOTE(Alexander): c crazyiess
-                unimplemented;
+                // NOTE(Alexander): c craziess
+                
+                for_compound(ast->Typedef.ident, ty) {
+                    switch (ty->kind) {
+                        case Ast_Pointer_Type: {
+                            Ast* ptr_ty = ty->Pointer_Type;
+                            assert(ptr_ty->kind == Ast_Named_Type && "unsupported");
+                            string_id ident = ast_unwrap_ident(ptr_ty->Named_Type);
+                            
+                            // TODO(Alexander): copy pasta below
+                            // TODO(Alexander): we don't care about locality of typedefs at the moment (always global)
+                            result = map_get(tcx->global_type_table, ident);
+                            if (!result) {
+                                result = create_type_from_ast(tcx, ast->Typedef.type, report_error);
+                                result = type_wrap_pointer(tcx, result);
+                                if (result) {
+                                    map_put(tcx->global_type_table, ident, result);
+                                }
+                            } else {
+                                type_error(tcx, string_format("`%` is already defined", f_var(ident)));
+                            }
+                        } break;
+                        
+                        case Ast_Ident: {
+                            // TODO(Alexander): copy pasta above/below
+                            string_id ident = ast_unwrap_ident(ty);
+                            result = map_get(tcx->global_type_table, ident);
+                            if (!result) {
+                                result = create_type_from_ast(tcx, ast->Typedef.type, report_error);
+                                if (result) {
+                                    map_put(tcx->global_type_table, ident, result);
+                                }
+                            } else {
+                                type_error(tcx, string_format("`%` is already defined", f_var(ident)));
+                            }
+                        } break;
+                    }
+                }
             } else {
                 string_id ident = ast_unwrap_ident(ast->Typedef.ident);
                 
+                // TODO(Alexander): copy pasta above
                 // TODO(Alexander): we don't care about locality of typedefs at the moment (always global)
                 result = map_get(tcx->global_type_table, ident);
                 
@@ -1250,9 +1374,13 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                         map_put(tcx->global_type_table, ident, result);
                     }
                 } else {
-                    type_error(tcx, string_format("`%` is already defined"));
+                    type_error(tcx, string_format("`%` is already defined", f_var(ident)));
                 }
             }
+        } break;
+        
+        case Ast_Const_Type: {
+            result = create_type_from_ast(tcx, ast->Const_Type, report_error);
         } break;
     }
     
@@ -1352,7 +1480,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                 }
             }
             
-            if (stmt->Decl_Stmt.stmt->kind == Ast_None) {
+            if (!stmt->Decl_Stmt.stmt || stmt->Decl_Stmt.stmt->kind == Ast_None) {
                 stmt->type = decl_type;
                 result = decl_type;
                 map_put(tcx->local_type_table, ident, result);
@@ -1640,7 +1768,9 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
         } break;
         
         case Ast_Decl_Stmt: {
-            type_check_statement(tcx, stmt->Decl_Stmt.stmt);
+            if (stmt->Decl_Stmt.stmt) {
+                type_check_statement(tcx, stmt->Decl_Stmt.stmt);
+            }
         } break;
         
         case Ast_If_Stmt: {

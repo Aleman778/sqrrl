@@ -115,6 +115,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     string preprocessed_source = preprocess_file(&preprocessor, file.source, file.abspath, file.index);
     
+    //pln("Preprocessed % lines", f_s64(preprocessor.preprocessed_lines));
+    
     bool flag_print_ast = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_AST));
     bool flag_run_ast_interp = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_RUN_AST_INTERP));
     bool flag_print_bc  = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_BYTECODE));

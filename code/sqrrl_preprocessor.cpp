@@ -208,6 +208,7 @@ preprocess_parse_define(Preprocessor* preprocessor, Tokenizer* t) {
 internal inline bool
 check_if_curr_branch_is_taken(array(If_Stk_Status)* if_stack) {
     bool result = true;
+    int it_index = 0;
     for_array_v (if_stack, it, _) {
         result = result && (it == IfStk_Taken);
     }
@@ -294,6 +295,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                             get_source_file_by_index(preprocessor->curr_file_index);
                         string filename = string_unquote_nocopy(token.source);
                         included_file = read_entire_source_file(filename, curr_file);
+                        preprocessor->is_system_header = string_ends_with(included_file.filename, string_lit(".h"));
                     }
                     
                     if (included_file.is_valid) {
@@ -304,7 +306,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                         preprocessor->abort_curr_file = false;
                         
                         preprocess_file(preprocessor, included_file.source, 
-                                        included_file.filename, included_file.index);
+                                        included_file.abspath, included_file.index);
                         preprocessor->is_system_header = prev_system_header_flag;
                         preprocessor->abort_curr_file = false; // if #pragma once hit then restore it
                         preprocessor->curr_file_index = curr_file_index;
@@ -387,6 +389,9 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                     if (symbol == Sym_ifndef) {
                         value = !value;
                     }
+#if 0
+                    pln("#ifdef % == %", f_var(ident), f_bool(value));
+#endif
                     array_push(preprocessor->if_result_stack, value ? IfStk_Taken : IfStk_Not_Taken);
                     preprocessor->curr_branch_taken =
                         check_if_curr_branch_is_taken(preprocessor->if_result_stack);
@@ -931,6 +936,7 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath, int 
         Preprocessor_Line line = preprocess_splice_next_line(preprocessor, &tokenizer);
         curr += line.substring.count;
         curr_line_number = tokenizer.line_number;
+        preprocessor->preprocessed_lines += line.next_line_number - line.curr_line_number;
         
         umm begin_used = sb->curr_used;
         bool run_finalize = preprocess_line(preprocessor, sb, &tokenizer);

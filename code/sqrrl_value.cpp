@@ -64,6 +64,8 @@ value_type_from_basic_flags(u32 flags) {
         }
     } else if (is_bitflag_set(flags, BasicFlag_Floating)) {
         result = Value_floating;
+    } else if (is_bitflag_set(flags, BasicFlag_String)) {
+        result = Value_string;
     }
     return result;
 }
@@ -197,6 +199,28 @@ value_cast(Value value, Basic_Type type) {
         
         case Basic_f64: {
             result.data.floating = value_to_f64(value);
+        } break;
+        
+        case Basic_cstring: {
+            if (value.type == Value_string) {
+                result.data.cstr = string_to_cstring(value.data.str);
+            } else if (value.type == Value_cstring) {
+                result.data.cstr = value.data.cstr;
+            } else {
+                result.data.cstr = 0;
+            }
+            result.type = Value_cstring;
+        } break;
+        
+        case Basic_string: {
+            if (value.type == Value_string) {
+                result.data.str = value.data.str;
+            } else if (value.type == Value_cstring) {
+                result.data.str = string_lit(value.data.cstr);
+            } else {
+                result.data.str = {};
+            }
+            result.type = Value_string;
         } break;
         
         default: {

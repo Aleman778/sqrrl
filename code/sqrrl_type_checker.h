@@ -86,8 +86,8 @@ push_type_scope(Type_Context* tcx) {
 void
 pop_type_scope(Type_Context* tcx) {
     assert(tcx->active_scope);
-    for_array_v(tcx->active_scope->locals, ident, _) {
-        if (!map_remove(tcx->locals, ident)) {
+    for_array(tcx->active_scope->locals, ident, _) {
+        if (!map_remove(tcx->locals, *ident)) {
             assert(0 && "compiler bug; local variable couldn't be freed");
         }
     }
@@ -165,6 +165,30 @@ type_equals(Type* a, Type* b) {
         
         case TypeKind_Pointer: {
             return type_equals(a->Pointer, b->Pointer);
+        } break;
+        
+        case TypeKind_Function: {
+            Type_Function* proc_a = &a->Function;
+            Type_Function* proc_b = &b->Function;
+            
+            if (!type_equals(proc_a->return_type, proc_b->return_type)) {
+                return false;
+            }
+            
+            if (array_count(proc_a->arg_types) != array_count(proc_b->arg_types)) {
+                return false;
+            }
+            
+            for (int arg_index = 0; 
+                 arg_index < array_count(proc_a->arg_types); 
+                 arg_index++) {
+                Type* arg_a = proc_a->arg_types[arg_index];
+                Type* arg_b = proc_b->arg_types[arg_index];
+                
+                if (!type_equals(arg_a, arg_b)) {
+                    return false;
+                }
+            }
         } break;
         
         default: {

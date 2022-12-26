@@ -206,6 +206,9 @@ convert_type_to_format_type(Type* type) {
             case Basic_string: return FormatType_string;
             case Basic_cstring: return FormatType_cstring;
         }
+        
+    } else if (type->kind == TypeKind_Pointer) {
+        return FormatType_u64_HEX;
     } else {
         unimplemented;
     }
@@ -288,8 +291,10 @@ string_builder_push(String_Builder* sb, Type* type) {
                 Type* arg_type = func->arg_types[arg_index];
                 
                 string_builder_push(sb, arg_type);
-                string_builder_push(sb, " ");
-                string_builder_push(sb, vars_load_string(arg_ident));
+                if (arg_ident > 0) {
+                    string_builder_push(sb, " ");
+                    string_builder_push(sb, vars_load_string(arg_ident));
+                }
                 if (arg_index < array_count(func->arg_idents) - 1) {
                     string_builder_push(sb, ", ");
                 }

@@ -13,8 +13,12 @@ IC(SUB) \
 IC(MUL) \
 IC(DIV) \
 IC(MOD) \
+IC(AND) \
+IC(OR) \
+IC(XOR) \
 IC(MOV) \
 IC(LEA) \
+IC(LPROC) \
 IC(CAST_F2S) \
 IC(CAST_S2F) \
 IC(REINTERP_F2S) \

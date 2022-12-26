@@ -35,6 +35,7 @@ struct Preprocessor {
     
     String_Builder output;
     array(Source_Group)* source_groups;
+    s64 preprocessed_lines;
     
     array(If_Stk_Status)* if_result_stack;
     b32 curr_branch_taken;
@@ -52,7 +53,7 @@ preprocess_error(Preprocessor* preprocessor, string message) {
     Tokenizer* t = preprocessor->tokenizer;
     preprocessor->error_count++;
     pln("%:%:%: error: %", 
-        f_string(t->file), f_umm(t->line_number), f_umm(t->column_number), 
+        f_string(t->file), f_umm(t->line_number + 1), f_umm(t->column_number + 1),
         f_string(message));
     DEBUG_log_backtrace();
 }

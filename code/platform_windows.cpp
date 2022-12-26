@@ -300,6 +300,13 @@ DEBUG_free_file_memory(void* memory) {
     VirtualFree(memory, 0, MEM_RELEASE);
 }
 
+void*
+DEBUG_get_external_procedure_address(cstring library, cstring procedure_name) {
+    // TODO(Alexander): reuse prev LoadLibraryA
+    HMODULE mod = LoadLibraryA(library);
+    return GetProcAddress(mod, procedure_name);
+}
+
 void
 asm_buffer_prepare_for_execute(void* data, umm size) {
     DWORD prev_protect = 0;
@@ -335,7 +342,6 @@ read_string_from_system_registry(HKEY key, cstring value_name) {
                 cstring_free(result);
                 result = {};
             }
-            
             break;
         }
     }
@@ -363,6 +369,12 @@ find_windows_kits_include_dir() {
     }
     
     return result;
+}
+LRESULT CALLBACK
+win32_main_callback(HWND window, UINT message, WPARAM w_param, LPARAM l_param) {
+    pln("Callback");
+    
+    return 0;
 }
 
 

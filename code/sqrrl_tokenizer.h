@@ -52,7 +52,6 @@ TOKEN(Shl,                     "<<")                \
 TOKEN(Shr,                     ">>")                \
 TOKEN(Shl_Assign,              "<<=")               \
 TOKEN(Shr_Assign,              ">>=")               \
-TOKEN(Pow,                     "**")                \
 TOKEN(Equals,                  "==")                \
 TOKEN(Not_Equals,              "!=")                \
 TOKEN(Logical_Not,             "!")                 \

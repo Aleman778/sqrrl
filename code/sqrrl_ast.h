@@ -80,6 +80,7 @@ Ast_Decl_Modifier mods;                         \
 AST(Expr_Stmt,         "expression", Ast*)      \
 AST(Block_Stmt,        "block", struct {        \
 Ast* stmts;                                     \
+Ast* context;                                   \
 })                                              \
 AST(Break_Stmt,        "break", struct {        \
 Ast* ident;                                     \
@@ -147,6 +148,10 @@ Ast* fields;                                    \
 })                                              \
 AST(Const_Type,        "const", Ast*)           \
 AST(Volatile_Type,     "volatile", Ast*)        \
+AST(Declspec_Type,     "declspec", struct {     \
+Ast* type; \
+Ast* spec; \
+})        \
 AST(Typedef,           "typedef", struct {      \
 Ast* type;                                      \
 Ast* ident;                                     \
@@ -161,6 +166,7 @@ AST_GROUP(Type_End,    "type")
 // TODO(Alexander): this is really ugly and inefficient, try similar to C++ iterators.
 #define for_compound(compound, it) \
 Ast* compound_##it = compound; \
+if (compound_##it) \
 for (Ast* it = compound_##it->Compound.node; \
 compound_##it&& compound_##it->kind == Ast_Compound && compound_##it->Compound.node && compound_##it->Compound.node->kind != Ast_None; \
 compound_##it = compound_##it->Compound.next, it = compound_##it->Compound.node)
@@ -201,6 +207,7 @@ enum {
     AstDeclModifier_Const          = bit(7),
     AstDeclModifier_Cconv_cdecl    = bit(8),
     AstDeclModifier_Cconv_fastcall = bit(9),
+    AstDeclModifier_Cconv_stdcall  = bit(10),
 };
 
 union Span {
@@ -341,17 +348,17 @@ is_valid_ast(Ast* ast) {
 
 inline bool
 is_ast_expr(Ast* ast) {
-    return ast->kind > Ast_Expr_Begin && ast->kind < Ast_Expr_End;
+    return ast && ast->kind > Ast_Expr_Begin && ast->kind < Ast_Expr_End;
 }
 
 inline bool
 is_ast_stmt(Ast* ast) {
-    return ast->kind > Ast_Stmt_Begin && ast->kind < Ast_Stmt_End;
+    return ast && ast->kind > Ast_Stmt_Begin && ast->kind < Ast_Stmt_End;
 }
 
 inline bool
 is_ast_type(Ast* ast) {
-    return ast->kind > Ast_Type_Begin && ast->kind < Ast_Type_End;
+    return ast && ast->kind > Ast_Type_Begin && ast->kind < Ast_Type_End;
 }
 
 inline bool

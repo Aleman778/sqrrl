@@ -267,6 +267,16 @@ string_copy(string str) {
     return result;
 }
 
+inline string
+string_view(u8* begin, u8* end) {
+    assert(begin <= end);
+    
+    string result;
+    result.count = (umm) (end - begin);
+    result.data = begin;
+    return result;
+}
+
 inline int
 string_compare(string a, string b) {
     umm count = min(a.count, b.count);
@@ -286,6 +296,16 @@ string_begins_with(string str, string substr) {
         return false;
     }
     str.count = substr.count;
+    return string_equals(str, substr);
+}
+
+inline bool
+string_ends_with(string str, string substr) {
+    if (str.count < substr.count) {
+        return false;
+    }
+    u8* end = str.data + str.count;
+    str = string_view(end - substr.count, end);
     return string_equals(str, substr);
 }
 
@@ -313,16 +333,6 @@ string_concat(string a, cstring b) {
     copy_memory(concat.data, a.data, a.count);
     copy_memory(concat.data + a.count, b, b_count);
     return concat;
-}
-
-inline string
-string_view(u8* begin, u8* end) {
-    assert(begin <= end);
-    
-    string result;
-    result.count = (umm) (end - begin);
-    result.data = begin;
-    return result;
 }
 
 string
@@ -557,20 +567,19 @@ for (auto it = arr; \
 it && it_index < array_count(arr); \
 it_index++, it++)
 
-#define for_array_v(arr, it, it_index) \
-int it_index = 0; \
-if (arr) \
-for (auto it = arr[it_index]; \
-it_index < array_count(arr); \
-it = arr[++it_index])
-
-
 #define for_array_reverse(arr, it, it_index) \
 int it_index = (int) array_count(arr) - 1; \
 if (arr) \
 for (auto it = &array_last(arr); \
 it && it_index >= 0; \
 it_index--, it--)
+
+#define for_array_v(arr, it, it_index) \
+int it_index = 0; \
+if (arr) \
+for (auto it = arr[it_index]; \
+it_index < array_count(arr); \
+it = arr[++it_index < array_count(arr) ? it_index : 0])
 
 // NOTE(Alexander): hash maps
 // Usage:

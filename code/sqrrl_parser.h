@@ -62,7 +62,7 @@ parse_error(Parser* parser, Token token, string message) {
     if (lookahead > parser->tokenizer->end) {
         lookahead = parser->tokenizer->end;
     }
-    //pln("  Source: `%...`", f_string(string_view(lookback, lookahead)));
+    pln("  Source: `...%...`", f_string(string_view(lookback, lookahead)));
     pln("  Tokens: { current = `%`, peek = `%`, peek second = `%` }", f_token(parser->current_token.type), 
         f_token(peek_token(parser).type), f_token(peek_second_token(parser).type));
     
@@ -100,7 +100,7 @@ bool parse_keyword(Parser* parser, Var keyword, bool report_error=true);
 Ast* parse_identifier(Parser* parser, bool report_error=true);
 Ast* parse_atom(Parser* parser, bool report_error=true);
 Ast* parse_expression(Parser* parser, bool report_error=true, u8 min_prec=1, Ast* atom_expr=0);
-Ast* parse_statement(Parser* parser, bool report_error=true, Ast_Decl_Modifier mods=0);
+Ast* parse_statement(Parser* parser, bool report_error=true);
 Ast* parse_block_or_single_statement(Parser* parser, bool report_error=true);
 
 inline Ast* parse_array_type(Parser* parser, Ast* elem_type, Ast_Decl_Modifier mods=0);

@@ -370,13 +370,6 @@ find_windows_kits_include_dir() {
     
     return result;
 }
-LRESULT CALLBACK
-win32_main_callback(HWND window, UINT message, WPARAM w_param, LPARAM l_param) {
-    pln("Callback");
-    
-    return 0;
-}
-
 
 int 
 main(int argc, char* argv[]) {

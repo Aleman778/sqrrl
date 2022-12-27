@@ -24,20 +24,17 @@
 #endif
 
 //#define PRINT_AST 1
-#define PRINT_BYTECODE 1
+//#define PRINT_BYTECODE 1
 
 LRESULT CALLBACK
 win32_main_callback(HWND window, UINT message, WPARAM w_param, LPARAM l_param) {
-    pln("Callback");
     return DefWindowProcA(window, message, w_param, l_param);
 }
 
 
 int
 main() {
-    HMODULE h_instance = GetModuleHandleA(0);
-    pln("err: %", GetLastError());
-    FreeConsole();
+    HINSTANCE h_instance = GetModuleHandleA(0);
     
     WNDCLASSA wndclass;
     wndclass.style = CS_HREDRAW | CS_VREDRAW;
@@ -45,30 +42,18 @@ main() {
     wndclass.hInstance = h_instance;
     wndclass.lpszClassName = "PlatfomerWindowClass";
     
-    pln("err: %", GetLastError());
     if (RegisterClassA(&wndclass)) {
-        pln("err: %", GetLastError());
-        cstring s = wndclass.lpszClassName;
-        pln("wndclass: %", s);
+        //debug_break();
         HWND window = CreateWindowExA(0,
-                                      wndclass.lpszClassName,
+                                      "PlatfomerWindowClass",
                                       "Platformer",
                                       WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                                       CW_USEDEFAULT,
                                       CW_USEDEFAULT,
                                       640, 480,
                                       0, 0,
-                                      h_instance,
+                                      wndclass.hInstance,
                                       0);
-        pln("err: %", GetLastError());
-        ShowWindow(window, SW_SHOW);
-        pln("err: %", GetLastError());
-        
-        //MessageBoxA(0, "Hello world from Sqrrl Language", "Hello world", 0);
-        
-        //while (true) {
-        
-        //}
     } else {
         pln("Failed to create a window")
     }

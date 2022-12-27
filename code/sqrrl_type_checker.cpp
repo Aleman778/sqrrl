@@ -1203,7 +1203,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                                 
                                 cstring name = string_to_cstring(vars_load_string(result->Function.ident));
                                 func->intrinsic = DEBUG_get_external_procedure_address(library, name); 
-                                pln("% = 0x%", f_cstring(name), f_u64_HEX(func->intrinsic));
+                                //pln("% = 0x%", f_cstring(name), f_u64_HEX(func->intrinsic));
                                 if (!func->intrinsic) {
                                     type_error(tcx,
                                                string_format("procedure `%` is not found in library `%`",

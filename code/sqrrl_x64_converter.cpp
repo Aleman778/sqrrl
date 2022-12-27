@@ -555,7 +555,8 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     Intermediate_Code* ic = ic_add(cu, IC_FMOV);
                     ic->src0 = dest;
                     ic->src1 = arg->src;
-                } else if (arg->src.type & (IC_SINT | IC_UINT | IC_IMM)) {
+                } else if (arg->src.type & (IC_SINT | IC_UINT | IC_IMM) ||
+                           arg->type->kind == TypeKind_Pointer) {
                     ic_mov(cu, dest, arg->src);
                 } else {
                     Ic_Arg tmp = {};
@@ -1024,7 +1025,8 @@ x64_add(Intermediate_Code* ic,
 void
 x64_zero(Intermediate_Code* ic, s64 r) {
     // REX.W + 33 /r 	XOR r64, r/m64 	RM
-    x64_rex(ic, REX_FLAG_W);
+    u8 rflag = (u8) (r&8) >> 1;
+    x64_rex(ic, REX_FLAG_W | rflag | rflag >> 2);
     ic_u8(ic, 0x33);
     x64_modrm(ic, IC_S64 + IC_REG, 0, r, r);
 }
@@ -1514,12 +1516,11 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
             case IC_LPROC: {
                 Compilation_Unit* target = (Compilation_Unit*) ic->data;
                 if (target && target->bb_first) {
-                    if (target->bb_first) {
-                        x64_rip_relative(ic, ic->dest.reg, target->bb_first->addr, (s64) (buf + rip));
-                    } else {
-                        x64_zero(ic, ic->dest.reg);
-                    }
-                    //x64_jump(ic, target->bb_first, rip);
+                    // REX.W + 8D /r 	LEA r64,m 	RM
+                    x64_rex(ic, REX_FLAG_W);
+                    ic_u8(ic, 0x8D);
+                    //ic_u8(ic, 0x8B); //mov
+                    x64_rip_relative(ic, X64_RAX, (s64) buf + target->bb_first->addr, (s64) buf + rip);
                 } else {
                     x64_mov_rax_u64(ic, (u64) target->bb_first);
                 }

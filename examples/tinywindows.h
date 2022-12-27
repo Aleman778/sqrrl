@@ -44,10 +44,10 @@ typedef unsigned __int64    UINT64, *PUINT64;
 typedef signed int LONG32, *PLONG32;
 typedef unsigned int ULONG32, *PULONG32;
 typedef unsigned int DWORD32, *PDWORD32;
-typedef  int INT_PTR, *PINT_PTR;
-typedef  unsigned int UINT_PTR, *PUINT_PTR;
-typedef  long LONG_PTR, *PLONG_PTR;
-typedef  unsigned long ULONG_PTR, *PULONG_PTR;
+typedef s64 INT_PTR, *PINT_PTR;
+typedef s64 UINT_PTR, *PUINT_PTR;
+typedef s64 LONG_PTR, *PLONG_PTR;
+typedef s64 ULONG_PTR, *PULONG_PTR;
 typedef void* __ptr64 HANDLE64;
 typedef HANDLE64 *PHANDLE64;
 typedef void *HANDLE;
@@ -109,6 +109,7 @@ struct HUMPD__{int unused;}; typedef struct HUMPD__ *HUMPD;
 typedef HICON HCURSOR;      
 typedef DWORD   COLORREF;
 typedef DWORD   *LPCOLORREF;
+
 
 //typedef LRESULT __stdcall(HWND, UINT, WPARAM, LPARAM)* WNDPROC;
 typedef LRESULT __stdcall (HWND, UINT, WPARAM, LPARAM) WNDPROC;
@@ -204,7 +205,65 @@ WS_SYSMENU)
 #define SW_MAX              11
 
 
-#define CALLBACK    __stdcall
+/*
+ * Window Messages
+ */
+
+#define WM_NULL                         0x0000
+#define WM_CREATE                       0x0001
+#define WM_DESTROY                      0x0002
+#define WM_MOVE                         0x0003
+#define WM_SIZE                         0x0005
+
+#define WM_ACTIVATE                     0x0006
+/*
+ * WM_ACTIVATE state values
+ */
+#define     WA_INACTIVE     0
+#define     WA_ACTIVE       1
+#define     WA_CLICKACTIVE  2
+
+#define WM_SETFOCUS                     0x0007
+#define WM_KILLFOCUS                    0x0008
+#define WM_ENABLE                       0x000A
+#define WM_SETREDRAW                    0x000B
+#define WM_SETTEXT                      0x000C
+#define WM_GETTEXT                      0x000D
+#define WM_GETTEXTLENGTH                0x000E
+#define WM_PAINT                        0x000F
+#define WM_CLOSE                        0x0010
+#ifndef _WIN32_WCE
+#define WM_QUERYENDSESSION              0x0011
+#define WM_QUERYOPEN                    0x0013
+#define WM_ENDSESSION                   0x0016
+#endif
+#define WM_QUIT                         0x0012
+#define WM_ERASEBKGND                   0x0014
+#define WM_SYSCOLORCHANGE               0x0015
+#define WM_SHOWWINDOW                   0x0018
+#define WM_WININICHANGE                 0x001A
+#if(WINVER >= 0x0400)
+#define WM_SETTINGCHANGE                WM_WININICHANGE
+#endif /* WINVER >= 0x0400 */
+
+#if (NTDDI_VERSION >= NTDDI_WIN10_19H1)
+#endif // NTDDI_VERSION >= NTDDI_WIN10_19H1
+
+
+#define WM_DEVMODECHANGE                0x001B
+#define WM_ACTIVATEAPP                  0x001C
+#define WM_FONTCHANGE                   0x001D
+#define WM_TIMECHANGE                   0x001E
+#define WM_CANCELMODE                   0x001F
+#define WM_SETCURSOR                    0x0020
+#define WM_MOUSEACTIVATE                0x0021
+#define WM_CHILDACTIVATE                0x0022
+#define WM_QUEUESYNC                    0x0023
+
+#define WM_GETMINMAXINFO                0x0024
+
+
+#define CALLBACK    __cdecl
 
 typedef struct tagWNDCLASSA {
     UINT        style;

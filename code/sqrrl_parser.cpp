@@ -515,7 +515,7 @@ parse_atom(Parser* parser, bool report_error) {
                 result = push_ast_node(parser, &token);
                 result->kind = Ast_Unary_Expr;
                 result->Unary_Expr.op = unop;
-                result->Unary_Expr.first = parse_atom(parser);
+                result->Unary_Expr.first = parse_expression(parser);
             }
             
         } break;

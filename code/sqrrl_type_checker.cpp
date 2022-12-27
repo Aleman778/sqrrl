@@ -484,21 +484,26 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         
         case Ast_Binary_Expr: {
             
-            Type* second_type = 0;
             Type* first_type = type_infer_expression(tcx, 
                                                      expr->Binary_Expr.first,
                                                      0,
                                                      report_error);
-            if (first_type) {
-                second_type = type_infer_expression(tcx, 
-                                                    expr->Binary_Expr.second,
-                                                    first_type,
-                                                    report_error);
+            Type* second_type = type_infer_expression(tcx, 
+                                                      expr->Binary_Expr.second,
+                                                      first_type,
+                                                      report_error);
+            
+            if (!first_type || !second_type) {
+                break;
             }
             
             if (is_binary_assign(expr->Binary_Expr.op)) {
                 if (first_type && second_type) {
                     result = first_type;
+                    if (type_check_assignment(tcx, first_type, second_type, 
+                                              binary_is_comparator_table[expr->Binary_Expr.op], false)) {
+                        second_type = result;
+                    }
                 }
             } else {
                 
@@ -590,6 +595,25 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             expr->type = result;
         } break;
         
+        case Ast_Ternary_Expr: {
+            Type* first_type = type_infer_expression(tcx, 
+                                                     expr->Ternary_Expr.first,
+                                                     t_bool,
+                                                     report_error);
+            Type* second_type = type_infer_expression(tcx, 
+                                                      expr->Ternary_Expr.second,
+                                                      0,
+                                                      report_error);
+            Type* third_type = type_infer_expression(tcx, 
+                                                     expr->Ternary_Expr.third,
+                                                     second_type,
+                                                     report_error);
+            if (first_type && second_type && third_type) {
+                result = second_type;
+                expr->type = result;
+            }
+        } break;
+        
         case Ast_Call_Expr: {
             
             Type* function_type = type_infer_expression(tcx, 
@@ -612,6 +636,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             expr->Call_Expr.function_type = function_type;
             result = function_type->Function.return_type;
             expr->type = result;
+            pln("ret: %", f_type(result));
             
             // Arguments
             // TODO(Alexander): nice to have: support for keyworded args, default args
@@ -646,38 +671,59 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             }
             
             // HACK(Alexander): for now print_format pushes the format type first then the value 
-            if (result && proc->intrinsic == &print_format) {
-                
-                arg_index = 0;
-                Ast* prev_compound = 0;
-                Ast* curr_compound = actual_args;
-                while (curr_compound && curr_compound->Compound.node) {
-                    Ast* actual_arg = curr_compound->Compound.node;
-                    if (prev_compound) {
-                        Format_Type fmt_type = convert_type_to_format_type(actual_arg->type);
-                        // TODO(Alexander): refactor this later when the AST storage gets updated
-                        Ast* fmt_arg = arena_push_struct(&tcx->type_arena, Ast);
-                        fmt_arg->kind = Ast_Argument;
-                        fmt_arg->type = t_s32;
-                        
-                        Ast* fmt_value = arena_push_struct(&tcx->type_arena, Ast);
-                        fmt_value->kind = Ast_Value;
-                        fmt_value->type = t_s32;
-                        fmt_value->Value.value = create_signed_int_value(fmt_type);
-                        fmt_arg->Argument.assign = fmt_value;
-                        
-                        Ast* fmt_compound = arena_push_struct(&tcx->type_arena, Ast);
-                        fmt_compound->kind = Ast_Compound;
-                        fmt_compound->Compound.node = fmt_arg;
-                        fmt_compound->Compound.next = curr_compound;
-                        prev_compound->Compound.next = fmt_compound;
-                    }
+            if (result && proc->intrinsic) {
+                if (proc->intrinsic == &print_format) {
                     
-                    prev_compound = curr_compound;
-                    curr_compound = curr_compound->Compound.next;
+                    arg_index = 0;
+                    Ast* prev_compound = 0;
+                    Ast* curr_compound = actual_args;
+                    while (curr_compound && curr_compound->Compound.node) {
+                        Ast* actual_arg = curr_compound->Compound.node;
+                        if (prev_compound) {
+                            Format_Type fmt_type = convert_type_to_format_type(actual_arg->type);
+                            // TODO(Alexander): refactor this later when the AST storage gets updated
+                            Ast* fmt_arg = arena_push_struct(&tcx->type_arena, Ast);
+                            fmt_arg->kind = Ast_Argument;
+                            fmt_arg->type = t_s32;
+                            
+                            Ast* fmt_value = arena_push_struct(&tcx->type_arena, Ast);
+                            fmt_value->kind = Ast_Value;
+                            fmt_value->type = t_s32;
+                            fmt_value->Value.value = create_signed_int_value(fmt_type);
+                            fmt_arg->Argument.assign = fmt_value;
+                            
+                            Ast* fmt_compound = arena_push_struct(&tcx->type_arena, Ast);
+                            fmt_compound->kind = Ast_Compound;
+                            fmt_compound->Compound.node = fmt_arg;
+                            fmt_compound->Compound.next = curr_compound;
+                            prev_compound->Compound.next = fmt_compound;
+                        }
+                        
+                        prev_compound = curr_compound;
+                        curr_compound = curr_compound->Compound.next;
+                    }
+                } else if (proc->intrinsic == &type_sizeof || proc->intrinsic == &type_alignof) {
+                    intrin_type_def* intrinsic_proc = (intrin_type_def*) proc->intrinsic;
+                    
+                    arg_index = 0;
+                    Ast* prev_compound = 0;
+                    Ast* curr_compound = actual_args;
+                    if (curr_compound) {
+                        if (curr_compound->Compound.next && curr_compound->Compound.next->kind == Ast_Compound) {
+                            
+                            //pln("%", f_ast(curr_compound->Compound.next));
+                            // TODO(Alexander): error handling
+                            assert(0 && "expected only one param");
+                            
+                        } else if (curr_compound->Compound.node) {
+                            Ast* actual_arg = curr_compound->Compound.node;
+                            expr->kind = Ast_Value;
+                            expr->Value.value =
+                                create_unsigned_int_value(intrinsic_proc(actual_arg->type));
+                        }
+                    }
                 }
             }
-            
         } break;
         
         case Ast_Cast_Expr: {
@@ -1557,7 +1603,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
 }
 
 bool
-type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool comparator=false, bool report_error=true) {
+type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool comparator, bool report_error) {
     assert(lhs && rhs);
     
     if (lhs->kind != rhs->kind) {
@@ -1934,7 +1980,7 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
     
     {
         // Intrinsic syntax: assert(s32 expr)
-        // Assets that expr is true, used as test case for 
+        // Assets that expr is true, used as test case
         Type* type = arena_push_struct(&tcx->type_arena, Type);
         type->kind = TypeKind_Function;
         type->Function.is_variadic = false;
@@ -1955,7 +2001,6 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
     
     {
         // Intrinsic syntax:  sqrt(f32 num)
-        // Assets that expr is true, used as test case for 
         Type* type = arena_push_struct(&tcx->type_arena, Type);
         type->kind = TypeKind_Function;
         type->Function.is_variadic = false;
@@ -1975,8 +2020,7 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
     }
     
     {
-        // Intrinsic syntax:  random_f32(
-        // Assets that expr is true, used as test case for 
+        // Intrinsic syntax:  random_f32(f32 num)
         Type* type = arena_push_struct(&tcx->type_arena, Type);
         type->kind = TypeKind_Function;
         type->Function.is_variadic = false;
@@ -1987,6 +2031,38 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
         type->Function.intrinsic = &random_f32;
         type->Function.ident = ident;
         type->Function.return_type = t_f32;
+        
+        map_put(tcx->globals, ident, type);
+    }
+    
+    {
+        // Intrinsic syntax: sizeof(T)
+        Type* type = arena_push_struct(&tcx->type_arena, Type);
+        type->kind = TypeKind_Function;
+        type->Function.is_variadic = false;
+        
+        string_id ident = vars_save_cstring("sizeof");
+        type->Function.unit = 0;
+        type->Function.interp_intrinsic = 0;
+        type->Function.intrinsic = &type_sizeof;
+        type->Function.ident = ident;
+        type->Function.return_type = normalize_basic_types(t_umm);
+        
+        map_put(tcx->globals, ident, type);
+    }
+    
+    {
+        // Intrinsic syntax: alignof(T)
+        Type* type = arena_push_struct(&tcx->type_arena, Type);
+        type->kind = TypeKind_Function;
+        type->Function.is_variadic = false;
+        
+        string_id ident = vars_save_cstring("alignof");
+        type->Function.unit = 0;
+        type->Function.interp_intrinsic = 0;
+        type->Function.intrinsic = &type_alignof;
+        type->Function.ident = ident;
+        type->Function.return_type = normalize_basic_types(t_umm);
         
         map_put(tcx->globals, ident, type);
     }

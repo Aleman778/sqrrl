@@ -2,6 +2,8 @@
 
 typedef cstring LPCSTR;
 
+typedef long LONG;
+typedef LONG *PLONG;
 typedef unsigned long ULONG;
 typedef ULONG *PULONG;
 typedef unsigned short USHORT;
@@ -48,6 +50,7 @@ typedef s64 INT_PTR, *PINT_PTR;
 typedef s64 UINT_PTR, *PUINT_PTR;
 typedef s64 LONG_PTR, *PLONG_PTR;
 typedef s64 ULONG_PTR, *PULONG_PTR;
+typedef ULONG_PTR SIZE_T, *PSIZE_T;
 typedef void* __ptr64 HANDLE64;
 typedef HANDLE64 *PHANDLE64;
 typedef void *HANDLE;
@@ -246,9 +249,22 @@ WS_SYSMENU)
 #define WM_SETTINGCHANGE                WM_WININICHANGE
 #endif /* WINVER >= 0x0400 */
 
-#if (NTDDI_VERSION >= NTDDI_WIN10_19H1)
-#endif // NTDDI_VERSION >= NTDDI_WIN10_19H1
-
+/* Ternary raster operations */
+#define SRCCOPY             (DWORD)0x00CC0020 /* dest = source                   */
+#define SRCPAINT            (DWORD)0x00EE0086 /* dest = source OR dest           */
+#define SRCAND              (DWORD)0x008800C6 /* dest = source AND dest          */
+#define SRCINVERT           (DWORD)0x00660046 /* dest = source XOR dest          */
+#define SRCERASE            (DWORD)0x00440328 /* dest = source AND (NOT dest )   */
+#define NOTSRCCOPY          (DWORD)0x00330008 /* dest = (NOT source)             */
+#define NOTSRCERASE         (DWORD)0x001100A6 /* dest = (NOT src) AND (NOT dest) */
+#define MERGECOPY           (DWORD)0x00C000CA /* dest = (source AND pattern)     */
+#define MERGEPAINT          (DWORD)0x00BB0226 /* dest = (NOT source) OR dest     */
+#define PATCOPY             (DWORD)0x00F00021 /* dest = pattern                  */
+#define PATPAINT            (DWORD)0x00FB0A09 /* dest = DPSnoo                   */
+#define PATINVERT           (DWORD)0x005A0049 /* dest = pattern XOR dest         */
+#define DSTINVERT           (DWORD)0x00550009 /* dest = (NOT dest)               */
+#define BLACKNESS           (DWORD)0x00000042 /* dest = BLACK                    */
+#define WHITENESS           (DWORD)0x00FF0062 /* dest = WHITE                    */
 
 #define WM_DEVMODECHANGE                0x001B
 #define WM_ACTIVATEAPP                  0x001C
@@ -262,6 +278,62 @@ WS_SYSMENU)
 
 #define WM_GETMINMAXINFO                0x0024
 
+#define PAGE_NOACCESS           0x01    
+#define PAGE_READONLY           0x02    
+#define PAGE_READWRITE          0x04    
+#define PAGE_WRITECOPY          0x08    
+#define PAGE_EXECUTE            0x10    
+#define PAGE_EXECUTE_READ       0x20    
+#define PAGE_EXECUTE_READWRITE  0x40    
+#define PAGE_EXECUTE_WRITECOPY  0x80    
+#define PAGE_GUARD             0x100    
+#define PAGE_NOCACHE           0x200    
+#define PAGE_WRITECOMBINE      0x400    
+#define PAGE_GRAPHICS_NOACCESS           0x0800    
+#define PAGE_GRAPHICS_READONLY           0x1000    
+#define PAGE_GRAPHICS_READWRITE          0x2000    
+#define PAGE_GRAPHICS_EXECUTE            0x4000    
+#define PAGE_GRAPHICS_EXECUTE_READ       0x8000    
+#define PAGE_GRAPHICS_EXECUTE_READWRITE 0x10000    
+#define PAGE_GRAPHICS_COHERENT          0x20000    
+#define PAGE_GRAPHICS_NOCACHE           0x40000    
+#define PAGE_ENCLAVE_THREAD_CONTROL 0x80000000  
+#define PAGE_REVERT_TO_FILE_MAP     0x80000000  
+#define PAGE_TARGETS_NO_UPDATE      0x40000000  
+#define PAGE_TARGETS_INVALID        0x40000000  
+#define PAGE_ENCLAVE_UNVALIDATED    0x20000000  
+#define PAGE_ENCLAVE_MASK           0x10000000  
+#define PAGE_ENCLAVE_DECOMMIT       (PAGE_ENCLAVE_MASK | 0) 
+#define PAGE_ENCLAVE_SS_FIRST       (PAGE_ENCLAVE_MASK | 1) 
+#define PAGE_ENCLAVE_SS_REST        (PAGE_ENCLAVE_MASK | 2) 
+#define MEM_COMMIT                      0x00001000  
+#define MEM_RESERVE                     0x00002000  
+#define MEM_REPLACE_PLACEHOLDER         0x00004000  
+#define MEM_RESERVE_PLACEHOLDER         0x00040000  
+#define MEM_RESET                       0x00080000  
+#define MEM_TOP_DOWN                    0x00100000  
+#define MEM_WRITE_WATCH                 0x00200000  
+#define MEM_PHYSICAL                    0x00400000  
+#define MEM_ROTATE                      0x00800000  
+#define MEM_DIFFERENT_IMAGE_BASE_OK     0x00800000  
+#define MEM_RESET_UNDO                  0x01000000  
+#define MEM_LARGE_PAGES                 0x20000000  
+#define MEM_4MB_PAGES                   0x80000000  
+#define MEM_64K_PAGES                   (MEM_LARGE_PAGES | MEM_PHYSICAL)  
+#define MEM_UNMAP_WITH_TRANSIENT_BOOST  0x00000001  
+#define MEM_COALESCE_PLACEHOLDERS       0x00000001  
+#define MEM_PRESERVE_PLACEHOLDER        0x00000002  
+#define MEM_DECOMMIT                    0x00004000  
+#define MEM_RELEASE                     0x00008000  
+#define MEM_FREE                        0x00010000  
+
+/* constants for the biCompression field */
+#define BI_RGB        0L
+#define BI_RLE8       1L
+#define BI_RLE4       2L
+#define BI_BITFIELDS  3L
+#define BI_JPEG       4L
+#define BI_PNG        5L
 
 #define CALLBACK    __cdecl
 
@@ -278,12 +350,71 @@ typedef struct tagWNDCLASSA {
     LPCSTR      lpszClassName;
 } WNDCLASSA, *PWNDCLASSA,  *NPWNDCLASSA,  *LPWNDCLASSA;
 
+typedef struct tagRGBTRIPLE {
+    BYTE    rgbtBlue;
+    BYTE    rgbtGreen;
+    BYTE    rgbtRed;
+} RGBTRIPLE, *PRGBTRIPLE,  *NPRGBTRIPLE,  *LPRGBTRIPLE;
+// File: `C:\Program Files (x86)\Windows Kits\10\Include\10.0.22000.0\shared\poppack.h`
+typedef struct tagRGBQUAD {
+    BYTE    rgbBlue;
+    BYTE    rgbGreen;
+    BYTE    rgbRed;
+    BYTE    rgbReserved;
+} RGBQUAD;
+typedef RGBQUAD * LPRGBQUAD;
+typedef LONG   LCSCSTYPE;
+typedef LONG    LCSGAMUTMATCH;
+typedef long            FXPT16DOT16,  *LPFXPT16DOT16;
+typedef long            FXPT2DOT30,  *LPFXPT2DOT30;
+typedef struct tagCIEXYZ
+{
+    FXPT2DOT30 ciexyzX;
+    FXPT2DOT30 ciexyzY;
+    FXPT2DOT30 ciexyzZ;
+} CIEXYZ;
+typedef CIEXYZ   *LPCIEXYZ;
+typedef struct tagICEXYZTRIPLE
+{
+    CIEXYZ  ciexyzRed;
+    CIEXYZ  ciexyzGreen;
+    CIEXYZ  ciexyzBlue;
+} CIEXYZTRIPLE;
+typedef CIEXYZTRIPLE     *LPCIEXYZTRIPLE;
+typedef struct tagBITMAPINFOHEADER{
+    DWORD      biSize;
+    LONG       biWidth;
+    LONG       biHeight;
+    WORD       biPlanes;
+    WORD       biBitCount;
+    DWORD      biCompression;
+    DWORD      biSizeImage;
+    LONG       biXPelsPerMeter;
+    LONG       biYPelsPerMeter;
+    DWORD      biClrUsed;
+    DWORD      biClrImportant;
+} BITMAPINFOHEADER,  *LPBITMAPINFOHEADER, *PBITMAPINFOHEADER;
+typedef struct tagBITMAPINFO {
+    BITMAPINFOHEADER    bmiHeader;
+    RGBQUAD             bmiColors[1];
+} BITMAPINFO,  *LPBITMAPINFO, *PBITMAPINFO;
 
 @link("kernel32.dll")
 extern {
     BOOL __stdcall FreeConsole();
     
     HMODULE __stdcall GetModuleHandleA(LPCSTR lpModuleName);
+    
+    LPVOID __stdcall VirtualAlloc(LPVOID lpAddress,
+                                  SIZE_T dwSize,
+                                  DWORD flAllocationType,
+                                  DWORD flProtect);
+    
+    BOOL __stdcall VirtualFree(LPVOID lpAddress,
+                               SIZE_T dwSize,
+                               DWORD dwFreeType);
+    
+    void __stdcall Sleep(DWORD dwMilliseconds);
     
     DWORD __stdcall GetLastError();
 }
@@ -317,4 +448,16 @@ extern {
                                    LPVOID lpParam);
     
     BOOL ShowWindow(HWND hWnd, int nCmdShow);
+    
+    HDC __stdcall GetDC(HWND hWnd);
+    
+}
+
+@link("Gdi32.dll")
+extern {
+    BOOL  __stdcall BitBlt(HDC hdc,
+                           int x, int y, int cx, int cy,
+                           HDC hdcSrc, 
+                           int x1, int y1, 
+                           DWORD rop);
 }

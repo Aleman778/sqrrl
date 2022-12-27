@@ -116,7 +116,13 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
         }
         
         
-        assert(src0.raw_type == src1.raw_type);
+#if BUILD_DEBUG
+        if (src0.raw_type != src1.raw_type) {
+            pln("AST:\n%", f_ast(expr));
+            assert(0);
+        }
+#endif
+        
         bool isFloat = src0.type & IC_FLOAT;
         
         bool is_assign = is_binary_assign(op);
@@ -186,6 +192,31 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
     return result;
 }
 
+inline void
+convert_ic_to_conditional_jump(Compilation_Unit* cu, Intermediate_Code* code, Ic_Arg cond, Ic_Basic_Block* false_target) {
+    if (code && ic_is_setcc(code->opcode)) {
+        switch (code->opcode) {
+            case IC_SETE: code->opcode = IC_JNE; break;
+            case IC_SETNE: code->opcode = IC_JE; break;
+            case IC_SETG: code->opcode = IC_JNG; break;
+            case IC_SETGE: code->opcode = IC_JNGE; break;
+            case IC_SETL: code->opcode = IC_JNL; break;
+            case IC_SETLE: code->opcode = IC_JNLE; break;
+            case IC_SETA: code->opcode = IC_JNA; break;
+            case IC_SETAE: code->opcode = IC_JNAE; break;
+            case IC_SETB: code->opcode = IC_JNB; break;
+            case IC_SETBE: code->opcode = IC_JNBE; break;
+            
+            default: unimplemented;
+        }
+        code->data = false_target;
+    } else {
+        Intermediate_Code* cmp = ic_add(cu, IC_CMP);
+        cmp->src0 = cond;
+        cmp->src1 = ic_imm(IC_S8, 0);
+        code = ic_add(cu, IC_JE, false_target);
+    }
+}
 
 Ic_Arg
 convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
@@ -302,6 +333,14 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             result = convert_expr_to_intermediate_code(cu, expr->Field_Expr.var);
             assert(result.type & IC_STK);
             
+            if (type->kind == TypeKind_Pointer) {
+                Ic_Arg tmp = ic_reg(IC_T64);
+                ic_mov(cu, tmp, result);
+                result = ic_stk(tmp.raw_type, 0, IcStkArea_None, tmp.reg);
+                
+                type = type->Pointer;
+            }
+            
             if (type->kind == TypeKind_Struct) {
                 Struct_Field_Info info = get_field_info(&type->Struct, ident);
                 result.disp += info.offset;
@@ -320,7 +359,6 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     
                     case Sym_capacity: {
                         result.raw_type = IC_S64;
-                        result.disp += 16;
                     } break;
                 }
             } else {
@@ -479,6 +517,25 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
         
         case Ast_Binary_Expr: {
             result = convert_binary_expr_to_intermediate_code(cu, expr);
+        } break;
+        
+        case Ast_Ternary_Expr: {
+            Ic_Basic_Block* bb_else = ic_basic_block();
+            Ic_Basic_Block* bb_exit = ic_basic_block();
+            
+            Ic_Arg cond = convert_expr_to_intermediate_code(cu, expr->Ternary_Expr.first);
+            convert_ic_to_conditional_jump(cu, cu->ic_last, cond, bb_else);
+            
+            Ic_Arg value = convert_expr_to_intermediate_code(cu, expr->Ternary_Expr.second);
+            result = ic_reg(value.raw_type);
+            ic_mov(cu, result, value);
+            ic_add(cu, IC_JMP, bb_exit);
+            
+            ic_add(cu, IC_LABEL, bb_else);
+            value = convert_expr_to_intermediate_code(cu, expr->Ternary_Expr.third);
+            ic_mov(cu, result, value);
+            
+            ic_add(cu, IC_LABEL, bb_exit);
         } break;
         
         case Ast_Call_Expr: {
@@ -670,32 +727,6 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
     return result;
 }
 
-inline void
-convert_ic_to_conditional_jump(Compilation_Unit* cu, Intermediate_Code* code, Ic_Arg cond, Ic_Basic_Block* false_target) {
-    if (code && ic_is_setcc(code->opcode)) {
-        switch (code->opcode) {
-            case IC_SETE: code->opcode = IC_JNE; break;
-            case IC_SETNE: code->opcode = IC_JE; break;
-            case IC_SETG: code->opcode = IC_JNG; break;
-            case IC_SETGE: code->opcode = IC_JNGE; break;
-            case IC_SETL: code->opcode = IC_JNL; break;
-            case IC_SETLE: code->opcode = IC_JNLE; break;
-            case IC_SETA: code->opcode = IC_JNA; break;
-            case IC_SETAE: code->opcode = IC_JNAE; break;
-            case IC_SETB: code->opcode = IC_JNB; break;
-            case IC_SETBE: code->opcode = IC_JNBE; break;
-            
-            default: unimplemented;
-        }
-        code->data = false_target;
-    } else {
-        Intermediate_Code* cmp = ic_add(cu, IC_CMP);
-        cmp->src0 = cond;
-        cmp->src1 = ic_imm(IC_S8, 0);
-        code = ic_add(cu, IC_JE, false_target);
-    }
-}
-
 void
 convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Block* bb_break, Ic_Basic_Block* bb_continue) {
     switch (stmt->kind) {
@@ -745,7 +776,6 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Bloc
         case Ast_If_Stmt: {
             Ic_Basic_Block* bb_else = ic_basic_block();
             Ic_Arg cond = convert_expr_to_intermediate_code(cu, stmt->If_Stmt.cond);
-            Intermediate_Code* ic_jump = cu->ic_last;
             convert_ic_to_conditional_jump(cu, cu->ic_last, cond, bb_else);
             
             convert_stmt_to_intermediate_code(cu, stmt->If_Stmt.then_block, bb_break, bb_continue);
@@ -980,7 +1010,14 @@ x64_binary(Intermediate_Code* ic,
         
         case IC_STK: {
             if (t2 & IC_IMM) {
-                assert((t1 & IC_T64) == 0);
+                
+                if (d2 > U32_MAX) {
+                    unimplemented;
+                }
+                
+                if (t1 & IC_T64) {
+                    x64_rex(ic, REX_FLAG_64_BIT);
+                }
                 
                 // 81 /0 id 	ADD r/m32, imm32 	MI
                 ic_u8(ic, 0x81);

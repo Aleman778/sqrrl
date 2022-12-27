@@ -308,6 +308,18 @@ string_builder_push(String_Builder* sb, Type* type) {
     }
 }
 
+typedef umm intrin_type_def(Type*);
+
+umm
+type_sizeof(Type* type) {
+    return type->size;
+}
+
+umm
+type_alignof(Type* type) {
+    return type->align;
+}
+
 inline Type*
 type_deref(Type* type) {
     assert(type && type->kind == TypeKind_Pointer);

@@ -205,6 +205,8 @@ struct Ast_File;
 
 Type* type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool report_error);
 
+bool type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, 
+                           bool comparator=false, bool report_error=true);
 s32 type_check_ast_file(Ast_File* ast_file);
 
 Type* create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error);

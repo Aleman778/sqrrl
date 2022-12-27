@@ -24,13 +24,51 @@
 #endif
 
 //#define PRINT_AST 1
-//#define PRINT_BYTECODE 1
+#define PRINT_BYTECODE 1
 
 LRESULT CALLBACK
 win32_main_callback(HWND window, UINT message, WPARAM w_param, LPARAM l_param) {
     return DefWindowProcA(window, message, w_param, l_param);
 }
 
+
+struct Win32_Offscreen_Buffer {
+    BITMAPINFO info;
+    void* memory;
+    int width;
+    int height;
+    int bytes_per_row;
+    int bytes_per_pixel;
+    int scale;
+}
+
+void
+win32_resize_offscreen_buffer(Win32_Offscreen_Buffer* buffer, 
+                              HDC window_device_context, 
+                              int width, int height) {
+    
+    // TODO(alexander): maybe don't free first, free after, then free first if that fails.
+    if (buffer.memory) {
+        VirtualFree(buffer.memory, 0, MEM_RELEASE);
+    }
+    
+    buffer.width = width;
+    buffer.height = height;
+    buffer.bytes_per_pixel = 4;
+    
+    buffer.info.bmiHeader.biSize = (u32) sizeof(buffer.info.bmiHeader);
+    buffer.info.bmiHeader.biWidth = buffer.width;
+    buffer.info.bmiHeader.biHeight = -buffer.height;
+    buffer.info.bmiHeader.biPlanes = 1;
+    buffer.info.bmiHeader.biBitCount = 32;
+    buffer.info.bmiHeader.biCompression = BI_RGB;
+    
+    // TODO(Alexander): probably not where we should do this!
+    int buffer_memory_size = (buffer.width*buffer.height)*buffer.bytes_per_pixel;
+    buffer.memory = VirtualAlloc(0, buffer_memory_size, MEM_COMMIT, PAGE_READWRITE);
+    
+    buffer.bytes_per_row = buffer.width*buffer.bytes_per_pixel;
+}
 
 int
 main() {
@@ -42,6 +80,9 @@ main() {
     wndclass.hInstance = h_instance;
     wndclass.lpszClassName = "PlatfomerWindowClass";
     
+    int width = 640;
+    int height = 380;
+    
     if (RegisterClassA(&wndclass)) {
         //debug_break();
         HWND window = CreateWindowExA(0,
@@ -50,10 +91,25 @@ main() {
                                       WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                                       CW_USEDEFAULT,
                                       CW_USEDEFAULT,
-                                      640, 480,
+                                      width, height,
                                       0, 0,
                                       wndclass.hInstance,
                                       0);
+        
+        HDC device_context = GetDC(window);
+        
+        //Win32_Offscreen_Buffer offscreen_buffer;
+        //win32_resize_offscreen_buffer(&offscreen_buffer, device_context, width, height);
+        
+        int i = 0;
+        bool is_running = true;
+        while (is_running) {
+            debug_break();
+            BitBlt(device_context, 0, 0, width, height, 0, 0, 0, (i % 2) ? BLACKNESS : WHITENESS);
+            Sleep(10);
+            i += 1;
+        }
+        
     } else {
         pln("Failed to create a window")
     }

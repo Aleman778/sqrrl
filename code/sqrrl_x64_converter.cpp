@@ -978,10 +978,6 @@ x64_binary(Intermediate_Code* ic,
     switch (t1 & IC_TF_MASK) {
         case IC_REG: {
             if (t2 & IC_IMM) {
-                if (d2 == 0) {
-                    return;
-                }
-                
                 if (d2 > U32_MAX) {
                     unimplemented;
                 }

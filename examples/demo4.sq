@@ -104,8 +104,20 @@ main() {
         int i = 0;
         bool is_running = true;
         while (is_running) {
-            debug_break();
+            //debug_break();
             BitBlt(device_context, 0, 0, width, height, 0, 0, 0, (i % 2) ? BLACKNESS : WHITENESS);
+            
+            
+            MSG message;
+            while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
+                if (message.message == WM_QUIT) {
+                    is_running = false;
+                } else {
+                    TranslateMessage(&message);
+                    DispatchMessageA(&message);
+                }
+            }
+            
             Sleep(10);
             i += 1;
         }

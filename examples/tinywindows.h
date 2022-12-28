@@ -33,6 +33,8 @@ typedef const void* LPCVOID;
 
 typedef int                 INT;
 typedef unsigned int        UINT;
+typedef char CHAR;
+typedef short SHORT;
 typedef unsigned int        *PUINT;
 typedef unsigned long POINTER_64_INT;
 typedef signed char         INT8, *PINT8;
@@ -112,6 +114,44 @@ struct HUMPD__{int unused;}; typedef struct HUMPD__ *HUMPD;
 typedef HICON HCURSOR;      
 typedef DWORD   COLORREF;
 typedef DWORD   *LPCOLORREF;
+typedef struct tagRECT
+{
+    LONG    left;
+    LONG    top;
+    LONG    right;
+    LONG    bottom;
+} RECT, *PRECT,  *NPRECT,  *LPRECT;
+typedef const RECT * LPCRECT;
+typedef struct _RECTL       
+{
+    LONG    left;
+    LONG    top;
+    LONG    right;
+    LONG    bottom;
+} RECTL, *PRECTL, *LPRECTL;
+typedef const RECTL * LPCRECTL;
+typedef struct tagPOINT
+{
+    LONG  x;
+    LONG  y;
+} POINT, *PPOINT,  *NPPOINT,  *LPPOINT;
+typedef struct _POINTL      
+{
+    LONG  x;
+    LONG  y;
+} POINTL, *PPOINTL;
+typedef struct tagSIZE
+{
+    LONG        cx;
+    LONG        cy;
+} SIZE, *PSIZE, *LPSIZE;
+typedef SIZE               SIZEL;
+typedef SIZE               *PSIZEL, *LPSIZEL;
+typedef struct tagPOINTS
+{
+    SHORT   x;
+    SHORT   y;
+} POINTS, *PPOINTS, *LPPOINTS;
 
 
 //typedef LRESULT __stdcall(HWND, UINT, WPARAM, LPARAM)* WNDPROC;
@@ -335,6 +375,13 @@ WS_SYSMENU)
 #define BI_JPEG       4L
 #define BI_PNG        5L
 
+/*
+ * PeekMessage() Options
+ */
+#define PM_NOREMOVE         0x0000
+#define PM_REMOVE           0x0001
+#define PM_NOYIELD          0x0002
+
 #define CALLBACK    __cdecl
 
 typedef struct tagWNDCLASSA {
@@ -355,18 +402,20 @@ typedef struct tagRGBTRIPLE {
     BYTE    rgbtGreen;
     BYTE    rgbtRed;
 } RGBTRIPLE, *PRGBTRIPLE,  *NPRGBTRIPLE,  *LPRGBTRIPLE;
-// File: `C:\Program Files (x86)\Windows Kits\10\Include\10.0.22000.0\shared\poppack.h`
+
 typedef struct tagRGBQUAD {
     BYTE    rgbBlue;
     BYTE    rgbGreen;
     BYTE    rgbRed;
     BYTE    rgbReserved;
 } RGBQUAD;
+
 typedef RGBQUAD * LPRGBQUAD;
 typedef LONG   LCSCSTYPE;
 typedef LONG    LCSGAMUTMATCH;
 typedef long            FXPT16DOT16,  *LPFXPT16DOT16;
 typedef long            FXPT2DOT30,  *LPFXPT2DOT30;
+
 typedef struct tagCIEXYZ
 {
     FXPT2DOT30 ciexyzX;
@@ -374,6 +423,7 @@ typedef struct tagCIEXYZ
     FXPT2DOT30 ciexyzZ;
 } CIEXYZ;
 typedef CIEXYZ   *LPCIEXYZ;
+
 typedef struct tagICEXYZTRIPLE
 {
     CIEXYZ  ciexyzRed;
@@ -381,6 +431,7 @@ typedef struct tagICEXYZTRIPLE
     CIEXYZ  ciexyzBlue;
 } CIEXYZTRIPLE;
 typedef CIEXYZTRIPLE     *LPCIEXYZTRIPLE;
+
 typedef struct tagBITMAPINFOHEADER{
     DWORD      biSize;
     LONG       biWidth;
@@ -394,10 +445,21 @@ typedef struct tagBITMAPINFOHEADER{
     DWORD      biClrUsed;
     DWORD      biClrImportant;
 } BITMAPINFOHEADER,  *LPBITMAPINFOHEADER, *PBITMAPINFOHEADER;
+
 typedef struct tagBITMAPINFO {
     BITMAPINFOHEADER    bmiHeader;
     RGBQUAD             bmiColors[1];
 } BITMAPINFO,  *LPBITMAPINFO, *PBITMAPINFO;
+
+typedef struct tagMSG {
+    HWND        hwnd;
+    UINT        message;
+    WPARAM      wParam;
+    LPARAM      lParam;
+    DWORD       time;
+    POINT       pt;
+} MSG, *PMSG, *NPMSG;
+typedef MSG* LPMSG;
 
 @link("kernel32.dll")
 extern {
@@ -425,6 +487,16 @@ extern {
                               LPCSTR lpText,
                               LPCSTR lpCaption,
                               UINT uType);
+    
+    BOOL __stdcall PeekMessageA(LPMSG lpMsg,
+                                HWND hWnd,
+                                UINT wMsgFilterMin,
+                                UINT wMsgFilterMax,
+                                UINT wRemoveMsg);
+    
+    BOOL __stdcall TranslateMessage(const MSG *lpMsg);
+    
+    LRESULT __stdcall DispatchMessageA(const MSG *lpMsg);
     
     LRESULT __stdcall DefWindowProcA(HWND hWnd,
                                      UINT Msg,

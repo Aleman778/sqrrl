@@ -636,7 +636,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             expr->Call_Expr.function_type = function_type;
             result = function_type->Function.return_type;
             expr->type = result;
-            pln("ret: %", f_type(result));
             
             // Arguments
             // TODO(Alexander): nice to have: support for keyworded args, default args
@@ -771,6 +770,11 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 if (!type) {
                     break;
                 }
+            }
+            
+            if (type->kind == TypeKind_Pointer) {
+                
+                pln("%", f_ast(expr));
             }
             
             // TODO(Alexander): add support for unions, enums etc.
@@ -1941,7 +1945,7 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
     // We will still have intrinsics but these intrinsics are just for debugging
     
     {
-        // Intrinsic syntax: print_format(string format...)
+        // Intrinsic syntax: void print_format(string format...)
         // e.g. print_format %, lucky number is %\n", "world", 7);
         Type* type = arena_push_struct(&tcx->type_arena, Type);
         type->kind = TypeKind_Function;
@@ -1962,7 +1966,7 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
     }
     
     {
-        // Intrinsic syntax: debug_break()
+        // Intrinsic syntax: void debug_break()
         // Inserts a breakpoint (e.g. int3 on x64) to enable debugger
         Type* type = arena_push_struct(&tcx->type_arena, Type);
         type->kind = TypeKind_Function;
@@ -1979,7 +1983,7 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
     }
     
     {
-        // Intrinsic syntax: assert(s32 expr)
+        // Intrinsic syntax: void assert(s32 expr)
         // Assets that expr is true, used as test case
         Type* type = arena_push_struct(&tcx->type_arena, Type);
         type->kind = TypeKind_Function;
@@ -2000,7 +2004,7 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
     }
     
     {
-        // Intrinsic syntax:  sqrt(f32 num)
+        // Intrinsic syntax: f32 sqrt(f32 num)
         Type* type = arena_push_struct(&tcx->type_arena, Type);
         type->kind = TypeKind_Function;
         type->Function.is_variadic = false;
@@ -2020,7 +2024,27 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
     }
     
     {
-        // Intrinsic syntax:  random_f32(f32 num)
+        // Intrinsic syntax:  f32 round_f32(f32 num)
+        Type* type = arena_push_struct(&tcx->type_arena, Type);
+        type->kind = TypeKind_Function;
+        type->Function.is_variadic = false;
+        
+        string_id arg0_ident = vars_save_cstring("num");
+        array_push(type->Function.arg_idents, arg0_ident);
+        array_push(type->Function.arg_types, t_f32);
+        
+        string_id ident = vars_save_cstring("round_f32");
+        type->Function.unit = 0;
+        type->Function.interp_intrinsic = 0;
+        type->Function.intrinsic = &roundf;
+        type->Function.ident = ident;
+        type->Function.return_type = t_f32;
+        
+        map_put(tcx->globals, ident, type);
+    }
+    
+    {
+        // Intrinsic syntax: f32 random_f32(f32 num)
         Type* type = arena_push_struct(&tcx->type_arena, Type);
         type->kind = TypeKind_Function;
         type->Function.is_variadic = false;
@@ -2036,7 +2060,7 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
     }
     
     {
-        // Intrinsic syntax: sizeof(T)
+        // Intrinsic syntax: umm sizeof(T)
         Type* type = arena_push_struct(&tcx->type_arena, Type);
         type->kind = TypeKind_Function;
         type->Function.is_variadic = false;
@@ -2052,7 +2076,7 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
     }
     
     {
-        // Intrinsic syntax: alignof(T)
+        // Intrinsic syntax: umm alignof(T)
         Type* type = arena_push_struct(&tcx->type_arena, Type);
         type->kind = TypeKind_Function;
         type->Function.is_variadic = false;

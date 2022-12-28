@@ -59,8 +59,8 @@ global const X64_Reg float_arg_registers_ccall_windows[] {
 
 struct X64_Arg_Copy {
     Type* type;
+    Ast* expr;
     Ic_Arg dest;
-    Ic_Arg src;
 };
 
 inline Ic_Arg

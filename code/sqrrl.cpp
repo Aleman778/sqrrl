@@ -210,6 +210,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     main_cu = cu;
                 }
             }
+        } else if (cu->ast->kind == Ast_Assign_Stmt) {
+            
+            
         }
     }
     assert(main_cu);

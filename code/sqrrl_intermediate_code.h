@@ -16,6 +16,8 @@ IC(MOD) \
 IC(AND) \
 IC(OR) \
 IC(XOR) \
+IC(SHL) \
+IC(SHR) \
 IC(MOV) \
 IC(LEA) \
 IC(LPROC) \

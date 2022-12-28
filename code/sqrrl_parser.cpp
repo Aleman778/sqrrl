@@ -515,7 +515,11 @@ parse_atom(Parser* parser, bool report_error) {
                 result = push_ast_node(parser, &token);
                 result->kind = Ast_Unary_Expr;
                 result->Unary_Expr.op = unop;
-                result->Unary_Expr.first = parse_expression(parser);
+                if (unop == UnaryOp_Dereference) {
+                    result->Unary_Expr.first = parse_atom(parser);
+                } else {
+                    result->Unary_Expr.first = parse_expression(parser);
+                }
             }
             
         } break;
@@ -924,6 +928,8 @@ parse_formal_struct_or_union_argument(Parser* parser) {
         curr->Compound.node = result->Argument.ident;
         result->Argument.ident = curr;
         
+        curr->Compound.next = push_ast_node(parser);
+        curr = curr->Compound.next;
         do {
             curr->kind = Ast_Compound;
             curr->Compound.node = parse_identifier(parser);

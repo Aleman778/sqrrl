@@ -24,11 +24,24 @@
 #endif
 
 //#define PRINT_AST 1
-#define PRINT_BYTECODE 1
+//#define PRINT_BYTECODE 1
+
+//bool is_running = true;
 
 LRESULT CALLBACK
 win32_main_callback(HWND window, UINT message, WPARAM w_param, LPARAM l_param) {
-    return DefWindowProcA(window, message, w_param, l_param);
+    LRESULT result = 0;
+    
+    bool is_running = true;
+    if (message == WM_CLOSE) {
+        is_running = false;
+    } else if (message == WM_DESTROY) {
+        is_running = false;
+    } else {
+        result = DefWindowProcA(window, message, w_param, l_param);
+    }
+    
+    return result;
 }
 
 
@@ -46,15 +59,18 @@ void
 win32_resize_offscreen_buffer(Win32_Offscreen_Buffer* buffer, 
                               HDC window_device_context, 
                               int width, int height) {
-    
+    pln("sizeof(BITMAPINFO) = %", sizeof(buffer.info));
     // TODO(alexander): maybe don't free first, free after, then free first if that fails.
     if (buffer.memory) {
+        pln("free!");
         VirtualFree(buffer.memory, 0, MEM_RELEASE);
     }
     
     buffer.width = width;
     buffer.height = height;
     buffer.bytes_per_pixel = 4;
+    pln("w=%", buffer.width);
+    pln("h=%", buffer.height);
     
     buffer.info.bmiHeader.biSize = (u32) sizeof(buffer.info.bmiHeader);
     buffer.info.bmiHeader.biWidth = buffer.width;
@@ -67,7 +83,55 @@ win32_resize_offscreen_buffer(Win32_Offscreen_Buffer* buffer,
     int buffer_memory_size = (buffer.width*buffer.height)*buffer.bytes_per_pixel;
     buffer.memory = VirtualAlloc(0, buffer_memory_size, MEM_COMMIT, PAGE_READWRITE);
     
+    pln("mem=%", buffer.memory);
+    
     buffer.bytes_per_row = buffer.width*buffer.bytes_per_pixel;
+}
+
+struct v4 {
+    f32 r, g, b, a;
+}
+
+
+inline u32
+round_f32_to_u32(f32 value) {
+    return (u32) round_f32(value);
+}
+
+inline u32
+rgba_pack_u32(v4 c) {
+    return (round_f32_to_u32(c.a * 255.0f) << 24 |
+            round_f32_to_u32(c.r * 255.0f) << 16 |
+            round_f32_to_u32(c.g * 255.0f) << 8 |
+            round_f32_to_u32(c.b * 255.0f));
+}
+
+
+void
+win32_clear_color(Win32_Offscreen_Buffer* buffer, v4 color) {
+    //u32 pixel_value = rgba_pack_u32(color);
+    u32 pixel_value = 0xFF000000;
+    u8* row = (u8*) buffer.memory;
+    for (s32 y = 0; y < buffer.height; y += 1) {
+        u32* pixel = (u32*) row;
+        for (s32 x = 0; x < buffer.width; x += 1) {
+            *pixel = pixel_value;
+            pixel += 1
+        }
+        row += (u8*) buffer.width;
+    }
+}
+
+
+void
+win32_render_buffer(Win32_Offscreen_Buffer* buffer, HDC window_device_context) {
+    StretchDIBits(window_device_context,
+                  0, 0, buffer.width, buffer.height,
+                  0, 0, buffer.width, buffer.height,
+                  buffer.memory,
+                  &buffer.info,
+                  DIB_RGB_COLORS, 
+                  SRCCOPY | BLACKNESS);
 }
 
 int
@@ -98,15 +162,15 @@ main() {
         
         HDC device_context = GetDC(window);
         
-        //Win32_Offscreen_Buffer offscreen_buffer;
-        //win32_resize_offscreen_buffer(&offscreen_buffer, device_context, width, height);
+        Win32_Offscreen_Buffer offscreen_buffer;
+        win32_resize_offscreen_buffer(&offscreen_buffer, device_context, width, height);
+        
+        win32_clear_color(&offscreen_buffer, v4 { r: 1.0f, g: 0.5f, b: 1.0f, a: 1.0f });
         
         int i = 0;
         bool is_running = true;
         while (is_running) {
-            //debug_break();
-            BitBlt(device_context, 0, 0, width, height, 0, 0, 0, (i % 2) ? BLACKNESS : WHITENESS);
-            
+            win32_render_buffer(&offscreen_buffer, device_context);
             
             MSG message;
             while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
@@ -118,7 +182,7 @@ main() {
                 }
             }
             
-            Sleep(10);
+            Sleep(100);
             i += 1;
         }
         

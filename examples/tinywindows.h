@@ -159,6 +159,10 @@ typedef LRESULT __stdcall (HWND, UINT, WPARAM, LPARAM) WNDPROC;
 
 
 
+/* DIB color table identifiers */
+
+#define DIB_RGB_COLORS      0 /* color table in RGBs */
+#define DIB_PAL_COLORS      1 /* color table in palette indices */
 
 /*
  * Window Styles
@@ -532,4 +536,18 @@ extern {
                            HDC hdcSrc, 
                            int x1, int y1, 
                            DWORD rop);
+    
+    int __stdcall StretchDIBits(HDC hdc,
+                                int xDest,
+                                int yDest,
+                                int DestWidth,
+                                int DestHeight,
+                                int xSrc,
+                                int ySrc,
+                                int SrcWidth,
+                                int SrcHeight,
+                                const void * lpBits,
+                                const BITMAPINFO * lpbmi,
+                                UINT iUsage,
+                                DWORD rop);
 }

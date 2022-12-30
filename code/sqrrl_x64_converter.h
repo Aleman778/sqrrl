@@ -59,7 +59,10 @@ global const X64_Reg float_arg_registers_ccall_windows[] {
 
 struct X64_Arg_Copy {
     Type* type;
-    Ast* expr;
+    union {
+        Ast* expr;
+        string_id ident;
+    };
     Ic_Arg dest;
 };
 
@@ -208,12 +211,18 @@ global const u8 x64_jmp_opcodes[] = {
     0x85, 0x0F, 0x80, 0x0F, 0x8A, 0x0F, 0x8A, 0x0F, 0x8B, 0x0F, 0x88,
 };
 
-Intermediate_Code*
-ic_add(Compilation_Unit* cu, Ic_Opcode opcode = IC_NOOP, void* data=0) {
-    // TODO(Alexander): temporary bump allocation for now
+inline Intermediate_Code*
+ic_add_orphan(Compilation_Unit* cu, Ic_Opcode opcode = IC_NOOP, void* data=0) {
     Intermediate_Code* result = (Intermediate_Code*) calloc(1, sizeof(Intermediate_Code));
     result->opcode = opcode;
     result->data = data;
+    return result;
+}
+
+Intermediate_Code*
+ic_add(Compilation_Unit* cu, Ic_Opcode opcode = IC_NOOP, void* data=0) {
+    // TODO(Alexander): temporary bump allocation for now
+    Intermediate_Code* result = ic_add_orphan(cu, opcode, data);
     
     Ic_Basic_Block* bb;
     

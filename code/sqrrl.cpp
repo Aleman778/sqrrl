@@ -23,7 +23,6 @@ typedef f32 asm_f32_main(void);
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm), bool is_debugger_present) {
-    
     // TODO(Alexander): temporary use of C runtime RNG
     srand((uint) time(0));
     rand();

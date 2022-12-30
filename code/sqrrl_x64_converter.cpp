@@ -19,6 +19,21 @@ convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg des
 }
 
 Ic_Arg
+x64_clobber_register(Compilation_Unit* cu, Intermediate_Code* curr, Type* type, Ic_Arg prev_result) {
+    Ic_Arg clobber = ic_push_local(cu, type); // TODO(Alexander): temp allocation
+    
+    Intermediate_Code* mov_clobber = ic_add_orphan(cu, IC_MOV);
+    mov_clobber->src0 = clobber;
+    mov_clobber->src1 = prev_result;
+    
+    Intermediate_Code* tmp = curr->next;
+    curr->next = mov_clobber;
+    mov_clobber->next = tmp;
+    
+    return clobber;
+}
+
+Ic_Arg
 convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg prev_result={}) {
     assert(expr && expr->kind == Ast_Binary_Expr && "not a binary expression");
     
@@ -58,66 +73,36 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
         assert(src0.raw_type == src1.raw_type);
         
     } else {
+        //Ic_Arg clobber;
         Ic_Arg src0, src1;
         
-        {
-            Ic_Arg clobber = {};
-            Ast* second = expr->Binary_Expr.second;
-            if (second->kind == Ast_Binary_Expr) { 
-                src1 = convert_binary_expr_to_intermediate_code(cu, second, prev_result);
-                if (src1.type & IC_REG && src1.reg == 0) {
-                    prev_result = src1;
-                }
-            } else {
-                
-                // NOTE(Alexander): assumes RAX or XMM0 are ONLY used as tmp registers and that RBX && XMM6 are nonvolatile registers
-                if (prev_result.type && (second->kind == Ast_Call_Expr || second->kind == Ast_Cast_Expr)) {
-                    clobber = ic_push_local(cu, second->type); // TODO(Alexander): temp allocation
-                    ic_mov(cu, clobber, prev_result);
-                }
-                
-                src1 = convert_expr_to_intermediate_code(cu, second);
-                
-                if (clobber.type) {
-                    src1 = ic_reg(clobber.raw_type);
-                    ic_mov(cu, src1, clobber);
-                }
-                
-                if (src1.type & IC_REG && src1.reg == 0) {
-                    prev_result = src1;
-                }
-            }
-        }
-        
-        {
-            Ic_Arg clobber = {};
+        if (op == BinaryOp_Assign) {
+            src0 = {};
+        } else {
             Ast* first = expr->Binary_Expr.first;
             if (first->kind == Ast_Binary_Expr) { 
                 src0 = convert_binary_expr_to_intermediate_code(cu, first, prev_result);
-                if (src1.type & IC_REG && src0.type & IC_REG && src1.reg == src0.reg) {
-                    src0 = ic_reg(src0.raw_type, (u8) (src0.type & IC_FLOAT ? X64_XMM1 : X64_RCX));
-                    cu->ic_last->dest = src0;
-                }
             } else {
-                
-                // NOTE(Alexander): assumes RAX or XMM0 are ONLY used as tmp registers and that RBX && XMM6 are nonvolatile registers
-                if (prev_result.type && (first->kind == Ast_Call_Expr || first->kind == Ast_Cast_Expr)) {
-                    clobber = ic_push_local(cu, first->type); // TODO(Alexander): temp allocation
-                    ic_mov(cu, clobber, prev_result);
-                }
-                
                 src0 = convert_expr_to_intermediate_code(cu, first);
-                
-                if (clobber.type) {
-                    src1 = ic_reg(clobber.raw_type, (u8) (clobber.type & IC_FLOAT ? X64_XMM1 : X64_RCX));
-                    ic_mov(cu, src1,  clobber);
-                } 
             }
         }
         
+        {
+            Intermediate_Code* curr = cu->ic_last;
+            Ast* second = expr->Binary_Expr.second;
+            if (second->kind == Ast_Binary_Expr) { 
+                src1 = convert_binary_expr_to_intermediate_code(cu, second, prev_result);
+            } else {
+                src1 = convert_expr_to_intermediate_code(cu, second);
+            }
+            
+            if (src0.type & IC_REG && src0.type == src1.type && src0.reg == src1.reg) {
+                src0 = x64_clobber_register(cu, curr, second->type, src0);
+            }
+        }
         
 #if BUILD_DEBUG
-        if (src0.raw_type != src1.raw_type) {
+        if (src0.raw_type != 0 && src0.raw_type != src1.raw_type) {
             pln("AST:\n%", f_ast(expr));
             assert(0);
         }
@@ -187,6 +172,8 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
         }
         
         if (is_assign) {
+            Intermediate_Code* curr = cu->ic_last;
+            src0 = convert_expr_to_intermediate_code(cu, expr->Binary_Expr.first);
             convert_assign_to_intermediate_code(cu, expr->type, src0, result);
         }
     }
@@ -271,6 +258,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     ic->dest = ic_reg(IC_T64);
                     result = ic->dest;
                 } else {
+                    pln("Unknown variable: %", f_var(expr->Ident));
                     unimplemented;
                 }
             }
@@ -881,6 +869,7 @@ convert_procedure_to_intermediate_code(Compilation_Unit* cu, bool insert_debug_b
     for_array(proc->arg_types, type, type_index) {
         Ic_Raw_Type rt = convert_type_to_raw_type(*type);
         s64 disp = arg_index*8;
+        string_id ident = proc->arg_idents[type_index];
         
         if (arg_index < 4) {
             // None is used because this code is outside the stack frame
@@ -895,12 +884,15 @@ convert_procedure_to_intermediate_code(Compilation_Unit* cu, bool insert_debug_b
             src.type |= IC_SINT; // TODO(Alexander): strange way of disable ptr dereference
             
             X64_Arg_Copy copy = { *type, 0, src };
+            copy.ident = ident;
             array_push(copy_args, copy);
+        } else {
+            map_put(cu->locals, ident, dest); 
         }
         
-        map_put(cu->locals, proc->arg_idents[type_index], dest);
         arg_index++;
     }
+    
     
     for_array_reverse(home_register, arg, reg_index) {
         if (reg_index < 4) {
@@ -920,7 +912,7 @@ convert_procedure_to_intermediate_code(Compilation_Unit* cu, bool insert_debug_b
     
     ic_add(cu, IC_PRLG);
     for_array(copy_args, c, _) {
-        Ic_Arg dest = ic_push_local(cu, c->type);
+        Ic_Arg dest = ic_push_local(cu, c->type, c->ident);
         convert_assign_to_intermediate_code(cu, c->type, dest, c->dest);
     }
     
@@ -1051,15 +1043,25 @@ x64_add(Intermediate_Code* ic,
         Ic_Type t3, s64 r3, s64 d3, 
         u8 reg_field, u8 opcode) {
     
+    s64 tmpr = -1;
     if (t1 & IC_REG) {
-        if (!(t2 & IC_REG)) {
+        if (!(t2 & IC_REG) && t1 != t3 && r1 != r3) {
             x64_mov(ic, t1, r1, d1, t2, r2, d2);
+        } else  {
+            x64_mov(ic, t1, X64_RCX, 0, t2, r2, d2);
+            tmpr = r1;
+            r1 = X64_RCX;
         }
     } else {
         unimplemented;
     }
     
     x64_binary(ic, t1, r1, d1, t3, r3, d3, reg_field, opcode);
+    
+    if (tmpr != -1) {
+        x64_mov(ic, t1, tmpr, 0, t1, X64_RCX, 0);
+        tmpr = -1;
+    }
 }
 
 void
@@ -1140,8 +1142,12 @@ x64_mov(Intermediate_Code* ic,
             } else if (t2 & IC_STK) {
                 // NOTE(Alexander): x64 doesn't allow MOV STK, STK, move to tmp reg
                 // TODO(Alexander): reg hardcoded RAX
-                x64_mov(ic, IC_REG + (t2 & IC_RT_MASK), X64_RAX, 0, t2, r2, d2);
-                x64_mov(ic, t1, r1, d1, IC_REG + (t1 & IC_RT_MASK), X64_RAX, 0);
+                s64 tmpr = X64_RAX;
+                if (r2 == tmpr || r1 == tmpr) {
+                    tmpr = X64_RCX;
+                }
+                x64_mov(ic, IC_REG + (t2 & IC_RT_MASK), tmpr, 0, t2, r2, d2);
+                x64_mov(ic, t1, r1, d1, IC_REG + (t1 & IC_RT_MASK), tmpr, 0);
             } else {
                 assert(0 && "invalid instruction");
             }
@@ -1225,8 +1231,19 @@ x64_mul(Intermediate_Code* ic) {
         s64 r1 = ic->src0.reg;
         s64 d1 = ic->src0.disp;
         
-        if (ic->src0.type & IC_STK || ic->src0.reg == ic->dest.reg) {
-            x64_mov(ic, ic->dest.type, ic->dest.reg, ic->dest.disp, t1, r1, d1);
+        Ic_Type t2 = ic->src1.type;
+        s64 r2 = ic->src1.reg;
+        s64 d2 = ic->src1.disp;
+        
+        if (t1 & IC_STK) {
+            // NOTE(Alexander): swap the order of mul
+            if (t2 & IC_STK || r2 != ic->dest.reg) {
+                x64_mov(ic, ic->dest.type, ic->dest.reg, ic->dest.disp, t2, r2, d2);
+            }
+            t2 = t1;
+            r2 = r1;
+            d2 = d1;
+            
             t1 = ic->dest.type;
             r1 = ic->dest.reg;
             d1 = ic->dest.disp;
@@ -1234,7 +1251,7 @@ x64_mul(Intermediate_Code* ic) {
         
         // 0F AF /r 	IMUL r32, r/m32
         ic_u16(ic, 0xAF0F);
-        x64_modrm(ic, ic->src1.type, ic->src1.disp, r1, ic->src1.reg);
+        x64_modrm(ic, t2, d2, r1, r2);
     }
 }
 
@@ -1470,17 +1487,23 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
             } break;
             
             case IC_SHL: {
-                x64_add(ic, 
-                        ic->dest.type, ic->dest.reg, ic->dest.disp,
-                        ic->src0.type, ic->src0.reg, ic->src0.disp,
-                        ic->src1.type, ic->src1.reg, ic->src1.disp, 4, 0xC0);
+                // C1 /4 ib 	SAL r/m32, imm8 	MI
+                // C1 /4 ib 	SHL r/m32, imm8 	MI (same as above)
+                ic_u8(ic, 0xC1);
+                x64_modrm(ic, ic->src0.type, ic->src0.disp, 4, ic->src0.reg);
+                ic_u8(ic, (u8) ic->src1.disp);
             } break;
             
             case IC_SHR: {
-                x64_add(ic, 
+                // C1 /7 ib 	SAR r/m32, imm8 	MI (signed)
+                // C1 /5 ib 	SHR r/m32, imm8 	MI (unsigned)
+                ic_u8(ic, 0xC1);
+                u8 reg_field = (ic->src0.type & IC_SINT) ? 7 : 5;
+                x64_modrm(ic, ic->src0.type, ic->src0.disp, reg_field, ic->src0.reg);
+                ic_u8(ic, (u8) ic->src1.disp);
+                x64_mov(ic, 
                         ic->dest.type, ic->dest.reg, ic->dest.disp,
-                        ic->src0.type, ic->src0.reg, ic->src0.disp,
-                        ic->src1.type, ic->src1.reg, ic->src1.disp, 7, 0xC0);
+                        ic->src0.type, ic->src0.reg, ic->src0.disp);
             } break;
             
             case IC_MUL: {
@@ -1835,3 +1858,71 @@ string_builder_push(String_Builder* sb, Ic_Arg arg) {
         } break;
     }
 }
+
+#if 0
+
+if (op == BinaryOp_Shift_Left) {
+    pln("shl: %", f_ast(expr));
+    //__debugbreak();
+}
+
+Ic_Arg src0, src1;
+
+{
+    Ic_Arg clobber = {};
+    Ast* second = expr->Binary_Expr.second;
+    if (second->kind == Ast_Binary_Expr) { 
+        src1 = convert_binary_expr_to_intermediate_code(cu, second, prev_result);
+        if (src1.type & IC_REG && src1.reg == 0) {
+            prev_result = src1;
+        }
+    } else {
+        
+        // NOTE(Alexander): assumes RAX or XMM0 are ONLY used as tmp registers and that RBX && XMM6 are nonvolatile registers
+        //if (prev_result.type && (second->kind == Ast_Call_Expr || second->kind == Ast_Cast_Expr)) {
+        if (prev_result.type) {
+            clobber = ic_push_local(cu, second->type); // TODO(Alexander): temp allocation
+            ic_mov(cu, clobber, prev_result);
+        }
+        
+        src1 = convert_expr_to_intermediate_code(cu, second);
+        
+        if (clobber.type) {
+            src1 = ic_reg(clobber.raw_type);
+            ic_mov(cu, src1, clobber);
+        }
+        
+        if (src1.type & IC_REG && src1.reg == 0) {
+            prev_result = src1;
+        }
+    }
+}
+
+{
+    Ic_Arg clobber = {};
+    Ast* first = expr->Binary_Expr.first;
+    if (first->kind == Ast_Binary_Expr) { 
+        src0 = convert_binary_expr_to_intermediate_code(cu, first, prev_result);
+        if (src1.type & IC_REG && src0.type & IC_REG && src1.reg == src0.reg) {
+            src0 = ic_reg(src0.raw_type, (u8) (src0.type & IC_FLOAT ? X64_XMM1 : X64_RCX));
+            cu->ic_last->dest = src0;
+        }
+    } else {
+        
+        // NOTE(Alexander): assumes RAX or XMM0 are ONLY used as tmp registers and that RBX && XMM6 are nonvolatile registers
+        //if (prev_result.type && (first->kind == Ast_Call_Expr || first->kind == Ast_Cast_Expr)) {
+        if (prev_result.type) {
+            clobber = ic_push_local(cu, first->type); // TODO(Alexander): temp allocation
+            ic_mov(cu, clobber, prev_result);
+        }
+        
+        src0 = convert_expr_to_intermediate_code(cu, first);
+        
+        if (clobber.type) {
+            src1 = ic_reg(clobber.raw_type, (u8) (clobber.type & IC_FLOAT ? X64_XMM1 : X64_RCX));
+            ic_mov(cu, src1,  clobber);
+        } 
+    }
+}
+
+#endif

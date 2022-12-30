@@ -728,7 +728,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         case Ast_Cast_Expr: {
             Type* type = create_type_from_ast(tcx, expr->Cast_Expr.type, report_error);
             if (type) {
-                Type* actual_type = type_infer_expression(tcx, expr->Cast_Expr.expr, type, report_error);
+                Type* actual_type = type_infer_expression(tcx, expr->Cast_Expr.expr, 0, report_error);
                 if (actual_type) {
                     expr->type = type;
                     result = expr->type;

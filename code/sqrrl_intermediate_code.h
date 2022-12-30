@@ -188,6 +188,7 @@ struct Ic_Arg {
     };
 };
 
+typedef map(string_id, Ic_Arg) Ic_Arg_Map;
 
 struct Intermediate_Code {
     Intermediate_Code* next;

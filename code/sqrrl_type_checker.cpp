@@ -672,6 +672,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             // HACK(Alexander): for now print_format pushes the format type first then the value 
             if (result && proc->intrinsic) {
                 if (proc->intrinsic == &print_format) {
+                    //pln("ast = %", f_ast(actual_args));
                     
                     arg_index = 0;
                     Ast* prev_compound = 0;

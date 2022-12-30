@@ -23,23 +23,24 @@
 #include "tinywindows.h"
 #endif
 
-//#define PRINT_AST 1
-#define PRINT_BYTECODE 1
+#include "raytracer/first.sq"
 
-//bool is_running = true;
+//#define PRINT_AST 1
+//#define PRINT_BYTECODE 1
+
+bool is_running = true;
 
 LRESULT CALLBACK
 win32_main_callback(HWND window, UINT message, WPARAM w_param, LPARAM l_param) {
     LRESULT result = 0;
     
-    bool is_running = true;
-    //if (message == WM_CLOSE) {
-    //is_running = false;
-    //} else if (message == WM_DESTROY) {
-    //is_running = false;
-    //} else {
-    result = DefWindowProcA(window, message, w_param, l_param);
-    //}
+    if (message == WM_CLOSE) {
+        is_running = false;
+    } else if (message == WM_DESTROY) {
+        is_running = false;
+    } else {
+        result = DefWindowProcA(window, message, w_param, l_param);
+    }
     
     return result;
 }
@@ -59,18 +60,14 @@ void
 win32_resize_offscreen_buffer(Win32_Offscreen_Buffer* buffer, 
                               HDC window_device_context, 
                               int width, int height) {
-    pln("sizeof(BITMAPINFO) = %", sizeof(buffer.info));
     // TODO(alexander): maybe don't free first, free after, then free first if that fails.
     if (buffer.memory) {
-        pln("free!");
         VirtualFree(buffer.memory, 0, MEM_RELEASE);
     }
     
     buffer.width = width;
     buffer.height = height;
     buffer.bytes_per_pixel = 4;
-    pln("w=%", buffer.width);
-    pln("h=%", buffer.height);
     
     buffer.info.bmiHeader.biSize = (u32) sizeof(buffer.info.bmiHeader);
     buffer.info.bmiHeader.biWidth = buffer.width;
@@ -81,10 +78,7 @@ win32_resize_offscreen_buffer(Win32_Offscreen_Buffer* buffer,
     
     // TODO(Alexander): probably not where we should do this!
     int buffer_memory_size = (buffer.width*buffer.height)*buffer.bytes_per_pixel;
-    pln("buffer_memory_size: %", buffer_memory_size);
     buffer.memory = VirtualAlloc(0, buffer_memory_size, MEM_COMMIT, PAGE_READWRITE);
-    
-    pln("mem=%", buffer.memory);
     
     buffer.bytes_per_row = buffer.width*buffer.bytes_per_pixel;
 }
@@ -176,15 +170,17 @@ main() {
         sky_color.g = 0.5f;
         sky_color.b = 1.0f;
         sky_color.a = 1.0f;
-        pln("rgb(%, %, %)", sky_color.r, sky_color.g, sky_color.b);
-        win32_clear_color(&offscreen_buffer, sky_color);
+        //win32_clear_color(&offscreen_buffer, sky_color);
+        render(&offscreen_buffer);
         
         int i = 0;
-        bool is_running = true;
         while (is_running) {
-            win32_clear_color(&offscreen_buffer, sky_color);
             
             win32_render_buffer(&offscreen_buffer, device_context);
+            
+            //win32_clear_color(&offscreen_buffer, sky_color);
+            
+            //pln("Frame %", i + 1);
             
             MSG message;
             while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
@@ -196,9 +192,7 @@ main() {
                 }
             }
             
-            sky_color.r = (f32) i*0.01f;
-            
-            Sleep(100);
+            Sleep(10);
             i += 1;
         }
         

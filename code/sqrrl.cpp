@@ -197,13 +197,18 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         }
     }
     
+    Ic_Arg_Map* globals = 0;
+    
     Compilation_Unit* main_cu = 0;
     for_array(ast_file.units, cu, _) {
         if (cu->ast->kind == Ast_Decl_Stmt) {
             Type* type = cu->ast->type;
             if (type->kind == TypeKind_Function) {
                 bool is_main = cu->ident == Sym_main;
+                cu->globals = globals;
                 convert_procedure_to_intermediate_code(cu, is_debugger_present && is_main);
+                globals = cu->globals;
+                
                 
                 if (is_main) {
                     main_cu = cu;
@@ -250,6 +255,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             int bb_index = 0;
             Intermediate_Code* curr = cu->ic_first;
             while (curr) {
+                
                 
                 if (curr->opcode == IC_LABEL) {
                     if (bb_index > 0) {
@@ -317,7 +323,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             printf("0%hhX ", byte);
         }
         
-        if (byte_index % 30 == 29) {
+        if (byte_index % 80 == 79) {
             printf("\n");
         }
     }

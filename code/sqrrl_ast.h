@@ -303,7 +303,8 @@ struct Compilation_Unit {
     Ic_Basic_Block *bb_first, *bb_last;
     Ic_Basic_Block *bb_return;
     Ic_Basic_Block *bb_data;
-    map(string_id, Ic_Arg)* locals;
+    Ic_Arg_Map* locals;
+    Ic_Arg_Map* globals;
     
     s64 stk_args = 0;
     s64 stk_locals = 0;

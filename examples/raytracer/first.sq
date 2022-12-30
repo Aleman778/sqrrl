@@ -150,15 +150,14 @@ ray_color(ray r, [2]Sphere spheres, int depth) {
 
 
 int
-main() {
+render(Win32_Offscreen_Buffer* buffer) {
     //debug_break();
     
-    f32 aspect_ratio = 16.0f / 9.0f;
-    int image_width = 400;
-    int image_height = (int) ((f32) image_width / aspect_ratio);
+    //f32 aspect_ratio = 16.0f / 9.0f;
+    f32 aspect_ratio = (f32) buffer.width / (f32) buffer.height;
     int max_ray_depth = 50;
     
-    //pln("resolution: % x %", image_width, image_height);
+    //pln("resolution: % x %", buffer.width, buffer.height);
     
     f32 viewport_height = 2.0f;
     f32 viewport_width = aspect_ratio * viewport_height;
@@ -175,7 +174,7 @@ main() {
     lower_left_corner = vec3_sub(lower_left_corner, temp);
     lower_left_corner = vec3_sub(lower_left_corner, focal);
     
-    pln("P3\n% %\n255", image_width, image_height);
+    //pln("P3\n% %\n255", buffer.width, buffer.height);
     
     [2]Sphere spheres;
     spheres[0].p = vec3(0.0f, 0.0f, -1.0f);
@@ -184,19 +183,24 @@ main() {
     spheres[1].p = vec3(0.0f, -100.5f, -1.0f);
     spheres[1].radius = 100.0f;
     
-    int samples_per_pixel = 100;
-    for (int y = image_height-1; y >= 0; y -= 1) {
-        for (int x = 0; x < image_width; x += 1) {
-            // TODO(Alexander): bug (image_width) breaks
-            // TODO(Alexander): bug (image_width - 1) breaks
-            //pln("%, %", y, x);
+    int samples_per_pixel = 1;
+    
+    s64 p = (s64) buffer.width*(s64) buffer.bytes_per_pixel;
+    u8* pitch = (u8*) p;
+    u8* row = (u8*) buffer.memory;
+    for (int y = buffer.height-1; y >= 0; y -= 1) {
+        
+        u32* pixel = (u32*) row;
+        for (int x = 0; x < buffer.width; x += 1) {
             
             v3 color = vec3(0.0f, 0.0f, 0.0f);
             for (int sample_index = 0;
                  sample_index < samples_per_pixel;
                  sample_index += 1) {
-                f32 u = ((f32) x + random_f32()) / (f32) image_width;
-                f32 v = ((f32) y + random_f32()) / (f32) image_height;
+                
+                //debug_break();
+                f32 u = ((f32) x + random_f32()) / (f32) buffer.width;
+                f32 v = ((f32) y + random_f32()) / (f32) buffer.height;
                 
                 temp = vec3_scale(horizontal, u);
                 v3 dir = vec3_add(lower_left_corner, temp);
@@ -221,16 +225,33 @@ main() {
             color.x = sqrt(scale * color.x);
             color.y = sqrt(scale * color.y);
             color.z = sqrt(scale * color.z);
+            //print_vec3(color);
             
             // Write the color
-            int ir = (int) (256.0f*clamp_f32(color.x, 0.0f, 0.999f));
-            int ig = (int) (256.0f*clamp_f32(color.y, 0.0f, 0.999f));
-            int ib = (int) (256.0f*clamp_f32(color.z, 0.0f, 0.999f));
+            u32 ir = (u32) (256.0f*clamp_f32(color.x, 0.0f, 0.999f));
+            u32 ig = (u32) (256.0f*clamp_f32(color.y, 0.0f, 0.999f));
+            u32 ib = (u32) (256.0f*clamp_f32(color.z, 0.0f, 0.999f));
             
-            pln("% % %", ir, ig, ib);
+            //if (x == 2) {
+            //pln("%", ig);
+            //}
+            
+            //u32 iir = ir << 16;
+            //u32 iig = ig << 8;
+            
+            //u32 iig =  ir | ig << 8;
+            //debug_break();
+            *pixel = ir << 16 | ig << 8 | ib;
+            pixel += 4;
+            
+            //pln("% % %", ir, ig, ib);
             //return 0;
         }
+        
+        row += (u8*) pitch;
     }
+    
+    pln("Rendering completed");
     
     return 0;
 }

@@ -122,17 +122,54 @@ win32_clear_color(Win32_Offscreen_Buffer* buffer, v4 color) {
     }
 }
 
-
 void
-win32_render_buffer(Win32_Offscreen_Buffer* buffer, HDC window_device_context) {
+win32_render_buffer(Win32_Offscreen_Buffer* buffer, HDC window_device_context, int width, int height) {
     StretchDIBits(window_device_context,
-                  0, 0, buffer.width, buffer.height,
+                  0, 0, width, height,
                   0, 0, buffer.width, buffer.height,
                   buffer.memory,
                   &buffer.info,
                   DIB_RGB_COLORS, 
                   SRCCOPY | BLACKNESS);
 }
+
+struct Game_Button_State {
+    s32 num_half_transitions;
+    bool ended_down;
+}
+
+inline bool
+was_pressed(Game_Button_State state) {
+    return state.num_half_transitions > 1 ||
+    (state.num_half_transitions == 1 && state.ended_down);
+}
+
+inline bool
+was_released(Game_Button_State state) {
+    return state.num_half_transitions > 1 ||
+    (state.num_half_transitions == 1 && !state.ended_down);
+}
+
+inline bool
+is_down(Game_Button_State state) {
+    return state.ended_down;
+}
+
+struct Game_Controller {
+    Game_Button_State move_up;
+    Game_Button_State move_right;
+    Game_Button_State move_down;
+    Game_Button_State move_left;
+}
+
+void
+win32_process_keyboard_message(Game_Button_State* new_state, bool is_down) {
+    if (new_state.ended_down != is_down) {
+        new_state.num_half_transitions += 1;
+        new_state.ended_down = is_down;
+    }
+}
+
 
 int
 main() {
@@ -173,10 +210,31 @@ main() {
         //win32_clear_color(&offscreen_buffer, sky_color);
         render(&offscreen_buffer);
         
+        Game_Controller controller;
+        
         int i = 0;
         while (is_running) {
             
-            win32_render_buffer(&offscreen_buffer, device_context);
+            {
+                Game_Controller new_controller;
+                new_controller->move_up.ended_down = controller->move_up.ended_down;
+                new_controller->move_left.ended_down = controller->move_left.ended_down;
+                new_controller->move_down.ended_down = controller->move_down.ended_down;
+                new_controller->move_right.ended_down = controller->move_right.ended_down;
+                controller = new_controller;
+            }
+            
+            RECT dimensions;
+            if (GetWindowRect(window, &dimensions)) {
+                width = dimensions.right;
+                height = dimensions.bottom;
+                //pln("%", width);
+                //pln("%", height);
+            }
+            
+            
+            
+            win32_render_buffer(&offscreen_buffer, device_context, width, height);
             
             //win32_clear_color(&offscreen_buffer, sky_color);
             
@@ -186,10 +244,35 @@ main() {
             while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
                 if (message.message == WM_QUIT) {
                     is_running = false;
+                    
+                } else if (message.message == WM_SYSKEYDOWN ||
+                           message.message == WM_SYSKEYUP ||
+                           message.message == WM_KEYDOWN ||
+                           message.message == WM_KEYUP) {
+                    
+                    u32 vkcode = (u32) message.wParam;
+                    bool was_down = (message.lParam & (1 << 30)) != 0;
+                    bool is_down = (message.lParam & (1 << 31)) == 0;
+                    
+                    if (was_down != is_down) {
+                        if (vkcode == 'W') {
+                            win32_process_keyboard_message(&controller.move_up, is_down);
+                        } else if (vkcode == 'A') {
+                            win32_process_keyboard_message(&controller.move_left, is_down);
+                        } else if (vkcode == 'S') {
+                            win32_process_keyboard_message(&controller.move_down, is_down);
+                        } else if (vkcode == 'D') {
+                            win32_process_keyboard_message(&controller.move_right, is_down);
+                        }
+                    }
                 } else {
                     TranslateMessage(&message);
                     DispatchMessageA(&message);
                 }
+            }
+            
+            if (was_pressed(controller.move_up)) {
+                pln("Pressed W");
             }
             
             Sleep(10);

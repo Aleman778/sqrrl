@@ -72,6 +72,37 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
         
         assert(src0.raw_type == src1.raw_type);
         
+    } else if (op == BinaryOp_Logical_And) {
+        Intermediate_Code* test_lhs, *test_rhs;
+        Ic_Basic_Block* bb_false = ic_basic_block();
+        Ic_Basic_Block* bb_exit = ic_basic_block();
+        
+        Ic_Arg src0 = convert_expr_to_intermediate_code(cu, expr->Binary_Expr.first);
+        result = ic_reg_mov(cu, X64_RAX, src0);
+        test_lhs = ic_add(cu, IC_TEST);
+        test_lhs->src0 = result;
+        test_lhs->src1 = result;
+        ic_add(cu, IC_JE, bb_false);
+        
+        Ic_Arg src1 = convert_expr_to_intermediate_code(cu, expr->Binary_Expr.second);
+        ic_reg_mov(cu, X64_RAX, src1);
+        test_rhs = ic_add(cu, IC_TEST);
+        test_rhs->src0 = result;
+        test_rhs->src1 = result;
+        ic_add(cu, IC_JE, bb_false);
+        
+        // true
+        ic_mov(cu, result, ic_imm(result.raw_type, 1));
+        ic_add(cu, IC_JMP, bb_exit);
+        
+        // false
+        ic_add(cu, IC_LABEL, bb_false);
+        ic_mov(cu, result, ic_imm(result.raw_type, 0));
+        ic_add(cu, IC_JMP, bb_exit);
+        ic_add(cu, IC_LABEL, bb_exit);
+        
+        assert(src0.raw_type == src1.raw_type);
+        
     } else {
         //Ic_Arg clobber;
         Ic_Arg src0, src1;
@@ -140,7 +171,7 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
             result = ic->dest;
             
             if (binary_is_comparator_table[op]) {
-                result.raw_type = IC_S8;
+                result.raw_type = IC_U8;
                 ic->opcode = isFloat ? IC_FCMP : IC_CMP;
                 ic->dest = result;
                 
@@ -769,7 +800,6 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Bloc
             
             // NOTE(Alexander): push local first then it can be found elsewhere
             ic_push_local(cu, type, ident);
-            
             Ic_Arg dest = convert_expr_to_intermediate_code(cu, stmt->Assign_Stmt.ident);
             convert_assign_to_intermediate_code(cu, stmt->type, dest, src);
         } break;
@@ -1758,6 +1788,16 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
             
             case IC_SETLE: {
                 ic_u16(ic, 0x9E0F);
+                ic_u8(ic, 0xC0); // RAX
+            } break;
+            
+            case IC_SETE: {
+                ic_u16(ic, 0x940F);
+                ic_u8(ic, 0xC0); // RAX
+            } break;
+            
+            case IC_SETNE: {
+                ic_u16(ic, 0x950F);
                 ic_u8(ic, 0xC0); // RAX
             } break;
             

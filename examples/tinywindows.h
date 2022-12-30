@@ -120,7 +120,8 @@ typedef struct tagRECT
     LONG    top;
     LONG    right;
     LONG    bottom;
-} RECT, *PRECT,  *NPRECT,  *LPRECT;
+} RECT, *PRECT,  *NPRECT;
+typedef RECT* LPRECT;
 typedef const RECT * LPCRECT;
 typedef struct _RECTL       
 {
@@ -322,6 +323,16 @@ WS_SYSMENU)
 
 #define WM_GETMINMAXINFO                0x0024
 
+#define WM_KEYFIRST                     0x0100
+#define WM_KEYDOWN                      0x0100
+#define WM_KEYUP                        0x0101
+#define WM_CHAR                         0x0102
+#define WM_DEADCHAR                     0x0103
+#define WM_SYSKEYDOWN                   0x0104
+#define WM_SYSKEYUP                     0x0105
+#define WM_SYSCHAR                      0x0106
+#define WM_SYSDEADCHAR                  0x0107
+
 #define PAGE_NOACCESS           0x01    
 #define PAGE_READONLY           0x02    
 #define PAGE_READWRITE          0x04    
@@ -522,6 +533,9 @@ extern {
                                    HMENU hMenu,
                                    HINSTANCE hInstance,
                                    LPVOID lpParam);
+    
+    BOOL __stdcall GetWindowRect(HWND hWnd,
+                                 LPRECT lpRect);
     
     BOOL ShowWindow(HWND hWnd, int nCmdShow);
     

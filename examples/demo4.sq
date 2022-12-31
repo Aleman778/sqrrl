@@ -208,7 +208,15 @@ main() {
         sky_color.b = 1.0f;
         sky_color.a = 1.0f;
         //win32_clear_color(&offscreen_buffer, sky_color);
-        render(&offscreen_buffer);
+        
+        Game_State state;
+        state.spheres[0].p = vec3(0.0f, 0.0f, -1.0f);
+        state.spheres[0].radius = 0.5f;
+        
+        state.spheres[1].p = vec3(0.0f, -100.5f, -1.0f);
+        state.spheres[1].radius = 100.0f;
+        
+        render(&offscreen_buffer, &state);
         
         Game_Controller controller;
         
@@ -225,15 +233,12 @@ main() {
             }
             
             RECT dimensions;
-            if (GetWindowRect(window, &dimensions)) {
+            if (GetClientRect(window, &dimensions)) {
                 width = dimensions.right;
                 height = dimensions.bottom;
-                //pln("%", width);
-                //pln("%", height);
             }
             
-            
-            
+            render(&offscreen_buffer, &state);
             win32_render_buffer(&offscreen_buffer, device_context, width, height);
             
             //win32_clear_color(&offscreen_buffer, sky_color);
@@ -271,11 +276,15 @@ main() {
                 }
             }
             
-            if (was_pressed(controller.move_up)) {
-                pln("Pressed W");
+            if (is_down(controller.move_up)) {
+                state.camera_p.z -= 0.1f;
             }
             
-            Sleep(10);
+            if (is_down(controller.move_down)) {
+                state.camera_p.z += 0.1f;
+            }
+            
+            Sleep(1);
             i += 1;
         }
         

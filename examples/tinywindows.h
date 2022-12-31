@@ -534,8 +534,9 @@ extern {
                                    HINSTANCE hInstance,
                                    LPVOID lpParam);
     
-    BOOL __stdcall GetWindowRect(HWND hWnd,
-                                 LPRECT lpRect);
+    BOOL __stdcall GetWindowRect(HWND hWnd, LPRECT lpRect);
+    
+    BOOL __stdcall GetClientRect(HWND hWnd, LPRECT lpRect);
     
     BOOL ShowWindow(HWND hWnd, int nCmdShow);
     

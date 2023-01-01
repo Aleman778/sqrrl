@@ -125,7 +125,7 @@ type_infer_value(Type_Context* tcx, Value value) {
 }
 
 bool
-type_check_value(Type_Context* tcx, Type* type, Value value) {
+type_check_value(Type_Context* tcx, Type* type, Value value, bool report_error) {
     bool result = true;
     
     switch (value.type) {
@@ -254,7 +254,7 @@ type_check_value(Type_Context* tcx, Type* type, Value value) {
         } break;
     }
     
-    if (!result) {
+    if (report_error && !result) {
         type_error(tcx, string_format("expected type `%` is not compatible with `%`", 
                                       f_type(type), f_value(&value)));
     }
@@ -386,7 +386,10 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         
         
         case Ast_Value: {
-            result = expr->type;
+            if (expr->type && expr->type->kind == TypeKind_Basic) {
+                result = expr->type;
+            }
+            
             if (!result) {
                 if (parent_type) {
                     result = parent_type;
@@ -410,14 +413,14 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 }
             }
             
-            type_check_value(tcx, result, expr->Value.value);
+            type_check_value(tcx, result, expr->Value.value, report_error);
             expr->type = result;
         } break;
         
         case Ast_Ident: {
             string_id ident = ast_unwrap_ident(expr);
             Type* type = map_get(tcx->locals, ident);
-            //pln("%: %", f_string(vars_load_string(ident)), f_type(type));
+            
             if (type) {
                 result = type;
             } else {
@@ -498,70 +501,66 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             }
             
             if (is_binary_assign(expr->Binary_Expr.op)) {
-                if (first_type && second_type) {
-                    result = first_type;
-                    if (type_check_assignment(tcx, first_type, second_type, 
-                                              binary_is_comparator_table[expr->Binary_Expr.op], false)) {
-                        second_type = result;
-                    }
+                result = first_type;
+                if (type_check_assignment(tcx, first_type, second_type, 
+                                          binary_is_comparator_table[expr->Binary_Expr.op], false)) {
+                    second_type = result;
                 }
             } else {
                 
-                if (first_type && second_type) {
-                    // TODO(Alexander): refactor this later when the AST storage gets updated
-                    //Ast* fmt_arg = arena_push_struct(&tcx->type_arena, Ast);
+                // TODO(Alexander): refactor this later when the AST storage gets updated
+                //Ast* fmt_arg = arena_push_struct(&tcx->type_arena, Ast);
+                
+                bool is_result_floating = false;
+                if (first_type->kind == TypeKind_Basic && 
+                    second_type->kind == TypeKind_Basic) {
                     
-                    bool is_result_floating = false;
-                    if (first_type->kind == TypeKind_Basic && 
-                        second_type->kind == TypeKind_Basic) {
-                        
-                        bool is_first_floating = is_bitflag_set(first_type->Basic.flags, BasicFlag_Floating);
-                        bool is_second_floating = is_bitflag_set(second_type->Basic.flags, BasicFlag_Floating);
-                        
-                        // NOTE(Alexander): Type rules
-                        // float + int -> float + float;
-                        // int + float -> float + float;
-                        if (is_first_floating || is_second_floating) {
-                            is_result_floating = true;
-                            if (!is_first_floating) {
-                                first_type = second_type;
-                                result = second_type;
-                            } else if (!is_second_floating) {
-                                first_type = first_type;
-                                result = first_type;
-                            }
-                        }
-                        
-                        //pln("parent_type: %", f_type(parent_type));
-                        //pln("  % + %", f_type(first_type), f_type(second_type));
-                        if (first_type->size > second_type->size) {
-                            result = first_type;
-                            second_type = result;
-                        } else {
+                    bool is_first_floating = is_bitflag_set(first_type->Basic.flags, BasicFlag_Floating);
+                    bool is_second_floating = is_bitflag_set(second_type->Basic.flags, BasicFlag_Floating);
+                    
+                    // NOTE(Alexander): Type rules
+                    // float + int -> float + float;
+                    // int + float -> float + float;
+                    if (is_first_floating || is_second_floating) {
+                        is_result_floating = true;
+                        if (!is_first_floating) {
+                            first_type = second_type;
                             result = second_type;
-                            first_type = result;
-                        }
-                        
-                        if (parent_type && result != parent_type) {
-                            //pln("  % >= %", f_int(first_type->size), f_int(second_type->size));
-                            bool is_parent_floating = false;
-                            if (parent_type->kind == TypeKind_Basic) {
-                                is_parent_floating = is_bitflag_set(parent_type->Basic.flags, BasicFlag_Floating);
-                            }
-                            
-                            if (parent_type->size >= result->size && 
-                                (is_result_floating == is_parent_floating)) {
-                                result = parent_type;
-                                first_type = result;
-                                second_type = result;
-                            }
-                        }
-                    } else {
-                        if (parent_type) {
-                            result = parent_type;
-                        } else {
+                        } else if (!is_second_floating) {
+                            first_type = first_type;
                             result = first_type;
                         }
+                    }
+                    
+                    //pln("parent_type: %", f_type(parent_type));
+                    //pln("  % + %", f_type(first_type), f_type(second_type));
+                    if (first_type->size > second_type->size) {
+                        result = first_type;
+                        second_type = result;
+                    } else {
+                        result = second_type;
+                        first_type = result;
+                    }
+                    
+                    if (parent_type && result != parent_type) {
+                        //pln("  % >= %", f_int(first_type->size), f_int(second_type->size));
+                        bool is_parent_floating = false;
+                        if (parent_type->kind == TypeKind_Basic) {
+                            is_parent_floating = is_bitflag_set(parent_type->Basic.flags, BasicFlag_Floating);
+                        }
+                        
+                        if (parent_type->size >= result->size && 
+                            (is_result_floating == is_parent_floating)) {
+                            result = parent_type;
+                            first_type = result;
+                            second_type = result;
+                        }
+                    }
+                } else {
+                    if (parent_type) {
+                        result = parent_type;
+                    } else {
+                        result = first_type;
                     }
                 }
             }

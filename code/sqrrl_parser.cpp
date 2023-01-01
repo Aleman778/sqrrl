@@ -419,8 +419,16 @@ parse_atom(Parser* parser, bool report_error) {
         } break;
         
         case Token_Int: {
+            //local_persist int ints = 0;
+            //ints++;
+            //if (ints == 45) {
+            //__debugbreak();
+            //}
             next_token(parser);
             result = parse_int(parser);
+            //if (true) {
+            //pln("[0x%] %: %", f_u64_HEX(result), f_int(ints), f_ast(result));
+            //}
         } break;
         
         case Token_Float: {

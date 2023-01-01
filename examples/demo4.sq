@@ -123,12 +123,32 @@ win32_clear_color(Win32_Offscreen_Buffer* buffer, v4 color) {
 }
 
 void
-win32_render_buffer(Win32_Offscreen_Buffer* buffer, HDC window_device_context, int width, int height) {
+win32_render_buffer(Win32_Offscreen_Buffer* dest_buffer, HDR_Software_Texture* src_buffer, HDC window_device_context, int width, int height, int samples_per_pixel) {
+    int size = dest_buffer.width*dest_buffer.height;
+    
+    f32* src = src_buffer.data;
+    u32* dest = (u32*) (dest_buffer.memory);
+    for (int i = 0; i < size; i += 1) {
+        
+        f32 scale = 1.0f / (f32) samples_per_pixel;
+        
+        // Divide the color by the number of samples and gamma-correct for gamma=2.0.
+        f32 r = sqrt(*src * scale); src += 4;
+        f32 g = sqrt(*src * scale); src += 4;
+        f32 b = sqrt(*src * scale); src += 8;
+        
+        u32 ir = (u32) (256.0f*clamp_f32(r, 0.0f, 0.999f));
+        u32 ig = (u32) (256.0f*clamp_f32(g, 0.0f, 0.999f));
+        u32 ib = (u32) (256.0f*clamp_f32(b, 0.0f, 0.999f));
+        
+        *dest = ir << 16 | ig << 8 | ib; dest += 4;
+    }
+    
     StretchDIBits(window_device_context,
                   0, 0, width, height,
-                  0, 0, buffer.width, buffer.height,
-                  buffer.memory,
-                  &buffer.info,
+                  0, 0, dest_buffer.width, dest_buffer.height,
+                  dest_buffer.memory,
+                  &dest_buffer.info,
                   DIB_RGB_COLORS, 
                   SRCCOPY | BLACKNESS);
 }
@@ -170,7 +190,6 @@ win32_process_keyboard_message(Game_Button_State* new_state, bool is_down) {
     }
 }
 
-
 int
 main() {
     HINSTANCE h_instance = GetModuleHandleA(0);
@@ -181,8 +200,9 @@ main() {
     wndclass.hInstance = h_instance;
     wndclass.lpszClassName = "PlatfomerWindowClass";
     
-    int width = 640;
-    int height = 380;
+    f32 aspect_ratio = 16.0f / 9.0f;
+    int width = 400;
+    int height = (int) ((f32) width / aspect_ratio);
     
     if (RegisterClassA(&wndclass)) {
         //debug_break();
@@ -216,9 +236,15 @@ main() {
         state.spheres[1].p = vec3(0.0f, -100.5f, -1.0f);
         state.spheres[1].radius = 100.0f;
         
-        render(&offscreen_buffer, &state);
         
         Game_Controller controller;
+        
+        HDR_Software_Texture texture;
+        texture.width = width;
+        texture.height = height;
+        texture.pitch = texture.width*4*4;
+        int buffer_memory_size = (texture.width*texture.height)*4*4;
+        texture.data = (f32*) VirtualAlloc(0, buffer_memory_size, MEM_COMMIT, PAGE_READWRITE);
         
         int i = 0;
         while (is_running) {
@@ -238,8 +264,9 @@ main() {
                 height = dimensions.bottom;
             }
             
-            render(&offscreen_buffer, &state);
-            win32_render_buffer(&offscreen_buffer, device_context, width, height);
+            render(&texture, &state);
+            win32_render_buffer(&offscreen_buffer, &texture, device_context, width, height,
+                                state.samples_per_pixel);
             
             //win32_clear_color(&offscreen_buffer, sky_color);
             
@@ -276,12 +303,36 @@ main() {
                 }
             }
             
+            bool discard_buffer = false;
             if (is_down(controller.move_up)) {
                 state.camera_p.z -= 0.1f;
+                discard_buffer = true;
             }
             
             if (is_down(controller.move_down)) {
                 state.camera_p.z += 0.1f;
+                discard_buffer = true;
+            }
+            
+            if (is_down(controller.move_left)) {
+                state.camera_p.x -= 0.1f;
+                discard_buffer = true;
+            }
+            
+            if (is_down(controller.move_right)) {
+                state.camera_p.x += 0.1f;
+                discard_buffer = true;
+            }
+            
+            if (discard_buffer) {
+                state.samples_per_pixel = 0;
+                int size = texture.width*texture.height;
+                f32* src = texture.data;
+                for (int j = 0; j < size; j += 1) {
+                    *src = 0.0f; src += 4;
+                    *src = 0.0f; src += 4;
+                    *src = 0.0f; src += 8;
+                }
             }
             
             Sleep(1);

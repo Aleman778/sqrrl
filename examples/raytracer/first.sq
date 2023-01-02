@@ -233,8 +233,14 @@ main() {
         state.spheres[0].p = vec3(0.0f, 0.0f, -1.0f);
         state.spheres[0].radius = 0.5f;
         
-        state.spheres[1].p = vec3(0.0f, -100.5f, -1.0f);
-        state.spheres[1].radius = 100.0f;
+        state.spheres[1].p = vec3(-1.1f, 0.0f, -1.0f);
+        state.spheres[1].radius = 0.5f;
+        
+        state.spheres[2].p = vec3(1.1f, 0.0f, -1.0f);
+        state.spheres[2].radius = 0.5f;
+        
+        state.spheres[3].p = vec3(0.0f, -100.5f, -1.0f);
+        state.spheres[3].radius = 100.0f;
         
         
         Game_Controller controller;

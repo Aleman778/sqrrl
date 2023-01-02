@@ -266,16 +266,10 @@ string_builder_push(String_Builder* sb, Type* type) {
             string_builder_push(sb, "*");
         } break;
         
-        case TypeKind_Struct: {
-            string_builder_push(sb, type->ident);
-        } break;
-        
-        case TypeKind_Union: {
-            string_builder_push(sb, "union");
-        } break;
-        
+        case TypeKind_Struct: 
+        case TypeKind_Union:
         case TypeKind_Enum: {
-            string_builder_push(sb, "enum");
+            string_builder_push(sb, type->ident);
         } break;
         
         case TypeKind_Function: {

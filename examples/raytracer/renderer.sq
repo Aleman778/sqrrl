@@ -47,10 +47,18 @@ random_vec3_in_unit_sphere() {
 
 v3
 random_unit_vec3() {
-    //v3 rnd = ;
     return vec3_normalize(random_vec3_in_unit_sphere());
 }
 
+v3
+random_vec3_in_hemisphere(v3 normal) {
+    v3 rnd = random_vec3_in_unit_sphere();
+    if (vec3_dot(rnd, normal) > 0.0f) {
+        return rnd;
+    } else {
+        return vec3_scale(rnd, -1.0f);
+    }
+}
 
 v3
 ray_sky_color(ray r) {
@@ -76,11 +84,18 @@ struct Hit_Result {
     v3 p;
     v3 normal;
     f32 t;
+    Material_Type material;
+}
+
+enum Material_Type {
+    Lambertian,
+    Metallic,
 }
 
 struct Sphere {
     v3 p;
     f32 radius;
+    Material_Type material;
 }
 
 Hit_Result
@@ -172,8 +187,7 @@ hit_sphere(Sphere sphere, ray r, f32 t_min, f32 t_max) {
 }
 
 v3
-ray_color(ray r, [2]Sphere spheres, int depth) {
-    //print_vec3(spheres[0].p);
+ray_color(ray r, [4]Sphere spheres, int depth) {
     if (depth <= 0) {
         return vec3(0.0f, 0.0f, 0.0f);
     }
@@ -196,7 +210,7 @@ ray_color(ray r, [2]Sphere spheres, int depth) {
     
     v3 color;
     if (found_hit.t > 0.0f) {
-        v3 target = vec3_add(found_hit.p, vec3_add(found_hit.normal, random_unit_vec3()));
+        v3 target = vec3_add(found_hit.p, vec3_add(found_hit.normal, random_vec3_in_hemisphere(found_hit.normal)));
         ray r_bounce;
         r_bounce.origin = found_hit.p;
         r_bounce.direction = vec3_sub(target, found_hit.p);
@@ -216,7 +230,7 @@ ray_color(ray r, [2]Sphere spheres, int depth) {
 struct Game_State {
     v3 camera_p;
     
-    [2]Sphere spheres;
+    [4]Sphere spheres;
     
     int samples_per_pixel;
 }

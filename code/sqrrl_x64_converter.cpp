@@ -402,6 +402,11 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     
                     case Sym_capacity: {
                         result.raw_type = IC_S64;
+                        result.disp += 16;
+                    } break;
+                    
+                    default: {
+                        assert(0 && "invalid field");
                     } break;
                 }
             } else {
@@ -420,49 +425,45 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             
             if (array_type->capacity == 0 || array_type->is_dynamic) {
                 // Array is stored as "wide" pointer
-                ic_mov(cu, ic_reg(arr.raw_type, X64_RDX), arr);
+                Ic_Arg tmp = ic_reg(arr.raw_type, X64_RDX);
+                ic_mov(cu, tmp, arr);
+                arr = ic_stk(tmp.raw_type, 0, IcStkArea_None, tmp.reg);
+            }
+            
+            // Array is stored in place
+            result = arr;
+            result.raw_type = rt;
+            if (result.type & IC_STK) {
                 if (index.type & IC_IMM) {
-                    result = ic_stk(rt, type->size*index.disp, IcStkArea_None, X64_RDX);
+                    result.disp += type->size * index.disp;
                 } else {
-                    unimplemented;
-                }
-                
-            } else {
-                // Array is stored in place
-                result = arr;
-                result.raw_type = rt;
-                if (result.type & IC_STK) {
-                    if (index.type & IC_IMM) {
-                        result.disp += type->size * index.disp;
-                    } else {
-                        if (index.type & IC_STK) {
-                            Ic_Arg tmp = ic_reg(index.raw_type);
-                            ic_mov(cu, tmp, index);
-                            index = tmp;
-                        }
-                        
-                        // TODO(Alexander): add support for SIB
-                        //if (x64_is_scalar_type(type->size)) {
-                        //SIB: RSP + RBP * scale
-                        //result.scale = (u8) intrin_index_of_first_set_bit(type->size);
-                        //result.index = index.reg;
-                        //}
-                        
-                        Intermediate_Code* mul_ic = ic_add(cu, IC_MUL);
-                        mul_ic->dest = ic_reg(IC_S64);
-                        mul_ic->src0 = index;
-                        mul_ic->src1 = ic_imm(IC_S64, type->size);
-                        
-                        Intermediate_Code* add_ic = ic_add(cu, IC_ADD);
-                        add_ic->dest = mul_ic->dest;
-                        add_ic->src0 = mul_ic->dest;
-                        add_ic->src1 = ic_reg(IC_S64, X64_RSP);
-                        
-                        result.reg = add_ic->dest.reg;
+                    if (index.type & IC_STK) {
+                        Ic_Arg tmp = ic_reg(index.raw_type);
+                        ic_mov(cu, tmp, index);
+                        index = tmp;
                     }
-                } else {
-                    unimplemented;
+                    
+                    // TODO(Alexander): add support for SIB
+                    //if (x64_is_scalar_type(type->size)) {
+                    //SIB: RSP + RBP * scale
+                    //result.scale = (u8) intrin_index_of_first_set_bit(type->size);
+                    //result.index = index.reg;
+                    //}
+                    
+                    Intermediate_Code* mul_ic = ic_add(cu, IC_MUL);
+                    mul_ic->dest = ic_reg(IC_S64);
+                    mul_ic->src0 = index;
+                    mul_ic->src1 = ic_imm(IC_S64, type->size);
+                    
+                    Intermediate_Code* add_ic = ic_add(cu, IC_ADD);
+                    add_ic->dest = mul_ic->dest;
+                    add_ic->src0 = mul_ic->dest;
+                    add_ic->src1 = ic_reg(IC_S64, X64_RSP);
+                    
+                    result.reg = add_ic->dest.reg;
                 }
+            } else {
+                unimplemented;
             }
         } break;
         

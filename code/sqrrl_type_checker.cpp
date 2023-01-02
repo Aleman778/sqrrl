@@ -772,77 +772,85 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 }
             }
             
-            if (type->kind == TypeKind_Pointer) {
+            //if (type->kind == TypeKind_Pointer) {
+            //pln("%", f_ast(expr));
+            //}
+            
+            // TODO(Alexander): add support for unions etc.
+            
+            switch (type->kind) {
+                case TypeKind_Struct: {
+                    smm index = map_get_index(type->Struct.ident_to_index, field_ident);
+                    if (index >= 0) {
+                        result = type->Struct.types[index];
+                    }
+                } break;
                 
-                pln("%", f_ast(expr));
+                case TypeKind_Enum: {
+                    smm index = map_get_index(type->Enum.values, field_ident);
+                    if (index >= 0) {
+                        Value value = type->Enum.values[index].value;
+                        expr->kind = Ast_Value;
+                        expr->Value.value = value;
+                    }
+                } break;
+                
+                case TypeKind_Array: {
+                    // NOTE(Alexander): Array are actually structs that has 2-3 fields, 
+                    // - data: which is just a raw pointer to the first element
+                    // - count: the number of elements 
+                    // - capacity (only applicable for growable arrays): the number of allocated elements
+                    
+                    switch (field_ident) {
+                        case Sym_data: {
+                            result = arena_push_struct(&tcx->type_arena, Type);
+                            result->kind = TypeKind_Pointer;
+                            result->Pointer = type->Array.type; 
+                        } break;
+                        
+                        case Sym_count: {
+                            result = normalize_basic_types(t_smm);
+                            
+                            if (type->Array.capacity > 0) {
+                                Value capacity = {};
+                                capacity.type = Value_signed_int;
+                                capacity.data.signed_int = type->Array.capacity;
+                                
+                                expr->kind = Ast_Value;
+                                expr->Value.value = capacity;
+                            }
+                        } break;
+                        
+                        case Sym_capacity: {
+                            if (type->Array.is_dynamic) {
+                                result = normalize_basic_types(t_smm);
+                            }
+                        } break;
+                    }
+                } break;
+                
+                case TypeKind_Basic: {
+                    if (type->Basic.kind == Basic_string) {
+                        // NOTE(Alexander): string are actually structs that has 2 fields
+                        // - data: the actual underlying storage pointer (not a cstring not null terminated)
+                        // - count: the number of characters in the string
+                        
+                        
+                        switch (field_ident) {
+                            case Sym_data: {
+                                result = arena_push_struct(&tcx->type_arena, Type);
+                                result->kind = TypeKind_Pointer;
+                                result->Pointer = t_u8;
+                            } break;
+                            
+                            case Sym_count: {
+                                result = normalize_basic_types(t_smm);
+                            } break;
+                        }
+                    }
+                } break;
             }
             
-            // TODO(Alexander): add support for unions, enums etc.
-            if (type->kind == TypeKind_Struct) {
-                smm index = map_get_index(type->Struct.ident_to_index, field_ident);
-                if (index >= 0) {
-                    result = type->Struct.types[index];
-                    if (result) {
-                        
-                    }
-                }
-            } else if (type->kind == TypeKind_Array) {
-                // NOTE(Alexander): Array are actually structs that has 2-3 fields, 
-                // - data: which is just a raw pointer to the first element
-                // - count: the number of elements 
-                // - capacity (only applicable for growable arrays): the number of allocated elements
-                
-                switch (field_ident) {
-                    case Sym_data: {
-                        result = arena_push_struct(&tcx->type_arena, Type);
-                        result->kind = TypeKind_Pointer;
-                        result->Pointer = type->Array.type; 
-                    } break;
-                    
-                    case Sym_count: {
-                        result = normalize_basic_types(t_smm);
-                        
-                        if (type->Array.capacity > 0) {
-                            Value capacity = {};
-                            capacity.type = Value_signed_int;
-                            capacity.data.signed_int = type->Array.capacity;
-                            
-                            expr->kind = Ast_Value;
-                            expr->Value.value = capacity;
-                        }
-                    } break;
-                    
-                    case Sym_capacity: {
-                        if (type->Array.is_dynamic) {
-                            result = normalize_basic_types(t_smm);
-                        }
-                    } break;
-                }
-            } else if (type->kind == TypeKind_Basic && type->Basic.kind == Basic_string) {
-                // NOTE(Alexander): string are actually structs that has 2 fields
-                // - data: the actual underlying storage pointer (not a cstring not null terminated)
-                // - count: the number of characters in the string
-                
-                
-                switch (field_ident) {
-                    case Sym_data: {
-                        result = arena_push_struct(&tcx->type_arena, Type);
-                        result->kind = TypeKind_Pointer;
-                        result->Pointer = t_u8;
-                    } break;
-                    
-                    case Sym_count: {
-                        result = normalize_basic_types(t_smm);
-                    } break;
-                }
-                
-            } else {
-                if (report_error) {
-                    type_error(tcx, string_format("type `%` doesn't have any fields", f_type(type)));
-                }
-                
-                break;
-            }
             
             if (result) {
                 expr->type = result;
@@ -855,7 +863,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         } break;
         
         case Ast_Array_Expr: {
-            
             if (parent_type && parent_type->kind == TypeKind_Array) {
                 Type* type = parent_type->Array.type;
                 
@@ -1006,6 +1013,11 @@ push_type_to_struct_like(Type_Struct_Like* dest, Type* type, string_id ident) {
     array_push(dest->offsets, dest->offset);
     map_put(dest->ident_to_index, ident, index);
     
+    //string_id testid = vars_save_cstring("material");
+    //if (ident == testid) {
+    //pln("type->size = %", f_int(type->size));
+    //}
+    
     dest->offset += type->size;
     dest->size = dest->offset;
     
@@ -1034,7 +1046,6 @@ create_type_struct_like_from_ast(Type_Context* tcx,
         switch (argument->Argument.ident->kind) {
             
             case Ast_Ident: {
-                
                 assert(argument->Argument.ident->kind == Ast_Ident);
                 string_id ident = argument->Argument.ident->Ident;
                 Type* type = create_type_from_ast(tcx, ast_type, report_error);
@@ -1046,7 +1057,6 @@ create_type_struct_like_from_ast(Type_Context* tcx,
             } break;
             
             case Ast_Compound: {
-                
                 Type* type = create_type_from_ast(tcx, ast_type, report_error);
                 if (type) {
                     for_compound(argument->Argument.ident, ast_ident) {
@@ -1306,6 +1316,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 result->Union.idents = struct_like.idents;
                 result->size = (s32) struct_like.size;
                 result->align = (s32) struct_like.align;
+                result->ident = ast_unwrap_ident(ast->Union_Type.ident);
             }
         } break;
         
@@ -1326,6 +1337,9 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             }
             
             result->Enum.type = type;
+            result->size = type->size;
+            result->align = type->align;
+            result->ident = ast_unwrap_ident(ast->Enum_Type.ident);
             
             Value value;
             if (is_bitflag_set(type->Basic.flags, BasicFlag_Unsigned)) {
@@ -1654,6 +1668,24 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool comparator, 
                 }
                 return false;
             }
+        } break;
+        
+        case TypeKind_Array: {
+            bool success = type_check_assignment(tcx, lhs->Pointer, rhs->Pointer, comparator, false);
+            
+            if (lhs->Array.capacity != rhs->Array.capacity) {
+                success = false;
+            }
+            
+            if (lhs->Array.is_dynamic != rhs->Array.is_dynamic) {
+                success = false;
+            }
+            
+            if (!success) {
+                type_error_mismatch(tcx, lhs, rhs);
+                return false;
+            }
+            
         } break;
         
         case TypeKind_Struct: {

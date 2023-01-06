@@ -1,8 +1,36 @@
 
+f32
+degrees_to_radians(f32 degrees) {
+    return degrees * PI_F32 / 180.0f;
+}
+
+f32
+random_f32_between(f32 minimum, f32 maximum) {
+    assert(maximum >= minimum);
+    return minimum + (maximum-minimum)*random_f32();
+}
+
+f32
+clamp_f32(f32 v, f32 min, f32 max) {
+    if (v < min) {
+        v = min;
+    } else if (v > max) {
+        v = max;
+    }
+    return v;
+}
+
 struct v3 {
     f32 x;
     f32 y;
     f32 z;
+}
+
+struct v4 {
+    f32 r;
+    f32 g;
+    f32 b;
+    f32 a;
 }
 
 struct ray {
@@ -23,6 +51,48 @@ vec3(f32 x, f32 y, f32 z) {
     result.y = y;
     result.z = z;
     return result;
+}
+
+inline u32
+round_f32_to_u32(f32 value) {
+    return (u32) round_f32(value);
+}
+
+inline u32
+rgba_pack_u32(v4 c) {
+    return (round_f32_to_u32(c.a * 255.0f) << 24 |
+            round_f32_to_u32(c.r * 255.0f) << 16 |
+            round_f32_to_u32(c.g * 255.0f) << 8 |
+            round_f32_to_u32(c.b * 255.0f));
+}
+
+inline v3
+vec3_rgb(int r, int g, int b) {
+    f32 fr = (f32) r/255.0f;
+    f32 fg = (f32) g/255.0f;
+    f32 fb = (f32) b/255.0f;
+    return vec3(fr, fg, fb);
+}
+
+inline f32
+min_f32(f32 x, f32 y) {
+    return x < y ? x : y;
+}
+
+inline f32
+abs_f32(f32 x) {
+    if (x < 0.0f) {
+        return -x;
+    }
+    return x;
+}
+
+inline bool
+vec3_near_zero(v3 v) {
+    f32 e = 1e-8f;
+    return (abs_f32(v.x) < e && 
+            abs_f32(v.y) < e &&
+            abs_f32(v.z) < e);
 }
 
 inline v3
@@ -82,6 +152,12 @@ vec3_cross(v3 a, v3 b) {
     result.x = a.z * b.x - a.x * b.z;
     result.x = a.x * b.y - a.y * b.x;
     return result;
+}
+
+inline v3
+vec3_reflect(v3 v, v3 normal) {
+    f32 s = vec3_dot(v, normal)*2;
+    return vec3_sub(v, vec3_scale(normal, s));
 }
 
 inline f32

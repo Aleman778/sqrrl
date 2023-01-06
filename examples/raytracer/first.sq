@@ -83,28 +83,6 @@ win32_resize_offscreen_buffer(Win32_Offscreen_Buffer* buffer,
     buffer.bytes_per_row = buffer.width*buffer.bytes_per_pixel;
 }
 
-struct v4 {
-    f32 r;
-    f32 g;
-    f32 b;
-    f32 a;
-}
-
-
-inline u32
-round_f32_to_u32(f32 value) {
-    return (u32) round_f32(value);
-}
-
-inline u32
-rgba_pack_u32(v4 c) {
-    return (round_f32_to_u32(c.a * 255.0f) << 24 |
-            round_f32_to_u32(c.r * 255.0f) << 16 |
-            round_f32_to_u32(c.g * 255.0f) << 8 |
-            round_f32_to_u32(c.b * 255.0f));
-}
-
-
 void
 win32_clear_color(Win32_Offscreen_Buffer* buffer, v4 color) {
     u32 pixel_value = rgba_pack_u32(color);
@@ -229,19 +207,41 @@ main() {
         sky_color.a = 1.0f;
         //win32_clear_color(&offscreen_buffer, sky_color);
         
+        Material mat0;
+        mat0.type = Material_Type.Dielectric;
+        mat0.refraction_index = 1.5f;
+        mat0.albedo = vec3_rgb(149, 52, 173);
+        
+        Material mat1;
+        mat1.type = Material_Type.Dielectric;
+        mat1.refraction_index = 1.5f;
+        mat1.albedo = vec3_rgb(232, 112, 79);
+        mat1.roughness = 0.3f;
+        
+        Material mat2;
+        mat2.type = Material_Type.Metallic;
+        mat2.albedo = vec3_rgb(74, 127, 212);
+        mat2.roughness = 1.0f;
+        
+        Material mat3;
+        mat3.albedo = vec3_rgb(128, 171, 120);
+        
         Game_State state;
         state.spheres[0].p = vec3(0.0f, 0.0f, -1.0f);
         state.spheres[0].radius = 0.5f;
+        state.spheres[0].material = &mat0;
         
-        state.spheres[1].p = vec3(-1.1f, 0.0f, -1.0f);
+        state.spheres[1].p = vec3(-1.0f, 0.0f, -1.0f);
         state.spheres[1].radius = 0.5f;
+        state.spheres[1].material = &mat1;
         
-        state.spheres[2].p = vec3(1.1f, 0.0f, -1.0f);
+        state.spheres[2].p = vec3(1.0f, 0.0f, -1.0f);
         state.spheres[2].radius = 0.5f;
+        state.spheres[2].material = &mat2;
         
         state.spheres[3].p = vec3(0.0f, -100.5f, -1.0f);
         state.spheres[3].radius = 100.0f;
-        
+        state.spheres[3].material = &mat3;
         
         Game_Controller controller;
         
@@ -302,6 +302,11 @@ main() {
                         } else if (vkcode == 'D') {
                             win32_process_keyboard_message(&controller.move_right, is_down);
                         }
+                    }
+                    
+                    bool alt_key_was_down = (message.lParam & (1 << 29)) != 0;
+                    if (alt_key_was_down && vkcode == VK_F4) {
+                        is_running = false;
                     }
                 } else {
                     TranslateMessage(&message);

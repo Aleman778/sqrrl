@@ -458,7 +458,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     Intermediate_Code* add_ic = ic_add(cu, IC_ADD);
                     add_ic->dest = mul_ic->dest;
                     add_ic->src0 = mul_ic->dest;
-                    add_ic->src1 = ic_reg(IC_S64, X64_RSP);
+                    add_ic->src1 = ic_reg(IC_S64, arr.reg);
                     
                     result.reg = add_ic->dest.reg;
                 }

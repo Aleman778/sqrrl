@@ -3,28 +3,7 @@
 #define PI_F32 3.1415926535897932385f
 #define INF_F32 100000000000000000000000000000000000.0f
 
-f32
-degrees_to_radians(f32 degrees) {
-    return degrees * PI_F32 / 180.0f;
-}
-
-f32
-random_f32_between(f32 minimum, f32 maximum) {
-    assert(maximum >= minimum);
-    return minimum + (maximum-minimum)*random_f32();
-}
-
-f32
-clamp_f32(f32 v, f32 min, f32 max) {
-    if (v < min) {
-        v = min;
-    } else if (v > max) {
-        v = max;
-    }
-    return v;
-}
-
-#include "vecmath.sq"
+#include "math.sq"
 
 //#define PRINT_AST 1
 //#define PRINT_BYTECODE 1
@@ -68,12 +47,12 @@ ray_sky_color(ray r) {
     f32 t = 0.5f*(dir.y + 1.0f);
     f32 t_inv = 1.0f-t;
     
-    //v3 sky_color_0 = vec3(0.98f, 0.61f, 0.51f);
-    //v3 sky_color_1 = vec3(52.0f/255.0f, 94.0f/255.0f, 173.0f/255.0f);
+    v3 sky_color_0 = vec3(0.98f, 0.61f, 0.51f);
+    v3 sky_color_1 = vec3_rgb(52, 94, 173);
     
-    v3 sky_color_0 = vec3(1.0f, 1.0f, 1.0f);
-    v3 sky_color_1 = vec3(0.5f, 0.7f, 1.0f);
-    
+    //v3 sky_color_0 = vec3(1.0f, 1.0f, 1.0f);
+    //v3 sky_color_1 = vec3(0.5f, 0.7f, 1.0f);
+    //
     v3 color_0 = vec3_scale(sky_color_0, t_inv);
     v3 color_1 = vec3_scale(sky_color_1, t);
     v3 color = vec3_add(color_0, color_1);
@@ -84,24 +63,34 @@ struct Hit_Result {
     v3 p;
     v3 normal;
     f32 t;
-    Material_Type material;
+    Material* material;
+    bool front_face;
 }
 
 enum Material_Type {
     Lambertian,
     Metallic,
+    Dielectric
+}
+
+struct Material {
+    Material_Type type;
+    v3 albedo;
+    f32 roughness; // only for Metallic
+    f32 refraction_index; // only for Dieletric
 }
 
 struct Sphere {
     v3 p;
     f32 radius;
-    Material_Type material;
+    Material* material;
 }
 
 Hit_Result
-hit_sphere(Sphere sphere, ray r, f32 t_min, f32 t_max) {
+sphere_hit(Sphere sphere, ray r, f32 t_min, f32 t_max) {
     Hit_Result result;
     result.t = -1.0f;
+    result.material = sphere.material;
     
     v3 oc = vec3_sub(r.origin, sphere.p);
     
@@ -128,66 +117,115 @@ hit_sphere(Sphere sphere, ray r, f32 t_min, f32 t_max) {
     result.t = root;
     result.p = ray_at(r, root);
     
-#if 0
-    if (result.p.z > -0.60f) {
-        pln("ray_at:");
-        print_vec3(r.origin);
-        print_vec3(r.direction);
-        pln("root = %", root);
-        print_vec3(result.p);
-        pln("\n\n");
+    v3 outward_normal = vec3_sub(result.p, sphere.p);
+    outward_normal = vec3_scale(outward_normal, 1.0f/sphere.radius);
+    if (vec3_dot(r.direction, outward_normal) < 0.0f) {
+        result.front_face = true;
+        result.normal = outward_normal;
+    } else {
+        result.front_face = false;
+        result.normal = vec3_scale(outward_normal, -1.0f);
     }
-#endif
     
-    result.normal = vec3_sub(result.p, sphere.p);
-    result.normal = vec3_scale(result.normal, 1.0f/sphere.radius);
+    return result;
+}
+
+struct Scatter_Result {
+    v3 attenuation;
+    ray scattered;
+    bool scatter;
+}
+
+Scatter_Result
+lambertian_scatter(Hit_Result hit) {
+    Scatter_Result result;
     
+    //v3 target = vec3_add(hit.p, vec3_add(hit.normal, random_unit_vec3(hit.normal)));
+    v3 scatter_direction = vec3_add(hit.normal, random_unit_vec3());
     
-#if 0
-    //f32 sum = vec3_dot(color, color);
-    //pln("%", sum);
-    v3 color = result.normal;
-    if (color.x <= 0.91f) {
-        if (color.y <= 0.91f) {
-            if (color.z <= 0.91f) {
-                if (result.p.z < -1.4f) {
-                    pln("black:");
-                    print_vec3(result.normal);
-                    print_vec3(result.p);
-                    pln("test:");
-                    
-                    root = (-half_b - sqrt_discriminant) / a;
-                    bool first = root < t_min || root >= t_max;
-                    pln("1: % < % < % = %", t_min, root, t_max, first);
-                    root = (-half_b + sqrt_discriminant) / a;
-                    bool second = root < t_min || root >= t_max;
-                    pln("2: % < % < % = %", t_min, root, t_max, second);
-                    pln("end");
-                }
-            }
-        }
+    if (vec3_near_zero(scatter_direction)) {
+        scatter_direction = hit.normal;
     }
-#endif
+    
+    result.scattered.origin = hit.p;
+    result.scattered.direction = scatter_direction;
+    result.attenuation = hit.material.albedo;
+    result.scatter = true;
+    
+    return result;
+}
+
+Scatter_Result
+metallic_scatter(ray r, Hit_Result hit) {
+    Scatter_Result result;
+    
+    v3 reflected = vec3_reflect(vec3_normalize(r.direction), hit.normal);
+    v3 fuzz = random_unit_vec3();
+    fuzz = vec3_scale(fuzz, hit.material.roughness);
+    
+    result.scattered.origin = hit.p;
+    result.scattered.direction = vec3_add(reflected, fuzz);
+    result.attenuation = hit.material.albedo;
+    result.scatter = vec3_dot(reflected, hit.normal) > 0;
+    
+    return result;
+}
+
+Scatter_Result
+dieletric_scatter(ray r, Hit_Result hit) {
+    Scatter_Result result;
+    result.attenuation = vec3(1.0f, 1.0f, 1.0f);
+    
+    f32 refraction_ratio = hit.material.refraction_index;
+    // TODO(Alexander): front_face seems wrong
+    //if (hit.front_face) {
+    //refraction_ratio = 1.0f/refraction_ratio;
+    //}
+    
+    v3 unit_direction = vec3_normalize(r.direction);
+    //print_vec3(unit_direction);
+    v3 v = vec3_scale(unit_direction, -1.0f);
+    f32 cos_theta = min_f32(vec3_dot(v, hit.normal), 1.0f);
+    //pln("%", cos_theta);
+    f32 sin_theta = sqrt(1.0f - cos_theta*cos_theta);
     
     
-    //if (result.normal.z > 0.0f) {
-    //pln("z > 0.0f, root = %", root);
-    //print_vec3(result.normal);
-    //}
-    //result.normal = vec3(0.0f, 1.0f, 0.0f);
-    // Only draw front faces
-    //f32 dot = vec3_dot(r.direction, result.normal);
-    //if (dot > 0.0f) {
-    //result.t = -1.0f;
-    //} else {
-    //result.t = -1.0f;
-    //}
+    bool is_reflection = (refraction_ratio * sin_theta) > 1.0f;
+    //pln("% > 1.0f -> %", refraction_ratio * sin_theta, is_reflection);
+    
+    if (is_reflection) {
+        result.scattered.direction = vec3_reflect(unit_direction, hit.normal);
+    } else {
+        result.scattered.direction = vec3_refract(unit_direction, hit.normal, refraction_ratio);
+        //v3 perp = vec3_scale(hit.normal, cos_theta);
+        //perp = vec3_add(unit_direction, perp);
+        //perp = vec3_scale(perp, refraction_ratio);
+        
+        //v3 parallel = vec3_scale(hit.normal, -sqrt(abs_f32(1.0f - vec3_length_squared(perp))));
+        //result.scattered.direction = vec3_add(perp, parallel);
+    }
+    
+    result.scattered.origin = hit.p;
+    result.scatter = true;
     
     return result;
 }
 
 v3
-ray_color(ray r, [4]Sphere spheres, int depth) {
+vec3_refract(v3 uv, v3 normal, f32 etai_over_etat) {
+    f32 cos_theta = min_f32(vec3_dot(vec3_scale(uv, -1.0f), normal), 1.0f);
+    
+    v3 perp = vec3_scale(normal, cos_theta);
+    perp = vec3_add(uv, perp);
+    perp = vec3_scale(perp, etai_over_etat);
+    
+    v3 parallel = vec3_scale(normal, -sqrt(abs_f32(1.0f - vec3_length_squared(perp))));
+    
+    return vec3_add(perp, parallel);
+}
+
+v3
+ray_color(ray r, []Sphere spheres, int depth) {
     if (depth <= 0) {
         return vec3(0.0f, 0.0f, 0.0f);
     }
@@ -196,12 +234,12 @@ ray_color(ray r, [4]Sphere spheres, int depth) {
     f32 t_max = INF_F32;
     
     Hit_Result found_hit;
-    found_hit.t = 0.0f-1.0f;
+    found_hit.t = -1.0f;
     
     for (int i = 0; i < (int) spheres.count; i += 1) {
         Sphere s = spheres[i];
         //pln("sphere% - pos: %, %, % - radius: %", i, s.p.x, s.p.y, s.p.z, s.radius);
-        Hit_Result hit = hit_sphere(s, r, t_min, t_max);
+        Hit_Result hit = sphere_hit(s, r, t_min, t_max);
         if (hit.t > 0.0f) {
             t_max = hit.t;
             found_hit = hit;
@@ -210,17 +248,25 @@ ray_color(ray r, [4]Sphere spheres, int depth) {
     
     v3 color;
     if (found_hit.t > 0.0f) {
-        v3 target = vec3_add(found_hit.p, vec3_add(found_hit.normal, random_vec3_in_hemisphere(found_hit.normal)));
-        ray r_bounce;
-        r_bounce.origin = found_hit.p;
-        r_bounce.direction = vec3_sub(target, found_hit.p);
+        
+        
+        Scatter_Result s;
+        if (found_hit.material.type == Material_Type.Lambertian) {
+            s = lambertian_scatter(found_hit);
+        } else if (found_hit.material.type == Material_Type.Metallic) {
+            s = metallic_scatter(r, found_hit);
+        } else if (found_hit.material.type == Material_Type.Dielectric) {
+            s = dieletric_scatter(r, found_hit);
+        }
         
         depth -= 1;
-        v3 c = ray_color(r_bounce, spheres, depth);
-        color = vec3_scale(c, 0.5f);
-        //color = found_hit.normal;
+        if (s.scatter) {
+            v3 c = ray_color(s.scattered, spheres, depth);
+            color = vec3_mul(c, s.attenuation);
+        } else {
+            color = vec3(0.0f, 0.0f, 0.0f);
+        }
     } else {
-        //color = vec3_add(color, ray_sky_color(r));
         color = ray_sky_color(r);
     }
     
@@ -244,8 +290,6 @@ struct HDR_Software_Texture {
 
 int
 render(HDR_Software_Texture* texture, Game_State* state) {
-    //debug_break();
-    
     //f32 aspect_ratio = 16.0f / 9.0f;
     f32 aspect_ratio = (f32) texture.width / (f32) texture.height;
     int max_ray_depth = 50;
@@ -296,7 +340,7 @@ render(HDR_Software_Texture* texture, Game_State* state) {
             r.origin = origin;
             r.direction = dir;
             
-            v3 c = ray_color(r, state.spheres, max_ray_depth);
+            v3 c = ray_color(r, ([]Sphere) state.spheres, max_ray_depth);
             color = vec3_add(color, c);
             
             *texel = color.x;

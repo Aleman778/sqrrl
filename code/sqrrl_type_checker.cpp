@@ -1931,6 +1931,29 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
         
         Type* type = create_type_from_ast(tcx, ast, report_error);
         if (type) {
+            smm type_index = map_get_index(tcx->global_type_table, ident);
+            
+            if (type_index != -1) {
+                Type* old_type = tcx->global_type_table[type_index].value;
+                
+                if (type->kind == TypeKind_Struct &&
+                    old_type->kind == TypeKind_Struct && type != old_type) {
+                    
+                    // TODO(Alexander): hack to get forward declares working
+                    if (array_count(type->Struct.types) == 0) {
+                        // do nothing
+                    } else if (array_count(old_type->Struct.types) == 0) {
+                        memcpy(old_type, type, sizeof(type));
+                    } else {
+                        type_error(tcx,
+                                   string_format("cannot redeclare previous declaration `%`",
+                                                 f_string(vars_load_string(ident))));
+                    }
+                    
+                    type = old_type;
+                }
+            }
+            
             ast->type = type;
             // TODO(Alexander): distinguish between types and types of variables
             // E.g. in `int main(...)`, main is not a type it's a global variable

@@ -42,7 +42,7 @@ run_compiler_tests(string filename,
     
     // Parse preprocessed source
     Tokenizer tokenizer = {};
-    tokenizer_set_source(&tokenizer, preprocessed_source, filename);
+    tokenizer_set_source(&tokenizer, preprocessed_source, filename, file.index);
     Parser parser = {};
     parser.source_groups = preprocessor.source_groups;
     parser.tokenizer = &tokenizer;

@@ -508,12 +508,12 @@ parse_atom(Parser* parser, bool report_error) {
         
         case Token_Open_Brace: {
             result = push_ast_node(parser, &token);
-            result->kind = Ast_Array_Expr;
-            result->Array_Expr.elements = parse_compound(parser, 
-                                                         Token_Open_Brace, 
-                                                         Token_Close_Brace, 
-                                                         Token_Comma, 
-                                                         &parse_actual_argument);
+            result->kind = Ast_Aggregate_Expr;
+            result->Aggregate_Expr.elements = parse_compound(parser, 
+                                                             Token_Open_Brace, 
+                                                             Token_Close_Brace, 
+                                                             Token_Comma, 
+                                                             &parse_actual_struct_or_union_argument);
         } break;
         
         default: {
@@ -608,20 +608,28 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
                 update_span(parser, lhs_expr);
             } continue;
             
+#if 0
+            // TODO(Alexander): do we still care about this syntax: v3 {x: 10.0f, y: 20.0f, z: 30.0f} ?
+            //                                                      ^^
             case Token_Open_Brace: {
                 if (rhs_expr->kind == Ast_Ident) {
                     lhs_expr = push_ast_node(parser);
-                    lhs_expr->kind = Ast_Struct_Expr;
-                    lhs_expr->Struct_Expr.ident = rhs_expr;
-                    lhs_expr->Struct_Expr.fields = parse_compound(parser,
-                                                                  Token_Open_Brace, Token_Close_Brace, Token_Comma, 
-                                                                  &parse_actual_struct_or_union_argument);
+                    
+                    lhs_expr = push_ast_node(parser, &token);
+                    lhs_expr->kind = Ast_Aggregate_Expr;
+                    lhs_expr->Aggregate_Expr.ident = rhs_expr;
+                    lhs_expr->Aggregate_Expr.elements = parse_compound(parser, 
+                                                                       Token_Open_Brace, 
+                                                                       Token_Close_Brace, 
+                                                                       Token_Comma, 
+                                                                       &parse_actual_struct_or_union_argument);
                 } else {
                     parse_error(parser, token, string_lit("struct literals expects identifier before `{`"));
                     return rhs_expr;
                 }
                 update_span(parser, lhs_expr);
             } continue;
+#endif
         }
         
         break;

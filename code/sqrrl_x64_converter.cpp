@@ -321,51 +321,50 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             result = convert_expr_to_intermediate_code(cu, expr->Paren_Expr.expr);
         } break;
         
-        case Ast_Array_Expr: {
+        case Ast_Aggregate_Expr: {
             Type* type = expr->type;
-            smm capacity = type->Array.capacity;
-            assert(capacity > 0);
             
-            type = type->Array.type;
-            
-            // TODO(Alexander): temporary use Memory_Arena
-            smm size = capacity*type->size;
-            void* data = calloc(1, size);
-            
-            u8* curr = (u8*) data;
-            for_compound(expr->Array_Expr.elements, e) {
-                assert(e->kind == Ast_Value);
-                value_store_in_memory(e->type, curr, e->Value.value.data);
-                curr += type->size;
-            }
-            
-            result = ic_data(IC_T64, (s64) data);
-        } break;
-        
-        case Ast_Struct_Expr: {
-            Type* type = expr->type;
-            assert(type->kind == TypeKind_Struct);
-            
-            u8* data = 0;
-            // TODO(Alexander): temporary use Memory_Arena
-            for_compound(expr->Struct_Expr.fields, field) {
-                assert(field->kind == Ast_Argument);
+            if (type->kind == TypeKind_Array) {
+                smm capacity = type->Array.capacity;
+                assert(capacity > 0);
                 
-                if (!data) {
-                    data = (u8*) calloc(1, type->size);
+                type = type->Array.type;
+                
+                // TODO(Alexander): temporary use Memory_Arena
+                smm size = capacity*type->size;
+                void* data = calloc(1, size);
+                
+                u8* curr = (u8*) data;
+                for_compound(expr->Aggregate_Expr.elements, e) {
+                    assert(e->kind == Ast_Value);
+                    value_store_in_memory(e->type, curr, e->Value.value.data);
+                    curr += type->size;
                 }
                 
-                string_id ident = ast_unwrap_ident(field->Argument.ident);
-                Ast* assign = field->Argument.assign;
-                // TODO(Alexander): make it possible to store dynamic things
-                assert(assign->kind == Ast_Value);
-                
-                Struct_Field_Info info = get_field_info(&type->Struct, ident);
-                value_store_in_memory(info.type, data + info.offset, assign->Value.value.data);
-            }
-            
-            if (data) {
                 result = ic_data(IC_T64, (s64) data);
+                
+            } else if (type->kind == TypeKind_Struct) {
+                u8* data = 0;
+                // TODO(Alexander): temporary use Memory_Arena
+                for_compound(expr->Aggregate_Expr.elements, field) {
+                    assert(field->kind == Ast_Argument);
+                    
+                    if (!data) {
+                        data = (u8*) calloc(1, type->size);
+                    }
+                    
+                    string_id ident = ast_unwrap_ident(field->Argument.ident);
+                    Ast* assign = field->Argument.assign;
+                    // TODO(Alexander): make it possible to store dynamic things
+                    assert(assign->kind == Ast_Value);
+                    
+                    Struct_Field_Info info = get_field_info(&type->Struct, ident);
+                    value_store_in_memory(info.type, data + info.offset, assign->Value.value.data);
+                }
+                
+                if (data) {
+                    result = ic_data(IC_T64, (s64) data);
+                }
             }
         } break;
         

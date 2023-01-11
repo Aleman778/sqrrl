@@ -145,7 +145,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     // Lexer
     Tokenizer tokenizer = {};
-    tokenizer_set_source(&tokenizer, preprocessed_source, file.abspath);
+    tokenizer_set_source(&tokenizer, preprocessed_source, file.abspath, file.index);
     // TODO(alexander): calculate line number!
     
     Parser parser = {};

@@ -313,8 +313,7 @@ interp_expression(Interp* interp, Ast* ast) {
             }
         } break;
         
-        case Ast_Array_Expr:
-        case Ast_Struct_Expr:
+        case Ast_Aggregate_Expr:
         case Ast_Tuple_Expr: {
             result.value.type = Value_ast_node;
             result.value.data.ast = ast;
@@ -514,12 +513,12 @@ interp_statement(Interp* interp, Ast* ast) {
                     
                     if (is_ast_node(expr.value)) {
                         ast = expr.value.data.ast;
-                        if (ast && ast->kind == Ast_Array_Expr) {
-                            Ast* elements = ast->Array_Expr.elements;
+                        if (ast && ast->kind == Ast_Aggregate_Expr) {
+                            Ast* elements = ast->Aggregate_Expr.elements;
                             Type* elem_type = type->Array.type;
                             
                             while (elements && elements->kind == Ast_Compound) {
-                                Ast* element = elements->Compound.node;
+                                Ast* element = elements->Compound.node->Argument.assign;
                                 elements = elements->Compound.next;
                                 
                                 Value elem_value = interp_expression(interp, element).value;
@@ -559,10 +558,10 @@ interp_statement(Interp* interp, Ast* ast) {
                     
                     if (is_ast_node(expr.value)) {
                         assert(expr.value.type == Value_ast_node &&
-                               expr.value.data.ast->kind == Ast_Struct_Expr);
+                               expr.value.data.ast->kind == Ast_Aggregate_Expr);
                         
                         // Struct initialization
-                        Ast* fields = expr.value.data.ast->Struct_Expr.fields;
+                        Ast* fields = expr.value.data.ast->Aggregate_Expr.elements;
                         map(string_id, Value)* field_values = 0;
                         
                         // NOTE(Alexander): push elements onto the stack in the order defined by the type

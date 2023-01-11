@@ -26,12 +26,16 @@ struct Type_Context {
 };
 
 inline void
-type_error(Type_Context* tcx, string message, Token* token=0) {
-    Span_Data span = {};
+type_error(Type_Context* tcx, string message, Span span) {
+    //Span_Data span = {};
     string filename = string_lit("examples/demo.sq"); // TODO: store names of source files somewhere!
     
-    if (token) {
-        pln("%:%:%: ", f_string(token->file), f_smm(token->line + 1), f_smm(token->column + 1));
+    if (span.file_index > 0) {
+        Loaded_Source_File* file = get_source_file_by_index(span.file_index);
+        if (file) {
+            Span_Data result = calculate_span_data(file->lines, span);
+            print_format("%:%:%: ", f_string(file->abspath), f_u32(result.begin_line + 1), f_u32(result.begin_column + 1));
+        }
     }
     
     pln("error: %\n", f_string(message));
@@ -40,22 +44,22 @@ type_error(Type_Context* tcx, string message, Token* token=0) {
 }
 
 inline void
-type_error_mismatch(Type_Context* tcx, Type* expected, Type* found, Token* token=0) {
+type_error_mismatch(Type_Context* tcx, Type* expected, Type* found, Span span) {
     type_error(tcx, string_format("mismatched types expected `%`, found `%`",
-                                  f_type(expected), f_type(found)), token);
+                                  f_type(expected), f_type(found)), span);
 }
 
 inline void
-type_warning(Type_Context* tcx, string message) {
-    Span_Data span = {};
+type_warning(Type_Context* tcx, string message, Span span) {
+    Span_Data spand = {};
     string filename = string_lit("examples/demo.sq"); // TODO: store names of source files somewhere!
-    pln("%:%:%: warning: %\n", f_string(filename), f_smm(span.begin_line), f_smm(span.begin_column), f_string(message));
+    pln("%:%:%: warning: %\n", f_string(filename), f_smm(spand.begin_line), f_smm(spand.begin_column), f_string(message));
     DEBUG_log_backtrace();
     tcx->warning_count++;
 }
 
 bool
-push_local(Type_Context* tcx, string_id ident, Type* type, bool report_error, Token* token=0) {
+push_local(Type_Context* tcx, string_id ident, Type* type, Span span, bool report_error) {
     assert(tcx->block_depth > 0);
     assert(tcx->active_scope);
     
@@ -63,7 +67,7 @@ push_local(Type_Context* tcx, string_id ident, Type* type, bool report_error, To
         if (report_error) {
             type_error(tcx,
                        string_format("cannot redeclare previous local variable `%`",
-                                     f_string(vars_load_string(ident))), token);
+                                     f_string(vars_load_string(ident))), span);
         }
         return false;
         
@@ -209,10 +213,10 @@ struct Ast_File;
 
 Type* type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool report_error);
 
-bool type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, 
+bool type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span,
                            bool comparator=false, bool report_error=true);
 s32 type_check_ast_file(Ast_File* ast_file);
 
 Type* create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error);
 
-Type* load_type_declaration(Type_Context* tcx, string_id ident, bool report_error);
+Type* load_type_declaration(Type_Context* tcx, string_id ident, Span span, bool report_error);

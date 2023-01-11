@@ -46,6 +46,7 @@ utf8_advance_character(Tokenizer* tokenizer) {
         tokenizer->column_number++;
         if (*tokenizer->curr == '\n') {
             array_push(tokenizer->lines, (smm) (tokenizer->next - tokenizer->start));
+            //pln("Line %: `%`", f_umm(array_count(tokenizer->lines)), f_string(string_view(tokenizer->curr_line, tokenizer->next)));
             tokenizer->curr_line = tokenizer->next;
             tokenizer->line_number++;
             tokenizer->column_number = 0;
@@ -363,6 +364,7 @@ advance_token(Tokenizer* tokenizer) {
     token.line = tokenizer->line_number;
     token.column = tokenizer->column_number;
     token.offset = (smm) (tokenizer->curr - tokenizer->start);
+    token.file_index = tokenizer->file_index;
     
     if (tokenizer->curr >= tokenizer->end) {
         token.type = Token_EOF;

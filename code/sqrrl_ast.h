@@ -59,12 +59,8 @@ AST(Index_Expr,        "index", struct {        \
 Ast* array;                                     \
 Ast* index;                                     \
 })                                              \
-AST(Array_Expr,        "array", struct {        \
+AST(Aggregate_Expr, "aggregate initializer", struct { \
 Ast* elements;                                  \
-})                                              \
-AST(Struct_Expr,       "struct", struct {       \
-Ast* ident;                                     \
-Ast* fields;                                    \
 })                                              \
 AST(Tuple_Expr,        "tuple", struct {        \
 Ast* values;                                    \
@@ -239,14 +235,20 @@ struct Span_Data {
 };
 
 Span_Data
-calculate_span_data(smm* lines, Span span) {
-    Binary_Search_Result begin = binary_search(lines, (smm) span.offset, compare_smm);
+calculate_span_data(array(smm)* lines, Span span) {
+    smm offset = span.offset;
+    
+    Binary_Search_Result begin = binary_search(lines, offset, compare_smm);
     smm span_end = (smm) span.offset + (smm) span.count;
-    Binary_Search_Result end = binary_search(lines, end, compare_smm);
+    Binary_Search_Result end = binary_search(lines, span_end, compare_smm);
+    
+    if (begin.index > 0) {
+        begin.value = (smm*) begin.value - 1;
+    }
     
     Span_Data result;
     result.begin_line = (u32) begin.index;
-    result.begin_column = (u32) ((smm) span.offset - *(smm*) begin.value);
+    result.begin_column = (u32) ((smm) span.offset - *((smm*) begin.value));
     result.end_line = (u32) end.index;
     result.end_column = (u32) ((smm) span.offset + (smm) span.count - *(smm*) end.value);
     result.file_index = span.file_index;

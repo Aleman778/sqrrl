@@ -75,6 +75,18 @@ enum Material_Type {
     Dielectric
 };
 
+#ifdef __cplusplus
+#define MT_Lambertian Lambertian
+#define MT_Metallic Metallic
+#define MT_Dielectric Dielectric
+
+#else
+
+#define MT_Lambertian Material_Type.Lambertian
+#define MT_Metallic Material_Type.Metallic
+#define MT_Dielectric Material_Type.Dielectric
+#endif
+
 struct Material {
     Material_Type type;
     v3 albedo;
@@ -253,11 +265,11 @@ ray_color(ray r, Sphere spheres[4], int depth) {
         
         
         Scatter_Result s = {};
-        if (found_hit.material->type == Lambertian) {
+        if (found_hit.material->type == MT_Lambertian) {
             s = lambertian_scatter(found_hit);
-        } else if (found_hit.material->type == Metallic) {
+        } else if (found_hit.material->type == MT_Metallic) {
             s = metallic_scatter(r, found_hit);
-        } else if (found_hit.material->type == Dielectric) {
+        } else if (found_hit.material->type == MT_Dielectric) {
             s = dieletric_scatter(r, found_hit);
         }
         

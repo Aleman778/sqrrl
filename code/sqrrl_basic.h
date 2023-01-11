@@ -638,17 +638,24 @@ _binary_search(void* arr, void* val, smm count, smm size,
                int (*compare)(void*, void*)) {
     Binary_Search_Result result = {};
     smm low = 0, high = count - 1;
+    //pln("low = %, high = %", f_smm(low), f_smm(high));
     
     while (low <= high) {
         smm mid = (high - low) / 2 + low;
         result.index = mid;
         
         void* elem = (u8*) arr + mid*size;
+        //pln("low = %, high = %, *val = %", f_smm(low), f_smm(high), f_smm(*((smm*) val)));
+        
         int cmp = compare(val, elem);
+        //pln("% - % = %", f_smm(*((smm*) val)), f_smm(*((smm*) elem)), f_int(cmp));
         if (cmp > 0) {
-            high = mid - 1;
-        } else if (cmp < 0) {
             low = mid + 1;
+        } else if (cmp < 0) {
+            high = mid - 1;
+            //if (low > high) {
+            //result.index = max(mid - 1, 0);
+            //}
         } else {
             result.exact_match = true;
             break;

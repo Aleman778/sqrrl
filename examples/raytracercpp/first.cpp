@@ -226,18 +226,18 @@ main() {
         //win32_clear_color(&offscreen_buffer, sky_color);
         
         Material mat0 = {};
-        mat0.type = Dielectric;
+        mat0.type = MT_Dielectric;
         mat0.refraction_index = 1.5f;
         mat0.albedo = vec3_rgb(149, 52, 173);
         
         Material mat1 = {};
-        mat1.type = Dielectric;
+        mat1.type = MT_Dielectric;
         mat1.refraction_index = 1.5f;
         mat1.albedo = vec3_rgb(232, 112, 79);
         mat1.roughness = 0.3f;
         
         Material mat2 = {};
-        mat2.type = Metallic;
+        mat2.type = MT_Metallic;
         mat2.albedo = vec3_rgb(74, 127, 212);
         mat2.roughness = 1.0f;
         

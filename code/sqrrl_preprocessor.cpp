@@ -12,7 +12,7 @@ preprocess_parse_and_eval_constant_expression(Preprocessor* preprocessor, Tokeni
     preprocess_expand_macro(preprocessor, &sb, t, {}, {});
     
     Tokenizer tokenizer = {};
-    tokenizer_set_source(&tokenizer, string_builder_to_string_nocopy(&sb), string_lit("if"));
+    tokenizer_set_source(&tokenizer, string_builder_to_string_nocopy(&sb), string_lit("if"), 0);
     
     Parser parser = {};
     parser.tokenizer = &tokenizer;
@@ -66,7 +66,7 @@ preprocess_eval_macro(Preprocessor* preprocessor, string_id ident) {
     Preprocessor_Macro macro = map_get(preprocessor->macros, ident);
     if (macro.is_valid) {
         Tokenizer tokenizer = {};
-        tokenizer_set_source(&tokenizer, macro.source, string_lit("<eval>"));
+        tokenizer_set_source(&tokenizer, macro.source, string_lit("<eval>"), 0);
         result = preprocess_parse_and_eval_constant_expression(preprocessor, &tokenizer);
     }
     
@@ -588,7 +588,7 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
             string source = args.list[arg_index];
             
             Tokenizer tokenizer = {};
-            tokenizer_set_source(&tokenizer, source, string_lit("args"));
+            tokenizer_set_source(&tokenizer, source, string_lit("args"), 0);
             preprocess_expand_macro(preprocessor, sb, &tokenizer, parent_macro, {});
             
             if (arg_index + 1 < actual_arg_count) {
@@ -648,7 +648,7 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
         
         // TODO(Alexander): record line/ col of this
         Tokenizer tokenizer = {};
-        tokenizer_set_source(&tokenizer, macro.source, string_lit("macro"));
+        tokenizer_set_source(&tokenizer, macro.source, string_lit("macro"), 0);
         preprocess_expand_macro(preprocessor, sb, &tokenizer, macro, macro_args);
         
         string expanded_source = string_view(sb->data + first_used, sb->data + sb->curr_used);
@@ -706,10 +706,23 @@ preprocess_expand_macro(Preprocessor* preprocessor,
     }
 }
 
+internal Token
+push_non_semantical_tokens(Tokenizer* t, String_Builder* sb) {
+    Token token = advance_token(t);
+    while (!is_semantical_token(token) && is_token_valid(token)) {
+        string_builder_push(sb, token.source);
+        token = advance_token(t);
+    }
+    
+    return token;
+}
+
+
 internal bool
 preprocess_line(Preprocessor* preprocessor, String_Builder* sb, Tokenizer* t) {
     u8* base = t->curr;
-    Token token = advance_semantical_token(t);
+    
+    Token token = push_non_semantical_tokens(t, sb);
     Token first_token = token;
     if (token.type == Token_Directive) {
         preprocess_directive(preprocessor, t);
@@ -792,7 +805,7 @@ preprocess_finalize_code(string source) {
     Tokenizer tokenizer = {};
     Tokenizer* t = &tokenizer;
     
-    tokenizer_set_source(t, source, string_lit("macro"));
+    tokenizer_set_source(t, source, string_lit("macro"), 0);
     
     String_Builder sb = {};
     
@@ -871,11 +884,7 @@ preprocess_finalize_code(string source) {
                 }
                 
                 string_builder_push(&sb, token.source);
-                token = advance_token(t);
-                while (!is_semantical_token(token) && is_token_valid(token)) {
-                    string_builder_push(&sb, token.source);
-                    token = advance_token(t);
-                }
+                token = push_non_semantical_tokens(t, &sb);
             } break;
         }
     }
@@ -888,7 +897,7 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath, int 
     Tokenizer* prev_tokenizer = preprocessor->tokenizer;
     
     Tokenizer tokenizer = {};
-    tokenizer_set_source(&tokenizer, source, filepath);
+    tokenizer_set_source(&tokenizer, source, filepath, file_index);
     preprocessor->tokenizer = &tokenizer;
     tokenizer.end = tokenizer.curr;
     
@@ -934,6 +943,7 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath, int 
         
         
         Preprocessor_Line line = preprocess_splice_next_line(preprocessor, &tokenizer);
+        //pln("Line %: `%`", f_int(line.curr_line_number), f_string(line.substring));
         curr += line.substring.count;
         curr_line_number = tokenizer.line_number;
         preprocessor->preprocessed_lines += line.next_line_number - line.curr_line_number;
@@ -962,7 +972,7 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath, int 
             
             //pln("expanded code:\n`%`", f_string(expanded_code));
             string finalized_string = preprocess_finalize_code(expanded_code);
-            //pln(" -->\n  `%`", f_string(finalized_string));
+            //pln(" -->\n`%`\n", f_string(finalized_string));
             string_builder_push(sb, finalized_string);
             
             if (current_group.count == 0) {
@@ -972,17 +982,27 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath, int 
             
             string_free(finalized_string);
         } else {
+            
+            //pln("%", f_string(string_builder_to_string_nocopy(sb)));
+            
             // If we skip a line we will start a new source group
-            if (current_group.count > 0) {
+            if (begin_used != end_used) {
                 array_push(preprocessor->source_groups, current_group);
                 current_group = {};
                 current_group.offset = sb->curr_used;
                 current_group.file_index = file_index;
                 // TODO(Alexander): doesn't have to be C compat, but for now we assume that
                 current_group.c_compatibility_mode = preprocessor->is_system_header;
+                current_group.line = (u32) line.next_line_number;
             }
             
-            current_group.line = (u32) line.next_line_number;
+            if (current_group.count == 0) {
+                current_group.offset = end_used;
+            }
+            int empty_lines = (int) line.next_line_number - (int) line.curr_line_number;
+            //pln("Empty lines = %", f_int(empty_lines));
+            for(int i = 0; i < empty_lines; i++) string_builder_push(sb, "\n");
+            current_group.count += empty_lines;
         }
     }
     

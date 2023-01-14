@@ -132,6 +132,31 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
             }
         }
         
+        bool is_pointer_arithmetic = src0.type > 0 && (src0.type & (IC_SINT | IC_UINT | IC_FLOAT)) == 0; 
+        if (is_pointer_arithmetic) {
+            if (src1.type & (IC_SINT | IC_UINT)) {
+                // pointer +/- integral
+                //pln("AST:\n%", f_ast(expr));
+                assert(op == BinaryOp_Add || op == BinaryOp_Subtract ||
+                       op == BinaryOp_Add_Assign || op == BinaryOp_Subtract_Assign);
+                
+                Type* ptr_type = expr->Binary_Expr.first->type;
+                int sizeof_elem = ptr_type->Pointer->size;
+                
+                Intermediate_Code* ic = ic_add(cu, IC_MUL);
+                ic->dest = ic_reg(IC_S64);
+                ic->src0 = src1;
+                ic->src1 = ic_imm(IC_S64, sizeof_elem);
+                if (is_power_of_two(sizeof_elem)) {
+                    ic->opcode = IC_SHL;
+                    ic->src1.disp = (int) sqrt(ic->src1.disp);
+                }
+                
+                src1 = ic->dest;
+                src1.raw_type = src0.raw_type;
+            }
+        } 
+        
 #if BUILD_DEBUG
         if (src0.raw_type != 0 && src0.raw_type != src1.raw_type) {
             pln("AST:\n%", f_ast(expr));
@@ -293,6 +318,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 result = map_get(cu->locals, ident);
             } else {
                 if (type->kind == TypeKind_Function) {
+                    assert(type->Function.unit);
                     Intermediate_Code* ic = ic_add(cu, IC_LPROC, type->Function.unit);
                     ic->dest = ic_reg(IC_T64);
                     result = ic->dest;

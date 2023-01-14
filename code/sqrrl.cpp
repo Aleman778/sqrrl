@@ -61,7 +61,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         //filepath = string_lit("../personal/first.sq");
         //filepath = string_lit("../examples/backend_test.sq");
         //filepath = string_lit("../examples/raytracer/first.sq");
-        filepath = string_lit("../examples/raytracercpp/first.cpp");
+        filepath = string_lit("../examples/raytracer/first.cpp");
         //filepath = string_lit("../tests/preprocessor.sq");
 #else
         if (argc <= 1) {
@@ -216,7 +216,22 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             }
         } else if (cu->ast->kind == Ast_Assign_Stmt) {
             
+            string_id ident = ast_unwrap_ident(cu->ast->Assign_Stmt.ident);
+            smm index = map_get_index(globals, ident);
+            Ic_Arg arg;
+            if (index == -1) {
+                arg = ic_data(IC_T64, (s64) malloc(cu->ast->type->size));
+                map_put(globals, ident, arg);
+            } else {
+                arg = globals[index].value;
+            }
             
+            if (arg.raw_type == IC_T64) {
+                void* dest = (void*) arg.disp;
+                Interp interp = {};
+                Interp_Value result = interp_expression(&interp, cu->ast->Assign_Stmt.expr);
+                value_store_in_memory(cu->ast->type, dest, result.value.data);
+            }
         }
     }
     assert(main_cu);

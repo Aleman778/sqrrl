@@ -5,11 +5,6 @@
 
 #include "math.cpp"
 
-//#define PRINT_AST 1
-//#define PRINT_BYTECODE 1
-//#define PRINT_ASM_VREG 1
-//#define PRINT_ASM 1
-
 v3
 random_vec3_in_unit_sphere() {
     while (true) {
@@ -306,7 +301,7 @@ int
 render(HDR_Software_Texture* texture, Game_State* state) {
     //f32 aspect_ratio = 16.0f / 9.0f;
     f32 aspect_ratio = (f32) texture->width / (f32) texture->height;
-    int max_ray_depth = 50;
+    int max_ray_depth = 5;
     
     //pln("resolution: % x %", texture->width, texture->height);
     
@@ -357,7 +352,9 @@ render(HDR_Software_Texture* texture, Game_State* state) {
             v3 c = ray_color(r, state->spheres, max_ray_depth);
             color = vec3_add(color, c);
             
+            
             *texel = color.x;
+            //debug_break();
             texel += 1;
             *texel = color.y;
             texel += 1;

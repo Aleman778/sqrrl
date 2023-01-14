@@ -1870,6 +1870,8 @@ next_semantical_token(Parser* parser) {
                 tokenizer_set_source_group(parser->tokenizer, group);
                 parser->c_compatibility_mode = group->c_compatibility_mode;
                 token = next_semantical_token(parser);
+            } else {
+                tokenizer_finalize(parser->tokenizer);
             }
         }
     }

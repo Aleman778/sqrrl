@@ -25,6 +25,8 @@
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
+#define is_power_of_two(x) (((x) & ((x) - 1)) == 0)
+
 // NOTE(Alexander): bit stuff
 #define bit(x) (1 << (x))
 #define is_bit_set(var, x) ((var) & (1 << (x)))
@@ -125,7 +127,7 @@ intrinsic_assert(int expr) {
 
 // TODO(Alexander): special asserts
 #define assert_enum(T, v) assert((v) > 0 && (v) < T##_Count && "enum value out of range")
-#define assert_power_of_two(x) assert((((x) & ((x) - 1)) == 0) && "x is not power of two")
+#define assert_power_of_two(x) assert(is_power_of_two(x) && "x is not power of two")
 
 f32
 random_f32() {

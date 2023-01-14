@@ -128,12 +128,12 @@ bool
 type_check_value(Type_Context* tcx, Type* type, Value value, Span span, bool report_error) {
     bool result = true;
     
-    if (type->kind == TypeKind_Enum) {
-        type = type->Enum.type;
-        if (!type) {
-            type = t_s64; // TODO(Alexander): what is the default type for Enums?
-        } 
-    }
+    //if (type->kind == TypeKind_Enum) {
+    //type = type->Enum.type;
+    //if (!type) {
+    //type = t_s64; // TODO(Alexander): what is the default type for Enums?
+    //} 
+    //}
     
     switch (value.type) {
         case Value_void: {
@@ -393,16 +393,14 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         
         
         case Ast_Value: {
-            if (expr->type && expr->type->kind == TypeKind_Basic) {
+            if (expr->type) {
                 result = expr->type;
             }
             
             if (!result) {
-                if (parent_type) {
+                if (parent_type && parent_type->kind == TypeKind_Basic) {
                     result = parent_type;
-                    if (result->kind == TypeKind_Basic) {
-                        expr->Value.value = value_cast(expr->Value.value, result->Basic.kind);
-                    }
+                    expr->Value.value = value_cast(expr->Value.value, result->Basic.kind);
                 } else {
                     result = type_infer_value(tcx, expr->Value.value);
                 }
@@ -472,6 +470,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                             result = type->Pointer;
                         } else {
                             if (report_error) {
+                                pln("%", f_ast(expr));
                                 type_error(tcx,
                                            string_format("cannot dereference type `%`", f_type(type)),
                                            expr->span);
@@ -512,48 +511,36 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             }
             
             if (is_binary_assign(expr->Binary_Expr.op)) {
-                result = first_type;
-                if (type_check_assignment(tcx, first_type, second_type, 
-                                          expr->Binary_Expr.second->span,
-                                          binary_is_comparator_table[expr->Binary_Expr.op], false)) {
+                
+                
+                if (first_type->kind == TypeKind_Function && 
+                    second_type->kind == TypeKind_Function) {
+                    // TODO(Alexander): HACK right-hand side is always the "real" function type
+                    //                  the left-hand side could be just a typedef function type
+                    result = second_type;
+                    first_type = result;
+                } else {
+                    result = first_type;
                     second_type = result;
                 }
+                
             } else {
                 
-                // TODO(Alexander): refactor this later when the AST storage gets updated
-                //Ast* fmt_arg = arena_push_struct(&tcx->type_arena, Ast);
-                
-                bool is_result_floating = false;
                 if (first_type->kind == TypeKind_Basic && 
                     second_type->kind == TypeKind_Basic) {
                     
-                    bool is_first_floating = is_bitflag_set(first_type->Basic.flags, BasicFlag_Floating);
-                    bool is_second_floating = is_bitflag_set(second_type->Basic.flags, BasicFlag_Floating);
-                    
-                    // NOTE(Alexander): Type rules
-                    // float + int -> float + float;
-                    // int + float -> float + float;
-                    if (is_first_floating || is_second_floating) {
-                        is_result_floating = true;
-                        if (!is_first_floating) {
-                            first_type = second_type;
-                            result = second_type;
-                        } else if (!is_second_floating) {
-                            first_type = first_type;
-                            result = first_type;
-                        }
-                    }
-                    
-                    //pln("parent_type: %", f_type(parent_type));
-                    //pln("  % + %", f_type(first_type), f_type(second_type));
-                    if (first_type->size > second_type->size) {
+                    if ((first_type->Basic.flags & BasicFlag_Floating) == 
+                        (second_type->Basic.flags & BasicFlag_Floating)) {
+                        result = first_type->size > second_type->size ? first_type : second_type;
+                        
+                    } else if (first_type->Basic.flags & BasicFlag_Floating) {
                         result = first_type;
-                        second_type = result;
+                        
                     } else {
                         result = second_type;
-                        first_type = result;
                     }
                     
+#if 0
                     if (parent_type && result != parent_type) {
                         //pln("  % >= %", f_int(first_type->size), f_int(second_type->size));
                         bool is_parent_floating = false;
@@ -568,50 +555,80 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                             second_type = result;
                         }
                     }
+#endif
                 } else {
                     if (parent_type) {
                         result = parent_type;
                     } else {
                         result = first_type;
                     }
+                    //result = normalize_basic_types(t_smm);
                 }
+                
+                first_type = result;
+                second_type = result;
             }
             
-            // TODO(Alexander): we don't want to change types without doing explicit cast
-            // otherwise the backend gets confused and outputs wrong code.
-            if (!type_equals(expr->Binary_Expr.first->type, first_type)) {
-                if (expr->Binary_Expr.first->kind == Ast_Value) {
-                    expr->Binary_Expr.first->type = first_type;
-                } else {
-                    Ast* cast_node = arena_push_struct(&tcx->type_arena, Ast);
-                    cast_node->kind = Ast_Cast_Expr;
-                    cast_node->Cast_Expr.expr = expr->Binary_Expr.first;
-                    cast_node->type = first_type;
-                    expr->Binary_Expr.first->type = first_type;
+            if (result) {
+                
+                // TODO(Alexander): we don't want to change types without doing explicit cast
+                // otherwise the backend gets confused and outputs wrong code.
+                if (type_check_assignment(tcx, first_type, expr->Binary_Expr.first->type,
+                                          empty_span, binary_is_comparator_table[op], false)) {
+                    
+                    if (type_equals(expr->Binary_Expr.first->type, first_type)) {
+                        expr->Binary_Expr.first->type = first_type;
+                    } else {
+                        if (expr->Binary_Expr.first->kind == Ast_Value) {
+                            expr->Binary_Expr.first->type = first_type;
+                        } else {
+                            // TODO(Alexander): temporary use of calloc we need to find a better way to manipulate the Ast
+                            Ast* cast_node = (Ast*) calloc(1, sizeof(Ast));
+                            cast_node->kind = Ast_Cast_Expr;
+                            cast_node->Cast_Expr.type = (Ast*) calloc(1, sizeof(Ast));
+                            cast_node->Cast_Expr.type->kind = Ast_None;
+                            cast_node->Cast_Expr.expr = expr->Binary_Expr.first;
+                            cast_node->type = first_type;
+                            
+                            expr->Binary_Expr.first = cast_node;
+                            
+                            //pln("first AST:\n%", f_ast(expr));
+                        }
+                    }
                 }
-            }
-            
-            if (!type_equals(expr->Binary_Expr.second->type, second_type)) {
-                if (expr->Binary_Expr.second->kind == Ast_Value) {
-                    expr->Binary_Expr.second->type = second_type;
+                
+                if (type_check_assignment(tcx, second_type, expr->Binary_Expr.second->type,
+                                          empty_span, binary_is_comparator_table[op], false)) {
+                    
+                    if (type_equals(expr->Binary_Expr.second->type, second_type)) {
+                        expr->Binary_Expr.second->type = second_type;
+                    } else {
+                        if (expr->Binary_Expr.second->kind == Ast_Value) {
+                            expr->Binary_Expr.second->type = second_type;
+                        } else {
+                            // TODO(Alexander): temporary use of calloc we need to find a better way to manipulate the Ast
+                            Ast* cast_node = (Ast*) calloc(1, sizeof(Ast));
+                            cast_node->kind = Ast_Cast_Expr;
+                            cast_node->Cast_Expr.type = (Ast*) calloc(1, sizeof(Ast));
+                            cast_node->Cast_Expr.type->kind = Ast_None;
+                            cast_node->Cast_Expr.expr = expr->Binary_Expr.second;
+                            cast_node->type = second_type;
+                            
+                            expr->Binary_Expr.second = cast_node;
+                            
+                            //pln("second AST:\n%", f_ast(expr));
+                        }
+                        
+                    }
                 }
+                
+                if (binary_is_comparator_table[expr->Binary_Expr.op]) {
+                    result = t_bool;
+                }
+                expr->type = result;
+                
+                //pln("Binary_Expr after:%\n% = % op %\n", f_ast(expr), f_type(result), f_type(first_type), f_type(second_type));
             }
-            
-            //
-            //expr->Binary_Expr.second->type = second_type;
-            //pln("-> %", f_type(result));
-            
-            if (binary_is_comparator_table[expr->Binary_Expr.op]) {
-                result = t_bool;
-            } else if (first_type->kind == TypeKind_Pointer && 
-                       second_type->kind == TypeKind_Pointer &&
-                       (op == BinaryOp_Add || 
-                        op == BinaryOp_Subtract ||
-                        op == BinaryOp_Add_Assign || 
-                        op == BinaryOp_Subtract_Assign)) {
-                result = normalize_basic_types(t_smm);
-            }
-            expr->type = result;
         } break;
         
         case Ast_Ternary_Expr: {
@@ -679,6 +696,13 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     
                     
                     if (actual_type) {
+                        if (formal_type && !type_equals(formal_type, actual_type)) {
+                            if (actual_arg->Argument.assign->kind == Ast_Value) {
+                                actual_arg->Argument.assign->type = formal_type;
+                                actual_type = formal_type;
+                            }
+                        }
+                        
                         actual_arg->type = actual_type;
                     } else {
                         result = 0;
@@ -747,9 +771,13 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         } break;
         
         case Ast_Cast_Expr: {
-            Type* type = create_type_from_ast(tcx, expr->Cast_Expr.type, report_error);
+            Type* type = expr->type;
+            if (!type) {
+                type = create_type_from_ast(tcx, expr->Cast_Expr.type, report_error);
+            }
+            
             if (type) {
-                Type* actual_type = type_infer_expression(tcx, expr->Cast_Expr.expr, 0, report_error);
+                Type* actual_type = type_infer_expression(tcx, expr->Cast_Expr.expr, type, report_error);
                 if (actual_type) {
                     expr->type = type;
                     result = expr->type;
@@ -814,6 +842,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                         expr->kind = Ast_Value;
                         expr->Value.value = value;
                     }
+                    result = type;
                 } break;
                 
                 case TypeKind_Array: {
@@ -1798,8 +1827,8 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
         } break;
         
         case Ast_Binary_Expr: {
-            type_check_expression(tcx, expr->Binary_Expr.first);
-            type_check_expression(tcx, expr->Binary_Expr.second);
+            result = type_check_expression(tcx, expr->Binary_Expr.first);
+            result = result && type_check_expression(tcx, expr->Binary_Expr.second);
             
             Binary_Op op = expr->Binary_Expr.op;
             Type* first = expr->Binary_Expr.first->type;
@@ -1836,7 +1865,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                                    expr->span);
                     }
                 } else if (op == BinaryOp_Assign) {
-                    type_check_assignment(tcx, first, second, expr->Binary_Expr.second->span, false);
+                    result = result && type_check_assignment(tcx, first, second, expr->Binary_Expr.second->span, false);
                 } else {
                     type_error(tcx, 
                                string_format("operator `%` is not supported for `%` on left-hand side",
@@ -1845,19 +1874,22 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                                expr->span);
                 }
             } else {
-                type_check_assignment(tcx, first, second, 
-                                      expr->Binary_Expr.second->span,
-                                      binary_is_comparator_table[op]);
+                
+                if (!type_equals(first, second)) {
+                    pln("%", f_ast(expr));
+                    type_error_mismatch(tcx, first, second, expr->Binary_Expr.second->span);
+                    result = false;
+                }
             }
         } break;
         
         case Ast_Cast_Expr: {
-            type_check_expression(tcx, expr->Cast_Expr.expr);
+            result = type_check_expression(tcx, expr->Cast_Expr.expr);
             // TODO(Alexander): do we want any checking here?
         } break;
         
         case Ast_Paren_Expr: {
-            type_check_expression(tcx, expr->Paren_Expr.expr);
+            result = type_check_expression(tcx, expr->Paren_Expr.expr);
         } break;
         
         case Ast_Index_Expr: {
@@ -1870,7 +1902,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                 smm index = value_to_smm(index_value);
                 if (index < 0) {
                     type_error(tcx, string_format("invalid index `%`", f_smm(index)), expr->span);
-                    result = 0;
+                    result = false;
                 }
                 
                 if (type->Array.capacity > 0) {

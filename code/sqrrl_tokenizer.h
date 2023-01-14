@@ -164,11 +164,8 @@ tokenizer_set_source(Tokenizer* tokenizer, string source, string file, umm file_
     array_push(tokenizer->lines, 0);
 }
 
-inline void 
-tokenizer_set_substring(Tokenizer* tokenizer, string substring, 
-                        smm first_line_number, smm first_column_number, umm file_index) {
-    
-    //pln("substr: file_index = %,  ");
+inline void
+tokenizer_finalize(Tokenizer* tokenizer) {
     if (tokenizer->file_index > 0) {
         // We load previous line numbers
         Loaded_Source_File* file = get_source_file_by_index((u32) tokenizer->file_index);
@@ -176,6 +173,15 @@ tokenizer_set_substring(Tokenizer* tokenizer, string substring,
             file->lines = tokenizer->lines;
         }
     }
+    
+}
+
+inline void 
+tokenizer_set_substring(Tokenizer* tokenizer, string substring, 
+                        smm first_line_number, smm first_column_number, umm file_index) {
+    
+    tokenizer_finalize(tokenizer);
+    //pln("substr: file_index = %,  ");
     
     u8* begin = substring.data;
     u8* end = begin + substring.count;

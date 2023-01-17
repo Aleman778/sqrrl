@@ -34,6 +34,7 @@ random_f32() {
 #define round_f32(x) roundf(x)
 #define pln(...)
 #define print_format(...)
+#define debug_break() __debugbreak()
 
 #else
 
@@ -229,12 +230,13 @@ main() {
         mat0.type = MT_Dielectric;
         mat0.refraction_index = 1.5f;
         mat0.albedo = vec3_rgb(149, 52, 173);
+        //mat0.roughness = 0.0f;
         
         Material mat1 = {};
         mat1.type = MT_Dielectric;
         mat1.refraction_index = 1.5f;
         mat1.albedo = vec3_rgb(232, 112, 79);
-        mat1.roughness = 0.3f;
+        //mat1.roughness = 0.3f;
         
         Material mat2 = {};
         mat2.type = MT_Metallic;

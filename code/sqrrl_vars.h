@@ -5,6 +5,7 @@ VAR(invalid)  \
 VAR_GROUP(builtin_keywords_begin) \
 VAR(asm)      \
 VAR(break)    \
+VAR(case)     \
 VAR(cast)     \
 VAR(continue) \
 VAR(const)    \
@@ -28,6 +29,7 @@ VAR(local_persist) \
 VAR(return)   \
 VAR(static)   \
 VAR(struct)   \
+VAR(switch)   \
 VAR(true)     \
 VAR(typedef)  \
 VAR(union)    \

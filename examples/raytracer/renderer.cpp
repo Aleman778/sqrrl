@@ -115,6 +115,8 @@ sphere_hit(Sphere sphere, ray r, f32 t_min, f32 t_max) {
     // TODO(Alexander): something wrong with this calculation
     // we shouldn't need to reverse order of root +/-
     f32 sqrt_discriminant = sqrt(discriminant);
+    
+    //debug_break();
     f32 root = (-half_b - sqrt_discriminant) / a;
     if (root < t_min || root >= t_max) {
         root = (-half_b + sqrt_discriminant) / a;
@@ -182,6 +184,7 @@ metallic_scatter(ray r, Hit_Result hit) {
 
 v3
 vec3_refract(v3 uv, v3 normal, f32 etai_over_etat) {
+    debug_break();
     f32 cos_theta = min_f32(vec3_dot(vec3_scale(uv, -1.0f), normal), 1.0f);
     
     v3 perp = vec3_scale(normal, cos_theta);
@@ -193,10 +196,18 @@ vec3_refract(v3 uv, v3 normal, f32 etai_over_etat) {
     return vec3_add(perp, parallel);
 }
 
+
+int scatter_count = 0;
+
 Scatter_Result
 dieletric_scatter(ray r, Hit_Result hit) {
     Scatter_Result result;
     result.attenuation = vec3(1.0f, 1.0f, 1.0f);
+    
+    hit.normal = vec3(-0.027596, 0.827434, 0.560884);
+    r.direction = vec3(-1.408918, 0.574960, -1.000000);
+    //print_vec3(r.direction);
+    //hit.normal = vec3_normalize(vec3(1.0f, 1.0f, 0.0f));
     
     f32 refraction_ratio = hit.material->refraction_index;
     // TODO(Alexander): front_face seems wrong
@@ -208,17 +219,31 @@ dieletric_scatter(ray r, Hit_Result hit) {
     //print_vec3(unit_direction);
     v3 v = vec3_scale(unit_direction, -1.0f);
     f32 cos_theta = min_f32(vec3_dot(v, hit.normal), 1.0f);
+    //printf("%f\n", cos_theta);
     //pln("%", cos_theta);
     f32 sin_theta = sqrt(1.0f - cos_theta*cos_theta);
-    
+    //pln("%", sin_theta);
+    //printf("%f\n", sin_theta);
+    //printf("%f\n", refraction_ratio);
     
     bool is_reflection = (refraction_ratio * sin_theta) > 1.0f;
-    //pln("% > 1.0f -> %", refraction_ratio * sin_theta, is_reflection);
+    pln("% * % > 1.0f -> %", refraction_ratio, sin_theta, is_reflection);
+    //printf("%f * %f > 1.0f -> %s\n", refraction_ratio, sin_theta, is_reflection ? "true" : "false");
+    if (scatter_count > 6) {
+        debug_break();
+    }
+    scatter_count += 1;
     
+    //pln("%", is_reflection);
+    //debug_break();
     if (is_reflection) {
         result.scattered.direction = vec3_reflect(unit_direction, hit.normal);
     } else {
+        print_vec3(unit_direction);
+        print_vec3(hit.normal);
         result.scattered.direction = vec3_refract(unit_direction, hit.normal, refraction_ratio);
+        print_vec3(result.scattered.direction);
+        debug_break();
         //v3 perp = vec3_scale(hit.normal, cos_theta);
         //perp = vec3_add(unit_direction, perp);
         //perp = vec3_scale(perp, refraction_ratio);

@@ -24,8 +24,8 @@ int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm), bool is_debugger_present) {
     // TODO(Alexander): temporary use of C runtime RNG
-    srand((uint) time(0));
-    rand();
+    //srand((uint) time(0));
+    //rand();
     
     {
         // Put dummy file as index 0
@@ -61,7 +61,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         //filepath = string_lit("../personal/first.sq");
         //filepath = string_lit("../examples/backend_test.sq");
         //filepath = string_lit("../examples/raytracer/first.sq");
-        filepath = string_lit("../examples/raytracer/first.cpp");
+        //filepath = string_lit("../examples/raytracer/first.cpp");
+        filepath = string_lit("../../platformer/code/win32_platform.cpp");
         //filepath = string_lit("../tests/preprocessor.sq");
 #else
         if (argc <= 1) {
@@ -125,8 +126,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     // TODO(alexander): temp printing source
     //pln("Preprocessed source:\n%", f_string(preprocessed_source));
-    DEBUG_write_entire_file("preprocessed.sq", preprocessed_source.data,
-                            (u32) preprocessed_source.count);
+    //DEBUG_write_entire_file("preprocessed.sq", preprocessed_source.data,
+    //(u32) preprocessed_source.count);
     
 #if 0
     // Source group debugging

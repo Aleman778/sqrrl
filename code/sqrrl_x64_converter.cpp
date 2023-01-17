@@ -1064,9 +1064,14 @@ x64_binary(Intermediate_Code* ic,
                 }
                 
                 // 81 /0 id 	ADD r/m32, imm32 	MI
-                ic_u8(ic, 0x81);
+                //ic_u8(ic, 0x81);
+                ic_u8(ic, (t1 & IC_T8) ? 0x80 : 0x81);
                 ic_u8(ic, 0xC0 | (reg_field << 3) | (u8) r1);
-                ic_u32(ic, (u32) d2);
+                if (t1 & IC_T8) {
+                    ic_u8(ic, (u8) d2);
+                } else {
+                    ic_u32(ic, (u32) d2);
+                }
                 
             } else if (t2 & (IC_REG | IC_STK)) {
                 if (t1 & IC_T64) {
@@ -1093,10 +1098,15 @@ x64_binary(Intermediate_Code* ic,
                 }
                 
                 // 81 /0 id 	ADD r/m32, imm32 	MI
-                ic_u8(ic, 0x81);
+                ic_u8(ic, (t1 & IC_T8) ? 0x80 : 0x81);
                 //ic_u8(ic, 0xC7);
                 x64_modrm(ic, t1, d1, reg_field, r1);
-                ic_u32(ic, (u32) d2);
+                if (t1 & IC_T8) {
+                    ic_u8(ic, (u8) d2);
+                } else {
+                    ic_u32(ic, (u32) d2);
+                }
+                
             } else if (t2 & IC_REG) {
                 // 01 /r 	ADD r/m32, r32 	MR
                 ic_u8(ic, opcode + 1);
@@ -1715,7 +1725,7 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                 assert(ic->src1.type & IC_REG);
                 
                 if (ic->src0.type & IC_T8) {
-                    // 85 /r 	TEST r/m32, r32 	MR
+                    // 84 /r 	TEST r/m8, r8 	MR
                     ic_u8(ic, 0x84);
                     x64_modrm(ic, ic->src0.type, ic->src0.disp, ic->src1.reg, ic->src0.reg);
                 } else {

@@ -40,6 +40,8 @@ TOKEN(Int,                     "number")            \
 TOKEN(Float,                   "number")            \
 TOKEN(Char,                    "character")         \
 TOKEN(String,                  "string")            \
+TOKEN(Increment,               "++")                \
+TOKEN(Decrement,               "--")                \
 TOKEN(Add_Assign,              "+=")                \
 TOKEN(Sub_Assign,              "-=")                \
 TOKEN(Mul_Assign,              "*=")                \

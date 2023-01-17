@@ -3,15 +3,19 @@ struct Type;
 struct Bc_Basic_Block;
 
 
-// BINOP(name, op precedence, associativiy
+// UNOP(name, op, prec)
 #define DEF_UNARY_OPS \
-UNOP(None,         ) \
-UNOP(Negate,      -) \
-UNOP(Logical_Not, !) \
-UNOP(Bitwise_Not, ~) \
-UNOP(Address_Of,  &) \
-UNOP(Dereference, *) \
-UNOP(Count,        )
+UNOP(None,             ) \
+UNOP(Negate,          -) \
+UNOP(Logical_Not,     !) \
+UNOP(Bitwise_Not,     ~) \
+UNOP(Address_Of,      &) \
+UNOP(Dereference,     *) \
+UNOP(Pre_Increment,  ++) \
+UNOP(Pre_Decrement,  --) \
+UNOP(Post_Increment, ++) \
+UNOP(Post_Decrement, --) \
+UNOP(Count,            )
 
 // BINOP(name, op, prec, assoc, is_comparator, bc_mnemonic)
 #define DEF_BINARY_OPS \

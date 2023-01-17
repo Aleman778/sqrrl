@@ -183,5 +183,9 @@ vec3_normalize(v3 v) {
 
 inline void
 print_vec3(v3 v) {
-    pln("vec3(%, %, %)", v.x, v.y, v.z);
+#ifdef __cplusplus
+    printf("vec3(%f, %f, %f)\n",v.x,v.y,v.z);
+#else
+    print_format("vec3(%, %, %)\n",v.x,v.y,v.z);
+#endif
 }

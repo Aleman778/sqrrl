@@ -38,7 +38,9 @@ parse_keyword(Parser* parser, Var expected, bool report_error) {
     }
     
     if (report_error) {
-        parse_error(parser, token, string_format("expected keyword, found `%`", f_string(token.source)));
+        string expect = vars_load_string(expected);
+        parse_error(parser, token, string_format("expected keyword `%`, found `%`", 
+                                                 f_string(expect), f_string(token.source)));
     }
     
     return false;
@@ -68,6 +70,11 @@ parse_identifier(Parser* parser, bool report_error) {
     }
     
     return result;
+}
+
+Ast*
+parse_actual_identifier(Parser* parser) {
+    return parse_identifier(parser, true);
 }
 
 internal u32
@@ -523,11 +530,12 @@ parse_atom(Parser* parser, bool report_error) {
                 result = push_ast_node(parser, &token);
                 result->kind = Ast_Unary_Expr;
                 result->Unary_Expr.op = unop;
-                if (unop == UnaryOp_Dereference) {
-                    result->Unary_Expr.first = parse_atom(parser);
-                } else {
-                    result->Unary_Expr.first = parse_expression(parser);
-                }
+                //if (unop == UnaryOp_Dereference) {
+                //result->Unary_Expr.first = parse_atom(parser);
+                //} else {
+                // TODO(Alexander): hardcoded precedence
+                result->Unary_Expr.first = parse_expression(parser, true, 13);
+                //}
             }
             
         } break;
@@ -638,12 +646,18 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
     // Parse binary expression using precedence climbing, is applicable
     Binary_Op binary_op = parse_binary_op(parser);
     Token token = peek_token(parser); // HACK(Alexander): want to get ternary to fix precedence
-    while (binary_op || token.type == Token_Question) {
+    while (binary_op || 
+           token.type == Token_Question || 
+           token.type == Token_Increment || 
+           token.type == Token_Decrement) {
+        
         u8 prec;
         Assoc assoc;
         
-        // Parse ternary operation last
-        if (token.type == Token_Question) {
+        if (token.type == Token_Increment || token.type == Token_Decrement) {
+            prec = 13;
+            assoc = Assoc_Right;
+        } else if (token.type == Token_Question) {
             prec = 1;
             assoc = Assoc_Right;
         } else {
@@ -661,7 +675,14 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
         }
         
         next_token(parser);
-        if (token.type == Token_Question) {
+        if (token.type == Token_Increment || token.type == Token_Decrement) {
+            Ast* unary_expr = push_ast_node(parser);
+            unary_expr->kind = Ast_Unary_Expr;
+            unary_expr->Unary_Expr.op = token.type == Token_Increment ? 
+                UnaryOp_Post_Increment : UnaryOp_Post_Decrement;
+            unary_expr->Unary_Expr.first = lhs_expr;
+            
+        } else if (token.type == Token_Question) {
             Ast* ternary_expr = push_ast_node(parser);
             ternary_expr->kind = Ast_Ternary_Expr;
             ternary_expr->Ternary_Expr.first = lhs_expr;
@@ -694,6 +715,15 @@ parse_assign_statement(Parser* parser, Ast* type) {
     result->kind = Ast_Assign_Stmt;
     result->Assign_Stmt.type = type;
     result->Assign_Stmt.ident = parse_identifier(parser);
+    
+    if (peek_token_match(parser, Token_Comma, false)) {
+        Ast* ident_list_cont = parse_prefixed_compound(parser, Token_Comma, 
+                                                       &parse_actual_identifier);
+        Ast* ident_list_head = push_ast_node(parser);
+        ident_list_head->Compound.node = result->Assign_Stmt.ident;
+        ident_list_head->Compound.next = ident_list_cont;
+        result->Assign_Stmt.ident = ident_list_head;
+    }
     
     if (next_token_if_matched(parser, Token_Assign, false)) {
         // TODO(alexander): add support for int x = 5, y = 10;
@@ -784,6 +814,19 @@ parse_statement(Parser* parser, bool report_error) {
                 result->While_Stmt.cond = parse_expression(parser);
                 next_token_if_matched(parser, Token_Close_Paren, opened_paren);
                 result->While_Stmt.block = parse_block_or_single_statement(parser);
+            } break;
+            
+            case Kw_switch: {
+                next_token(parser);
+                result = push_ast_node(parser);
+                result->kind = Ast_Switch_Stmt;
+                bool opened_paren = next_token_if_matched(parser, Token_Open_Paren, false);
+                result->Switch_Stmt.cond = parse_expression(parser);
+                next_token_if_matched(parser, Token_Close_Paren, opened_paren);
+                result->Switch_Stmt.cases = parse_compound(parser, Token_Open_Brace, 
+                                                           Token_Close_Brace, Token_Invalid,
+                                                           &parse_switch_case);
+                
             } break;
             
             case Kw_return: {
@@ -882,6 +925,8 @@ parse_unary_op(Parser* parser) {
         case Token_Bit_Not:     return UnaryOp_Bitwise_Not;
         case Token_Bit_And:     return UnaryOp_Address_Of;
         case Token_Mul:         return UnaryOp_Dereference;
+        case Token_Increment:   return UnaryOp_Pre_Increment;
+        case Token_Decrement:   return UnaryOp_Pre_Decrement;
         default:                return UnaryOp_None;
     }
 }
@@ -1043,8 +1088,28 @@ parse_actual_function_argument(Parser* parser) {
     //result->Argument.ident = push_ast_node(parser);
     //}
     //} else {
-    result->Argument.assign = parse_expression(parser);
+    result->Argument.assign = parse_expression(parser, false);
+    if (result->Argument.assign->kind == Ast_None) {
+        result->Argument.type = parse_type(parser, false);
+    }
     //}
+    return result;
+}
+
+Ast*
+parse_switch_case(Parser* parser) {
+    Ast* result = push_ast_node(parser);
+    
+    // TODO(Alexander): add support for fallthrough to next case
+    if (parse_keyword(parser, Kw_case)) {
+        result->kind = Ast_Switch_Case;
+        result->Switch_Case.cond = parse_atom(parser, false);
+        next_token_if_matched(parser, Token_Colon);
+        if (peek_token_match(parser, Token_Open_Brace, false)) {
+            result->Switch_Case.stmt = parse_block_statement(parser, false);
+        }
+    }
+    
     return result;
 }
 
@@ -1059,7 +1124,7 @@ parse_declaration_attribute(Parser* parser) {
 
 Ast*
 parse_actual_argument(Parser* parser) {
-    return parse_expression(parser);
+    return parse_expression(parser, false);
 }
 
 Ast*
@@ -1098,6 +1163,14 @@ parse_compound(Parser* parser,
         curr->Compound.node = node;
         curr->Compound.next = push_ast_node(parser);
         curr = curr->Compound.next;
+        
+        if (separator == Token_Invalid) {
+            if (next_token_if_matched(parser, end, false)) {
+                break;
+            } else {
+                continue;
+            }
+        }
         
         if (separator == Token_Semi && node && !should_ast_stmt_end_with_semicolon(node)) {
             // TODO(Alexander): We can allow unecessary semi colon, or should it be an error?

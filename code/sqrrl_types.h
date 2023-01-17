@@ -3,8 +3,6 @@ struct Interp_Value;
 struct Type;
 struct Ast;
 
-
-
 union Limits {
     struct {
         s64 min_value;
@@ -133,6 +131,7 @@ struct Type_Function {
     Value (*interp_intrinsic)(Interp*, array(Interp_Value)*); // TODO(Alexander): temporary intrinsic definition
     void* intrinsic;
     string_id ident;
+    s32 first_default_arg_index;
     b32 is_variadic;
 };
 

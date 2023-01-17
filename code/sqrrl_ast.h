@@ -16,6 +16,10 @@ Ast* type;                                      \
 Ast* ident;                                     \
 Ast* assign;                                    \
 })                                              \
+AST(Switch_Case,       "case", struct {         \
+Ast* cond;                                      \
+Ast* stmt;                                     \
+})                                              \
 AST(Attribute,         "attribute", struct {    \
 Ast* ident;                                     \
 Ast* expr;                                      \
@@ -93,6 +97,10 @@ AST(If_Stmt,           "if", struct {           \
 Ast* cond;                                      \
 Ast* then_block;                                \
 Ast* else_block;                                \
+})                                              \
+AST(Switch_Stmt,       "switch", struct {       \
+Ast* cond;                                      \
+Ast* cases;                                \
 })                                              \
 AST(For_Stmt,          "for", struct {          \
 Ast* label;                                     \
@@ -332,11 +340,20 @@ ast_unwrap_ident(Ast* ast_ident) {
     return ast_ident->Ident;
 }
 
+inline string_id
+try_unwrap_ident(Ast* ast_ident) {
+    if (ast_ident && ast_ident->kind == Ast_Ident) {
+        return ast_unwrap_ident(ast_ident);
+    }
+    return Kw_invalid;
+}
+
 inline bool
 should_ast_stmt_end_with_semicolon(Ast* node) {
     return !(node->kind == Ast_Block_Stmt ||
              node->kind == Ast_Decl_Stmt ||
              node->kind == Ast_If_Stmt ||
+             node->kind == Ast_Switch_Stmt ||
              node->kind == Ast_For_Stmt ||
              node->kind == Ast_While_Stmt);
 }

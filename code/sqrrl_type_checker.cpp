@@ -529,13 +529,20 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 if (first_type->kind == TypeKind_Basic && 
                     second_type->kind == TypeKind_Basic) {
                     
-                    if ((first_type->Basic.flags & BasicFlag_Floating) == 
-                        (second_type->Basic.flags & BasicFlag_Floating)) {
+                    if ((first_type->Basic.flags & BasicFlag_String) ||
+                        (second_type->Basic.flags & BasicFlag_String)) {
+                        if (op == BinaryOp_Logical_Or || op == BinaryOp_Logical_And) {
+                            result = t_bool;
+                        } else {
+                            result = second_type;
+                        }
+                        
+                    } else if ((first_type->Basic.flags & BasicFlag_Floating) == 
+                               (second_type->Basic.flags & BasicFlag_Floating)) {
                         result = first_type->size > second_type->size ? first_type : second_type;
                         
                     } else if (first_type->Basic.flags & BasicFlag_Floating) {
                         result = first_type;
-                        
                     } else {
                         result = second_type;
                     }
@@ -574,7 +581,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 // TODO(Alexander): we don't want to change types without doing explicit cast
                 // otherwise the backend gets confused and outputs wrong code.
                 if (type_check_assignment(tcx, first_type, expr->Binary_Expr.first->type,
-                                          empty_span, binary_is_comparator_table[op], false)) {
+                                          empty_span, op, false)) {
                     
                     if (type_equals(expr->Binary_Expr.first->type, first_type)) {
                         expr->Binary_Expr.first->type = first_type;
@@ -598,7 +605,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 }
                 
                 if (type_check_assignment(tcx, second_type, expr->Binary_Expr.second->type,
-                                          empty_span, binary_is_comparator_table[op], false)) {
+                                          empty_span, op, false)) {
                     
                     if (type_equals(expr->Binary_Expr.second->type, second_type)) {
                         expr->Binary_Expr.second->type = second_type;
@@ -1012,9 +1019,19 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     result = type;
                 }
                 
+            } else if (parent_type && parent_type->kind == TypeKind_Union) { 
+                Type* type = parent_type;
+                bool has_ident = false;
+                bool has_errors = false;
+                int next_field_index = 0;
+                for_compound(expr->Aggregate_Expr.elements, field) {
+                    
+                }
+                
             } else {
                 if (report_error) {
                     pln("%", f_ast(expr));
+                    pln("%", f_type(parent_type));
                     type_error(tcx, string_format("cannot assign aggregate initializer to non-aggregate type"), 
                                expr->span);
                 }
@@ -1084,13 +1101,18 @@ create_type_struct_like_from_ast(Type_Context* tcx,
         }
         
         Ast* ast_type = argument->Argument.type;
+        Type* type = create_type_from_ast(tcx, ast_type, report_error);
+        
+        if (!type) {
+            result.has_error = true;
+            return result;
+        }
         
         switch (argument->Argument.ident->kind) {
             
             case Ast_Ident: {
                 assert(argument->Argument.ident->kind == Ast_Ident);
                 string_id ident = argument->Argument.ident->Ident;
-                Type* type = create_type_from_ast(tcx, ast_type, report_error);
                 if (type) {
                     push_type_to_struct_like(&result, type, ident);
                 } else {
@@ -1099,7 +1121,7 @@ create_type_struct_like_from_ast(Type_Context* tcx,
             } break;
             
             case Ast_Compound: {
-                Type* type = create_type_from_ast(tcx, ast_type, report_error);
+                
                 if (type) {
                     for_compound(argument->Argument.ident, ast_ident) {
                         assert(ast_ident->kind == Ast_Ident);
@@ -1112,7 +1134,21 @@ create_type_struct_like_from_ast(Type_Context* tcx,
             } break;
             
             default: {
-                unimplemented;
+                if (type->kind == TypeKind_Struct) {
+                    for_array_v(type->Struct.idents, field_ident, field_index) {
+                        Type* field_type = type->Struct.types[field_index];
+                        push_type_to_struct_like(&result, field_type, field_ident);
+                    }
+                } else if (type->kind == TypeKind_Union) {
+                    for_array_v(type->Union.idents, field_ident, field_index) {
+                        Type* field_type = type->Union.types[field_index];
+                        push_type_to_struct_like(&result, field_type, field_ident);
+                    }
+                    //pln("%", f_ast(ast_type));
+                    //unimplemented;
+                } else
+                    // TODO(Alexander): should be a type error or something
+                    unimplemented;
             }
         }
     }
@@ -1269,6 +1305,17 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     map_put(func->ident_to_index, ident, arg_index);
                     array_push(func->arg_idents, ident);
                     array_push(func->arg_types, type);
+                    
+                    if (!ast_argument->Argument.assign) {
+                        if (func->first_default_arg_index + 1 == arg_index) {
+                            func->first_default_arg_index++;
+                        } else {
+                            if (report_error) {
+                                type_error(tcx, string_format("missing default argument for parameter %",
+                                                              f_int(arg_index)), ast_argument->span);
+                            }
+                        }
+                    }
                 } else {
                     array_free(func->arg_idents);
                     array_free(func->arg_types);
@@ -1345,7 +1392,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 result->Struct.idents = struct_like.idents;
                 result->Struct.offsets = struct_like.offsets;
                 result->Struct.ident_to_index = struct_like.ident_to_index;
-                result->ident = ast_unwrap_ident(ast->Struct_Type.ident);
+                result->ident = try_unwrap_ident(ast->Struct_Type.ident);
                 result->size = (s32) struct_like.size;
                 result->align = (s32) struct_like.align;
             }
@@ -1359,9 +1406,9 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 result->kind = TypeKind_Union;
                 result->Union.types = struct_like.types;
                 result->Union.idents = struct_like.idents;
+                result->ident = try_unwrap_ident(ast->Struct_Type.ident);
                 result->size = (s32) struct_like.size;
                 result->align = (s32) struct_like.align;
-                result->ident = ast_unwrap_ident(ast->Union_Type.ident);
             }
         } break;
         
@@ -1535,25 +1582,42 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                     result = found_type;
                 }
                 
-                string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
                 stmt->Assign_Stmt.ident->type = result;
                 
-                if (tcx->block_depth > 0) {
-                    if (!push_local(tcx, ident, result, stmt->span, report_error)) {
-                        result = 0;
+                Ast* ast_ident = stmt->Assign_Stmt.ident;
+                while (ast_ident) {
+                    string_id ident = 0;
+                    if (ast_ident->kind == Ast_Compound) {
+                        if (ast_ident->Compound.node && ast_ident->Compound.node->kind == Ast_Ident) {
+                            ident = ast_unwrap_ident(ast_ident->Compound.node);
+                            ast_ident = ast_ident->Compound.next;
+                        } else {
+                            break;
+                        }
+                    } else if (ast_ident->kind == Ast_Ident) {
+                        ident = ast_unwrap_ident(ast_ident);
+                        ast_ident = 0;
+                    } else {
+                        break;
                     }
-                } else {
                     
-                    if (map_get(tcx->globals, ident) && report_error) {
-                        result = 0;
-                        if (report_error) {
-                            type_error(tcx,
-                                       string_format("cannot redeclare previous declaration `%`",
-                                                     f_string(vars_load_string(ident))),
-                                       stmt->span);
+                    if (tcx->block_depth > 0) {
+                        if (!push_local(tcx, ident, result, stmt->span, report_error)) {
+                            result = 0;
                         }
                     } else {
-                        map_put(tcx->globals, ident, result);
+                        
+                        if (map_get(tcx->globals, ident) && report_error) {
+                            result = 0;
+                            if (report_error) {
+                                type_error(tcx,
+                                           string_format("cannot redeclare previous declaration `%`",
+                                                         f_string(vars_load_string(ident))),
+                                           stmt->span);
+                            }
+                        } else {
+                            map_put(tcx->globals, ident, result);
+                        }
                     }
                 }
                 
@@ -1672,7 +1736,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
 }
 
 bool
-type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span, bool comparator, bool report_error) {
+type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span, Binary_Op op, bool report_error) {
     assert(lhs && rhs);
     
     if (lhs->kind != rhs->kind) {
@@ -1684,7 +1748,7 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span, bool c
     
     switch (lhs->kind) {
         case TypeKind_Basic: {
-            if (comparator && 
+            if (binary_is_comparator_table[op] && 
                 lhs->Basic.flags & BasicFlag_Integer &&
                 rhs->Basic.flags & BasicFlag_Integer) {
                 if ((lhs->Basic.flags & BasicFlag_Unsigned) != (rhs->Basic.flags & BasicFlag_Unsigned)) {
@@ -1714,6 +1778,15 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span, bool c
                 lossy = (lhs->Basic.flags & BasicFlag_String) == 0;
             }
             
+            if (lhs->Basic.flags & BasicFlag_String || rhs->Basic.flags & BasicFlag_String) {
+                if (op == BinaryOp_Logical_And || op == BinaryOp_Logical_Or) {
+                    lossy = ((lhs->Basic.flags & BasicFlag_String) == 0 &&
+                             (lhs->Basic.flags & BasicFlag_Integer) == 0 &&
+                             (rhs->Basic.flags & BasicFlag_String) == 0 &&
+                             (rhs->Basic.flags & BasicFlag_Integer) == 0);
+                }
+            }
+            
             if (lossy) {
                 if (report_error) {
                     type_error(tcx, 
@@ -1726,7 +1799,7 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span, bool c
         } break;
         
         case TypeKind_Array: {
-            bool success = type_check_assignment(tcx, lhs->Pointer, rhs->Pointer, span, comparator, false);
+            bool success = type_check_assignment(tcx, lhs->Pointer, rhs->Pointer, span, op, false);
             
             if (lhs->Array.capacity != rhs->Array.capacity) {
                 success = false;
@@ -1754,7 +1827,7 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span, bool c
         } break;
         
         case TypeKind_Pointer: {
-            bool success = type_check_assignment(tcx, lhs->Pointer, rhs->Pointer, span, comparator, false);
+            bool success = type_check_assignment(tcx, lhs->Pointer, rhs->Pointer, span, op, false);
             if (!success) {
                 type_error_mismatch(tcx, lhs, rhs, span);
                 return false;
@@ -1806,7 +1879,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                 arg_index++;
             }
             
-            if (arg_index == 0 && formal_arg_count > 0) {
+            if (arg_index == 0 && t_func->first_default_arg_index > 0) {
                 type_error(tcx, 
                            string_format("function `%` expected % argument(s)",
                                          f_var(t_func->ident),
@@ -1814,13 +1887,17 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                            expr->span);
                 result = false;
                 
-            } else if (arg_index != formal_arg_count && !t_func->is_variadic) {
+            } else if (arg_index < t_func->first_default_arg_index && 
+                       arg_index > formal_arg_count && 
+                       !t_func->is_variadic) {
+                //pln("arg_index >= % && arg_index <= % && variadic = %", t_func->first_default_arg_index, formal_arg_count, t_func->is_variadic);
+                
                 
                 // NOTE(Alexander): it is allowed to have more arguments only if the function is variadic
                 type_error(tcx, string_format("function `%` did not take % arguments, expected % arguments", 
                                               f_var(t_func->ident), 
                                               f_int(arg_index), 
-                                              f_int(formal_arg_count)),
+                                              f_int(t_func->first_default_arg_index)),
                            expr->span);
                 result = false;
             }
@@ -1865,7 +1942,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                                    expr->span);
                     }
                 } else if (op == BinaryOp_Assign) {
-                    result = result && type_check_assignment(tcx, first, second, expr->Binary_Expr.second->span, false);
+                    result = result && type_check_assignment(tcx, first, second, expr->Binary_Expr.second->span);
                 } else {
                     type_error(tcx, 
                                string_format("operator `%` is not supported for `%` on left-hand side",
@@ -1874,7 +1951,6 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                                expr->span);
                 }
             } else {
-                
                 if (!type_equals(first, second)) {
                     pln("%", f_ast(expr));
                     type_error_mismatch(tcx, first, second, expr->Binary_Expr.second->span);

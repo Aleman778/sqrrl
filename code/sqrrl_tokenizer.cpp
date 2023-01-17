@@ -500,7 +500,10 @@ advance_token(Tokenizer* tokenizer) {
             } break;
             
             case '+': {
-                if (*tokenizer->next == '=') {
+                if (*tokenizer->next == '+') {
+                    utf8_advance_character(tokenizer);
+                    token.type = Token_Increment;
+                } else if (*tokenizer->next == '=') {
                     utf8_advance_character(tokenizer);
                     token.type = Token_Add_Assign;
                 } else {
@@ -509,7 +512,10 @@ advance_token(Tokenizer* tokenizer) {
             } break;
             
             case '-': {
-                if (*tokenizer->next == '=') {
+                if (*tokenizer->next == '-') {
+                    utf8_advance_character(tokenizer);
+                    token.type = Token_Decrement;
+                } else if (*tokenizer->next == '=') {
                     utf8_advance_character(tokenizer);
                     token.type = Token_Sub_Assign;
                 } else if (*tokenizer->next == '>') {

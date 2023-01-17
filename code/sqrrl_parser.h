@@ -118,8 +118,13 @@ Ast* parse_actual_function_argument(Parser* parser);
 Ast* parse_actual_argument(Parser* parser);
 Ast* parse_actual_statement(Parser* parser);
 Ast* parse_actual_type(Parser* parser);
+Ast* parse_actual_identifier(Parser* parser);
+Ast* parse_switch_case(Parser* parser);
+
 Ast* parse_compound(Parser* parser, 
                     Token_Type begin, Token_Type end, Token_Type separator,
                     Ast* (*element_parser)(Parser* parser));
+Ast* parse_prefixed_compound(Parser* parser, Token_Type prefix,
+                             Ast* (*element_parser)(Parser* parser));
 
 Ast_File parse_file(Parser* parser);

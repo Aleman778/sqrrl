@@ -529,13 +529,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 if (first_type->kind == TypeKind_Basic && 
                     second_type->kind == TypeKind_Basic) {
                     
-                    if ((first_type->Basic.flags & BasicFlag_String) ||
-                        (second_type->Basic.flags & BasicFlag_String)) {
-                        if (op == BinaryOp_Logical_Or || op == BinaryOp_Logical_And) {
-                            result = t_bool;
-                        } else {
-                            result = second_type;
-                        }
+                    if (op == BinaryOp_Logical_Or || op == BinaryOp_Logical_And) {
+                        result = t_bool;
                         
                     } else if ((first_type->Basic.flags & BasicFlag_Floating) == 
                                (second_type->Basic.flags & BasicFlag_Floating)) {
@@ -1531,6 +1526,11 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 
                 if (!result) {
                     result = create_type_from_ast(tcx, ast->Typedef.type, report_error);
+                    
+                    string_id key = vars_save_cstring("DEBUG_Platform_Read_Entire_File");
+                    if (ident == key) {
+                        pln("typedef: %", f_ast(ast));
+                    }
                     if (result) {
                         map_put(tcx->global_type_table, ident, result);
                     }
@@ -1778,12 +1778,10 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span, Binary
                 lossy = (lhs->Basic.flags & BasicFlag_String) == 0;
             }
             
-            if (lhs->Basic.flags & BasicFlag_String || rhs->Basic.flags & BasicFlag_String) {
-                if (op == BinaryOp_Logical_And || op == BinaryOp_Logical_Or) {
-                    lossy = ((lhs->Basic.flags & BasicFlag_String) == 0 &&
-                             (lhs->Basic.flags & BasicFlag_Integer) == 0 &&
-                             (rhs->Basic.flags & BasicFlag_String) == 0 &&
-                             (rhs->Basic.flags & BasicFlag_Integer) == 0);
+            if (op == BinaryOp_Logical_And || op == BinaryOp_Logical_Or) {
+                if (((lhs->Basic.flags & BasicFlag_String) || (lhs->Basic.flags & BasicFlag_Integer)) &&
+                    ((rhs->Basic.flags & BasicFlag_String) || (rhs->Basic.flags & BasicFlag_Integer))) {
+                    lossy = false;
                 }
             }
             
@@ -2029,6 +2027,11 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
             result = result && type_check_expression(tcx, stmt->Return_Stmt.expr);
             result = result && type_check_assignment(tcx, tcx->return_type, found_type,
                                                      stmt->Return_Stmt.expr->span);
+            
+            if (!result) {
+                pln("%", f_ast(stmt));
+            }
+            
         } break;
         
         case Ast_Block_Stmt: {

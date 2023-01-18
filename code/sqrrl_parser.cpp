@@ -826,7 +826,6 @@ parse_statement(Parser* parser, bool report_error) {
                 result->Switch_Stmt.cases = parse_compound(parser, Token_Open_Brace, 
                                                            Token_Close_Brace, Token_Invalid,
                                                            &parse_switch_case);
-                
             } break;
             
             case Kw_return: {
@@ -1374,6 +1373,12 @@ parse_type(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
     
     token = peek_token(parser);
     string_id ident = vars_save_string(token.source);
+    
+    //string_id key = vars_save_cstring("DEBUG_Read_File_Result");
+    //if (key == ident) {
+    //__debugbreak();
+    //}
+    
     if (parser->c_compatibility_mode &&
         (ident == Sym_char || ident == Sym_short  || ident == Sym_long  || ident == Sym_unsigned || 
          ident == Sym_signed || ident == Sym_float || ident == Sym_double)) {
@@ -1520,10 +1525,9 @@ parse_type(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
                         }
                     }
                     
+                    Ast* base_type = base->Typedef.type;
+                    
                     if (parser->c_compatibility_mode) {
-                        
-                        Ast* base_type = base->Typedef.type;
-                        
                         Ast* curr = push_ast_node(parser);
                         curr->kind = Ast_Compound;
                         if (base->Typedef.ident) {
@@ -1568,7 +1572,12 @@ parse_type(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
                             }
                         }
                     } else {
-                        base->Typedef.ident = parse_identifier(parser);
+                        if (base_type->kind == Ast_Function_Type) {
+                            pln("%", f_ast(base));
+                            base->Typedef.ident = base_type->Function_Type.ident;
+                        } else {
+                            base->Typedef.ident = parse_identifier(parser);
+                        }
                     }
                     
                     return base;
@@ -1618,16 +1627,14 @@ parse_complex_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_M
             Ast* attributes = 0;
             Ast_Decl_Modifier function_mods = parse_procedure_type_mods(parser, &attributes);
             
-            bool anonymous = peek_token(parser).type == Token_Open_Paren;
-            
-            if (anonymous || peek_second_token(parser).type == Token_Open_Paren) {
+            if (peek_second_token(parser).type == Token_Open_Paren) {
                 // TODO(alexander): check what the base type is, e.g. cannot be struct type as return type
                 result = push_ast_node(parser);
                 result->kind = Ast_Function_Type;
                 result->Function_Type.return_type = base_type;
                 result->Function_Type.mods = function_mods | mods;
                 result->Function_Type.attributes = attributes;
-                result->Function_Type.ident = parse_identifier(parser, !anonymous);
+                result->Function_Type.ident = parse_identifier(parser);
                 result->Function_Type.arguments = parse_compound(parser,
                                                                  Token_Open_Paren, Token_Close_Paren, Token_Comma,
                                                                  &parse_formal_function_argument);
@@ -1911,9 +1918,6 @@ parse_file(Parser* parser) {
         
         parse_top_level_declaration(parser, &result);
         token = peek_token(parser);
-        
-        // TODO(Alexander): DON'T CHECKIN THIS
-        parser->c_compatibility_mode = 1;
         
         if (parser->error_count > 10) {
             pln("Found more than 10 parsing errors, exiting parsing...");

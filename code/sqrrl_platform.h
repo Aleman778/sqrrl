@@ -8,6 +8,7 @@ void DEBUG_log_backtrace();
 struct Canonicalized_Path {
     cstring fullpath;
     cstring file_part;
+    b32 success;
 };
 
 Canonicalized_Path

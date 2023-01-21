@@ -66,4 +66,5 @@ void preprocess_expand_macro(Preprocessor* preprocessor,
                              Replacement_List args);
 
 
-string preprocess_file(Preprocessor* preprocecssor, string source, string filename, int file_index);
+string preprocess_file(Preprocessor* preprocecssor, 
+                       string source, string filename, string extension, int file_index);

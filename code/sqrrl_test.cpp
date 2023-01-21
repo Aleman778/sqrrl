@@ -38,7 +38,8 @@ run_compiler_tests(string filename,
     
     // Preprocess
     Preprocessor preprocessor = {};
-    string preprocessed_source = preprocess_file(&preprocessor, file.source, file.filename, file.index);
+    string preprocessed_source = preprocess_file(&preprocessor, 
+                                                 file.source, file.filename, file.extension, file.index);
     
     // Parse preprocessed source
     Tokenizer tokenizer = {};

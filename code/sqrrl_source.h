@@ -3,6 +3,7 @@ struct Loaded_Source_File {
     string abspath;
     string filedir;
     string filename;
+    string extension;
     string source;
     array(smm)* lines; // TODO(Alexander): should we store lines here?
     u32 index;
@@ -21,7 +22,16 @@ push_source_file(Read_File_Result file, string filename, Canonicalized_Path cano
     result.abspath = string_copy(string_lit(canonicalized_path.fullpath));
     result.filedir = string_copy(string_view((u8*) canonicalized_path.fullpath, 
                                              (u8*) canonicalized_path.file_part));
+    
     result.filename = string_copy(filename);
+    for (smm char_index = result.filename.count - 1; char_index >= 0; char_index--) {
+        if (result.filename.data[char_index] == '.' || char_index == 0) {
+            result.extension = string_copy(string_view(result.filename.data + char_index + 1, 
+                                                       result.filename.data + result.filename.count));
+            break;
+        }
+    }
+    
     result.source = create_string(file.contents_size, (u8*) file.contents);
     result.index = (u32) array_count(loaded_source_files);
     result.is_valid = file.contents != 0;
@@ -80,6 +90,11 @@ read_entire_source_file(string filename, Loaded_Source_File* current_file = 0) {
     cstring_free(cworking_dir);
     if (curr_file_path) {
         cstring_free(curr_file_path);
+    }
+    
+    if (!canonicalized_path.success) {
+        pln("%", f_string(filename));
+        return *get_source_file_by_index(0);
     }
     
     Loaded_Source_File* prev_loaded_file = get_source_file_by_path(canonicalized_path.fullpath);

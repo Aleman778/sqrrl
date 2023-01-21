@@ -305,8 +305,11 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                         map_put(preprocessor->loaded_file_indices, included_file.index, prev_num_includes + 1);
                         preprocessor->abort_curr_file = false;
                         
-                        preprocess_file(preprocessor, included_file.source, 
-                                        included_file.abspath, included_file.index);
+                        preprocess_file(preprocessor, 
+                                        included_file.source, 
+                                        included_file.abspath, 
+                                        included_file.extension,
+                                        included_file.index);
                         preprocessor->is_system_header = prev_system_header_flag;
                         preprocessor->abort_curr_file = false; // if #pragma once hit then restore it
                         preprocessor->curr_file_index = curr_file_index;
@@ -893,7 +896,8 @@ preprocess_finalize_code(string source) {
 }
 
 string
-preprocess_file(Preprocessor* preprocessor, string source, string filepath, int file_index) {
+preprocess_file(Preprocessor* preprocessor, 
+                string source, string filepath, string extension, int file_index) {
     Tokenizer* prev_tokenizer = preprocessor->tokenizer;
     
     Tokenizer tokenizer = {};
@@ -901,12 +905,20 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath, int 
     preprocessor->tokenizer = &tokenizer;
     tokenizer.end = tokenizer.curr;
     
+    bool is_c_cpp_code = (string_equals(extension, string_lit("c")) ||
+                          string_equals(extension, string_lit("h")) ||
+                          string_equals(extension, string_lit("cpp")) ||
+                          string_equals(extension, string_lit("hpp")));
+    
     umm curr_line_number = 0;
     u8* curr = source.data;
     u8* end = source.data + source.count;
     
     String_Builder* sb = &preprocessor->output;
     string_builder_ensure_capacity(sb, source.count);
+    
+    
+    smm initial_if_result_stack_count = array_count(preprocessor->if_result_stack);
     
     
 #if BUILD_DEBUG
@@ -923,7 +935,7 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath, int 
     Source_Group current_group = {};
     current_group.file_index = file_index;
     // TODO(Alexander): deosn't have to be C compat, but for now we assume that
-    current_group.c_compatibility_mode = preprocessor->is_system_header;
+    current_group.c_compatibility_mode = is_c_cpp_code;
     
     while (tokenizer.curr < tokenizer.end_of_file) {
         u8* curr_line = curr;
@@ -991,8 +1003,7 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath, int 
                 current_group = {};
                 current_group.offset = sb->curr_used;
                 current_group.file_index = file_index;
-                // TODO(Alexander): doesn't have to be C compat, but for now we assume that
-                current_group.c_compatibility_mode = preprocessor->is_system_header;
+                current_group.c_compatibility_mode = is_c_cpp_code;
                 current_group.line = (u32) line.next_line_number;
             }
             
@@ -1008,6 +1019,11 @@ preprocess_file(Preprocessor* preprocessor, string source, string filepath, int 
     
     if (current_group.count > 0) {
         array_push(preprocessor->source_groups, current_group);
+    }
+    
+    if (array_count(preprocessor->if_result_stack) != initial_if_result_stack_count) {
+        // TODO(Alexander): add error message and clear if stack
+        unimplemented;
     }
     
     preprocessor->tokenizer = prev_tokenizer; // restore previous tokenizer

@@ -154,9 +154,15 @@ typedef struct tagPOINTS
     SHORT   y;
 } POINTS, *PPOINTS, *LPPOINTS;
 
+#define CALLBACK    __stdcall
+#define WINAPI      __stdcall
+#define WINAPIV     __cdecl
+#define APIENTRY    WINAPI
+#define APIPRIVATE  __stdcall
+#define PASCAL      __stdcall
 
 //typedef LRESULT __stdcall(HWND, UINT, WPARAM, LPARAM)* WNDPROC;
-typedef LRESULT __stdcall (HWND, UINT, WPARAM, LPARAM) WNDPROC;
+typedef LRESULT __stdcall WNDPROC(HWND, UINT, WPARAM, LPARAM);
 
 
 

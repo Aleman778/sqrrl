@@ -112,6 +112,8 @@ canonicalize_path(cstring filepath) {
                                           (LPSTR) result.fullpath, 
                                           (LPSTR*) &result.file_part);
     
+    result.success = actual_count > 0;
+    
     return result;
 }
 
@@ -162,6 +164,11 @@ DEBUG_get_canonicalized_path(cstring filename, cstring working_dir, cstring curr
     }
     
     
+    if (!result.success) {
+        platform_error(string_lit("Failed to find "));
+    }
+    
+    
     //pln("path: `%`\nname: `%`", f_cstring(result.fullpath), f_cstring(result.file_part));
     if (relative_filepath) {
         cstring_free(relative_filepath);
@@ -176,7 +183,7 @@ DEBUG_get_canonicalized_path(cstring filename, cstring working_dir, cstring curr
 
 Canonicalized_Path
 DEBUG_get_system_canonicalized_path(cstring filename) {
-    bool success = false;
+    Canonicalized_Path result = {};
     
     //pln("Searching for `%` in:", f_cstring(filename));
     
@@ -193,26 +200,25 @@ DEBUG_get_system_canonicalized_path(cstring filename) {
             filepath = filepath;
             
             CloseHandle(file_handle);
-            success = true;
-            break;
+            result = canonicalize_path(filepath);
+            
+            if (result.success) {
+                cstring_free(filepath);
+                break;
+            }
         }
         
         cstring_free(filepath);
         filepath = 0;
     }
     
-    if (!success) {
+    if (!result.success) {
         platform_error(string_format("system header file `%` is not found", f_cstring(filename)));
     }
     
-    if (filepath) {
-        Canonicalized_Path result = canonicalize_path(filepath);
-        //pln("SYS! path: `%`\nname: `%`", f_cstring(result.fullpath), f_cstring(result.file_part));
-        cstring_free(filepath);
-        return result;
-    }
+    //pln("SYS! path: `%`\nname: `%`", f_cstring(result.fullpath), f_cstring(result.file_part));
     
-    return {};
+    return result;
 }
 
 void
@@ -379,8 +385,13 @@ main(int argc, char* argv[]) {
     umm asm_buffer_size = kilobytes(16);
     void* asm_buffer = VirtualAlloc(0, asm_buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     
-    cstring windows_system_headers_root_dir = find_windows_kits_include_dir();
+    {
+        // Setup compiler module path
+        Canonicalized_Path path = canonicalize_path("../modules/");
+        array_push(windows_system_header_dirs, path.fullpath);
+    }
     
+    cstring windows_system_headers_root_dir = find_windows_kits_include_dir();
     if (windows_system_headers_root_dir != 0) {
         windows_system_header_shared = cstring_concat(windows_system_headers_root_dir, "shared\\");
         array_push(windows_system_header_dirs, cstring_concat(windows_system_headers_root_dir, "um\\"));

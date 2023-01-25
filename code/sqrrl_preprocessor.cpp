@@ -1023,7 +1023,16 @@ preprocess_file(Preprocessor* preprocessor,
     
     if (array_count(preprocessor->if_result_stack) != initial_if_result_stack_count) {
         // TODO(Alexander): add error message and clear if stack
-        unimplemented;
+        if (!preprocessor->abort_curr_file) {
+            preprocess_error(preprocessor, string_lit("found end of file while #if was not ended"));
+        }
+        // TODO(Alexander): we should copy the array and restore it intead
+        while (array_count(preprocessor->if_result_stack) > initial_if_result_stack_count) {
+            array_pop(preprocessor->if_result_stack);
+        }
+        while (array_count(preprocessor->if_result_stack) < initial_if_result_stack_count) {
+            array_push(preprocessor->if_result_stack, IfStk_Taken);
+        }
     }
     
     preprocessor->tokenizer = prev_tokenizer; // restore previous tokenizer

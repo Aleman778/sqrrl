@@ -418,7 +418,6 @@ advance_token(Tokenizer* tokenizer) {
             token.type = Token_Block_Comment;
             
         } else if (*tokenizer->curr == '=') {
-            utf8_advance_character(tokenizer);
             token.type = Token_Div_Assign;
         } else {
             token.type = Token_Div;

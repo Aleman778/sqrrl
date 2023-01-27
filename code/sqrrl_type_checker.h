@@ -3,6 +3,20 @@ struct Type_Scope {
     array(string_id)* locals;
 };
 
+struct Operator_Overload {
+    Binary_Op op;
+    Type* rhs;
+    Type* func;
+    // NOTE(Alexander): lhs is used to locate this struct
+};
+
+struct Overloaded_Function_List {
+    array(Operator_Overload)* ops;
+    // TODO(Alexander): add function overloading
+    
+    bool is_valid;
+};
+
 struct Type_Context {
     Memory_Arena type_arena;
     
@@ -11,6 +25,8 @@ struct Type_Context {
     
     map(string_id, Type*)* local_type_table;
     map(string_id, Type*)* global_type_table;
+    
+    map(Type*, Overloaded_Function_List)* overloaded_functions;
     
     array(Type_Scope)* scopes;
     Type_Scope* active_scope;

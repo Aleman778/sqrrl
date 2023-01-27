@@ -26,6 +26,7 @@ VAR(inline)   \
 VAR(always_inline) \
 VAR(no_inline)\
 VAR(local_persist) \
+VAR(operator) \
 VAR(return)   \
 VAR(static)   \
 VAR(struct)   \

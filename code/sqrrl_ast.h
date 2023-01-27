@@ -37,6 +37,7 @@ AST(Binary_Expr,       "binary", struct {       \
 Ast* first;                                     \
 Ast* second;                                    \
 Binary_Op op;                                   \
+Type* overload;                                 \
 })                                              \
 AST(Ternary_Expr,      "ternary", struct {      \
 Ast* first;                                     \
@@ -135,6 +136,7 @@ Ast* ident;                                     \
 Ast* return_type;                               \
 Ast* arguments;                                 \
 Ast* attributes;                                \
+Binary_Op overload_operator;                    \
 Ast_Decl_Modifier mods;                         \
 })                                              \
 AST(Struct_Type,       "struct", struct {       \
@@ -461,6 +463,13 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
         case Ast_Binary_Expr: {
             assert_enum(BinaryOp, node->Binary_Expr.op);
             string_builder_push_format(sb, " (%)", f_cstring(binary_op_strings[node->Binary_Expr.op]));
+            if (node->Binary_Expr.overload) { 
+                string_builder_push(sb, "\n");
+                for (u32 s = 0; s < spacing; s++) string_builder_push(sb, " ");
+                string_builder_push_format(sb, "(");
+                string_builder_push(sb, node->Binary_Expr.overload);
+                string_builder_push_format(sb, ")");
+            }
             string_builder_push(sb, node->Binary_Expr.first, tokenizer, spacing);
             string_builder_push(sb, node->Binary_Expr.second, tokenizer, spacing);
         } break;

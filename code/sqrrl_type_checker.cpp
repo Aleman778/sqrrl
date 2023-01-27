@@ -510,8 +510,25 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 break;
             }
             
-            if (is_binary_assign(expr->Binary_Expr.op)) {
+            
+            Overloaded_Function_List overloads =
+                map_get(tcx->overloaded_functions, expr->Binary_Expr.first->type);
+            if (overloads.is_valid) {
                 
+                for_array(overloads.ops, overload, _) {
+                    if (overload->op == op &&
+                        overload->rhs == expr->Binary_Expr.second->type) {
+                        expr->Binary_Expr.overload = overload->func;
+                    }
+                }
+            }
+            
+            if (expr->Binary_Expr.overload) {
+                Type* overload = expr->Binary_Expr.overload;
+                assert(overload->kind == TypeKind_Function);
+                result = overload->Function.return_type;
+                
+            } else if (is_binary_assign(expr->Binary_Expr.op)) {
                 
                 if (first_type->kind == TypeKind_Function && 
                     second_type->kind == TypeKind_Function) {
@@ -525,7 +542,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 }
                 
             } else {
-                
                 if (first_type->kind == TypeKind_Basic && 
                     second_type->kind == TypeKind_Basic) {
                     
@@ -2147,12 +2163,49 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
                 }
             }
             
-            ast->type = type;
-            // TODO(Alexander): distinguish between types and types of variables
-            // E.g. in `int main(...)`, main is not a type it's a global variable
-            // but `typedef u32 string_id;` in this case string_id is a type.
-            map_put(tcx->global_type_table, comp_unit->ident, type);
-            map_put(tcx->globals, comp_unit->ident, type);
+            if (ident == Kw_operator) {
+                assert(type->kind == TypeKind_Function);
+                assert(ast->kind == Ast_Function_Type);
+                // TODO(Alexander): support for Unary operator overloading
+                
+                Binary_Op op = ast->Function_Type.overload_operator;
+                
+                int arg_count = (int) array_count(type->Function.arg_types);
+                if (arg_count == 2) {
+                    Type* lhs = type->Function.arg_types[0];
+                    Type* rhs = type->Function.arg_types[1];
+                    
+                    Overloaded_Function_List* overload = &map_get(tcx->overloaded_functions, lhs);
+                    if (!overload || !overload->is_valid) {
+                        Overloaded_Function_List new_overload = {};
+                        new_overload.is_valid = true;
+                        map_put(tcx->overloaded_functions, lhs, new_overload);
+                        overload = &map_get(tcx->overloaded_functions, lhs);
+                    }
+                    assert(overload);
+                    
+                    Operator_Overload overloaded_op = {};
+                    overloaded_op.op = op;
+                    overloaded_op.rhs = rhs;
+                    overloaded_op.func = type;
+                    array_push(overload->ops, overloaded_op);
+                    
+                    // TODO(Alexander): check ambiguity with previous entries
+                    
+                } else {
+                    type_error(tcx,
+                               string_format("expected `2` paramter to binary operator overload, found `%`", 
+                                             f_int(arg_count)), ast->span);
+                }
+            } else {
+                
+                ast->type = type;
+                // TODO(Alexander): distinguish between types and types of variables
+                // E.g. in `int main(...)`, main is not a type it's a global variable
+                // but `typedef u32 string_id;` in this case string_id is a type.
+                map_put(tcx->global_type_table, comp_unit->ident, type);
+                map_put(tcx->globals, comp_unit->ident, type);
+            }
         } else {
             result = false;
         }

@@ -1503,7 +1503,7 @@ parse_type(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
                 case Kw_enum: { 
                     base = push_ast_node(parser);
                     base->kind = Ast_Enum_Type;
-                    base->Enum_Type.ident = parse_identifier(parser, false);
+                    base->Enum_Type.ident = parse_identifier(parser);
                     if (next_token_if_matched(parser, Token_Colon, false)) {
                         base->Enum_Type.elem_type = parse_type(parser);
                     }
@@ -1626,15 +1626,40 @@ parse_complex_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_M
         case Token_Ident: {
             Ast* attributes = 0;
             Ast_Decl_Modifier function_mods = parse_procedure_type_mods(parser, &attributes);
+            Binary_Op overload_operator = BinaryOp_None;
             
-            if (peek_second_token(parser).type == Token_Open_Paren) {
+            Token peek2 = peek_second_token(parser);
+            
+            Token op_token = {};
+            if (parse_keyword(parser, Kw_operator, false)) {
+                overload_operator = parse_binary_op(parser);
+                op_token = next_token(parser);
+                if (overload_operator == BinaryOp_None) {
+                    parse_error(parser, op_token, string_format("expected binary operator, found `%`",
+                                                                f_string(op_token.source)));
+                }
+                
+                if (peek_token_match(parser, Token_Open_Paren, true)) {
+                    peek2.type = Token_Open_Paren;
+                }
+            }
+            
+            if (peek2.type == Token_Open_Paren) {
                 // TODO(alexander): check what the base type is, e.g. cannot be struct type as return type
                 result = push_ast_node(parser);
                 result->kind = Ast_Function_Type;
                 result->Function_Type.return_type = base_type;
                 result->Function_Type.mods = function_mods | mods;
                 result->Function_Type.attributes = attributes;
-                result->Function_Type.ident = parse_identifier(parser);
+                result->Function_Type.overload_operator = overload_operator;
+                if (overload_operator == BinaryOp_None) {
+                    result->Function_Type.ident = parse_identifier(parser);
+                } else {
+                    Ast* ident = push_ast_node(parser, &op_token);
+                    ident->kind = Ast_Ident;
+                    ident->Ident = Kw_operator;
+                    result->Function_Type.ident = ident;
+                }
                 result->Function_Type.arguments = parse_compound(parser,
                                                                  Token_Open_Paren, Token_Close_Paren, Token_Comma,
                                                                  &parse_formal_function_argument);
@@ -1645,35 +1670,6 @@ parse_complex_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_M
                 }
             }
         } break;
-        
-#if 0 // TODO(Alexander): don't like C-style function pointers, 
-        // if we want we can make this part of compatibilty mpde.
-        case Token_Open_Paren: {
-            if (peek_second_token(parser).type == Token_Mul) {
-                next_token(parser);
-                next_token(parser);
-                
-                // TODO(alexander): check what the base type is, e.g. cannot be struct type as return type
-                // TODO(alexander): maybe should be it's own AST node
-                Ast* function = push_ast_node(parser);
-                function->kind = Ast_Function_Type;
-                
-                // TODO(alexander): parse function pointer
-                result = push_ast_node(parser);
-                result->kind = Ast_Pointer_Type;
-                result->Pointer_Type = function;
-                
-                function->Function_Type.ident = parse_identifier(parser);
-                next_token_if_matched(parser, Token_Close_Paren);
-                function->Function_Type.return_type = base_type;
-                function->Function_Type.mods = mods;
-                //function->Function_Type.attributes = attributes;
-                function->Function_Type.arguments = parse_compound(parser,
-                                                                   Token_Open_Paren, Token_Close_Paren, Token_Comma,
-                                                                   &parse_formal_function_argument);
-            }
-        } break;
-#endif
         
         case Token_Mul: {
             next_token(parser);
@@ -1739,50 +1735,55 @@ register_top_level_declaration(Parser* parser, Ast_File* ast_file,
         } break;
         
         case Ast_Decl_Stmt: {
-            string_id ident = ast_unwrap_ident(decl->Decl_Stmt.ident);
-            // TODO(Alexander): decls is deprecated use units instead
-            map_put(ast_file->decls, ident, decl);
-            
-            // Replicate attributes and modifiers to decl/type
-            if (decl->Decl_Stmt.type && 
-                decl->Decl_Stmt.type->kind == Ast_Function_Type) {
+            string_id ident = try_unwrap_ident(decl->Decl_Stmt.ident);
+            if (ident) {
                 
-                Ast* proc_ast = decl->Decl_Stmt.type;
-                proc_ast->Function_Type.mods |= mods;
+                // TODO(Alexander): decls is deprecated use units instead
+                map_put(ast_file->decls, ident, decl);
                 
-                Ast* last_attr = proc_ast->Function_Type.attributes;
-                if (last_attr) {
-                    while (last_attr->Compound.next) last_attr = last_attr->Compound.next;
-                    last_attr->Compound.next = attributes;
-                } else {
-                    proc_ast->Function_Type.attributes = attributes;
+                // Replicate attributes and modifiers to decl/type
+                if (decl->Decl_Stmt.type && 
+                    decl->Decl_Stmt.type->kind == Ast_Function_Type) {
+                    
+                    Ast* proc_ast = decl->Decl_Stmt.type;
+                    proc_ast->Function_Type.mods |= mods;
+                    
+                    Ast* last_attr = proc_ast->Function_Type.attributes;
+                    if (last_attr) {
+                        while (last_attr->Compound.next) last_attr = last_attr->Compound.next;
+                        last_attr->Compound.next = attributes;
+                    } else {
+                        proc_ast->Function_Type.attributes = attributes;
+                    }
                 }
+                
+                
+                Compilation_Unit comp_unit = {};
+                comp_unit.ident = ident;
+                
+                //pln("Push decl `%`", f_string(vars_load_string(ident)));
+                
+                comp_unit.ast = decl->Decl_Stmt.type;
+                array_push(ast_file->units, comp_unit);
+                
+                comp_unit.ast = decl;
+                array_push(ast_file->units, comp_unit);
             }
-            
-            
-            Compilation_Unit comp_unit = {};
-            comp_unit.ident = ident;
-            
-            //pln("Push decl `%`", f_string(vars_load_string(ident)));
-            
-            comp_unit.ast = decl->Decl_Stmt.type;
-            array_push(ast_file->units, comp_unit);
-            
-            comp_unit.ast = decl;
-            array_push(ast_file->units, comp_unit);
         } break;
         
         case Ast_Assign_Stmt: {
-            string_id ident = ast_unwrap_ident(decl->Assign_Stmt.ident);
-            // TODO(Alexander): decls is deprecated use units instead
-            map_put(ast_file->decls, ident, decl);
-            
-            Compilation_Unit comp_unit = {};
-            comp_unit.ident = ident;
-            comp_unit.ast = decl;
-            array_push(ast_file->units, comp_unit);
-            
-            push_static_ast_node(parser, ast_file, decl);
+            string_id ident = try_unwrap_ident(decl->Assign_Stmt.ident);
+            if (ident) {
+                // TODO(Alexander): decls is deprecated use units instead
+                map_put(ast_file->decls, ident, decl);
+                
+                Compilation_Unit comp_unit = {};
+                comp_unit.ident = ident;
+                comp_unit.ast = decl;
+                array_push(ast_file->units, comp_unit);
+                
+                push_static_ast_node(parser, ast_file, decl);
+            }
         } break;
         
         case Ast_Typedef: {
@@ -1812,7 +1813,7 @@ register_top_level_declaration(Parser* parser, Ast_File* ast_file,
                     comp_unit.ident = ident;
                     array_push(ast_file->units, comp_unit);
                 } else {
-                    pln("%", f_ast(decl));
+                    pln("typedef error: %", f_ast(decl));
                     //type_error(tcx, "")
                 }
                 

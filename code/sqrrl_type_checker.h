@@ -4,7 +4,7 @@ struct Type_Scope {
 };
 
 struct Operator_Overload {
-    Binary_Op op;
+    Operator op;
     Type* rhs;
     Type* func;
     // NOTE(Alexander): lhs is used to locate this struct
@@ -230,7 +230,7 @@ struct Ast_File;
 Type* type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool report_error);
 
 bool type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span,
-                           Binary_Op op=BinaryOp_Assign, bool report_error=true);
+                           Operator op=Op_Assign, bool report_error=true);
 s32 type_check_ast_file(Ast_File* ast_file);
 
 Type* create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error);

@@ -31,12 +31,12 @@ Ast* next;                                      \
 AST_GROUP(Expr_Begin,  "expression")            \
 AST(Unary_Expr,        "unary", struct {        \
 Ast* first;                                     \
-Unary_Op op;                                    \
+Operator op;                                    \
 })                                              \
 AST(Binary_Expr,       "binary", struct {       \
 Ast* first;                                     \
 Ast* second;                                    \
-Binary_Op op;                                   \
+Operator op;                                   \
 Type* overload;                                 \
 })                                              \
 AST(Ternary_Expr,      "ternary", struct {      \
@@ -136,7 +136,7 @@ Ast* ident;                                     \
 Ast* return_type;                               \
 Ast* arguments;                                 \
 Ast* attributes;                                \
-Binary_Op overload_operator;                    \
+Operator overload_operator;                    \
 Ast_Decl_Modifier mods;                         \
 })                                              \
 AST(Struct_Type,       "struct", struct {       \
@@ -455,14 +455,14 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
         } break;
         
         case Ast_Unary_Expr: {
-            assert_enum(UnaryOp, node->Unary_Expr.op);
-            string_builder_push_format(sb, " (%)", f_cstring(unary_op_strings[node->Unary_Expr.op]));
+            assert_enum(Op, node->Unary_Expr.op);
+            string_builder_push_format(sb, " (%)", f_cstring(operator_strings[node->Unary_Expr.op]));
             string_builder_push(sb, node->Unary_Expr.first, tokenizer, spacing);
         } break;
         
         case Ast_Binary_Expr: {
-            assert_enum(BinaryOp, node->Binary_Expr.op);
-            string_builder_push_format(sb, " (%)", f_cstring(binary_op_strings[node->Binary_Expr.op]));
+            assert_enum(Op, node->Binary_Expr.op);
+            string_builder_push_format(sb, " (%)", f_cstring(operator_strings[node->Binary_Expr.op]));
             if (node->Binary_Expr.overload) { 
                 string_builder_push(sb, "\n");
                 for (u32 s = 0; s < spacing; s++) string_builder_push(sb, " ");

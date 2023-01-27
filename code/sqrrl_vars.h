@@ -108,6 +108,7 @@ VAR(__declspec)  \
 VAR(__cdecl)  \
 VAR(__fastcall) \
 VAR(__stdcall) \
+VAR(__debugbreak) \
 VAR(pack)     \
 VAR(push)     \
 VAR(pop)      \

@@ -107,8 +107,8 @@ inline Ast* parse_array_type(Parser* parser, Ast* elem_type, Ast_Decl_Modifier m
 Ast* parse_type(Parser* parser, bool report_error=true, Ast_Decl_Modifier mods=0);
 Ast* parse_complex_type(Parser* parser, Ast* base_type, bool report_error=true, Ast_Decl_Modifier mods=0);
 
-Unary_Op parse_unary_op(Parser* parser);
-Binary_Op parse_binary_op(Parser* parser);
+Operator parse_unary_op(Parser* parser);
+Operator parse_binary_op(Parser* parser);
 
 Ast* parse_formal_struct_or_union_argument(Parser* parser);
 Ast* parse_actual_struct_or_union_argument(Parser* parser);

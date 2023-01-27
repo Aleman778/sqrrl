@@ -39,9 +39,9 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
     
     Ic_Arg result;
     
-    Binary_Op op = expr->Binary_Expr.op;
+    Operator op = expr->Binary_Expr.op;
     
-    if (op == BinaryOp_Logical_Or) {
+    if (op == Op_Logical_Or) {
         Intermediate_Code* test_lhs, *test_rhs;
         Ic_Basic_Block* bb_true = ic_basic_block();
         Ic_Basic_Block* bb_exit = ic_basic_block();
@@ -72,7 +72,7 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
         
         assert(src0.raw_type == src1.raw_type);
         
-    } else if (op == BinaryOp_Logical_And) {
+    } else if (op == Op_Logical_And) {
         Intermediate_Code* test_lhs, *test_rhs;
         Ic_Basic_Block* bb_false = ic_basic_block();
         Ic_Basic_Block* bb_exit = ic_basic_block();
@@ -107,7 +107,7 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
         //Ic_Arg clobber;
         Ic_Arg src0, src1;
         
-        if (op == BinaryOp_Assign) {
+        if (op == Op_Assign) {
             src0 = {};
         } else {
             Ast* first = expr->Binary_Expr.first;
@@ -137,8 +137,8 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
             if (src1.type & (IC_SINT | IC_UINT)) {
                 // pointer +/- integral
                 //pln("AST:\n%", f_ast(expr));
-                assert(op == BinaryOp_Add || op == BinaryOp_Subtract ||
-                       op == BinaryOp_Add_Assign || op == BinaryOp_Subtract_Assign);
+                assert(op == Op_Add || op == Op_Subtract ||
+                       op == Op_Add_Assign || op == Op_Subtract_Assign);
                 
                 Type* ptr_type = expr->Binary_Expr.first->type;
                 int sizeof_elem = ptr_type->Pointer->size;
@@ -166,27 +166,27 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
         
         bool isFloat = src0.type & IC_FLOAT;
         
-        bool is_assign = is_binary_assign(op);
+        bool is_assign = operator_is_assign(op);
         if (is_assign) {
             switch (op) {
-                case BinaryOp_Assign: op = BinaryOp_None; break;
-                case BinaryOp_Add_Assign: op = BinaryOp_Add; break;
-                case BinaryOp_Subtract_Assign: op = BinaryOp_Subtract; break;
-                case BinaryOp_Multiply_Assign: op = BinaryOp_Multiply; break;
-                case BinaryOp_Divide_Assign: op = BinaryOp_Divide; break;
-                case BinaryOp_Modulo_Assign: op = BinaryOp_Modulo; break;
-                case BinaryOp_Bitwise_And_Assign: op = BinaryOp_Bitwise_And; break;
-                case BinaryOp_Bitwise_Or_Assign: op = BinaryOp_Bitwise_Or; break;
-                case BinaryOp_Bitwise_Xor_Assign: op = BinaryOp_Bitwise_Xor; break;
-                case BinaryOp_Shift_Left_Assign: op = BinaryOp_Shift_Left; break;
-                case BinaryOp_Shift_Right_Assign: op = BinaryOp_Shift_Right; break;
+                case Op_Assign: op = Op_None; break;
+                case Op_Add_Assign: op = Op_Add; break;
+                case Op_Subtract_Assign: op = Op_Subtract; break;
+                case Op_Multiply_Assign: op = Op_Multiply; break;
+                case Op_Divide_Assign: op = Op_Divide; break;
+                case Op_Modulo_Assign: op = Op_Modulo; break;
+                case Op_Bitwise_And_Assign: op = Op_Bitwise_And; break;
+                case Op_Bitwise_Or_Assign: op = Op_Bitwise_Or; break;
+                case Op_Bitwise_Xor_Assign: op = Op_Bitwise_Xor; break;
+                case Op_Shift_Left_Assign: op = Op_Shift_Left; break;
+                case Op_Shift_Right_Assign: op = Op_Shift_Right; break;
                 
                 default: assert(0 && "invalid assign op");
             }
         }
         
         
-        if (op == BinaryOp_None) {
+        if (op == Op_None) {
             result = src1;
         } else {
             Intermediate_Code* ic = ic_add(cu);
@@ -195,7 +195,7 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
             ic->src1 = src1;
             result = ic->dest;
             
-            if (binary_is_comparator_table[op]) {
+            if (operator_is_comparator(op)) {
                 result.raw_type = IC_U8;
                 ic->opcode = isFloat ? IC_FCMP : IC_CMP;
                 ic->dest = result;
@@ -205,23 +205,23 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
             }
             
             switch (op) {
-                case BinaryOp_Add: ic->opcode = isFloat ? IC_FADD : IC_ADD; break;
-                case BinaryOp_Subtract: ic->opcode = isFloat ? IC_FSUB : IC_SUB; break;
-                case BinaryOp_Multiply: ic->opcode = isFloat ? IC_FMUL : IC_MUL; break;
-                case BinaryOp_Divide: ic->opcode = isFloat ? IC_FDIV : IC_DIV; break;
-                case BinaryOp_Modulo: ic->opcode = isFloat ? IC_FMOD : IC_MOD; break;
-                case BinaryOp_Equals: ic->opcode = IC_SETE; break;
-                case BinaryOp_Bitwise_And: ic->opcode = IC_AND; break;
-                case BinaryOp_Bitwise_Or: ic->opcode = IC_OR; break;
-                case BinaryOp_Bitwise_Xor: ic->opcode = IC_XOR; break;
-                case BinaryOp_Not_Equals: ic->opcode = IC_SETNE; break;
-                case BinaryOp_Shift_Left: ic->opcode = IC_SHL; break;
-                case BinaryOp_Shift_Right: ic->opcode = IC_SHR; break;
-                case BinaryOp_Greater_Than: ic->opcode = isFloat ? IC_SETA : IC_SETG; break;
-                case BinaryOp_Greater_Equals: ic->opcode = isFloat ? IC_SETAE : IC_SETGE; break;
-                case BinaryOp_Less_Than: ic->opcode = isFloat ? IC_SETB : IC_SETL; break;
-                case BinaryOp_Less_Equals: ic->opcode = isFloat ? IC_SETBE : IC_SETLE; break;
-                case BinaryOp_None: break;
+                case Op_Add: ic->opcode = isFloat ? IC_FADD : IC_ADD; break;
+                case Op_Subtract: ic->opcode = isFloat ? IC_FSUB : IC_SUB; break;
+                case Op_Multiply: ic->opcode = isFloat ? IC_FMUL : IC_MUL; break;
+                case Op_Divide: ic->opcode = isFloat ? IC_FDIV : IC_DIV; break;
+                case Op_Modulo: ic->opcode = isFloat ? IC_FMOD : IC_MOD; break;
+                case Op_Equals: ic->opcode = IC_SETE; break;
+                case Op_Bitwise_And: ic->opcode = IC_AND; break;
+                case Op_Bitwise_Or: ic->opcode = IC_OR; break;
+                case Op_Bitwise_Xor: ic->opcode = IC_XOR; break;
+                case Op_Not_Equals: ic->opcode = IC_SETNE; break;
+                case Op_Shift_Left: ic->opcode = IC_SHL; break;
+                case Op_Shift_Right: ic->opcode = IC_SHR; break;
+                case Op_Greater_Than: ic->opcode = isFloat ? IC_SETA : IC_SETG; break;
+                case Op_Greater_Equals: ic->opcode = isFloat ? IC_SETAE : IC_SETGE; break;
+                case Op_Less_Than: ic->opcode = isFloat ? IC_SETB : IC_SETL; break;
+                case Op_Less_Equals: ic->opcode = isFloat ? IC_SETBE : IC_SETLE; break;
+                case Op_None: break;
                 
                 default: unimplemented;
             }
@@ -497,7 +497,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             Ic_Raw_Type rt = convert_type_to_raw_type(expr->type);
             
             switch (expr->Unary_Expr.op) {
-                case UnaryOp_Negate: {
+                case Op_Negate: {
                     assert(src.type & IC_STK | IC_REG);
                     
                     if (src.type & IC_FLOAT) {
@@ -525,7 +525,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     }
                 } break;
                 
-                case UnaryOp_Logical_Not: {
+                case Op_Logical_Not: {
                     assert(src.type & IC_STK | IC_REG);
                     
                     result = ic_reg(src.raw_type);
@@ -548,7 +548,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     ic_add(cu, IC_LABEL, bb_exit);
                 } break;
                 
-                case UnaryOp_Bitwise_Not: {
+                case Op_Bitwise_Not: {
                     assert(src.type & IC_STK | IC_REG);
                     
                     Intermediate_Code* ic = ic_add(cu, IC_NOT);
@@ -557,7 +557,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     result = ic->dest;
                 } break;
                 
-                case UnaryOp_Address_Of: {
+                case Op_Address_Of: {
                     assert(src.type & IC_STK);
                     
                     Intermediate_Code* ic = ic_add(cu, IC_LEA);
@@ -566,7 +566,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     result = ic->src0;
                 } break;
                 
-                case UnaryOp_Dereference: {
+                case Op_Dereference: {
                     if (src.type & IC_REG) {
                         result = ic_stk(rt, 0, IcStkArea_None, src.reg);
                     } else {

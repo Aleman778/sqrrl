@@ -243,91 +243,91 @@ value_cast_from_same_type(Value_Data data, Basic_Type type) {
 }
 
 inline s64
-value_integer_binary_operation(Value first, Value second, Binary_Op op) {
+value_integer_binary_operation(Value first, Value second, Operator op) {
     switch (op) {
-        case BinaryOp_Multiply: 
-        case BinaryOp_Multiply_Assign: {
+        case Op_Multiply: 
+        case Op_Multiply_Assign: {
             return first.data.signed_int * second.data.signed_int;
         }
         
-        case BinaryOp_Divide:
-        case BinaryOp_Divide_Assign:{
+        case Op_Divide:
+        case Op_Divide_Assign:{
             return first.data.signed_int / second.data.signed_int;
         }
         
-        case BinaryOp_Modulo:
-        case BinaryOp_Modulo_Assign:{
+        case Op_Modulo:
+        case Op_Modulo_Assign:{
             return first.data.signed_int % second.data.signed_int;
         }
         
-        case BinaryOp_Add:
-        case BinaryOp_Add_Assign:{
+        case Op_Add:
+        case Op_Add_Assign:{
             return first.data.signed_int + second.data.signed_int;
         }
         
-        case BinaryOp_Subtract:
-        case BinaryOp_Subtract_Assign:{
+        case Op_Subtract:
+        case Op_Subtract_Assign:{
             return first.data.signed_int - second.data.signed_int;
         }
         
-        case BinaryOp_Shift_Left:
-        case BinaryOp_Shift_Left_Assign: {
+        case Op_Shift_Left:
+        case Op_Shift_Left_Assign: {
             return first.data.signed_int << second.data.signed_int;
         }
         
-        case BinaryOp_Shift_Right:
-        case BinaryOp_Shift_Right_Assign:{
+        case Op_Shift_Right:
+        case Op_Shift_Right_Assign:{
             return first.data.signed_int >> second.data.signed_int;
         }
         
-        case BinaryOp_Bitwise_And:
-        case BinaryOp_Bitwise_And_Assign:{
+        case Op_Bitwise_And:
+        case Op_Bitwise_And_Assign:{
             return first.data.signed_int & second.data.signed_int;
         }
         
-        case BinaryOp_Bitwise_Or:
-        case BinaryOp_Bitwise_Or_Assign:{
+        case Op_Bitwise_Or:
+        case Op_Bitwise_Or_Assign:{
             return first.data.signed_int | second.data.signed_int;
         }
         
-        case BinaryOp_Bitwise_Xor:
-        case BinaryOp_Bitwise_Xor_Assign:{
+        case Op_Bitwise_Xor:
+        case Op_Bitwise_Xor_Assign:{
             return first.data.signed_int ^ second.data.signed_int;
         }
         
-        case BinaryOp_Less_Than: {
+        case Op_Less_Than: {
             return first.data.signed_int < second.data.signed_int;
         }
         
-        case BinaryOp_Less_Equals: {
+        case Op_Less_Equals: {
             return first.data.signed_int <= second.data.signed_int;
         }
         
-        case BinaryOp_Greater_Than: {
+        case Op_Greater_Than: {
             return first.data.signed_int > second.data.signed_int;
         }
         
-        case BinaryOp_Greater_Equals: {
+        case Op_Greater_Equals: {
             return first.data.signed_int >= second.data.signed_int;
         }
         
-        case BinaryOp_Equals: {
+        case Op_Equals: {
             return first.data.signed_int == second.data.signed_int;
         }
         
-        case BinaryOp_Not_Equals: {
+        case Op_Not_Equals: {
             return first.data.signed_int != second.data.signed_int;
         }
         
-        case BinaryOp_Assign: {
+        case Op_Assign: {
             return second.data.signed_int;
         }
         
-        case BinaryOp_Logical_And: {
+        case Op_Logical_And: {
             return first.data.boolean && second.data.boolean;
         } break;
         
-        case BinaryOp_Logical_Or: {
+        case Op_Logical_Or: {
             return first.data.boolean || second.data.boolean;
         } break;
         
@@ -340,62 +340,62 @@ value_integer_binary_operation(Value first, Value second, Binary_Op op) {
 }
 
 inline Value
-value_floating_binary_operation(Value first, Value second, Binary_Op op) {
+value_floating_binary_operation(Value first, Value second, Operator op) {
     Value result;
     result.type = Value_floating;
     
     switch (op) {
-        case BinaryOp_Multiply: 
-        case BinaryOp_Multiply_Assign: {
+        case Op_Multiply: 
+        case Op_Multiply_Assign: {
             result.data.floating = first.data.floating * second.data.floating;
         } break;
         
-        case BinaryOp_Divide:
-        case BinaryOp_Divide_Assign:{
+        case Op_Divide:
+        case Op_Divide_Assign:{
             result.data.floating = first.data.floating / second.data.floating;
         } break;
         
-        case BinaryOp_Add:
-        case BinaryOp_Add_Assign:{
+        case Op_Add:
+        case Op_Add_Assign:{
             result.data.floating = first.data.floating + second.data.floating;
         } break;
         
-        case BinaryOp_Subtract:
-        case BinaryOp_Subtract_Assign:{
+        case Op_Subtract:
+        case Op_Subtract_Assign:{
             result.data.floating = first.data.floating - second.data.floating;
         } break;
         
-        case BinaryOp_Less_Than: {
+        case Op_Less_Than: {
             result.data.boolean = first.data.floating < second.data.floating;
             result.type = Value_boolean;
         } break;
         
-        case BinaryOp_Less_Equals: {
+        case Op_Less_Equals: {
             result.data.boolean = first.data.floating <= second.data.floating;
             result.type = Value_boolean;
         } break;
         
-        case BinaryOp_Greater_Than: {
+        case Op_Greater_Than: {
             result.data.boolean = first.data.floating > second.data.floating;
             result.type = Value_boolean;
         } break;
         
-        case BinaryOp_Greater_Equals: {
+        case Op_Greater_Equals: {
             result.data.boolean = first.data.floating >= second.data.floating;
             result.type = Value_boolean;
         } break;
         
-        case BinaryOp_Equals: {
+        case Op_Equals: {
             result.data.boolean = first.data.floating == second.data.floating;
             result.type = Value_boolean;
         } break;
         
-        case BinaryOp_Not_Equals: {
+        case Op_Not_Equals: {
             result.data.boolean = first.data.floating != second.data.floating;
             result.type = Value_boolean;
         } break;
         
-        case BinaryOp_Assign: {
+        case Op_Assign: {
             result.data.floating = second.data.floating;
         } break;
         

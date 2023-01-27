@@ -44,7 +44,7 @@ interp_expression(Interp* interp, Ast* ast) {
             Interp_Value first_op = interp_expression(interp, ast->Unary_Expr.first);
             result.type = *ast->type;
             switch (ast->Unary_Expr.op) {
-                case UnaryOp_Negate: {
+                case Op_Negate: {
                     if (is_integer(first_op.value)) {
                         result.value.data.signed_int = -first_op.value.data.signed_int;
                         result.value.type = Value_signed_int;
@@ -56,7 +56,7 @@ interp_expression(Interp* interp, Ast* ast) {
                     }
                 } break;
                 
-                case UnaryOp_Logical_Not: {
+                case Op_Logical_Not: {
                     if (is_integer(first_op.value)) {
                         result.value.data.boolean = !value_to_bool(first_op.value);
                         result.value.type = Value_boolean;
@@ -65,7 +65,7 @@ interp_expression(Interp* interp, Ast* ast) {
                     }
                 } break;
                 
-                case UnaryOp_Address_Of: {
+                case Op_Address_Of: {
                     Ast* expr = ast->Unary_Expr.first;
                     
                     if (expr->kind == Ast_Ident) {
@@ -93,7 +93,7 @@ interp_expression(Interp* interp, Ast* ast) {
                     }
                 } break;
                 
-                case UnaryOp_Dereference: {
+                case Op_Dereference: {
                     Interp_Value op = interp_expression(interp, ast->Unary_Expr.first);
                     
                     if (op.value.type == Value_pointer && op.type.kind == TypeKind_Pointer) {
@@ -111,7 +111,7 @@ interp_expression(Interp* interp, Ast* ast) {
             
             
             
-            if (ast->Binary_Expr.op == BinaryOp_Logical_And) {
+            if (ast->Binary_Expr.op == Op_Logical_And) {
                 result.value.type = Value_boolean;
                 result.value.data.boolean = false;
                 
@@ -128,7 +128,7 @@ interp_expression(Interp* interp, Ast* ast) {
                     result.value.data.boolean = value_to_bool(second_op.value);
                 }
                 
-            } else if (ast->Binary_Expr.op == BinaryOp_Logical_Or) {
+            } else if (ast->Binary_Expr.op == Op_Logical_Or) {
                 result.value.type = Value_boolean;
                 result.value.data.boolean = false;
                 
@@ -190,7 +190,7 @@ interp_expression(Interp* interp, Ast* ast) {
                 }
                 
                 // NOTE(Alexander): handle assign binary expression
-                if (result.value.type != Value_void && is_binary_assign(ast->Binary_Expr.op)) {
+                if (result.value.type != Value_void && operator_is_assign(ast->Binary_Expr.op)) {
                     
                     if (ast->Binary_Expr.first->kind == Ast_Ident) {
                         string_id ident = ast->Binary_Expr.first->Ident;

@@ -524,8 +524,8 @@ parse_atom(Parser* parser, bool report_error) {
         } break;
         
         default: {
-            Unary_Op unop = parse_unary_op(parser);
-            if (unop != UnaryOp_None) {
+            Operator unop = parse_unary_op(parser);
+            if (unop != Op_None) {
                 next_token(parser);
                 result = push_ast_node(parser, &token);
                 result->kind = Ast_Unary_Expr;
@@ -644,7 +644,7 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
     }
     
     // Parse binary expression using precedence climbing, is applicable
-    Binary_Op binary_op = parse_binary_op(parser);
+    Operator binary_op = parse_binary_op(parser);
     Token token = peek_token(parser); // HACK(Alexander): want to get ternary to fix precedence
     while (binary_op || 
            token.type == Token_Question || 
@@ -661,8 +661,8 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
             prec = 1;
             assoc = Assoc_Right;
         } else {
-            prec = binary_prec_table[binary_op];
-            assoc = binary_assoc_table[binary_op];
+            prec = operator_prec_table[binary_op];
+            assoc = operator_assoc_table[binary_op];
         }
         
         if (prec < min_prec) {
@@ -679,7 +679,7 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
             Ast* unary_expr = push_ast_node(parser);
             unary_expr->kind = Ast_Unary_Expr;
             unary_expr->Unary_Expr.op = token.type == Token_Increment ? 
-                UnaryOp_Post_Increment : UnaryOp_Post_Decrement;
+                Op_Post_Increment : Op_Post_Decrement;
             unary_expr->Unary_Expr.first = lhs_expr;
             
         } else if (token.type == Token_Question) {
@@ -915,55 +915,55 @@ parse_block_or_single_statement(Parser* parser, bool report_error) {
     return stmt;
 }
 
-Unary_Op
+Operator
 parse_unary_op(Parser* parser) {
     Token token = peek_token(parser);
     switch (token.type) {
-        case Token_Sub:         return UnaryOp_Negate;
-        case Token_Logical_Not: return UnaryOp_Logical_Not;
-        case Token_Bit_Not:     return UnaryOp_Bitwise_Not;
-        case Token_Bit_And:     return UnaryOp_Address_Of;
-        case Token_Mul:         return UnaryOp_Dereference;
-        case Token_Increment:   return UnaryOp_Pre_Increment;
-        case Token_Decrement:   return UnaryOp_Pre_Decrement;
-        default:                return UnaryOp_None;
+        case Token_Sub:         return Op_Negate;
+        case Token_Logical_Not: return Op_Logical_Not;
+        case Token_Bit_Not:     return Op_Bitwise_Not;
+        case Token_Bit_And:     return Op_Address_Of;
+        case Token_Mul:         return Op_Dereference;
+        case Token_Increment:   return Op_Pre_Increment;
+        case Token_Decrement:   return Op_Pre_Decrement;
+        default:                return Op_None;
     }
 }
 
-Binary_Op
+Operator
 parse_binary_op(Parser* parser) {
     Token token = peek_token(parser);
     switch (token.type) {
-        case Token_Equals:         return BinaryOp_Equals;
-        case Token_Lt:             return BinaryOp_Less_Than;
-        case Token_Gt:             return BinaryOp_Greater_Than;
-        case Token_Add:            return BinaryOp_Add;
-        case Token_Sub:            return BinaryOp_Subtract;
-        case Token_Mul:            return BinaryOp_Multiply;
-        case Token_Div:            return BinaryOp_Divide;
-        case Token_Bit_And:        return BinaryOp_Bitwise_And;
-        case Token_Bit_Or:         return BinaryOp_Bitwise_Or;
-        case Token_Bit_Xor:        return BinaryOp_Bitwise_Xor;
-        case Token_Mod:            return BinaryOp_Modulo;
-        case Token_Assign:         return BinaryOp_Assign;
-        case Token_Add_Assign:     return BinaryOp_Add_Assign;
-        case Token_Sub_Assign:     return BinaryOp_Subtract_Assign;
-        case Token_Mul_Assign:     return BinaryOp_Multiply_Assign;
-        case Token_Div_Assign:     return BinaryOp_Divide_Assign;
-        case Token_Mod_Assign:     return BinaryOp_Modulo_Assign;
-        case Token_Bit_And_Assign: return BinaryOp_Bitwise_And_Assign;
-        case Token_Bit_Or_Assign:  return BinaryOp_Bitwise_Or_Assign;
-        case Token_Bit_Xor_Assign: return BinaryOp_Bitwise_Xor_Assign;
-        case Token_Shl_Assign:     return BinaryOp_Shift_Left_Assign;
-        case Token_Shr_Assign:     return BinaryOp_Shift_Left_Assign;
-        case Token_Not_Equals:     return BinaryOp_Not_Equals;
-        case Token_Logical_And:    return BinaryOp_Logical_And;
-        case Token_Logical_Or:     return BinaryOp_Logical_Or;
-        case Token_Lt_Equals:      return BinaryOp_Less_Equals;
-        case Token_Gt_Equals:      return BinaryOp_Greater_Equals;
-        case Token_Shl:            return BinaryOp_Shift_Left;
-        case Token_Shr:            return BinaryOp_Shift_Right;
-        default:                   return BinaryOp_None;
+        case Token_Equals:         return Op_Equals;
+        case Token_Lt:             return Op_Less_Than;
+        case Token_Gt:             return Op_Greater_Than;
+        case Token_Add:            return Op_Add;
+        case Token_Sub:            return Op_Subtract;
+        case Token_Mul:            return Op_Multiply;
+        case Token_Div:            return Op_Divide;
+        case Token_Bit_And:        return Op_Bitwise_And;
+        case Token_Bit_Or:         return Op_Bitwise_Or;
+        case Token_Bit_Xor:        return Op_Bitwise_Xor;
+        case Token_Mod:            return Op_Modulo;
+        case Token_Assign:         return Op_Assign;
+        case Token_Add_Assign:     return Op_Add_Assign;
+        case Token_Sub_Assign:     return Op_Subtract_Assign;
+        case Token_Mul_Assign:     return Op_Multiply_Assign;
+        case Token_Div_Assign:     return Op_Divide_Assign;
+        case Token_Mod_Assign:     return Op_Modulo_Assign;
+        case Token_Bit_And_Assign: return Op_Bitwise_And_Assign;
+        case Token_Bit_Or_Assign:  return Op_Bitwise_Or_Assign;
+        case Token_Bit_Xor_Assign: return Op_Bitwise_Xor_Assign;
+        case Token_Shl_Assign:     return Op_Shift_Left_Assign;
+        case Token_Shr_Assign:     return Op_Shift_Left_Assign;
+        case Token_Not_Equals:     return Op_Not_Equals;
+        case Token_Logical_And:    return Op_Logical_And;
+        case Token_Logical_Or:     return Op_Logical_Or;
+        case Token_Lt_Equals:      return Op_Less_Equals;
+        case Token_Gt_Equals:      return Op_Greater_Equals;
+        case Token_Shl:            return Op_Shift_Left;
+        case Token_Shr:            return Op_Shift_Right;
+        default:                   return Op_None;
     }
 }
 
@@ -1626,15 +1626,18 @@ parse_complex_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_M
         case Token_Ident: {
             Ast* attributes = 0;
             Ast_Decl_Modifier function_mods = parse_procedure_type_mods(parser, &attributes);
-            Binary_Op overload_operator = BinaryOp_None;
+            Operator overload_operator = Op_None;
             
             Token peek2 = peek_second_token(parser);
             
             Token op_token = {};
             if (parse_keyword(parser, Kw_operator, false)) {
                 overload_operator = parse_binary_op(parser);
+                if (overload_operator == Op_None) {
+                    overload_operator = parse_unary_op(parser);
+                }
                 op_token = next_token(parser);
-                if (overload_operator == BinaryOp_None) {
+                if (overload_operator == Op_None) {
                     parse_error(parser, op_token, string_format("expected binary operator, found `%`",
                                                                 f_string(op_token.source)));
                 }
@@ -1652,7 +1655,7 @@ parse_complex_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_M
                 result->Function_Type.mods = function_mods | mods;
                 result->Function_Type.attributes = attributes;
                 result->Function_Type.overload_operator = overload_operator;
-                if (overload_operator == BinaryOp_None) {
+                if (overload_operator == Op_None) {
                     result->Function_Type.ident = parse_identifier(parser);
                 } else {
                     Ast* ident = push_ast_node(parser, &op_token);

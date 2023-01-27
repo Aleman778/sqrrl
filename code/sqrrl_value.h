@@ -3,106 +3,89 @@ struct Type;
 struct Bc_Basic_Block;
 
 
-// UNOP(name, op, prec)
-#define DEF_UNARY_OPS \
-UNOP(None,             ) \
-UNOP(Negate,          -) \
-UNOP(Logical_Not,     !) \
-UNOP(Bitwise_Not,     ~) \
-UNOP(Address_Of,      &) \
-UNOP(Dereference,     *) \
-UNOP(Pre_Increment,  ++) \
-UNOP(Pre_Decrement,  --) \
-UNOP(Post_Increment, ++) \
-UNOP(Post_Decrement, --) \
-UNOP(Count,            )
-
-// BINOP(name, op, prec, assoc, is_comparator, bc_mnemonic)
-#define DEF_BINARY_OPS \
-BINOP(None,               !,   0, Assoc_Left,  false, noop) \
-BINOP(Multiply,           *,  11, Assoc_Left,  false, mul) \
-BINOP(Divide,             /,  11, Assoc_Left,  false, div) \
-BINOP(Modulo,             %,  11, Assoc_Left,  false, mod) \
-BINOP(Add,                +,  10, Assoc_Left,  false, add) \
-BINOP(Subtract,           -,  10, Assoc_Left,  false, sub) \
-BINOP(Shift_Left,         <<, 9,  Assoc_Left,  false, shl) \
-BINOP(Shift_Right,        >>, 9,  Assoc_Left,  false, shr) \
-BINOP(Less_Than,          <,  8,  Assoc_Left,  true,  cmplt) \
-BINOP(Less_Equals,        <=, 8,  Assoc_Left,  true,  cmple) \
-BINOP(Greater_Than,       >,  8,  Assoc_Left,  true,  cmpgt) \
-BINOP(Greater_Equals,     >=, 8,  Assoc_Left,  true,  cmpge) \
-BINOP(Equals,             ==, 7,  Assoc_Left,  true,  cmpeq) \
-BINOP(Not_Equals,         !=, 7,  Assoc_Left,  true,  cmpneq) \
-BINOP(Bitwise_And,        &,  6,  Assoc_Left,  false, and) \
-BINOP(Bitwise_Or,         |,  5,  Assoc_Left,  false, or) \
-BINOP(Bitwise_Xor,        ^,  4,  Assoc_Left,  false, xor) \
-BINOP(Logical_And,        &&, 3,  Assoc_Left,  false, and) \
-BINOP(Logical_Or,         ||, 2,  Assoc_Left,  false, or) \
-BINOP(Assign,             =,  1,  Assoc_Right, false, copy) \
-BINOP(Add_Assign,         +=, 1,  Assoc_Right, false, add) \
-BINOP(Subtract_Assign,    -=, 1,  Assoc_Right, false, sub) \
-BINOP(Multiply_Assign,    *=, 1,  Assoc_Right, false, mul) \
-BINOP(Divide_Assign,      /=, 1,  Assoc_Right, false, div) \
-BINOP(Modulo_Assign,      %=, 1,  Assoc_Right, false, mod) \
-BINOP(Bitwise_And_Assign, &=, 1,  Assoc_Right, false, and) \
-BINOP(Bitwise_Or_Assign,  |=, 1,  Assoc_Right, false, or) \
-BINOP(Bitwise_Xor_Assign, ^=, 1,  Assoc_Right, false, xor) \
-BINOP(Shift_Left_Assign,  <<=, 1,  Assoc_Right, false, shl) \
-BINOP(Shift_Right_Assign, >>=, 1,  Assoc_Right, false, shr) \
-BINOP(Count,               !, 0,  Assoc_Left,  false, noop)
+// OP(symbol, prec, assoc, is_comparator)
+#define DEF_OPERATORS \
+OP(None,                !,  0, Assoc_Left,  false) \
+OP(Post_Increment,     ++, 14, Assoc_Left,  false) \
+OP(Post_Decrement,     --, 14, Assoc_Left,  false) \
+OP(Negate,              -, 13, Assoc_Right, false) \
+OP(Logical_Not,         !, 13, Assoc_Right, false) \
+OP(Bitwise_Not,         ~, 13, Assoc_Right, false) \
+OP(Address_Of,          &, 13, Assoc_Right, false) \
+OP(Dereference,         *, 13, Assoc_Right, false) \
+OP(Pre_Increment,      ++, 13, Assoc_Right, false) \
+OP(Pre_Decrement,      --, 13, Assoc_Right, false) \
+OP(Multiply,           *,  11, Assoc_Left,  false) \
+OP(Divide,             /,  11, Assoc_Left,  false) \
+OP(Modulo,             %,  11, Assoc_Left,  false) \
+OP(Add,                +,  10, Assoc_Left,  false) \
+OP(Subtract,           -,  10, Assoc_Left,  false) \
+OP(Shift_Left,         <<, 9,  Assoc_Left,  false) \
+OP(Shift_Right,        >>, 9,  Assoc_Left,  false) \
+OP(Less_Than,          <,  8,  Assoc_Left,  true) \
+OP(Less_Equals,        <=, 8,  Assoc_Left,  true) \
+OP(Greater_Than,       >,  8,  Assoc_Left,  true) \
+OP(Greater_Equals,     >=, 8,  Assoc_Left,  true) \
+OP(Equals,             ==, 7,  Assoc_Left,  true) \
+OP(Not_Equals,         !=, 7,  Assoc_Left,  true) \
+OP(Bitwise_And,        &,  6,  Assoc_Left,  false) \
+OP(Bitwise_Or,         |,  5,  Assoc_Left,  false) \
+OP(Bitwise_Xor,        ^,  4,  Assoc_Left,  false) \
+OP(Logical_And,        &&, 3,  Assoc_Left,  false) \
+OP(Logical_Or,         ||, 2,  Assoc_Left,  false) \
+OP(Assign,             =,  1,  Assoc_Right, false) \
+OP(Add_Assign,         +=, 1,  Assoc_Right, false) \
+OP(Subtract_Assign,    -=, 1,  Assoc_Right, false) \
+OP(Multiply_Assign,    *=, 1,  Assoc_Right, false) \
+OP(Divide_Assign,      /=, 1,  Assoc_Right, false) \
+OP(Modulo_Assign,      %=, 1,  Assoc_Right, false) \
+OP(Bitwise_And_Assign, &=, 1,  Assoc_Right, false) \
+OP(Bitwise_Or_Assign,  |=, 1,  Assoc_Right, false) \
+OP(Bitwise_Xor_Assign, ^=, 1,  Assoc_Right, false) \
+OP(Shift_Left_Assign,  <<=, 1, Assoc_Right, false) \
+OP(Shift_Right_Assign, >>=, 1, Assoc_Right, false) \
+OP(Count,                !, 0, Assoc_Left,  false)
 
 enum Assoc {
     Assoc_Left,
     Assoc_Right,
 };
 
-enum Unary_Op {
-#define UNOP(symbol,...) UnaryOp_##symbol,
-    DEF_UNARY_OPS
-#undef UNOP
+enum Operator {
+#define OP(symbol,...) Op_##symbol,
+    DEF_OPERATORS
+#undef OP
 };
 
-enum Binary_Op {
-#define BINOP(symbol,...) BinaryOp_##symbol,
-    DEF_BINARY_OPS
-#undef BINOP
+global cstring operator_strings[] = {
+#define OP(name, op, ...) #op,
+    DEF_OPERATORS
+#undef OP
 };
 
-global cstring unary_op_strings[] = {
-#define UNOP(name, op) #op,
-    DEF_UNARY_OPS
-#undef UNOP
+u8 operator_prec_table[] = {
+#define OP(symbol, name, prec,...) prec,
+    DEF_OPERATORS
+#undef OP
 };
 
-global cstring binary_op_strings[] = {
-#define BINOP(symbol, name, ...) #name,
-    DEF_BINARY_OPS
-#undef BINOP
+Assoc operator_assoc_table[] = {
+#define OP(symbol, name, prec, assoc,...) assoc,
+    DEF_OPERATORS
+#undef OP
 };
 
-u8 binary_prec_table[] = {
-#define BINOP(symbol, name, prec,...) prec,
-    DEF_BINARY_OPS
-#undef BINOP
+bool operator_is_comparator_table[] = {
+#define OP(symbol, name, prec, assoc, is_comparator,...) is_comparator,
+    DEF_OPERATORS
+#undef OP
 };
 
-Assoc binary_assoc_table[] = {
-#define BINOP(symbol, name, prec, assoc,...) assoc,
-    DEF_BINARY_OPS
-#undef BINOP
-};
-
-bool binary_is_comparator_table[] = {
-#define BINOP(symbol, name, prec, assoc, is_comparator,...) is_comparator,
-    DEF_BINARY_OPS
-#undef BINOP
-};
-
-#define binary_is_comparator(binop) (binary_is_comparator_table[binop])
+#define operator_is_comparator(binop) (operator_is_comparator_table[binop])
 
 inline bool
-is_binary_assign(Binary_Op op) {
-    return op >= BinaryOp_Assign;
+operator_is_assign(Operator op) {
+    return op >= Op_Assign;
 }
 
 enum Ternary_Op {
@@ -311,8 +294,8 @@ value_to_f64(Value value) {
 // TODO(Alexander): circular dependency for Primitive_Type_Kind
 //Value value_cast(Value value, Primitive_Type_Kind type_kind);
 
-inline s64 value_integer_binary_operation(Value first, Value second, Binary_Op op);
-inline Value value_floating_binary_operation(Value first, Value second, Binary_Op op);
+inline s64 value_integer_binary_operation(Value first, Value second, Operator op);
+inline Value value_floating_binary_operation(Value first, Value second, Operator op);
 
 void string_builder_push(String_Builder* sb, Value* value);
 void print_value(Value* value);

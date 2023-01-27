@@ -288,7 +288,7 @@ constant_folding_of_expressions(Ast* ast) {
             Value first = constant_folding_of_expressions(ast->Unary_Expr.first);
             if (!is_void(first)) {
                 switch (ast->Unary_Expr.op) {
-                    case UnaryOp_Negate: {
+                    case Op_Negate: {
                         if (is_integer(first)) {
                             result.data.signed_int = -first.data.signed_int;
                             result.type = Value_signed_int;
@@ -298,7 +298,7 @@ constant_folding_of_expressions(Ast* ast) {
                         }
                     } break;
                     
-                    case UnaryOp_Logical_Not: {
+                    case Op_Logical_Not: {
                         if (is_integer(first)) {
                             result.data.boolean = !value_to_bool(first);
                             result.type = Value_boolean;
@@ -309,7 +309,7 @@ constant_folding_of_expressions(Ast* ast) {
         } break;
         
         case Ast_Binary_Expr: {
-            if (is_binary_assign(ast->Binary_Expr.op)) {
+            if (operator_is_assign(ast->Binary_Expr.op)) {
                 // NOTE(Alexander): we cannot constant fold lhs of an assignemnt operator
                 constant_folding_of_expressions(ast->Binary_Expr.second);
             } else {
@@ -344,7 +344,7 @@ constant_folding_of_expressions(Ast* ast) {
                         
                         result = first;
                         
-                        if (binary_is_comparator(ast->Binary_Expr.op)) {
+                        if (operator_is_comparator(ast->Binary_Expr.op)) {
                             // Comparison operands always results in boolean
                             result.type = Value_boolean;
                         }
@@ -451,7 +451,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         
         case Ast_Unary_Expr: {
             if (parent_type) {
-                if (expr->Unary_Expr.op == UnaryOp_Dereference) {
+                if (expr->Unary_Expr.op == Op_Dereference) {
                     Type* new_parent_type = arena_push_struct(&tcx->type_arena, Type);
                     new_parent_type->kind = TypeKind_Pointer;
                     new_parent_type->Pointer = parent_type;
@@ -465,7 +465,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             
             if (type) {
                 switch (expr->Unary_Expr.op) {
-                    case UnaryOp_Dereference: {
+                    case Op_Dereference: {
                         if (type->kind == TypeKind_Pointer) {
                             result = type->Pointer;
                         } else {
@@ -478,7 +478,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                         }
                     } break;
                     
-                    case UnaryOp_Address_Of: {
+                    case Op_Address_Of: {
                         result = arena_push_struct(&tcx->type_arena, Type);
                         result->kind = TypeKind_Pointer;
                         result->Pointer = type;
@@ -496,7 +496,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         } break;
         
         case Ast_Binary_Expr: {
-            Binary_Op op = expr->Binary_Expr.op;
+            Operator op = expr->Binary_Expr.op;
             Type* first_type = type_infer_expression(tcx, 
                                                      expr->Binary_Expr.first,
                                                      0,
@@ -528,7 +528,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 assert(overload->kind == TypeKind_Function);
                 result = overload->Function.return_type;
                 
-            } else if (is_binary_assign(expr->Binary_Expr.op)) {
+            } else if (operator_is_assign(expr->Binary_Expr.op)) {
                 
                 if (first_type->kind == TypeKind_Function && 
                     second_type->kind == TypeKind_Function) {
@@ -545,7 +545,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 if (first_type->kind == TypeKind_Basic && 
                     second_type->kind == TypeKind_Basic) {
                     
-                    if (op == BinaryOp_Logical_Or || op == BinaryOp_Logical_And) {
+                    if (op == Op_Logical_Or || op == Op_Logical_And) {
                         result = t_bool;
                         
                     } else if ((first_type->Basic.flags & BasicFlag_Floating) == 
@@ -640,7 +640,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     }
                 }
                 
-                if (binary_is_comparator_table[expr->Binary_Expr.op]) {
+                if (operator_is_comparator_table[expr->Binary_Expr.op]) {
                     result = t_bool;
                 }
                 expr->type = result;
@@ -674,6 +674,10 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                                                         expr->Call_Expr.ident, 
                                                         parent_type, 
                                                         report_error);
+            if (function_type && function_type->Function.ident == Sym___debugbreak) {
+                __debugbreak();
+            }
+            
             
             if (!function_type) {
                 break;
@@ -1752,7 +1756,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
 }
 
 bool
-type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span, Binary_Op op, bool report_error) {
+type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span, Operator op, bool report_error) {
     assert(lhs && rhs);
     
     if (lhs->kind != rhs->kind) {
@@ -1764,7 +1768,7 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span, Binary
     
     switch (lhs->kind) {
         case TypeKind_Basic: {
-            if (binary_is_comparator_table[op] && 
+            if (operator_is_comparator(op) && 
                 lhs->Basic.flags & BasicFlag_Integer &&
                 rhs->Basic.flags & BasicFlag_Integer) {
                 if ((lhs->Basic.flags & BasicFlag_Unsigned) != (rhs->Basic.flags & BasicFlag_Unsigned)) {
@@ -1794,7 +1798,7 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span, Binary
                 lossy = (lhs->Basic.flags & BasicFlag_String) == 0;
             }
             
-            if (op == BinaryOp_Logical_And || op == BinaryOp_Logical_Or) {
+            if (op == Op_Logical_And || op == Op_Logical_Or) {
                 if (((lhs->Basic.flags & BasicFlag_String) || (lhs->Basic.flags & BasicFlag_Integer)) &&
                     ((rhs->Basic.flags & BasicFlag_String) || (rhs->Basic.flags & BasicFlag_Integer))) {
                     lossy = false;
@@ -1921,49 +1925,54 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
             result = type_check_expression(tcx, expr->Binary_Expr.first);
             result = result && type_check_expression(tcx, expr->Binary_Expr.second);
             
-            Binary_Op op = expr->Binary_Expr.op;
+            if (expr->Binary_Expr.overload) {
+                break;
+            }
+            
+            Operator op = expr->Binary_Expr.op;
             Type* first = expr->Binary_Expr.first->type;
             Type* second = expr->Binary_Expr.second->type;
             
             if (first->kind == TypeKind_Pointer) {
-                if (op == BinaryOp_Add || 
-                    op == BinaryOp_Subtract ||
-                    op == BinaryOp_Add_Assign || 
-                    op == BinaryOp_Subtract_Assign) {
+                if (op == Op_Add || 
+                    op == Op_Subtract ||
+                    op == Op_Add_Assign || 
+                    op == Op_Subtract_Assign) {
                     
                     if (second->kind == TypeKind_Basic) {
                         if ((second->Basic.flags & BasicFlag_Integer) == 0) {
                             type_error(tcx, 
                                        string_format("`% % %` expects integral value on right-hand side", 
                                                      f_type(first), 
-                                                     f_cstring(binary_op_strings[op]), 
+                                                     f_cstring(operator_strings[op]), 
                                                      f_type(second)),
                                        expr->span);
                         }
                     } else if (second->kind != TypeKind_Pointer) {
                         type_error(tcx, 
                                    string_format("operator `%` expects integral or pointer on right-hand side, found `%`", 
-                                                 f_cstring(binary_op_strings[op]),
+                                                 f_cstring(operator_strings[op]),
                                                  f_type(second)),
                                    expr->span);
                     }
-                } else if (binary_is_comparator_table[op]) {
+                } else if (operator_is_comparator(op)) {
                     if (second->kind != TypeKind_Pointer) {
                         type_error(tcx, 
                                    string_format("operator `%` expects pointer on right-hand side, found `%`", 
-                                                 f_cstring(binary_op_strings[op]),
+                                                 f_cstring(operator_strings[op]),
                                                  f_type(second)),
                                    expr->span);
                     }
-                } else if (op == BinaryOp_Assign) {
+                } else if (op == Op_Assign) {
                     result = result && type_check_assignment(tcx, first, second, expr->Binary_Expr.second->span);
                 } else {
                     type_error(tcx, 
                                string_format("operator `%` is not supported for `%` on left-hand side",
-                                             f_cstring(binary_op_strings[op]),
+                                             f_cstring(operator_strings[op]),
                                              f_type(first)),
                                expr->span);
                 }
+                
             } else {
                 if (!type_equals(first, second)) {
                     pln("%", f_ast(expr));
@@ -2168,12 +2177,22 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
                 assert(ast->kind == Ast_Function_Type);
                 // TODO(Alexander): support for Unary operator overloading
                 
-                Binary_Op op = ast->Function_Type.overload_operator;
+                Operator op = ast->Function_Type.overload_operator;
                 
                 int arg_count = (int) array_count(type->Function.arg_types);
-                if (arg_count == 2) {
+                if (arg_count == 1 || arg_count == 2) {
                     Type* lhs = type->Function.arg_types[0];
-                    Type* rhs = type->Function.arg_types[1];
+                    Type* rhs = 0;
+                    
+                    // TODO(Alexander): we validate if the operator is possible to override
+                    if (arg_count == 2) {
+                        rhs = type->Function.arg_types[1];
+                    } else {
+                        switch (op) {
+                            case Op_Subtract: op = Op_Negate; break;
+                            case Op_Multiply: op = Op_Dereference; break;
+                        }
+                    }
                     
                     Overloaded_Function_List* overload = &map_get(tcx->overloaded_functions, lhs);
                     if (!overload || !overload->is_valid) {
@@ -2194,7 +2213,7 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
                     
                 } else {
                     type_error(tcx,
-                               string_format("expected `2` paramter to binary operator overload, found `%`", 
+                               string_format("expected `1` or `2` paramter to binary operator overload, found `%`", 
                                              f_int(arg_count)), ast->span);
                 }
             } else {
@@ -2274,6 +2293,23 @@ DEBUG_setup_intrinsic_types(Type_Context* tcx) {
         type->Function.is_variadic = false;
         
         string_id ident = vars_save_cstring("debug_break");
+        type->Function.unit = 0;
+        type->Function.interp_intrinsic = &interp_intrinsic_debug_break;
+        type->Function.intrinsic = &interp_intrinsic_debug_break;
+        type->Function.ident = ident;
+        type->Function.return_type = t_void;
+        
+        map_put(tcx->globals, ident, type);
+    }
+    
+    {
+        // Intrinsic syntax: void __debugbreak()
+        // Inserts a breakpoint (e.g. int3 on x64) to enable debugger
+        Type* type = arena_push_struct(&tcx->type_arena, Type);
+        type->kind = TypeKind_Function;
+        type->Function.is_variadic = false;
+        
+        string_id ident = Sym___debugbreak;
         type->Function.unit = 0;
         type->Function.interp_intrinsic = &interp_intrinsic_debug_break;
         type->Function.intrinsic = &interp_intrinsic_debug_break;
@@ -2437,6 +2473,11 @@ type_check_ast_file(Ast_File* ast_file) {
     
     // NOTE(Alexander): anything left in the queue we report errors for
     for_array_v(queue, comp_unit, _) {
+        if (tcx.error_count > 10) {
+            pln("Found more than 10 errors, exiting...");
+            return tcx.error_count;
+        }
+        
         type_check_ast(&tcx, comp_unit, true);
     }
     

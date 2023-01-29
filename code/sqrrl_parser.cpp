@@ -508,7 +508,15 @@ parse_atom(Parser* parser, bool report_error) {
                     result->Cast_Expr.type = inner;
                     result->Cast_Expr.expr = expr;
                 } else {
-                    // TODO(Alexander): we should convert inner into expression if possible
+                    if (inner->kind == Ast_Named_Type) {
+                        // NOTE(Alexander): not an actualy type cast instead just (identifier)
+                        result->kind = Ast_Paren_Expr;
+                        result->Paren_Expr.expr = inner;
+                    } else {
+                        unimplemented;
+                        // TODO(Alexander): write an error message for incomplete type cast
+                        //parse_error(parser, first_token, string_lit()
+                    }
                 }
             }
         } break;

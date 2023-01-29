@@ -1,6 +1,7 @@
 // Tiny version of windows.h because windows.h is a pain to parse!!!
 
 typedef cstring LPCSTR;
+typedef cstring PSTR;
 
 typedef long LONG;
 typedef LONG *PLONG;
@@ -12,6 +13,7 @@ typedef unsigned char UCHAR;
 typedef UCHAR* PUCHAR;
 typedef char* PSZ;
 typedef u32 DWORD;
+typedef u16 WCHAR;    // wc,   16-bit UNICODE character
 typedef int BOOL;
 typedef u8 BYTE;
 typedef u16 WORD;
@@ -52,11 +54,15 @@ typedef s64 INT_PTR, *PINT_PTR;
 typedef s64 UINT_PTR, *PUINT_PTR;
 typedef s64 LONG_PTR, *PLONG_PTR;
 typedef s64 ULONG_PTR, *PULONG_PTR;
+typedef s64 LONGLONG;
+typedef u64 ULONGLONG;
 typedef ULONG_PTR SIZE_T, *PSIZE_T;
 typedef void* __ptr64 HANDLE64;
 typedef HANDLE64 *PHANDLE64;
 typedef void *HANDLE;
 typedef HANDLE *PHANDLE;
+
+typedef long HRESULT;
 
 typedef unsigned short UHALF_PTR, *PUHALF_PTR;
 typedef short HALF_PTR, *PHALF_PTR;
@@ -91,6 +97,18 @@ typedef struct _FILETIME {
     DWORD dwLowDateTime;
     DWORD dwHighDateTime;
 } FILETIME, *PFILETIME, *LPFILETIME;
+
+typedef union _LARGE_INTEGER {
+    struct {
+        DWORD LowPart;
+        LONG HighPart;
+    } DUMMYSTRUCTNAME;
+    struct {
+        DWORD LowPart;
+        LONG HighPart;
+    } u;
+    LONGLONG QuadPart;
+} LARGE_INTEGER;
 
 struct HWND__{int unused;}; typedef struct HWND__ *HWND;
 struct HHOOK__{int unused;}; typedef struct HHOOK__ *HHOOK;
@@ -653,6 +671,7 @@ WS_SYSMENU)
 #define VK_GAMEPAD_RIGHT_THUMBSTICK_RIGHT    0xD9 // reserved
 #define VK_GAMEPAD_RIGHT_THUMBSTICK_LEFT     0xDA // reserved
 
+
 typedef struct tagWNDCLASSA {
     UINT        style;
     WNDPROC     lpfnWndProc;
@@ -729,6 +748,8 @@ typedef struct tagMSG {
     POINT       pt;
 } MSG, *PMSG, *NPMSG;
 typedef MSG* LPMSG;
+
+
 
 @link("kernel32.dll")
 extern {
@@ -820,3 +841,214 @@ extern {
                                 UINT iUsage,
                                 DWORD rop);
 }
+
+
+/*
+ * GUID
+ */
+
+typedef struct _GUID {
+    unsigned long  Data1;
+    unsigned short Data2;
+    unsigned short Data3;
+    unsigned char  Data4[ 8 ];
+} GUID;
+typedef GUID *LPGUID;
+typedef const GUID *LPCGUID;
+
+#define DEFINE_GUID(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8) \
+const GUID name = { l, w1, w2, { b1, b2,  b3,  b4,  b5,  b6,  b7,  b8 } }
+
+
+/*
+ * Direct Sound
+ */
+
+// DirectSound Component GUID {47D4D946-62E8-11CF-93BC-444553540000}
+DEFINE_GUID(CLSID_DirectSound, 0x47d4d946, 0x62e8, 0x11cf, 0x93, 0xbc, 0x44, 0x45, 0x53, 0x54, 0x0, 0x0);
+
+// DirectSound 8.0 Component GUID {3901CC3F-84B5-4FA4-BA35-AA8172B8A09B}
+DEFINE_GUID(CLSID_DirectSound8, 0x3901cc3f, 0x84b5, 0x4fa4, 0xba, 0x35, 0xaa, 0x81, 0x72, 0xb8, 0xa0, 0x9b);
+
+// DirectSound Capture Component GUID {B0210780-89CD-11D0-AF08-00A0C925CD16}
+DEFINE_GUID(CLSID_DirectSoundCapture, 0xb0210780, 0x89cd, 0x11d0, 0xaf, 0x8, 0x0, 0xa0, 0xc9, 0x25, 0xcd, 0x16);
+
+// DirectSound 8.0 Capture Component GUID {E4BCAC13-7F99-4908-9A8E-74E3BF24B6E1}
+DEFINE_GUID(CLSID_DirectSoundCapture8, 0xe4bcac13, 0x7f99, 0x4908, 0x9a, 0x8e, 0x74, 0xe3, 0xbf, 0x24, 0xb6, 0xe1);
+
+// DirectSound Full Duplex Component GUID {FEA4300C-7959-4147-B26A-2377B9E7A91D}
+DEFINE_GUID(CLSID_DirectSoundFullDuplex, 0xfea4300c, 0x7959, 0x4147, 0xb2, 0x6a, 0x23, 0x77, 0xb9, 0xe7, 0xa9, 0x1d);
+
+
+// DirectSound default playback device GUID {DEF00000-9C6D-47ED-AAF1-4DDA8F2B5C03}
+DEFINE_GUID(DSDEVID_DefaultPlayback, 0xdef00000, 0x9c6d, 0x47ed, 0xaa, 0xf1, 0x4d, 0xda, 0x8f, 0x2b, 0x5c, 0x03);
+
+// DirectSound default capture device GUID {DEF00001-9C6D-47ED-AAF1-4DDA8F2B5C03}
+DEFINE_GUID(DSDEVID_DefaultCapture, 0xdef00001, 0x9c6d, 0x47ed, 0xaa, 0xf1, 0x4d, 0xda, 0x8f, 0x2b, 0x5c, 0x03);
+
+// DirectSound default device for voice playback {DEF00002-9C6D-47ED-AAF1-4DDA8F2B5C03}
+DEFINE_GUID(DSDEVID_DefaultVoicePlayback, 0xdef00002, 0x9c6d, 0x47ed, 0xaa, 0xf1, 0x4d, 0xda, 0x8f, 0x2b, 0x5c, 0x03);
+
+// DirectSound default device for voice capture {DEF00003-9C6D-47ED-AAF1-4DDA8F2B5C03}
+DEFINE_GUID(DSDEVID_DefaultVoiceCapture, 0xdef00003, 0x9c6d, 0x47ed, 0xaa, 0xf1, 0x4d, 0xda, 0x8f, 0x2b, 0x5c, 0x03);
+
+struct IUnknown {
+    const struct IUnknownVtbl *lpVtbl;
+}
+
+typedef IUnknown IDirectSound;
+typedef struct IDirectSound* LPDIRECTSOUND;
+
+typedef IUnknown IDirectSoundBuffer;
+typedef struct IDirectSoundBuffer* LPDIRECTSOUNDBUFFER;
+
+
+/*
+* XInput
+*/
+
+#define XINPUT_DEVTYPE_GAMEPAD    0x01
+
+#define XINPUT_DEVSUBTYPE_UNKNOWN           0x00
+#define XINPUT_DEVSUBTYPE_GAMEPAD           0x01
+#define XINPUT_DEVSUBTYPE_WHEEL             0x02
+#define XINPUT_DEVSUBTYPE_ARCADE_STICK      0x03
+#define XINPUT_DEVSUBTYPE_FLIGHT_STICK      0x04
+#define XINPUT_DEVSUBTYPE_DANCE_PAD         0x05
+#define XINPUT_DEVSUBTYPE_GUITAR            0x06
+#define XINPUT_DEVSUBTYPE_GUITAR_ALTERNATE  0x07
+#define XINPUT_DEVSUBTYPE_DRUM_KIT          0x08
+#define XINPUT_DEVSUBTYPE_GUITAR_BASS       0x0B
+#define XINPUT_DEVSUBTYPE_ARCADE_PAD        0x13
+
+#define XINPUT_CAPS_VOICE_SUPPORTED     0x0004
+#define XINPUT_CAPS_FFB_SUPPORTED       0x0001
+#define XINPUT_CAPS_WIRELESS            0x0002
+#define XINPUT_CAPS_PMD_SUPPORTED       0x0008
+#define XINPUT_CAPS_NO_NAVIGATION       0x0010
+
+#define XINPUT_GAMEPAD_DPAD_UP          0x0001
+#define XINPUT_GAMEPAD_DPAD_DOWN        0x0002
+#define XINPUT_GAMEPAD_DPAD_LEFT        0x0004
+#define XINPUT_GAMEPAD_DPAD_RIGHT       0x0008
+#define XINPUT_GAMEPAD_START            0x0010
+#define XINPUT_GAMEPAD_BACK             0x0020
+#define XINPUT_GAMEPAD_LEFT_THUMB       0x0040
+#define XINPUT_GAMEPAD_RIGHT_THUMB      0x0080
+#define XINPUT_GAMEPAD_LEFT_SHOULDER    0x0100
+#define XINPUT_GAMEPAD_RIGHT_SHOULDER   0x0200
+#define XINPUT_GAMEPAD_A                0x1000
+#define XINPUT_GAMEPAD_B                0x2000
+#define XINPUT_GAMEPAD_X                0x4000
+#define XINPUT_GAMEPAD_Y                0x8000
+
+#define XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE  7849
+#define XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE 8689
+#define XINPUT_GAMEPAD_TRIGGER_THRESHOLD    30
+
+#define XINPUT_FLAG_GAMEPAD             0x00000001
+
+#define BATTERY_DEVTYPE_GAMEPAD         0x00
+#define BATTERY_DEVTYPE_HEADSET         0x01
+
+#define BATTERY_TYPE_DISCONNECTED       0x00    // This device is not connected
+#define BATTERY_TYPE_WIRED              0x01    // Wired device, no battery
+#define BATTERY_TYPE_ALKALINE           0x02    // Alkaline battery source
+#define BATTERY_TYPE_NIMH               0x03    // Nickel Metal Hydride battery source
+#define BATTERY_TYPE_UNKNOWN            0xFF    // Cannot determine the battery type
+
+#define BATTERY_LEVEL_EMPTY             0x00
+#define BATTERY_LEVEL_LOW               0x01
+#define BATTERY_LEVEL_MEDIUM            0x02
+#define BATTERY_LEVEL_FULL              0x03
+
+#define XUSER_MAX_COUNT                 4
+
+#define XUSER_INDEX_ANY                 0x000000FF
+
+#define VK_PAD_A                        0x5800
+#define VK_PAD_B                        0x5801
+#define VK_PAD_X                        0x5802
+#define VK_PAD_Y                        0x5803
+#define VK_PAD_RSHOULDER                0x5804
+#define VK_PAD_LSHOULDER                0x5805
+#define VK_PAD_LTRIGGER                 0x5806
+#define VK_PAD_RTRIGGER                 0x5807
+
+#define VK_PAD_DPAD_UP                  0x5810
+#define VK_PAD_DPAD_DOWN                0x5811
+#define VK_PAD_DPAD_LEFT                0x5812
+#define VK_PAD_DPAD_RIGHT               0x5813
+#define VK_PAD_START                    0x5814
+#define VK_PAD_BACK                     0x5815
+#define VK_PAD_LTHUMB_PRESS             0x5816
+#define VK_PAD_RTHUMB_PRESS             0x5817
+
+#define VK_PAD_LTHUMB_UP                0x5820
+#define VK_PAD_LTHUMB_DOWN              0x5821
+#define VK_PAD_LTHUMB_RIGHT             0x5822
+#define VK_PAD_LTHUMB_LEFT              0x5823
+#define VK_PAD_LTHUMB_UPLEFT            0x5824
+#define VK_PAD_LTHUMB_UPRIGHT           0x5825
+#define VK_PAD_LTHUMB_DOWNRIGHT         0x5826
+#define VK_PAD_LTHUMB_DOWNLEFT          0x5827
+
+#define VK_PAD_RTHUMB_UP                0x5830
+#define VK_PAD_RTHUMB_DOWN              0x5831
+#define VK_PAD_RTHUMB_RIGHT             0x5832
+#define VK_PAD_RTHUMB_LEFT              0x5833
+#define VK_PAD_RTHUMB_UPLEFT            0x5834
+#define VK_PAD_RTHUMB_UPRIGHT           0x5835
+#define VK_PAD_RTHUMB_DOWNRIGHT         0x5836
+#define VK_PAD_RTHUMB_DOWNLEFT          0x5837
+
+#define XINPUT_KEYSTROKE_KEYDOWN        0x0001
+#define XINPUT_KEYSTROKE_KEYUP          0x0002
+#define XINPUT_KEYSTROKE_REPEAT         0x0004
+
+typedef struct _XINPUT_GAMEPAD
+{
+    WORD                                wButtons;
+    BYTE                                bLeftTrigger;
+    BYTE                                bRightTrigger;
+    SHORT                               sThumbLX;
+    SHORT                               sThumbLY;
+    SHORT                               sThumbRX;
+    SHORT                               sThumbRY;
+} XINPUT_GAMEPAD, *PXINPUT_GAMEPAD;
+
+typedef struct _XINPUT_STATE
+{
+    DWORD                               dwPacketNumber;
+    XINPUT_GAMEPAD                      Gamepad;
+} XINPUT_STATE, *PXINPUT_STATE;
+
+typedef struct _XINPUT_VIBRATION
+{
+    WORD                                wLeftMotorSpeed;
+    WORD                                wRightMotorSpeed;
+} XINPUT_VIBRATION, *PXINPUT_VIBRATION;
+
+typedef struct _XINPUT_CAPABILITIES
+{
+    BYTE                                Type;
+    BYTE                                SubType;
+    WORD                                Flags;
+    XINPUT_GAMEPAD                      Gamepad;
+    XINPUT_VIBRATION                    Vibration;
+} XINPUT_CAPABILITIES, *PXINPUT_CAPABILITIES;
+
+typedef struct _XINPUT_BATTERY_INFORMATION
+{
+    BYTE BatteryType;
+    BYTE BatteryLevel;
+} XINPUT_BATTERY_INFORMATION, *PXINPUT_BATTERY_INFORMATION;
+
+typedef struct _XINPUT_KEYSTROKE
+{
+    WORD    VirtualKey;
+    WCHAR   Unicode;
+    WORD    Flags;
+    BYTE    UserIndex;
+    BYTE    HidCode;
+} XINPUT_KEYSTROKE, *PXINPUT_KEYSTROKE;

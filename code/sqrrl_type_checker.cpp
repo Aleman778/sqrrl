@@ -305,6 +305,10 @@ constant_folding_of_expressions(Ast* ast) {
                         }
                     } break;
                 }
+                
+                if (result.type != Value_void) {
+                    ast->type = ast->Unary_Expr.first->type;
+                }
             }
         } break;
         
@@ -376,6 +380,50 @@ constant_folding_of_expressions(Ast* ast) {
         ast->kind = Ast_Value;
         ast->Value.value = result;
         //ast->type = 0;
+    }
+    
+    return result;
+}
+
+internal Type* 
+match_function_args(Type_Context* tcx, Type* proc_type, Ast* actual_args, bool report_error) {
+    assert(proc_type->kind == TypeKind_Function);
+    
+    Type* result = proc_type;
+    Type_Function* proc = &proc_type->Function;
+    
+    s32 arg_index = 0;
+    // TODO(Alexander): nice to have: support for keyworded args, default args
+    
+    for_compound(actual_args, actual_arg) {
+        Type* formal_type = 0;
+        
+        if (arg_index < array_count(proc->arg_idents)) {
+            string_id ident = proc->arg_idents[arg_index];
+            formal_type = proc->arg_types[arg_index];
+        }
+        
+        constant_folding_of_expressions(actual_arg->Argument.assign);
+        Type* actual_type = type_infer_expression(tcx, 
+                                                  actual_arg->Argument.assign, 
+                                                  formal_type, 
+                                                  report_error);
+        
+        if (actual_type) {
+            if (formal_type && !type_equals(formal_type, actual_type)) {
+                if (actual_arg->Argument.assign->kind == Ast_Value) {
+                    actual_arg->Argument.assign->type = formal_type;
+                    actual_type = formal_type;
+                }
+            }
+            
+            actual_arg->type = actual_type;
+        } else {
+            result = 0;
+            break;
+        }
+        
+        arg_index++;
     }
     
     return result;
@@ -470,7 +518,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                             result = type->Pointer;
                         } else {
                             if (report_error) {
-                                pln("%", f_ast(expr));
+                                //pln("%", f_ast(expr));
                                 type_error(tcx,
                                            string_format("cannot dereference type `%`", f_type(type)),
                                            expr->span);
@@ -511,8 +559,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             }
             
             
-            Overloaded_Function_List overloads =
-                map_get(tcx->overloaded_functions, expr->Binary_Expr.first->type);
+            Overloaded_Operator_List overloads =
+                map_get(tcx->overloaded_operators, expr->Binary_Expr.first->type);
             if (overloads.is_valid) {
                 
                 for_array(overloads.ops, overload, _) {
@@ -575,7 +623,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     }
 #endif
                 } else {
-                    if (parent_type) {
+                    if (parent_type && !operator_is_comparator(op)) {
                         result = parent_type;
                     } else {
                         result = first_type;
@@ -669,19 +717,43 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         } break;
         
         case Ast_Call_Expr: {
+            Type* function_type = 0;
+            string_id ident = try_unwrap_ident(expr->Call_Expr.ident);
+            if (ident) {
+                Overloaded_Function_List* overload = &map_get(tcx->overloaded_functions, ident);
+                if (overload && overload->is_valid) {
+                    for_array_v(overload->functions, overload_func, _) {
+                        function_type = match_function_args(tcx, overload_func, expr->Call_Expr.args, report_error);
+                        if (function_type) {
+                            break;
+                        }
+                    }
+                    
+                    
+                    if (!function_type) {
+                        // TODO(Alexander): can we improve this e.g. showing closest matched function?
+                        type_error(tcx, string_format("no overloaded function matched `%`", f_var(ident)), expr->span);
+                        return 0;
+                    }
+                }
+            }
             
-            Type* function_type = type_infer_expression(tcx, 
-                                                        expr->Call_Expr.ident, 
-                                                        parent_type, 
-                                                        report_error);
-            if (function_type && function_type->Function.ident == Sym___debugbreak) {
-                __debugbreak();
+            if (!function_type) {
+                function_type = type_infer_expression(tcx, 
+                                                      expr->Call_Expr.ident, 
+                                                      parent_type, 
+                                                      report_error);
             }
             
             
             if (!function_type) {
-                break;
+                return 0;
             }
+            
+            if (function_type->Function.ident == Sym___debugbreak) {
+                __debugbreak();
+            }
+            
             if (function_type->kind != TypeKind_Function) {
                 if (report_error) {
                     string_id function_ident = ast_unwrap_ident(expr->Call_Expr.ident);
@@ -691,56 +763,23 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 break;
             }
             
+            Ast* actual_args = expr->Call_Expr.args;
+            if (!match_function_args(tcx, function_type, actual_args, report_error)) {
+                return 0;
+            }
             
             expr->Call_Expr.function_type = function_type;
             result = function_type->Function.return_type;
             expr->type = result;
             
-            // Arguments
-            // TODO(Alexander): nice to have: support for keyworded args, default args
-            Type_Function* proc = &function_type->Function;
-            Ast* actual_args = expr->Call_Expr.args;
-            s32 arg_index = 0;
-            {
-                for_compound(actual_args, actual_arg) {
-                    Type* formal_type = 0;
-                    
-                    if (arg_index < array_count(proc->arg_idents)) {
-                        string_id ident = proc->arg_idents[arg_index];
-                        formal_type = proc->arg_types[arg_index];
-                    }
-                    
-                    constant_folding_of_expressions(actual_arg->Argument.assign);
-                    Type* actual_type = type_infer_expression(tcx, 
-                                                              actual_arg->Argument.assign, 
-                                                              formal_type, 
-                                                              report_error);
-                    
-                    
-                    if (actual_type) {
-                        if (formal_type && !type_equals(formal_type, actual_type)) {
-                            if (actual_arg->Argument.assign->kind == Ast_Value) {
-                                actual_arg->Argument.assign->type = formal_type;
-                                actual_type = formal_type;
-                            }
-                        }
-                        
-                        actual_arg->type = actual_type;
-                    } else {
-                        result = 0;
-                        break;
-                    }
-                    
-                    arg_index++;
-                }
-            }
-            
             // HACK(Alexander): for now print_format pushes the format type first then the value 
-            if (result && proc->intrinsic) {
-                if (proc->intrinsic == &print_format) {
+            if (result && result->Function.intrinsic) {
+                void* intrinsic = result->Function.intrinsic;
+                
+                if (intrinsic == &print_format) {
                     //pln("ast = %", f_ast(actual_args));
                     
-                    arg_index = 0;
+                    s32 arg_index = 0;
                     Ast* prev_compound = 0;
                     Ast* curr_compound = actual_args;
                     while (curr_compound && curr_compound->Compound.node) {
@@ -768,10 +807,10 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                         prev_compound = curr_compound;
                         curr_compound = curr_compound->Compound.next;
                     }
-                } else if (proc->intrinsic == &type_sizeof || proc->intrinsic == &type_alignof) {
-                    intrin_type_def* intrinsic_proc = (intrin_type_def*) proc->intrinsic;
+                } else if (intrinsic == &type_sizeof || intrinsic == &type_alignof) {
+                    intrin_type_def* intrinsic_proc = (intrin_type_def*) intrinsic;
                     
-                    arg_index = 0;
+                    s32 arg_index = 0;
                     Ast* prev_compound = 0;
                     Ast* curr_compound = actual_args;
                     if (curr_compound) {
@@ -818,6 +857,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             if (type) {
                 if (type->kind == TypeKind_Array) {
                     result = type->Array.type;
+                } else if (type->kind == TypeKind_Pointer) {
+                    result = type->Pointer;
                 } else {
                     if (report_error) {
                         type_error(tcx, string_lit("index operator expects an array"), expr->span);
@@ -843,17 +884,18 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 }
             }
             
-            //if (type->kind == TypeKind_Pointer) {
-            //pln("%", f_ast(expr));
-            //}
-            
-            // TODO(Alexander): add support for unions etc.
-            
             switch (type->kind) {
                 case TypeKind_Struct: {
                     smm index = map_get_index(type->Struct.ident_to_index, field_ident);
                     if (index >= 0) {
                         result = type->Struct.types[index];
+                    }
+                } break;
+                
+                case TypeKind_Union: {
+                    smm index = map_get_index(type->Union.ident_to_index, field_ident);
+                    if (index >= 0) {
+                        result = type->Union.types[index];
                     }
                 } break;
                 
@@ -1093,17 +1135,17 @@ push_type_to_struct_like(Type_Struct_Like* dest, Type* type, string_id ident) {
     //}
     
     dest->offset += type->size;
-    dest->size = dest->offset;
+    dest->size = max(dest->size, dest->offset);
     
     if (type->align > dest->align) {
         dest->align = type->align;
     }
 }
 
-
 internal Type_Struct_Like
 create_type_struct_like_from_ast(Type_Context* tcx, 
                                  Ast* arguments, 
+                                 bool is_union,
                                  bool report_error) {
     
     Type_Struct_Like result = {};
@@ -1142,6 +1184,10 @@ create_type_struct_like_from_ast(Type_Context* tcx,
                         assert(ast_ident->kind == Ast_Ident);
                         string_id ident = ast_ident->Ident;
                         push_type_to_struct_like(&result, type, ident);
+                        
+                        if (is_union) {
+                            result.offset = 0;
+                        }
                     }
                 } else {
                     result.has_error = true;
@@ -1161,10 +1207,15 @@ create_type_struct_like_from_ast(Type_Context* tcx,
                     }
                     //pln("%", f_ast(ast_type));
                     //unimplemented;
-                } else
+                } else {
                     // TODO(Alexander): should be a type error or something
                     unimplemented;
+                }
             }
+        }
+        
+        if (is_union) {
+            result.offset = 0;
         }
     }
     
@@ -1199,7 +1250,7 @@ load_type_declaration(Type_Context* tcx, string_id ident, Span span, bool report
                                          f_string(vars_load_string(ident))),
                            span);
             }
-        } 
+        }
     }
     
     return result;
@@ -1399,7 +1450,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         
         case Ast_Struct_Type: {
             Ast* fields = ast->Struct_Type.fields;
-            Type_Struct_Like struct_like = create_type_struct_like_from_ast(tcx, fields, report_error);
+            Type_Struct_Like struct_like = create_type_struct_like_from_ast(tcx, fields, false, report_error);
             if (!struct_like.has_error) {
                 result = arena_push_struct(&tcx->type_arena, Type);
                 result->kind = TypeKind_Struct;
@@ -1415,12 +1466,13 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         
         case Ast_Union_Type: {
             Ast* fields = ast->Union_Type.fields;
-            Type_Struct_Like struct_like = create_type_struct_like_from_ast(tcx, fields, report_error);
+            Type_Struct_Like struct_like = create_type_struct_like_from_ast(tcx, fields, true, report_error);
             if (!struct_like.has_error) {
                 result = arena_push_struct(&tcx->type_arena, Type);
                 result->kind = TypeKind_Union;
                 result->Union.types = struct_like.types;
                 result->Union.idents = struct_like.idents;
+                result->Union.ident_to_index = struct_like.ident_to_index;
                 result->ident = try_unwrap_ident(ast->Struct_Type.ident);
                 result->size = (s32) struct_like.size;
                 result->align = (s32) struct_like.align;
@@ -1547,10 +1599,6 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 if (!result) {
                     result = create_type_from_ast(tcx, ast->Typedef.type, report_error);
                     
-                    string_id key = vars_save_cstring("DEBUG_Platform_Read_Entire_File");
-                    if (ident == key) {
-                        pln("typedef: %", f_ast(ast));
-                    }
                     if (result) {
                         map_put(tcx->global_type_table, ident, result);
                     }
@@ -1689,8 +1737,9 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                 if (found_type) {
                     if (decl_type->kind == TypeKind_Function) {
                         if (!decl_type->Function.unit) {
+                            pln("TODO: this node has no compilation unit attached!!!%", f_ast(stmt));
                             // TODO(Alexander): we need to resolve this
-                            unimplemented;
+                            //unimplemented;
                         }
                     }
                     
@@ -1758,6 +1807,17 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
 bool
 type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span, Operator op, bool report_error) {
     assert(lhs && rhs);
+    
+    if (lhs->kind == TypeKind_Enum) {
+        //pln("lhs - before: %", f_type(lhs));
+        lhs = lhs->Enum.type;
+        //pln("lhs - after: %", f_type(lhs));
+        //pln("rhs - before: %", f_type(rhs));
+    }
+    
+    if (rhs->kind == TypeKind_Enum) {
+        rhs = rhs->Enum.type;
+    }
     
     if (lhs->kind != rhs->kind) {
         if (report_error) {
@@ -1889,9 +1949,12 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                         }
                     }
                     Type* arg_type = t_func->arg_types[arg_index];
-                    type_check_assignment(tcx, arg_type, 
-                                          arg->Argument.assign->type,
-                                          arg->Argument.assign->span);
+                    if (!type_check_assignment(tcx, arg_type, 
+                                               arg->Argument.assign->type,
+                                               arg->Argument.assign->span)) {
+                        pln("%", f_ast(expr));
+                        break;
+                    }
                 }
                 
                 arg_index++;
@@ -1937,7 +2000,9 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                 if (op == Op_Add || 
                     op == Op_Subtract ||
                     op == Op_Add_Assign || 
-                    op == Op_Subtract_Assign) {
+                    op == Op_Subtract_Assign ||
+                    op == Op_Logical_And ||
+                    op == Op_Logical_Or) {
                     
                     if (second->kind == TypeKind_Basic) {
                         if ((second->Basic.flags & BasicFlag_Integer) == 0) {
@@ -2111,6 +2176,10 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
     Ast* ast = comp_unit->ast;
     
     
+    //if (comp_unit->ident == Kw_operator) {
+    //__debugbreak();
+    //}
+    
     if (ast->kind == Ast_Decl_Stmt) {
         Type* type = ast->Decl_Stmt.type->type;
         ast->type = type;
@@ -2141,37 +2210,28 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
         }
     }
     
+    if (!result) {
+        return result;
+    }
+    
     Temporary_Memory temp_memory = begin_temporary_memory(&tcx->type_arena);
     
     if (is_ast_type(ast)) {
         string_id ident = comp_unit->ident;
         
+        
+        if (ast->kind == Ast_Struct_Type || ast->kind == Ast_Union_Type) {
+            // Forward declare structs and unions so they can refer to themselves
+            smm type_index = map_get_index(tcx->global_type_table, ident);
+            if (type_index == -1) {
+                Type* type = arena_push_struct(&tcx->type_arena, Type);
+                type->kind = ast->kind == Ast_Struct_Type ? TypeKind_Struct : TypeKind_Union;
+                map_put(tcx->global_type_table, ident, type);
+            }
+        }
+        
         Type* type = create_type_from_ast(tcx, ast, report_error);
         if (type) {
-            smm type_index = map_get_index(tcx->global_type_table, ident);
-            
-            if (type_index != -1) {
-                Type* old_type = tcx->global_type_table[type_index].value;
-                
-                if (type->kind == TypeKind_Struct &&
-                    old_type->kind == TypeKind_Struct && type != old_type) {
-                    
-                    // TODO(Alexander): hack to get forward declares working
-                    if (array_count(type->Struct.types) == 0) {
-                        // do nothing
-                    } else if (array_count(old_type->Struct.types) == 0) {
-                        memcpy(old_type, type, sizeof(Type));
-                    } else {
-                        type_error(tcx,
-                                   string_format("cannot redeclare previous declaration `%`",
-                                                 f_string(vars_load_string(ident))),
-                                   ast->span);
-                    }
-                    
-                    type = old_type;
-                }
-            }
-            
             if (ident == Kw_operator) {
                 assert(type->kind == TypeKind_Function);
                 assert(ast->kind == Ast_Function_Type);
@@ -2194,12 +2254,12 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
                         }
                     }
                     
-                    Overloaded_Function_List* overload = &map_get(tcx->overloaded_functions, lhs);
+                    Overloaded_Operator_List* overload = &map_get(tcx->overloaded_operators, lhs);
                     if (!overload || !overload->is_valid) {
-                        Overloaded_Function_List new_overload = {};
+                        Overloaded_Operator_List new_overload = {};
                         new_overload.is_valid = true;
-                        map_put(tcx->overloaded_functions, lhs, new_overload);
-                        overload = &map_get(tcx->overloaded_functions, lhs);
+                        map_put(tcx->overloaded_operators, lhs, new_overload);
+                        overload = &map_get(tcx->overloaded_operators, lhs);
                     }
                     assert(overload);
                     
@@ -2211,12 +2271,78 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
                     
                     // TODO(Alexander): check ambiguity with previous entries
                     
+                    ast->type = type;
+                    
                 } else {
                     type_error(tcx,
                                string_format("expected `1` or `2` paramter to binary operator overload, found `%`", 
                                              f_int(arg_count)), ast->span);
                 }
             } else {
+                smm old_index = map_get_index(tcx->global_type_table, ident);
+                if (old_index != -1) {
+                    Type* old_type = tcx->global_type_table[old_index].value;
+                    
+                    if (type != old_type) {
+                        
+                        if (type->kind == TypeKind_Function &&
+                            old_type->kind == TypeKind_Function) {
+                            // TODO(Alexander): func overload
+                            Overloaded_Function_List* overload = &map_get(tcx->overloaded_functions, ident);
+                            if (!overload || !overload->is_valid) {
+                                Overloaded_Function_List new_overload = {};
+                                new_overload.is_valid = true;
+                                map_put(tcx->overloaded_functions, ident, new_overload);
+                                overload = &map_get(tcx->overloaded_functions, ident);
+                                array_push(overload->functions, old_type);
+                            }
+                            assert(overload);
+                            
+                            array_push(overload->functions, type);
+                            
+                        } else if (type->kind == TypeKind_Struct &&
+                                   old_type->kind == TypeKind_Struct) {
+                            
+                            // TODO(Alexander): hack to get forward declares working
+                            if (array_count(type->Struct.types) == 0) {
+                                // do nothing
+                            } else if (array_count(old_type->Struct.types) == 0) {
+                                memcpy(old_type, type, sizeof(Type));
+                            } else {
+                                type_error(tcx,
+                                           string_format("cannot redeclare previous declaration `%`",
+                                                         f_string(vars_load_string(ident))),
+                                           ast->span);
+                            }
+                            
+                            type = old_type;
+                        } else if (type->kind == TypeKind_Union &&
+                                   old_type->kind == TypeKind_Union) {
+                            
+                            // TODO(Alexander): hack to get forward declares working
+                            if (array_count(type->Union.types) == 0) {
+                                // do nothing
+                            } else if (array_count(old_type->Union.types) == 0) {
+                                memcpy(old_type, type, sizeof(Type));
+                            } else {
+                                type_error(tcx,
+                                           string_format("cannot redeclare previous declaration `%`",
+                                                         f_string(vars_load_string(ident))),
+                                           ast->span);
+                            }
+                            
+                            type = old_type;
+                        } else {
+                            if (old_type->kind && !type_equals(old_type, type)) {
+                                pln("duplicate: % %", f_type(type), f_ast(ast));
+                                type_error(tcx,
+                                           string_format("cannot redeclare `%` with different type, previous type was `%`",
+                                                         f_var(comp_unit->ident), f_type(old_type)), 
+                                           comp_unit->ast->span);
+                            }
+                        }
+                    }
+                }
                 
                 ast->type = type;
                 // TODO(Alexander): distinguish between types and types of variables
@@ -2224,6 +2350,7 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
                 // but `typedef u32 string_id;` in this case string_id is a type.
                 map_put(tcx->global_type_table, comp_unit->ident, type);
                 map_put(tcx->globals, comp_unit->ident, type);
+                
             }
         } else {
             result = false;
@@ -2257,176 +2384,103 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
     
     return result;
 }
-
 void
 DEBUG_setup_intrinsic_types(Type_Context* tcx) {
+    
+#define _push_intrinsic(type, name, _is_variadic, interp_intrinsic_fp, intrinsic_fp, _return_type) \
+Type* type = arena_push_struct(&tcx->type_arena, Type); \
+{ \
+type->kind = TypeKind_Function; \
+type->Function.is_variadic = _is_variadic; \
+    \
+string_id ident = vars_save_cstring(#name); \
+type->Function.ident = ident; \
+type->Function.unit = 0; \
+type->Function.interp_intrinsic = interp_intrinsic_fp; \
+type->Function.intrinsic = intrinsic_fp; \
+type->Function.return_type = _return_type; \
+    \
+map_put(tcx->globals, ident, type); \
+}
+#define push_intrinsic(name, is_variadic, interp_intrinsic_fp, intrinsic_fp, _return_type) \
+_push_intrinsic(intrin_##name, name, is_variadic, interp_intrinsic_fp, intrinsic_fp, _return_type) 
+    
+#define _push_intrinsic_arg(intrin_name, arg_name, arg_type) \
+{ \
+string_id arg_ident = vars_save_cstring(#arg_name); \
+array_push(intrin_name->Function.arg_idents, arg_ident); \
+array_push(intrin_name->Function.arg_types, arg_type); \
+}
+#define push_intrinsic_arg(name, arg_name, arg_type) _push_intrinsic_arg(intrin_##name, arg_name, arg_type)
+    
+    
     // TODO(Alexander): these are kind of temporary, since we don't really have
     // the ability to create these functions yet, need FFI!
     // We will still have intrinsics but these intrinsics are just for debugging
     
-    {
-        // Intrinsic syntax: void print_format(string format...)
-        // e.g. print_format %, lucky number is %\n", "world", 7);
-        Type* type = arena_push_struct(&tcx->type_arena, Type);
-        type->kind = TypeKind_Function;
-        type->Function.is_variadic = true;
-        
-        string_id arg0_ident = vars_save_cstring("format");
-        array_push(type->Function.arg_idents, arg0_ident);
-        array_push(type->Function.arg_types, t_cstring);
-        
-        string_id ident = vars_save_cstring("print_format");
-        type->Function.unit = 0;
-        type->Function.interp_intrinsic = &interp_intrinsic_print_format;
-        type->Function.intrinsic = &print_format;
-        type->Function.ident = ident;
-        type->Function.return_type = t_void;
-        
-        map_put(tcx->globals, ident, type);
-    }
     
-    {
-        // Intrinsic syntax: void debug_break()
-        // Inserts a breakpoint (e.g. int3 on x64) to enable debugger
-        Type* type = arena_push_struct(&tcx->type_arena, Type);
-        type->kind = TypeKind_Function;
-        type->Function.is_variadic = false;
-        
-        string_id ident = vars_save_cstring("debug_break");
-        type->Function.unit = 0;
-        type->Function.interp_intrinsic = &interp_intrinsic_debug_break;
-        type->Function.intrinsic = &interp_intrinsic_debug_break;
-        type->Function.ident = ident;
-        type->Function.return_type = t_void;
-        
-        map_put(tcx->globals, ident, type);
-    }
+    // Intrinsic syntax: void print_format(string format...)
+    // e.g. print_format %, lucky number is %\n", "world", 7);
+    push_intrinsic(print_format, true, &interp_intrinsic_print_format, &print_format, t_void);
+    push_intrinsic_arg(print_format, format, t_cstring);
     
-    {
-        // Intrinsic syntax: void __debugbreak()
-        // Inserts a breakpoint (e.g. int3 on x64) to enable debugger
-        Type* type = arena_push_struct(&tcx->type_arena, Type);
-        type->kind = TypeKind_Function;
-        type->Function.is_variadic = false;
-        
-        string_id ident = Sym___debugbreak;
-        type->Function.unit = 0;
-        type->Function.interp_intrinsic = &interp_intrinsic_debug_break;
-        type->Function.intrinsic = &interp_intrinsic_debug_break;
-        type->Function.ident = ident;
-        type->Function.return_type = t_void;
-        
-        map_put(tcx->globals, ident, type);
-    }
+    // Intrinsic syntax: void debug_break()
+    // Inserts a breakpoint (e.g. int3 on x64) to enable debugger
+    push_intrinsic(debug_break, false, &interp_intrinsic_debug_break, &interp_intrinsic_debug_break, t_void);
     
-    {
-        // Intrinsic syntax: void assert(s32 expr)
-        // Assets that expr is true, used as test case
-        Type* type = arena_push_struct(&tcx->type_arena, Type);
-        type->kind = TypeKind_Function;
-        type->Function.is_variadic = false;
-        
-        string_id arg0_ident = vars_save_cstring("expr");
-        array_push(type->Function.arg_idents, arg0_ident);
-        array_push(type->Function.arg_types, t_s32);
-        
-        string_id ident = vars_save_cstring("assert");
-        type->Function.unit = 0;
-        type->Function.interp_intrinsic = &interp_intrinsic_assert;
-        type->Function.intrinsic = &intrinsic_assert;
-        type->Function.ident = ident;
-        type->Function.return_type = t_void;
-        
-        map_put(tcx->globals, ident, type);
-    }
+    // Intrinsic syntax: void __debugbreak()
+    // Inserts a breakpoint (e.g. int3 on x64) to enable debugger
+    push_intrinsic(__debug_break, false, &interp_intrinsic_debug_break, &interp_intrinsic_debug_break, t_void);
     
-    {
-        // Intrinsic syntax: f32 sqrt(f32 num)
-        Type* type = arena_push_struct(&tcx->type_arena, Type);
-        type->kind = TypeKind_Function;
-        type->Function.is_variadic = false;
-        
-        string_id arg0_ident = vars_save_cstring("num");
-        array_push(type->Function.arg_idents, arg0_ident);
-        array_push(type->Function.arg_types, t_f32);
-        
-        string_id ident = vars_save_cstring("sqrt");
-        type->Function.unit = 0;
-        type->Function.interp_intrinsic = 0;
-        type->Function.intrinsic = &sqrtf;
-        type->Function.ident = ident;
-        type->Function.return_type = t_f32;
-        
-        map_put(tcx->globals, ident, type);
-    }
+    // Intrinsic syntax: void assert(s32 expr)
+    // Assets that expr is true, used as test case
+    push_intrinsic(assert, false, &interp_intrinsic_assert, &intrinsic_assert, t_void);
     
-    {
-        // Intrinsic syntax:  f32 round_f32(f32 num)
-        Type* type = arena_push_struct(&tcx->type_arena, Type);
-        type->kind = TypeKind_Function;
-        type->Function.is_variadic = false;
-        
-        string_id arg0_ident = vars_save_cstring("num");
-        array_push(type->Function.arg_idents, arg0_ident);
-        array_push(type->Function.arg_types, t_f32);
-        
-        string_id ident = vars_save_cstring("round_f32");
-        type->Function.unit = 0;
-        type->Function.interp_intrinsic = 0;
-        type->Function.intrinsic = &roundf;
-        type->Function.ident = ident;
-        type->Function.return_type = t_f32;
-        
-        map_put(tcx->globals, ident, type);
-    }
+    // Intrinsic syntax: f32 cos(f32 num)
+    push_intrinsic(cos, false, 0, &cosf, t_f32);
+    push_intrinsic_arg(cos, num, t_f32);
     
-    {
-        // Intrinsic syntax: f32 random_f32(f32 num)
-        Type* type = arena_push_struct(&tcx->type_arena, Type);
-        type->kind = TypeKind_Function;
-        type->Function.is_variadic = false;
-        
-        string_id ident = vars_save_cstring("random_f32");
-        type->Function.unit = 0;
-        type->Function.interp_intrinsic = 0;
-        type->Function.intrinsic = &random_f32;
-        type->Function.ident = ident;
-        type->Function.return_type = t_f32;
-        
-        map_put(tcx->globals, ident, type);
-    }
+    // Intrinsic syntax: f32 acos(f32 num)
+    push_intrinsic(acos, false, 0, &acosf, t_f32);
+    push_intrinsic_arg(acos, num, t_f32);
     
-    {
-        // Intrinsic syntax: umm sizeof(T)
-        Type* type = arena_push_struct(&tcx->type_arena, Type);
-        type->kind = TypeKind_Function;
-        type->Function.is_variadic = false;
-        
-        string_id ident = vars_save_cstring("sizeof");
-        type->Function.unit = 0;
-        type->Function.interp_intrinsic = 0;
-        type->Function.intrinsic = &type_sizeof;
-        type->Function.ident = ident;
-        type->Function.return_type = normalize_basic_types(t_umm);
-        
-        map_put(tcx->globals, ident, type);
-    }
+    // Intrinsic syntax: f32 sin(f32 num)
+    push_intrinsic(sin, false, 0, &sinf, t_f32);
+    push_intrinsic_arg(sin, num, t_f32);
     
-    {
-        // Intrinsic syntax: umm alignof(T)
-        Type* type = arena_push_struct(&tcx->type_arena, Type);
-        type->kind = TypeKind_Function;
-        type->Function.is_variadic = false;
-        
-        string_id ident = vars_save_cstring("alignof");
-        type->Function.unit = 0;
-        type->Function.interp_intrinsic = 0;
-        type->Function.intrinsic = &type_alignof;
-        type->Function.ident = ident;
-        type->Function.return_type = normalize_basic_types(t_umm);
-        
-        map_put(tcx->globals, ident, type);
-    }
+    // Intrinsic syntax: f32 asin(f32 num)
+    push_intrinsic(asin, false, 0, &asinf, t_f32);
+    push_intrinsic_arg(asin, num, t_f32);
+    
+    // Intrinsic syntax: f32 tan(f32 num)
+    push_intrinsic(tan, false, 0, &tanf, t_f32);
+    push_intrinsic_arg(tan, num, t_f32);
+    
+    // Intrinsic syntax: f32 atan(f32 num)
+    push_intrinsic(atan, false, 0, &atanf, t_f32);
+    push_intrinsic_arg(atan, num, t_f32);
+    
+    // Intrinsic syntax: f32 sqrt(f32 num)
+    push_intrinsic(sqrt, false, 0, &sqrtf, t_f32);
+    push_intrinsic_arg(sqrt, num, t_f32);
+    
+    // Intrinsic syntax:  f32 round(f32 num)
+    push_intrinsic(round, false, 0, &roundf, t_f32);
+    push_intrinsic_arg(round, num, t_f32);
+    
+    // Intrinsic syntax:  f32 abs(f32 num)
+    push_intrinsic(abs, false, 0, &fabsf, t_f32);
+    push_intrinsic_arg(abs, num, t_f32);
+    
+    // Intrinsic syntax: f32 random_f32(f32 num)
+    push_intrinsic(random_f32, false, 0, &random_f32, t_f32);
+    push_intrinsic_arg(random_f32, num, t_f32);
+    
+    // Intrinsic syntax: umm sizeof(T)
+    push_intrinsic(sizeof, false, 0, &type_sizeof, t_umm);
+    
+    // Intrinsic syntax: umm alignof(T)
+    push_intrinsic(alignof, false, 0, &type_alignof, t_umm);
 }
 
 s32
@@ -2460,6 +2514,10 @@ type_check_ast_file(Ast_File* ast_file) {
         for (smm queue_index = 0; queue_index < queue_count; queue_index++) {
             Compilation_Unit* comp_unit = queue[queue_index];
             
+            //if (comp_unit->ident == 1514) {
+            //__debugbreak();
+            //}
+            
             if (!type_check_ast(&tcx, comp_unit, false)) {
                 // Failed, retry later
                 array_push(queue, comp_unit);
@@ -2473,10 +2531,10 @@ type_check_ast_file(Ast_File* ast_file) {
     
     // NOTE(Alexander): anything left in the queue we report errors for
     for_array_v(queue, comp_unit, _) {
-        if (tcx.error_count > 10) {
-            pln("Found more than 10 errors, exiting...");
-            return tcx.error_count;
-        }
+        //if (tcx.error_count > 10) {
+        //pln("Found more than 10 errors, exiting...");
+        //return tcx.error_count;
+        //}
         
         type_check_ast(&tcx, comp_unit, true);
     }

@@ -248,7 +248,7 @@ Span_Data
 calculate_span_data(array(smm)* lines, Span span) {
     smm offset = span.offset;
     
-    pln("line count = %", f_int(array_count(lines)));
+    //pln("line count = %", f_int(array_count(lines)));
     
     Binary_Search_Result begin = binary_search(lines, offset, compare_smm);
     smm span_end = (smm) span.offset + (smm) span.count;

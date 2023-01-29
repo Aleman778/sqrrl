@@ -10,12 +10,16 @@ struct Operator_Overload {
     // NOTE(Alexander): lhs is used to locate this struct
 };
 
-struct Overloaded_Function_List {
+struct Overloaded_Operator_List {
     array(Operator_Overload)* ops;
-    // TODO(Alexander): add function overloading
-    
     bool is_valid;
 };
+
+struct Overloaded_Function_List {
+    array(Type*)* functions;
+    bool is_valid;
+};
+
 
 struct Type_Context {
     Memory_Arena type_arena;
@@ -26,7 +30,8 @@ struct Type_Context {
     map(string_id, Type*)* local_type_table;
     map(string_id, Type*)* global_type_table;
     
-    map(Type*, Overloaded_Function_List)* overloaded_functions;
+    map(Type*, Overloaded_Operator_List)* overloaded_operators;
+    map(string_id, Overloaded_Function_List)* overloaded_functions;
     
     array(Type_Scope)* scopes;
     Type_Scope* active_scope;
@@ -46,6 +51,8 @@ type_error(Type_Context* tcx, string message, Span span) {
     //Span_Data span = {};
     string filename = string_lit("examples/demo.sq"); // TODO: store names of source files somewhere!
     
+    bool multiline = tcx->error_count < 3;
+    
     if (span.file_index > 0) {
         Loaded_Source_File* file = get_source_file_by_index(span.file_index);
         if (file) {
@@ -54,8 +61,11 @@ type_error(Type_Context* tcx, string message, Span span) {
         }
     }
     
-    pln("error: %\n", f_string(message));
-    DEBUG_log_backtrace();
+    pln("error: %", f_string(message));
+    if (multiline) {
+        DEBUG_log_backtrace();
+        print_format("\n");
+    }
     tcx->error_count++;
 }
 
@@ -126,6 +136,14 @@ pop_type_scope(Type_Context* tcx) {
 bool
 type_equals(Type* a, Type* b) {
     assert(a && b);
+    
+    if (a->kind == TypeKind_Enum) {
+        a = a->Enum.type;
+    }
+    
+    if (b->kind == TypeKind_Enum) {
+        b = b->Enum.type;
+    }
     
     if (a->kind != b->kind) {
         return false;
@@ -211,10 +229,6 @@ type_equals(Type* a, Type* b) {
             }
         } break;
         
-        case TypeKind_Enum: {
-            return type_equals(a->Enum.type, b->Enum.type);
-        } break;
-        
         default: {
             pln("%", f_string(string_format("%", f_type(a))));
             assert(0 && "not implemented");
@@ -226,6 +240,7 @@ type_equals(Type* a, Type* b) {
 
 // NOTE(Alexander): forward declare
 struct Ast_File;
+
 
 Type* type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool report_error);
 

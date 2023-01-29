@@ -106,6 +106,8 @@ get_field_info(Type_Struct* t_struct, string_id ident) {
 struct Type_Union {
     array(Type*)* types;
     array(string_id)* idents;
+    array(umm)* offsets;
+    Ident_Mapper* ident_to_index;
 };
 
 struct Type_Enum {
@@ -232,7 +234,10 @@ convert_value_type_to_format_type(Value_Type type) {
 
 void
 string_builder_push(String_Builder* sb, Type* type) {
-    if (!type) return;
+    if (!type) {
+        string_builder_push(sb, "null");
+        return;
+    }
     
     switch (type->kind) {
         case TypeKind_Unresolved: {

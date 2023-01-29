@@ -177,9 +177,18 @@ Type basic_type_definitions[] = {
 Type unresolved_type_definition = { TypeKind_Unresolved };
 Type void_type_definition = { TypeKind_Void };
 
+internal Type 
+create_void_ptr_type_definition() {
+    Type t = {};
+    t.kind = TypeKind_Pointer;
+    t.Pointer = &void_type_definition;
+    return t;
+}
+Type void_ptr_type_definition = create_void_ptr_type_definition();
 
 global Type* t_unresolve = &unresolved_type_definition;
 global Type* t_void = &void_type_definition;
+global Type* t_void_ptr = &void_ptr_type_definition;
 #define BASIC(ident, ...) global Type* t_##ident = &basic_type_definitions[Basic_##ident];
 DEF_BASIC_TYPES
 #undef BASIC

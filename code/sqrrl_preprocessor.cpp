@@ -603,6 +603,9 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
     } else {
         smm arg_index = map_get_index(parent_macro.arg_mapper, ident);
         if (arg_index != -1) {
+            // TODO(Alexander): in order to support macro expanding the inserted argument
+            // we should make this process in two phases first expand arguments then second
+            // phase expands the macros used.
             assert(array_count(args.list) > arg_index);
             string_builder_push(sb, args.list[arg_index]);
             return true;
@@ -655,6 +658,7 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
         preprocess_expand_macro(preprocessor, sb, &tokenizer, macro, macro_args);
         
         string expanded_source = string_view(sb->data + first_used, sb->data + sb->curr_used);
+        
 #if 0
         pln("Expanding macro `%` to:\n`%`", f_string(vars_load_string(ident)), f_string(expanded_source));
 #endif

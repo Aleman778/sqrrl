@@ -98,7 +98,7 @@ bool next_token_if_matched(Parser* parser, Token_Type expected, bool report_erro
 bool parse_keyword(Parser* parser, Var keyword, bool report_error=true);
 
 Ast* parse_identifier(Parser* parser, bool report_error=true);
-Ast* parse_atom(Parser* parser, bool report_error=true);
+Ast* parse_atom(Parser* parser, bool report_error=true, u8 min_prec=1);
 Ast* parse_expression(Parser* parser, bool report_error=true, u8 min_prec=1, Ast* atom_expr=0);
 Ast* parse_statement(Parser* parser, bool report_error=true);
 Ast* parse_block_or_single_statement(Parser* parser, bool report_error=true);

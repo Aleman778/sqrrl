@@ -769,7 +769,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             }
             
             expr->Call_Expr.function_type = function_type;
-            result = function_type->Function.return_type;
+            result = normalize_basic_types(function_type->Function.return_type);
+            function_type->Function.return_type = result;
             expr->type = result;
             
             // HACK(Alexander): for now print_format pushes the format type first then the value 
@@ -1888,7 +1889,9 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span, Operat
             }
             
             if (!success) {
-                type_error_mismatch(tcx, lhs, rhs, span);
+                if (report_error) {
+                    type_error_mismatch(tcx, lhs, rhs, span);
+                }
                 return false;
             }
             
@@ -1907,7 +1910,9 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span, Operat
         case TypeKind_Pointer: {
             bool success = type_check_assignment(tcx, lhs->Pointer, rhs->Pointer, span, op, false);
             if (!success) {
-                type_error_mismatch(tcx, lhs, rhs, span);
+                if (report_error) {
+                    type_error_mismatch(tcx, lhs, rhs, span);
+                }
                 return false;
             }
         } break;
@@ -2039,10 +2044,12 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                 }
                 
             } else {
-                if (!type_equals(first, second)) {
-                    pln("%", f_ast(expr));
-                    type_error_mismatch(tcx, first, second, expr->Binary_Expr.second->span);
-                    result = false;
+                if (type_check_assignment(tcx, first, second, expr->Binary_Expr.second->span)) {
+                    if (!type_equals(first, second)) {
+                        pln("%", f_ast(expr));
+                        type_error_mismatch(tcx, first, second, expr->Binary_Expr.second->span);
+                        result = false;
+                    }
                 }
             }
         } break;
@@ -2481,6 +2488,14 @@ array_push(intrin_name->Function.arg_types, arg_type); \
     
     // Intrinsic syntax: umm alignof(T)
     push_intrinsic(alignof, false, 0, &type_alignof, t_umm);
+    
+    // Intrinsic syntax: void*  memory_alloc(umm size)
+    push_intrinsic(memory_alloc, false, 0, &calloc, t_void_ptr);
+    push_intrinsic_arg(memory_alloc, size, t_smm);
+    
+    // Intrinsic syntax: void*  memory_alloc_zeros(umm size)
+    push_intrinsic(memory_alloc_zeros, false, 0, &calloc, t_void_ptr);
+    push_intrinsic_arg(memory_alloc_zeros, size, t_smm);
 }
 
 s32

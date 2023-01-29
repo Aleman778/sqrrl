@@ -382,7 +382,7 @@ parse_float(Parser* parser) {
 }
 
 Ast*
-parse_atom(Parser* parser, bool report_error) {
+parse_atom(Parser* parser, bool report_error, u8 min_prec) {
     Ast* result = 0;
     Token token = peek_token(parser);
     
@@ -502,8 +502,8 @@ parse_atom(Parser* parser, bool report_error) {
             next_token_if_matched(parser, Token_Close_Paren);
             
             if (is_ast_type(inner)) {
-                Ast* expr = parse_expression(parser, false, 13);
-                if (expr) {
+                Ast* expr = parse_expression(parser, false, 20);
+                if (is_valid_ast(expr)) {
                     result->kind = Ast_Cast_Expr;
                     result->Cast_Expr.type = inner;
                     result->Cast_Expr.expr = expr;
@@ -511,7 +511,7 @@ parse_atom(Parser* parser, bool report_error) {
                     if (inner->kind == Ast_Named_Type) {
                         // NOTE(Alexander): not an actualy type cast instead just (identifier)
                         result->kind = Ast_Paren_Expr;
-                        result->Paren_Expr.expr = inner;
+                        result->Paren_Expr.expr = inner->Named_Type;
                     } else {
                         unimplemented;
                         // TODO(Alexander): write an error message for incomplete type cast
@@ -533,17 +533,22 @@ parse_atom(Parser* parser, bool report_error) {
         
         default: {
             Operator unop = parse_unary_op(parser);
+            
             if (unop != Op_None) {
-                next_token(parser);
-                result = push_ast_node(parser, &token);
-                result->kind = Ast_Unary_Expr;
-                result->Unary_Expr.op = unop;
-                //if (unop == UnaryOp_Dereference) {
-                //result->Unary_Expr.first = parse_atom(parser);
-                //} else {
-                // TODO(Alexander): hardcoded precedence
-                result->Unary_Expr.first = parse_expression(parser, true, 13);
-                //}
+                u8 prec = operator_prec_table[unop];
+                Assoc assoc = operator_assoc_table[unop];
+                
+                if (prec >= min_prec) {
+                    if (assoc == Assoc_Left) {
+                        min_prec += 1;
+                    }
+                    
+                    next_token(parser);
+                    result = push_ast_node(parser, &token);
+                    result->kind = Ast_Unary_Expr;
+                    result->Unary_Expr.op = unop;
+                    result->Unary_Expr.first = parse_expression(parser, true, prec);
+                }
             }
             
         } break;
@@ -564,7 +569,7 @@ parse_atom(Parser* parser, bool report_error) {
 Ast*
 parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr) {
     if (!atom_expr) {
-        atom_expr = parse_atom(parser, report_error);
+        atom_expr = parse_atom(parser, report_error, min_prec);
         
         if (!atom_expr) {
             atom_expr = push_ast_node(parser);

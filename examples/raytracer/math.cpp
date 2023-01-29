@@ -58,7 +58,7 @@ vec3(f32 x, f32 y, f32 z) {
 
 inline u32
 round_f32_to_u32(f32 value) {
-    return (u32) round_f32(value);
+    return (u32) round(value);
 }
 
 inline u32

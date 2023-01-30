@@ -128,12 +128,13 @@ bool
 type_check_value(Type_Context* tcx, Type* type, Value value, Span span, bool report_error) {
     bool result = true;
     
-    //if (type->kind == TypeKind_Enum) {
-    //type = type->Enum.type;
-    //if (!type) {
-    //type = t_s64; // TODO(Alexander): what is the default type for Enums?
-    //} 
-    //}
+    if (type->kind == TypeKind_Enum) {
+        type = type->Enum.type;
+        assert(type);
+        //if (!type) {
+        //type = t_s64; // TODO(Alexander): what is the default type for Enums?
+        //} 
+    }
     
     switch (value.type) {
         case Value_void: {

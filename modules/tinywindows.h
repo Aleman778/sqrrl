@@ -93,6 +93,24 @@ struct HTASK__{int unused;}; typedef struct HTASK__ *HTASK;
 struct HWINSTA__{int unused;}; typedef struct HWINSTA__ *HWINSTA;
 struct HKL__{int unused;}; typedef struct HKL__ *HKL;
 typedef int HFILE;
+
+#ifndef FALSE
+#define FALSE               0
+#endif
+
+#ifndef TRUE
+#define TRUE                1
+#endif
+
+#define CALLBACK    __stdcall
+#define WINAPI      __stdcall
+#define WINAPIV     __cdecl
+#define APIENTRY    WINAPI
+#define APIPRIVATE  __stdcall
+#define PASCAL      __stdcall
+
+#define MAX_PATH          260
+
 typedef struct _FILETIME {
     DWORD dwLowDateTime;
     DWORD dwHighDateTime;
@@ -110,6 +128,71 @@ typedef union _LARGE_INTEGER {
     LONGLONG QuadPart;
 } LARGE_INTEGER;
 
+typedef struct _SECURITY_ATTRIBUTES {
+    DWORD nLength;
+    LPVOID lpSecurityDescriptor;
+    BOOL bInheritHandle;
+} SECURITY_ATTRIBUTES;
+typedef SECURITY_ATTRIBUTES* PSECURITY_ATTRIBUTES;
+typedef SECURITY_ATTRIBUTES* LPSECURITY_ATTRIBUTES;
+
+typedef struct _WIN32_FIND_DATAA {
+    DWORD dwFileAttributes;
+    FILETIME ftCreationTime;
+    FILETIME ftLastAccessTime;
+    FILETIME ftLastWriteTime;
+    DWORD nFileSizeHigh;
+    DWORD nFileSizeLow;
+    DWORD dwReserved0;
+    DWORD dwReserved1;
+    CHAR   cFileName[ MAX_PATH ];
+    CHAR   cAlternateFileName[ 14 ];
+#ifdef _MAC
+    DWORD dwFileType;
+    DWORD dwCreatorType;
+    WORD  wFinderFlags;
+#endif
+} WIN32_FIND_DATAA;
+typedef WIN32_FIND_DATAA* PWIN32_FIND_DATAA;
+typedef WIN32_FIND_DATAA* LPWIN32_FIND_DATAA;
+
+typedef WIN32_FIND_DATAA WIN32_FIND_DATA;
+typedef PWIN32_FIND_DATAA PWIN32_FIND_DATA;
+typedef LPWIN32_FIND_DATAA LPWIN32_FIND_DATA;
+
+@link("kernel32.dll")
+extern {
+    BOOL WINAPI CopyFileA(LPCSTR lpExistingFileName,
+                          LPCSTR lpNewFileName,
+                          BOOL bFailIfExists);
+}
+
+/*
+* Handle API
+*/
+
+//
+// Constants
+//
+#define INVALID_HANDLE_VALUE ((HANDLE)(LONG_PTR)-1)
+
+BOOL WINAPI CloseHandle(HANDLE hObject);
+
+/*
+* Libloader API
+*/
+
+@link("kernel32.dll")
+extern {
+    HMODULE WINAPI LoadLibraryA(LPCSTR lpLibFileName);
+    
+    BOOL WINAPI FreeLibrary(HMODULE hLibModule);
+}
+
+
+/*
+* User
+*/
 struct HWND__{int unused;}; typedef struct HWND__ *HWND;
 struct HHOOK__{int unused;}; typedef struct HHOOK__ *HHOOK;
 typedef void * HGDIOBJ;
@@ -171,13 +254,6 @@ typedef struct tagPOINTS
     SHORT   x;
     SHORT   y;
 } POINTS, *PPOINTS, *LPPOINTS;
-
-#define CALLBACK    __stdcall
-#define WINAPI      __stdcall
-#define WINAPIV     __cdecl
-#define APIENTRY    WINAPI
-#define APIPRIVATE  __stdcall
-#define PASCAL      __stdcall
 
 //typedef LRESULT __stdcall(HWND, UINT, WPARAM, LPARAM)* WNDPROC;
 typedef LRESULT __stdcall WNDPROC(HWND, UINT, WPARAM, LPARAM);
@@ -819,7 +895,7 @@ extern {
     
 }
 
-@link("Gdi32.dll")
+@link("gdi32.dll")
 extern {
     BOOL  __stdcall BitBlt(HDC hdc,
                            int x, int y, int cx, int cy,
@@ -842,6 +918,52 @@ extern {
                                 DWORD rop);
 }
 
+/*
+* File API
+*/
+
+//
+// Constants
+//
+#define CREATE_NEW          1
+#define CREATE_ALWAYS       2
+#define OPEN_EXISTING       3
+#define OPEN_ALWAYS         4
+#define TRUNCATE_EXISTING   5
+
+#define INVALID_FILE_SIZE ((DWORD)0xFFFFFFFF)
+#define INVALID_SET_FILE_POINTER ((DWORD)-1)
+#define INVALID_FILE_ATTRIBUTES ((DWORD)-1)
+
+@link("kernel32.dll")
+extern {
+    
+    LONG WINAPI CompareFileTime(const FILETIME* lpFileTime1, 
+                                const FILETIME* lpFileTime2);
+    
+    BOOL WINAPI CreateDirectoryA(LPCSTR lpPathName,
+                                 LPSECURITY_ATTRIBUTES lpSecurityAttributes);
+    
+    HANDLE WINAPI CreateFileA(LPCSTR lpFileName,
+                              DWORD dwDesiredAccess,
+                              DWORD dwShareMode,
+                              LPSECURITY_ATTRIBUTES lpSecurityAttributes,
+                              DWORD dwCreationDisposition,
+                              DWORD dwFlagsAndAttributes,
+                              HANDLE hTemplateFile);
+    
+    
+    HANDLE WINAPI FindFirstFileA(LPCSTR lpFileName,
+                                 LPWIN32_FIND_DATAA lpFindFileData);
+    
+    BOOL WINAPI FindClose(HANDLE hFindFile);
+    
+    
+}
+
+/*
+* Lib loader API
+*/
 
 /*
  * GUID

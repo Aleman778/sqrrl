@@ -1209,6 +1209,19 @@ create_type_struct_like_from_ast(Type_Context* tcx,
                     }
                     //pln("%", f_ast(ast_type));
                     //unimplemented;
+                } else if (type->kind == TypeKind_Function) {
+                    string_id ident = type->Function.ident;
+                    if (ident) {
+                        push_type_to_struct_like(&result, type, ident);
+                    } else {
+                        if (report_error) {
+                            // TODO(Alexander): need to come up with a good error message?
+                            // maybe this isn't a possible case?
+                            unimplemented;
+                            //type_error(tcx, string_lit(""))
+                        }
+                        result.has_error = true;
+                    }
                 } else {
                     // TODO(Alexander): should be a type error or something
                     unimplemented;
@@ -2002,7 +2015,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
             Type* first = expr->Binary_Expr.first->type;
             Type* second = expr->Binary_Expr.second->type;
             
-            if (first->kind == TypeKind_Pointer) {
+            if (first->kind == TypeKind_Pointer || first->kind == TypeKind_Function) {
                 if (op == Op_Add || 
                     op == Op_Subtract ||
                     op == Op_Add_Assign || 
@@ -2019,7 +2032,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                                                      f_type(second)),
                                        expr->span);
                         }
-                    } else if (second->kind != TypeKind_Pointer) {
+                    } else if (second->kind != TypeKind_Pointer && second->kind != TypeKind_Function) {
                         type_error(tcx, 
                                    string_format("operator `%` expects integral or pointer on right-hand side, found `%`", 
                                                  f_cstring(operator_strings[op]),
@@ -2027,7 +2040,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                                    expr->span);
                     }
                 } else if (operator_is_comparator(op)) {
-                    if (second->kind != TypeKind_Pointer) {
+                    if (second->kind != TypeKind_Pointer && second->kind != TypeKind_Function) {
                         type_error(tcx, 
                                    string_format("operator `%` expects pointer on right-hand side, found `%`", 
                                                  f_cstring(operator_strings[op]),

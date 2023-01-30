@@ -1,4 +1,8 @@
-// Tiny version of windows.h because windows.h is a pain to parse!!!
+// NOTE: slightly modified version of windows.h library to work with the Sqrrl language
+// This source code file is not owned by the author(s) of Sqrrl, majority of this file
+// is copyrighted by Microsoft Corporation as stated below:
+
+// Copyright (c) Microsoft Corporation. All rights reserved.
 
 typedef cstring LPCSTR;
 typedef cstring PSTR;
@@ -62,7 +66,11 @@ typedef HANDLE64 *PHANDLE64;
 typedef void *HANDLE;
 typedef HANDLE *PHANDLE;
 
+typedef int FARPROC();
+
 typedef long HRESULT;
+
+#define SUCCEEDED(hr) (((HRESULT)(hr)) >= 0)
 
 typedef unsigned short UHALF_PTR, *PUHALF_PTR;
 typedef short HALF_PTR, *PHALF_PTR;
@@ -187,6 +195,9 @@ extern {
     HMODULE WINAPI LoadLibraryA(LPCSTR lpLibFileName);
     
     BOOL WINAPI FreeLibrary(HMODULE hLibModule);
+    
+    FARPROC WINAPI GetProcAddress(HMODULE hModule,
+                                  LPCSTR lpProcName);
 }
 
 
@@ -981,9 +992,13 @@ typedef const GUID *LPCGUID;
 #define DEFINE_GUID(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8) \
 const GUID name = { l, w1, w2, { b1, b2,  b3,  b4,  b5,  b6,  b7,  b8 } }
 
+typedef GUID IID;
+typedef IID *LPIID;
+
+#define REFIID const IID*
 
 /*
- * Direct Sound
+ * Direct Sound API
  */
 
 // DirectSound Component GUID {47D4D946-62E8-11CF-93BC-444553540000}
@@ -1014,15 +1029,453 @@ DEFINE_GUID(DSDEVID_DefaultVoicePlayback, 0xdef00002, 0x9c6d, 0x47ed, 0xaa, 0xf1
 // DirectSound default device for voice capture {DEF00003-9C6D-47ED-AAF1-4DDA8F2B5C03}
 DEFINE_GUID(DSDEVID_DefaultVoiceCapture, 0xdef00003, 0x9c6d, 0x47ed, 0xaa, 0xf1, 0x4d, 0xda, 0x8f, 0x2b, 0x5c, 0x03);
 
+
+//
+// Return Codes
+//
+
+// The function completed successfully
+#define DS_OK                           S_OK
+
+// The call succeeded, but we had to substitute the 3D algorithm
+#define DS_NO_VIRTUALIZATION            MAKE_HRESULT(0, _FACDS, 10)
+
+// The call failed because resources (such as a priority level)
+// were already being used by another caller
+#define DSERR_ALLOCATED                 MAKE_DSHRESULT(10)
+
+// The control (vol, pan, etc.) requested by the caller is not available
+#define DSERR_CONTROLUNAVAIL            MAKE_DSHRESULT(30)
+
+// An invalid parameter was passed to the returning function
+#define DSERR_INVALIDPARAM              E_INVALIDARG
+
+// This call is not valid for the current state of this object
+#define DSERR_INVALIDCALL               MAKE_DSHRESULT(50)
+
+// An undetermined error occurred inside the DirectSound subsystem
+#define DSERR_GENERIC                   E_FAIL
+
+// The caller does not have the priority level required for the function to
+// succeed
+#define DSERR_PRIOLEVELNEEDED           MAKE_DSHRESULT(70)
+
+// Not enough free memory is available to complete the operation
+#define DSERR_OUTOFMEMORY               E_OUTOFMEMORY
+
+// The specified WAVE format is not supported
+#define DSERR_BADFORMAT                 MAKE_DSHRESULT(100)
+
+// The function called is not supported at this time
+#define DSERR_UNSUPPORTED               E_NOTIMPL
+
+// No sound driver is available for use
+#define DSERR_NODRIVER                  MAKE_DSHRESULT(120)
+
+// This object is already initialized
+#define DSERR_ALREADYINITIALIZED        MAKE_DSHRESULT(130)
+
+// This object does not support aggregation
+#define DSERR_NOAGGREGATION             CLASS_E_NOAGGREGATION
+
+// The buffer memory has been lost, and must be restored
+#define DSERR_BUFFERLOST                MAKE_DSHRESULT(150)
+
+// Another app has a higher priority level, preventing this call from
+// succeeding
+#define DSERR_OTHERAPPHASPRIO           MAKE_DSHRESULT(160)
+
+// This object has not been initialized
+#define DSERR_UNINITIALIZED             MAKE_DSHRESULT(170)
+
+// The requested COM interface is not available
+#define DSERR_NOINTERFACE               E_NOINTERFACE
+
+// Access is denied
+#define DSERR_ACCESSDENIED              E_ACCESSDENIED
+
+// Tried to create a DSBCAPS_CTRLFX buffer shorter than DSBSIZE_FX_MIN milliseconds
+#define DSERR_BUFFERTOOSMALL            MAKE_DSHRESULT(180)
+
+// Attempt to use DirectSound 8 functionality on an older DirectSound object
+#define DSERR_DS8_REQUIRED              MAKE_DSHRESULT(190)
+
+// A circular loop of send effects was detected
+#define DSERR_SENDLOOP                  MAKE_DSHRESULT(200)
+
+// The GUID specified in an audiopath file does not match a valid MIXIN buffer
+#define DSERR_BADSENDBUFFERGUID         MAKE_DSHRESULT(210)
+
+// The object requested was not found (numerically equal to DMUS_E_NOT_FOUND)
+#define DSERR_OBJECTNOTFOUND            MAKE_DSHRESULT(4449)
+
+// The effects requested could not be found on the system, or they were found
+// but in the wrong order, or in the wrong hardware/software locations.
+#define DSERR_FXUNAVAILABLE             MAKE_DSHRESULT(220)
+
+//
+// Flags
+//
+
+#define DSCAPS_PRIMARYMONO          0x00000001
+#define DSCAPS_PRIMARYSTEREO        0x00000002
+#define DSCAPS_PRIMARY8BIT          0x00000004
+#define DSCAPS_PRIMARY16BIT         0x00000008
+#define DSCAPS_CONTINUOUSRATE       0x00000010
+#define DSCAPS_EMULDRIVER           0x00000020
+#define DSCAPS_CERTIFIED            0x00000040
+#define DSCAPS_SECONDARYMONO        0x00000100
+#define DSCAPS_SECONDARYSTEREO      0x00000200
+#define DSCAPS_SECONDARY8BIT        0x00000400
+#define DSCAPS_SECONDARY16BIT       0x00000800
+
+#define DSSCL_NORMAL                0x00000001
+#define DSSCL_PRIORITY              0x00000002
+#define DSSCL_EXCLUSIVE             0x00000003
+#define DSSCL_WRITEPRIMARY          0x00000004
+
+#define DSSPEAKER_DIRECTOUT         0x00000000
+#define DSSPEAKER_HEADPHONE         0x00000001
+#define DSSPEAKER_MONO              0x00000002
+#define DSSPEAKER_QUAD              0x00000003
+#define DSSPEAKER_STEREO            0x00000004
+#define DSSPEAKER_SURROUND          0x00000005
+#define DSSPEAKER_5POINT1           0x00000006  // obsolete 5.1 setting
+#define DSSPEAKER_7POINT1           0x00000007  // obsolete 7.1 setting
+#define DSSPEAKER_7POINT1_SURROUND  0x00000008  // correct 7.1 Home Theater setting
+#define DSSPEAKER_5POINT1_SURROUND  0x00000009  // correct 5.1 setting
+#define DSSPEAKER_7POINT1_WIDE      DSSPEAKER_7POINT1
+#define DSSPEAKER_5POINT1_BACK      DSSPEAKER_5POINT1
+
+#define DSSPEAKER_GEOMETRY_MIN      0x00000005  //   5 degrees
+#define DSSPEAKER_GEOMETRY_NARROW   0x0000000A  //  10 degrees
+#define DSSPEAKER_GEOMETRY_WIDE     0x00000014  //  20 degrees
+#define DSSPEAKER_GEOMETRY_MAX      0x000000B4  // 180 degrees
+
+#define DSSPEAKER_COMBINED(c, g)    ((DWORD)(((BYTE)(c)) | ((DWORD)((BYTE)(g))) << 16))
+#define DSSPEAKER_CONFIG(a)         ((BYTE)(a))
+#define DSSPEAKER_GEOMETRY(a)       ((BYTE)(((DWORD)(a) >> 16) & 0x00FF))
+
+#define DSBCAPS_PRIMARYBUFFER       0x00000001
+#define DSBCAPS_STATIC              0x00000002
+#define DSBCAPS_LOCHARDWARE         0x00000004
+#define DSBCAPS_LOCSOFTWARE         0x00000008
+#define DSBCAPS_CTRL3D              0x00000010
+#define DSBCAPS_CTRLFREQUENCY       0x00000020
+#define DSBCAPS_CTRLPAN             0x00000040
+#define DSBCAPS_CTRLVOLUME          0x00000080
+#define DSBCAPS_CTRLPOSITIONNOTIFY  0x00000100
+#define DSBCAPS_CTRLFX              0x00000200
+#define DSBCAPS_STICKYFOCUS         0x00004000
+#define DSBCAPS_GLOBALFOCUS         0x00008000
+#define DSBCAPS_GETCURRENTPOSITION2 0x00010000
+#define DSBCAPS_MUTE3DATMAXDISTANCE 0x00020000
+#define DSBCAPS_LOCDEFER            0x00040000
+#define DSBCAPS_TRUEPLAYPOSITION    0x00080000
+
+#define DSBPLAY_LOOPING             0x00000001
+#define DSBPLAY_LOCHARDWARE         0x00000002
+#define DSBPLAY_LOCSOFTWARE         0x00000004
+#define DSBPLAY_TERMINATEBY_TIME    0x00000008
+#define DSBPLAY_TERMINATEBY_DISTANCE    0x000000010
+#define DSBPLAY_TERMINATEBY_PRIORITY    0x000000020
+
+#define DSBSTATUS_PLAYING           0x00000001
+#define DSBSTATUS_BUFFERLOST        0x00000002
+#define DSBSTATUS_LOOPING           0x00000004
+#define DSBSTATUS_LOCHARDWARE       0x00000008
+#define DSBSTATUS_LOCSOFTWARE       0x00000010
+#define DSBSTATUS_TERMINATED        0x00000020
+
+#define DSBLOCK_FROMWRITECURSOR     0x00000001
+#define DSBLOCK_ENTIREBUFFER        0x00000002
+
+#define DSBFREQUENCY_ORIGINAL       0
+#define DSBFREQUENCY_MIN            100
+#if DIRECTSOUND_VERSION >= 0x0900
+#define DSBFREQUENCY_MAX            200000
+#else
+#define DSBFREQUENCY_MAX            100000
+#endif
+
+#define DSBPAN_LEFT                 -10000
+#define DSBPAN_CENTER               0
+#define DSBPAN_RIGHT                10000
+
+#define DSBVOLUME_MIN               -10000
+#define DSBVOLUME_MAX               0
+
+#define DSBSIZE_MIN                 4
+#define DSBSIZE_MAX                 0x0FFFFFFF
+#define DSBSIZE_FX_MIN              150  // NOTE: Milliseconds, not bytes
+
+#define DSBNOTIFICATIONS_MAX        100000UL
+
+#define DS3DMODE_NORMAL             0x00000000
+#define DS3DMODE_HEADRELATIVE       0x00000001
+#define DS3DMODE_DISABLE            0x00000002
+
+#define DS3D_IMMEDIATE              0x00000000
+#define DS3D_DEFERRED               0x00000001
+
+#define DS3D_MINDISTANCEFACTOR      FLT_MIN
+#define DS3D_MAXDISTANCEFACTOR      FLT_MAX
+#define DS3D_DEFAULTDISTANCEFACTOR  1.0f
+
+#define DS3D_MINROLLOFFFACTOR       0.0f
+#define DS3D_MAXROLLOFFFACTOR       10.0f
+#define DS3D_DEFAULTROLLOFFFACTOR   1.0f
+
+#define DS3D_MINDOPPLERFACTOR       0.0f
+#define DS3D_MAXDOPPLERFACTOR       10.0f
+#define DS3D_DEFAULTDOPPLERFACTOR   1.0f
+
+#define DS3D_DEFAULTMINDISTANCE     1.0f
+#define DS3D_DEFAULTMAXDISTANCE     1000000000.0f
+
+#define DS3D_MINCONEANGLE           0
+#define DS3D_MAXCONEANGLE           360
+#define DS3D_DEFAULTCONEANGLE       360
+
+#define DS3D_DEFAULTCONEOUTSIDEVOLUME DSBVOLUME_MAX
+
+// IDirectSoundCapture attributes
+
+#define DSCCAPS_EMULDRIVER          DSCAPS_EMULDRIVER
+#define DSCCAPS_CERTIFIED           DSCAPS_CERTIFIED
+#define DSCCAPS_MULTIPLECAPTURE     0x00000001
+
+// IDirectSoundCaptureBuffer attributes
+
+#define DSCBCAPS_WAVEMAPPED         0x80000000
+#if DIRECTSOUND_VERSION >= 0x0800
+#define DSCBCAPS_CTRLFX             0x00000200
+#endif
+
+#define DSCBLOCK_ENTIREBUFFER       0x00000001
+
+#define DSCBSTATUS_CAPTURING        0x00000001
+#define DSCBSTATUS_LOOPING          0x00000002
+
+#define DSCBSTART_LOOPING           0x00000001
+
+#define DSBPN_OFFSETSTOP            0xFFFFFFFF
+
+#define DS_CERTIFIED                0x00000000
+#define DS_UNCERTIFIED              0x00000001
+
 struct IUnknown {
-    const struct IUnknownVtbl *lpVtbl;
+    const struct IUnknownVtbl* lpVtbl;
 }
+typedef /* [unique] */ IUnknown *LPUNKNOWN;
 
-typedef IUnknown IDirectSound;
-typedef struct IDirectSound* LPDIRECTSOUND;
 
-typedef IUnknown IDirectSoundBuffer;
-typedef struct IDirectSoundBuffer* LPDIRECTSOUNDBUFFER;
+// Part of COM API
+#define STDMETHOD(method)       HRESULT method
+#define STDMETHOD_(type,method) type method
+#define THIS_                   void* This,
+#define THIS                    void* This
+
+#define __STRUCT__ struct
+#define interface __STRUCT__
+
+#ifdef CONST_VTABLE
+#undef CONST_VTBL
+#define CONST_VTBL const
+#define DECLARE_INTERFACE(iface)    typedef interface iface { \
+const struct iface##Vtbl FAR* lpVtbl; \
+} iface; \
+typedef const struct iface##Vtbl iface##Vtbl; \
+const struct iface##Vtbl
+#else
+#undef CONST_VTBL
+#define CONST_VTBL
+#define DECLARE_INTERFACE(iface)    typedef interface iface { \
+struct iface##Vtbl FAR* lpVtbl; \
+} iface; \
+typedef struct iface##Vtbl iface##Vtbl; \
+struct iface##Vtbl
+#endif
+#define DECLARE_INTERFACE_(iface, baseiface)    DECLARE_INTERFACE(iface)
+#define DECLARE_INTERFACE_IID(iface, iid)               DECLARE_INTERFACE(iface)
+#define DECLARE_INTERFACE_IID_(iface, baseiface, iid)   DECLARE_INTERFACE_(iface, baseiface)
+
+
+typedef struct _DSBUFFERDESC
+{
+    DWORD           dwSize;
+    DWORD           dwFlags;
+    DWORD           dwBufferBytes;
+    DWORD           dwReserved;
+    LPWAVEFORMATEX  lpwfxFormat;
+    GUID            guid3DAlgorithm;
+} DSBUFFERDESC, *LPDSBUFFERDESC;
+
+typedef const DSBUFFERDESC *LPCDSBUFFERDESC;
+
+typedef struct _DSCAPS
+{
+    DWORD           dwSize;
+    DWORD           dwFlags;
+    DWORD           dwMinSecondarySampleRate;
+    DWORD           dwMaxSecondarySampleRate;
+    DWORD           dwPrimaryBuffers;
+    DWORD           dwMaxHwMixingAllBuffers;
+    DWORD           dwMaxHwMixingStaticBuffers;
+    DWORD           dwMaxHwMixingStreamingBuffers;
+    DWORD           dwFreeHwMixingAllBuffers;
+    DWORD           dwFreeHwMixingStaticBuffers;
+    DWORD           dwFreeHwMixingStreamingBuffers;
+    DWORD           dwMaxHw3DAllBuffers;
+    DWORD           dwMaxHw3DStaticBuffers;
+    DWORD           dwMaxHw3DStreamingBuffers;
+    DWORD           dwFreeHw3DAllBuffers;
+    DWORD           dwFreeHw3DStaticBuffers;
+    DWORD           dwFreeHw3DStreamingBuffers;
+    DWORD           dwTotalHwMemBytes;
+    DWORD           dwFreeHwMemBytes;
+    DWORD           dwMaxContigFreeHwMemBytes;
+    DWORD           dwUnlockTransferRateHwBuffers;
+    DWORD           dwPlayCpuOverheadSwBuffers;
+    DWORD           dwReserved1;
+    DWORD           dwReserved2;
+} DSCAPS;
+typedef DSCAPS *LPDSCAPS;
+typedef const DSCAPS *LPCDSCAPS;
+
+typedef struct _DSBCAPS
+{
+    DWORD           dwSize;
+    DWORD           dwFlags;
+    DWORD           dwBufferBytes;
+    DWORD           dwUnlockTransferRate;
+    DWORD           dwPlayCpuOverhead;
+} DSBCAPS;
+typedef DSBCAPS *LPDSBCAPS;
+typedef const DSBCAPS *LPCDSBCAPS;
+
+DEFINE_GUID(IID_IDirectSound, 0x279AFA83, 0x4981, 0x11CE, 0xA5, 0x21, 0x00, 0x20, 0xAF, 0x0B, 0xE5, 0x60);
+
+#undef INTERFACE
+#define INTERFACE IDirectSound
+
+DECLARE_INTERFACE_(IDirectSound, IUnknown)
+{
+    // IUnknown methods
+    STDMETHOD(QueryInterface)       (THIS_  REFIID,  LPVOID*);
+    STDMETHOD_(ULONG,AddRef)        (THIS);
+    STDMETHOD_(ULONG,Release)       (THIS);
+    
+    // IDirectSound methods
+    STDMETHOD(CreateSoundBuffer)    (THIS_  LPCDSBUFFERDESC pcDSBufferDesc,  LPDIRECTSOUNDBUFFER *ppDSBuffer, LPUNKNOWN pUnkOuter);
+    STDMETHOD(GetCaps)              (THIS_  LPDSCAPS pDSCaps);
+    STDMETHOD(DuplicateSoundBuffer) (THIS_  LPDIRECTSOUNDBUFFER pDSBufferOriginal,  LPDIRECTSOUNDBUFFER *ppDSBufferDuplicate);
+    STDMETHOD(SetCooperativeLevel)  (THIS_ HWND hwnd, DWORD dwLevel);
+    STDMETHOD(Compact)              (THIS);
+    STDMETHOD(GetSpeakerConfig)     (THIS_ LPDWORD pdwSpeakerConfig);
+    STDMETHOD(SetSpeakerConfig)     (THIS_ DWORD dwSpeakerConfig);
+    STDMETHOD(Initialize)           (THIS_ LPCGUID pcGuidDevice);
+};
+
+
+#define IDirectSound_QueryInterface(p,a,b)       IUnknown_QueryInterface(p,a,b)
+#define IDirectSound_AddRef(p)                   IUnknown_AddRef(p)
+#define IDirectSound_Release(p)                  IUnknown_Release(p)
+#define IDirectSound_CreateSoundBuffer(p,a,b,c)  (p)->lpVtbl->CreateSoundBuffer(p,a,b,c)
+#define IDirectSound_GetCaps(p,a)                (p)->lpVtbl->GetCaps(p,a)
+#define IDirectSound_DuplicateSoundBuffer(p,a,b) (p)->lpVtbl->DuplicateSoundBuffer(p,a,b)
+#define IDirectSound_SetCooperativeLevel(p,a,b)  (p)->lpVtbl->SetCooperativeLevel(p,a,b)
+#define IDirectSound_Compact(p)                  (p)->lpVtbl->Compact(p)
+#define IDirectSound_GetSpeakerConfig(p,a)       (p)->lpVtbl->GetSpeakerConfig(p,a)
+#define IDirectSound_SetSpeakerConfig(p,b)       (p)->lpVtbl->SetSpeakerConfig(p,b)
+#define IDirectSound_Initialize(p,a)             (p)->lpVtbl->Initialize(p,a)
+
+DEFINE_GUID(IID_IDirectSoundBuffer, 0x279AFA85, 0x4981, 0x11CE, 0xA5, 0x21, 0x00, 0x20, 0xAF, 0x0B, 0xE5, 0x60);
+
+#undef INTERFACE
+#define INTERFACE IDirectSoundBuffer
+
+DECLARE_INTERFACE_(IDirectSoundBuffer, IUnknown)
+{
+    // IUnknown methods
+    STDMETHOD(QueryInterface)       (THIS_ REFIID, LPVOID*);
+    STDMETHOD_(ULONG,AddRef)        (THIS);
+    STDMETHOD_(ULONG,Release)       (THIS);
+    
+    // IDirectSoundBuffer methods
+    STDMETHOD(GetCaps)              (THIS_ LPDSBCAPS pDSBufferCaps);
+    STDMETHOD(GetCurrentPosition)   (THIS_ LPDWORD pdwCurrentPlayCursor, LPDWORD pdwCurrentWriteCursor);
+    STDMETHOD(GetFormat)            (THIS_ LPWAVEFORMATEX pwfxFormat, DWORD dwSizeAllocated, LPDWORD pdwSizeWritten);
+    STDMETHOD(GetVolume)            (THIS_  LPLONG plVolume);
+    STDMETHOD(GetPan)               (THIS_  LPLONG plPan);
+    STDMETHOD(GetFrequency)         (THIS_  LPDWORD pdwFrequency);
+    STDMETHOD(GetStatus)            (THIS_  LPDWORD pdwStatus);
+    STDMETHOD(Initialize)           (THIS_  LPDIRECTSOUND pDirectSound, LPCDSBUFFERDESC pcDSBufferDesc);
+    STDMETHOD(Lock)                 (THIS_ DWORD dwOffset, DWORD dwBytes,
+                                     LPVOID *ppvAudioPtr1, LPDWORD pdwAudioBytes1,
+                                     LPVOID *ppvAudioPtr2, LPDWORD pdwAudioBytes2, DWORD dwFlags);
+    STDMETHOD(Play)                 (THIS_ DWORD dwReserved1, DWORD dwPriority, DWORD dwFlags);
+    STDMETHOD(SetCurrentPosition)   (THIS_ DWORD dwNewPosition);
+    STDMETHOD(SetFormat)            (THIS_ LPCWAVEFORMATEX pcfxFormat);
+    STDMETHOD(SetVolume)            (THIS_ LONG lVolume);
+    STDMETHOD(SetPan)               (THIS_ LONG lPan);
+    STDMETHOD(SetFrequency)         (THIS_ DWORD dwFrequency);
+    STDMETHOD(Stop)                 (THIS);
+    STDMETHOD(Unlock)               (THIS_  LPVOID pvAudioPtr1, DWORD dwAudioBytes1, LPVOID pvAudioPtr2, DWORD dwAudioBytes2);
+    STDMETHOD(Restore)              (THIS);
+};
+
+#define IDirectSoundBuffer_QueryInterface(p,a,b)        IUnknown_QueryInterface(p,a,b)
+#define IDirectSoundBuffer_AddRef(p)                    IUnknown_AddRef(p)
+#define IDirectSoundBuffer_Release(p)                   IUnknown_Release(p)
+#define IDirectSoundBuffer_GetCaps(p,a)                 (p)->lpVtbl->GetCaps(p,a)
+#define IDirectSoundBuffer_GetCurrentPosition(p,a,b)    (p)->lpVtbl->GetCurrentPosition(p,a,b)
+#define IDirectSoundBuffer_GetFormat(p,a,b,c)           (p)->lpVtbl->GetFormat(p,a,b,c)
+#define IDirectSoundBuffer_GetVolume(p,a)               (p)->lpVtbl->GetVolume(p,a)
+#define IDirectSoundBuffer_GetPan(p,a)                  (p)->lpVtbl->GetPan(p,a)
+#define IDirectSoundBuffer_GetFrequency(p,a)            (p)->lpVtbl->GetFrequency(p,a)
+#define IDirectSoundBuffer_GetStatus(p,a)               (p)->lpVtbl->GetStatus(p,a)
+#define IDirectSoundBuffer_Initialize(p,a,b)            (p)->lpVtbl->Initialize(p,a,b)
+#define IDirectSoundBuffer_Lock(p,a,b,c,d,e,f,g)        (p)->lpVtbl->Lock(p,a,b,c,d,e,f,g)
+#define IDirectSoundBuffer_Play(p,a,b,c)                (p)->lpVtbl->Play(p,a,b,c)
+#define IDirectSoundBuffer_SetCurrentPosition(p,a)      (p)->lpVtbl->SetCurrentPosition(p,a)
+#define IDirectSoundBuffer_SetFormat(p,a)               (p)->lpVtbl->SetFormat(p,a)
+#define IDirectSoundBuffer_SetVolume(p,a)               (p)->lpVtbl->SetVolume(p,a)
+#define IDirectSoundBuffer_SetPan(p,a)                  (p)->lpVtbl->SetPan(p,a)
+#define IDirectSoundBuffer_SetFrequency(p,a)            (p)->lpVtbl->SetFrequency(p,a)
+#define IDirectSoundBuffer_Stop(p)                      (p)->lpVtbl->Stop(p)
+#define IDirectSoundBuffer_Unlock(p,a,b,c,d)            (p)->lpVtbl->Unlock(p,a,b,c,d)
+#define IDirectSoundBuffer_Restore(p)                   (p)->lpVtbl->Restore(p)
+
+
+/* OLD general waveform format structure (information common to all formats) */
+typedef struct waveformat_tag {
+    WORD    wFormatTag;        /* format type */
+    WORD    nChannels;         /* number of channels (i.e. mono, stereo, etc.) */
+    DWORD   nSamplesPerSec;    /* sample rate */
+    DWORD   nAvgBytesPerSec;   /* for buffer estimation */
+    WORD    nBlockAlign;       /* block size of data */
+} WAVEFORMAT;
+//typedef WAVEFORMAT *PWAVEFORMAT, NEAR *NPWAVEFORMAT, FAR *LPWAVEFORMAT;
+
+/* flags for wFormatTag field of WAVEFORMAT */
+#define WAVE_FORMAT_PCM     1
+
+typedef struct tWAVEFORMATEX
+{
+    WORD        wFormatTag;         /* format type */
+    WORD        nChannels;          /* number of channels (i.e. mono, stereo...) */
+    DWORD       nSamplesPerSec;     /* sample rate */
+    DWORD       nAvgBytesPerSec;    /* for buffer estimation */
+    WORD        nBlockAlign;        /* block size of data */
+    WORD        wBitsPerSample;     /* number of bits per sample of mono data */
+    WORD        cbSize;             /* the count in bytes of the size of */
+    /* extra information (after cbSize) */
+} WAVEFORMATEX;
+typedef WAVEFORMATEX *PWAVEFORMATEX;
+typedef WAVEFORMATEX *NPWAVEFORMATEX;
+typedef WAVEFORMATEX *LPWAVEFORMATEX;
+typedef const WAVEFORMATEX *LPCWAVEFORMATEX;
 
 
 /*

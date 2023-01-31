@@ -1237,7 +1237,6 @@ create_type_struct_like_from_ast(Type_Context* tcx,
     return result;
 }
 
-
 Type*
 load_type_declaration(Type_Context* tcx, string_id ident, Span span, bool report_error) {
     Type* result = 0;
@@ -1269,6 +1268,145 @@ load_type_declaration(Type_Context* tcx, string_id ident, Span span, bool report
     }
     
     return result;
+}
+
+Type*
+save_type_declaration(Type_Context* tcx, string_id ident, Ast* ast, bool report_error) {
+    if (ast->kind == Ast_Struct_Type || ast->kind == Ast_Union_Type) {
+        // Forward declare structs and unions so they can refer to themselves
+        smm type_index = map_get_index(tcx->global_type_table, ident);
+        if (type_index == -1) {
+            Type* type = arena_push_struct(&tcx->type_arena, Type);
+            type->kind = ast->kind == Ast_Struct_Type ? TypeKind_Struct : TypeKind_Union;
+            map_put(tcx->global_type_table, ident, type);
+        }
+    }
+    
+    Type* type = create_type_from_ast(tcx, ast, report_error);
+    if (type) {
+        if (ident == Kw_operator) {
+            assert(type->kind == TypeKind_Function);
+            assert(ast->kind == Ast_Function_Type);
+            // TODO(Alexander): support for Unary operator overloading
+            
+            Operator op = ast->Function_Type.overload_operator;
+            
+            int arg_count = (int) array_count(type->Function.arg_types);
+            if (arg_count == 1 || arg_count == 2) {
+                Type* lhs = type->Function.arg_types[0];
+                Type* rhs = 0;
+                
+                // TODO(Alexander): we validate if the operator is possible to override
+                if (arg_count == 2) {
+                    rhs = type->Function.arg_types[1];
+                } else {
+                    switch (op) {
+                        case Op_Subtract: op = Op_Negate; break;
+                        case Op_Multiply: op = Op_Dereference; break;
+                    }
+                }
+                
+                Overloaded_Operator_List* overload = &map_get(tcx->overloaded_operators, lhs);
+                if (!overload || !overload->is_valid) {
+                    Overloaded_Operator_List new_overload = {};
+                    new_overload.is_valid = true;
+                    map_put(tcx->overloaded_operators, lhs, new_overload);
+                    overload = &map_get(tcx->overloaded_operators, lhs);
+                }
+                assert(overload);
+                
+                Operator_Overload overloaded_op = {};
+                overloaded_op.op = op;
+                overloaded_op.rhs = rhs;
+                overloaded_op.func = type;
+                array_push(overload->ops, overloaded_op);
+                
+                // TODO(Alexander): check ambiguity with previous entries
+                
+                ast->type = type;
+                
+            } else {
+                type_error(tcx,
+                           string_format("expected `1` or `2` paramter to binary operator overload, found `%`", 
+                                         f_int(arg_count)), ast->span);
+            }
+        } else {
+            smm old_index = map_get_index(tcx->global_type_table, ident);
+            if (old_index != -1) {
+                Type* old_type = tcx->global_type_table[old_index].value;
+                
+                if (type != old_type) {
+                    
+                    if (type->kind == TypeKind_Function &&
+                        old_type->kind == TypeKind_Function) {
+                        // TODO(Alexander): func overload
+                        Overloaded_Function_List* overload = &map_get(tcx->overloaded_functions, ident);
+                        if (!overload || !overload->is_valid) {
+                            Overloaded_Function_List new_overload = {};
+                            new_overload.is_valid = true;
+                            map_put(tcx->overloaded_functions, ident, new_overload);
+                            overload = &map_get(tcx->overloaded_functions, ident);
+                            array_push(overload->functions, old_type);
+                        }
+                        assert(overload);
+                        
+                        array_push(overload->functions, type);
+                        
+                    } else if (type->kind == TypeKind_Struct &&
+                               old_type->kind == TypeKind_Struct) {
+                        
+                        // TODO(Alexander): hack to get forward declares working
+                        if (array_count(type->Struct.types) == 0) {
+                            // do nothing
+                        } else if (array_count(old_type->Struct.types) == 0) {
+                            memcpy(old_type, type, sizeof(Type));
+                        } else {
+                            type_error(tcx,
+                                       string_format("cannot redeclare previous declaration `%`",
+                                                     f_string(vars_load_string(ident))),
+                                       ast->span);
+                        }
+                        
+                        type = old_type;
+                    } else if (type->kind == TypeKind_Union &&
+                               old_type->kind == TypeKind_Union) {
+                        
+                        // TODO(Alexander): hack to get forward declares working
+                        if (array_count(type->Union.types) == 0) {
+                            // do nothing
+                        } else if (array_count(old_type->Union.types) == 0) {
+                            memcpy(old_type, type, sizeof(Type));
+                        } else {
+                            type_error(tcx,
+                                       string_format("cannot redeclare previous declaration `%`",
+                                                     f_string(vars_load_string(ident))),
+                                       ast->span);
+                        }
+                        
+                        type = old_type;
+                    } else {
+                        if (old_type->kind && !type_equals(old_type, type)) {
+                            pln("duplicate: % %", f_type(type), f_ast(ast));
+                            type_error(tcx,
+                                       string_format("cannot redeclare `%` with different type, previous type was `%`",
+                                                     f_var(ident), f_type(old_type)), 
+                                       ast->span);
+                        }
+                    }
+                }
+            }
+            
+            ast->type = type;
+            // TODO(Alexander): distinguish between types and types of variables
+            // E.g. in `int main(...)`, main is not a type it's a global variable
+            // but `typedef u32 string_id;` in this case string_id is a type.
+            map_put(tcx->global_type_table, ident, type);
+            map_put(tcx->globals, ident, type);
+            
+        }
+    }
+    
+    return type;
 }
 
 Type*
@@ -1464,18 +1602,23 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         } break;
         
         case Ast_Struct_Type: {
+            string_id ident = try_unwrap_ident(ast->Struct_Type.ident);
             Ast* fields = ast->Struct_Type.fields;
             Type_Struct_Like struct_like = create_type_struct_like_from_ast(tcx, fields, false, report_error);
-            if (!struct_like.has_error) {
-                result = arena_push_struct(&tcx->type_arena, Type);
-                result->kind = TypeKind_Struct;
-                result->Struct.types = struct_like.types;
-                result->Struct.idents = struct_like.idents;
-                result->Struct.offsets = struct_like.offsets;
-                result->Struct.ident_to_index = struct_like.ident_to_index;
-                result->ident = try_unwrap_ident(ast->Struct_Type.ident);
-                result->size = (s32) struct_like.size;
-                result->align = (s32) struct_like.align;
+            if (array_count(struct_like.types) > 0) {
+                if (!struct_like.has_error) {
+                    result = arena_push_struct(&tcx->type_arena, Type);
+                    result->kind = TypeKind_Struct;
+                    result->Struct.types = struct_like.types;
+                    result->Struct.idents = struct_like.idents;
+                    result->Struct.offsets = struct_like.offsets;
+                    result->Struct.ident_to_index = struct_like.ident_to_index;
+                    result->ident = ident;
+                    result->size = (s32) struct_like.size;
+                    result->align = (s32) struct_like.align;
+                }
+            } else if (ident) {
+                result = load_type_declaration(tcx, ident, ast->span, report_error);
             }
         } break;
         
@@ -1561,65 +1704,18 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         } break;
         
         case Ast_Typedef: {
-            if (ast->Typedef.ident->kind == Ast_Compound) {
-                // NOTE(Alexander): c craziess
-                
-                for_compound(ast->Typedef.ident, ty) {
-                    switch (ty->kind) {
-                        case Ast_Pointer_Type: {
-                            Ast* ptr_ty = ty->Pointer_Type;
-                            assert(ptr_ty->kind == Ast_Named_Type && "unsupported");
-                            string_id ident = ast_unwrap_ident(ptr_ty->Named_Type);
-                            
-                            // TODO(Alexander): copy pasta below
-                            // TODO(Alexander): we don't care about locality of typedefs at the moment (always global)
-                            result = map_get(tcx->global_type_table, ident);
-                            if (!result) {
-                                result = create_type_from_ast(tcx, ast->Typedef.type, report_error);
-                                result = type_wrap_pointer(tcx, result);
-                                if (result) {
-                                    map_put(tcx->global_type_table, ident, result);
-                                }
-                            } else {
-                                type_error(tcx, 
-                                           string_format("`%` is already defined", f_var(ident)),
-                                           ast->span);
-                            }
-                        } break;
-                        
-                        case Ast_Ident: {
-                            // TODO(Alexander): copy pasta above/below
-                            string_id ident = ast_unwrap_ident(ty);
-                            result = map_get(tcx->global_type_table, ident);
-                            if (!result) {
-                                result = create_type_from_ast(tcx, ast->Typedef.type, report_error);
-                                if (result) {
-                                    map_put(tcx->global_type_table, ident, result);
-                                }
-                            } else {
-                                type_error(tcx, 
-                                           string_format("`%` is already defined", f_var(ident)),
-                                           ast->span);
-                            }
-                        } break;
-                    }
-                }
+            assert(ast->Typedef.ident->kind == Ast_Ident);
+            
+            string_id ident = ast_unwrap_ident(ast->Typedef.ident);
+            
+            // TODO(Alexander): we don't care about locality of typedefs at the moment (always global)
+            result = map_get(tcx->global_type_table, ident);
+            
+            if (!result) {
+                //result = create_type_from_ast(tcx, ast->Typedef.type, report_error);
+                result = save_type_declaration(tcx, ident, ast->Typedef.type, report_error);
             } else {
-                string_id ident = ast_unwrap_ident(ast->Typedef.ident);
-                
-                // TODO(Alexander): copy pasta above
-                // TODO(Alexander): we don't care about locality of typedefs at the moment (always global)
-                result = map_get(tcx->global_type_table, ident);
-                
-                if (!result) {
-                    result = create_type_from_ast(tcx, ast->Typedef.type, report_error);
-                    
-                    if (result) {
-                        map_put(tcx->global_type_table, ident, result);
-                    }
-                } else {
-                    type_error(tcx, string_format("`%` is already defined", f_var(ident)), ast->span);
-                }
+                type_error(tcx, string_format("`%` is already defined", f_var(ident)), ast->span);
             }
         } break;
         
@@ -2239,143 +2335,7 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
     
     if (is_ast_type(ast)) {
         string_id ident = comp_unit->ident;
-        
-        
-        if (ast->kind == Ast_Struct_Type || ast->kind == Ast_Union_Type) {
-            // Forward declare structs and unions so they can refer to themselves
-            smm type_index = map_get_index(tcx->global_type_table, ident);
-            if (type_index == -1) {
-                Type* type = arena_push_struct(&tcx->type_arena, Type);
-                type->kind = ast->kind == Ast_Struct_Type ? TypeKind_Struct : TypeKind_Union;
-                map_put(tcx->global_type_table, ident, type);
-            }
-        }
-        
-        Type* type = create_type_from_ast(tcx, ast, report_error);
-        if (type) {
-            if (ident == Kw_operator) {
-                assert(type->kind == TypeKind_Function);
-                assert(ast->kind == Ast_Function_Type);
-                // TODO(Alexander): support for Unary operator overloading
-                
-                Operator op = ast->Function_Type.overload_operator;
-                
-                int arg_count = (int) array_count(type->Function.arg_types);
-                if (arg_count == 1 || arg_count == 2) {
-                    Type* lhs = type->Function.arg_types[0];
-                    Type* rhs = 0;
-                    
-                    // TODO(Alexander): we validate if the operator is possible to override
-                    if (arg_count == 2) {
-                        rhs = type->Function.arg_types[1];
-                    } else {
-                        switch (op) {
-                            case Op_Subtract: op = Op_Negate; break;
-                            case Op_Multiply: op = Op_Dereference; break;
-                        }
-                    }
-                    
-                    Overloaded_Operator_List* overload = &map_get(tcx->overloaded_operators, lhs);
-                    if (!overload || !overload->is_valid) {
-                        Overloaded_Operator_List new_overload = {};
-                        new_overload.is_valid = true;
-                        map_put(tcx->overloaded_operators, lhs, new_overload);
-                        overload = &map_get(tcx->overloaded_operators, lhs);
-                    }
-                    assert(overload);
-                    
-                    Operator_Overload overloaded_op = {};
-                    overloaded_op.op = op;
-                    overloaded_op.rhs = rhs;
-                    overloaded_op.func = type;
-                    array_push(overload->ops, overloaded_op);
-                    
-                    // TODO(Alexander): check ambiguity with previous entries
-                    
-                    ast->type = type;
-                    
-                } else {
-                    type_error(tcx,
-                               string_format("expected `1` or `2` paramter to binary operator overload, found `%`", 
-                                             f_int(arg_count)), ast->span);
-                }
-            } else {
-                smm old_index = map_get_index(tcx->global_type_table, ident);
-                if (old_index != -1) {
-                    Type* old_type = tcx->global_type_table[old_index].value;
-                    
-                    if (type != old_type) {
-                        
-                        if (type->kind == TypeKind_Function &&
-                            old_type->kind == TypeKind_Function) {
-                            // TODO(Alexander): func overload
-                            Overloaded_Function_List* overload = &map_get(tcx->overloaded_functions, ident);
-                            if (!overload || !overload->is_valid) {
-                                Overloaded_Function_List new_overload = {};
-                                new_overload.is_valid = true;
-                                map_put(tcx->overloaded_functions, ident, new_overload);
-                                overload = &map_get(tcx->overloaded_functions, ident);
-                                array_push(overload->functions, old_type);
-                            }
-                            assert(overload);
-                            
-                            array_push(overload->functions, type);
-                            
-                        } else if (type->kind == TypeKind_Struct &&
-                                   old_type->kind == TypeKind_Struct) {
-                            
-                            // TODO(Alexander): hack to get forward declares working
-                            if (array_count(type->Struct.types) == 0) {
-                                // do nothing
-                            } else if (array_count(old_type->Struct.types) == 0) {
-                                memcpy(old_type, type, sizeof(Type));
-                            } else {
-                                type_error(tcx,
-                                           string_format("cannot redeclare previous declaration `%`",
-                                                         f_string(vars_load_string(ident))),
-                                           ast->span);
-                            }
-                            
-                            type = old_type;
-                        } else if (type->kind == TypeKind_Union &&
-                                   old_type->kind == TypeKind_Union) {
-                            
-                            // TODO(Alexander): hack to get forward declares working
-                            if (array_count(type->Union.types) == 0) {
-                                // do nothing
-                            } else if (array_count(old_type->Union.types) == 0) {
-                                memcpy(old_type, type, sizeof(Type));
-                            } else {
-                                type_error(tcx,
-                                           string_format("cannot redeclare previous declaration `%`",
-                                                         f_string(vars_load_string(ident))),
-                                           ast->span);
-                            }
-                            
-                            type = old_type;
-                        } else {
-                            if (old_type->kind && !type_equals(old_type, type)) {
-                                pln("duplicate: % %", f_type(type), f_ast(ast));
-                                type_error(tcx,
-                                           string_format("cannot redeclare `%` with different type, previous type was `%`",
-                                                         f_var(comp_unit->ident), f_type(old_type)), 
-                                           comp_unit->ast->span);
-                            }
-                        }
-                    }
-                }
-                
-                ast->type = type;
-                // TODO(Alexander): distinguish between types and types of variables
-                // E.g. in `int main(...)`, main is not a type it's a global variable
-                // but `typedef u32 string_id;` in this case string_id is a type.
-                map_put(tcx->global_type_table, comp_unit->ident, type);
-                map_put(tcx->globals, comp_unit->ident, type);
-                
-            }
-        } else {
-            result = false;
-        }
+        save_type_declaration(tcx, ident, ast, report_error);
         
     } else if (is_ast_stmt(ast)) {
         Type* type = type_infer_statement(tcx, ast, report_error);

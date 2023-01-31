@@ -43,28 +43,44 @@ typedef char CHAR;
 typedef short SHORT;
 typedef unsigned int        *PUINT;
 typedef unsigned long POINTER_64_INT;
-typedef signed char         INT8, *PINT8;
-typedef signed short        INT16, *PINT16;
-typedef signed int          INT32, *PINT32;
-typedef signed __int64      INT64, *PINT64;
-typedef unsigned char       UINT8, *PUINT8;
-typedef unsigned short      UINT16, *PUINT16;
-typedef unsigned int        UINT32, *PUINT32;
-typedef unsigned __int64    UINT64, *PUINT64;
-typedef signed int LONG32, *PLONG32;
-typedef unsigned int ULONG32, *PULONG32;
-typedef unsigned int DWORD32, *PDWORD32;
-typedef s64 INT_PTR, *PINT_PTR;
-typedef s64 UINT_PTR, *PUINT_PTR;
-typedef s64 LONG_PTR, *PLONG_PTR;
-typedef s64 ULONG_PTR, *PULONG_PTR;
+typedef signed char INT8;
+typedef INT8* PINT8;
+typedef signed short INT16;
+typedef INT16* PINT16;
+typedef signed int INT32;
+typedef INT32* PINT32;
+typedef signed __int64 INT64;
+typedef INT64* PINT64;
+typedef unsigned char UINT8;
+typedef UINT8* PUINT8;
+typedef unsigned short UINT16;
+typedef UINT16* PUINT16;
+typedef unsigned int UINT32;
+typedef UINT32* PUINT32;
+typedef unsigned __int64 UINT64;
+typedef UINT64* PUINT64;
+typedef signed int LONG32;
+typedef LONG32* PLONG32;
+typedef unsigned int ULONG32;
+typedef ULONG32* PULONG32;
+typedef unsigned int DWORD32;
+typedef DWORD32* PDWORD32;
+typedef s64 INT_PTR;
+typedef INT_PTR* PINT_PTR;
+typedef s64 UINT_PTR;
+typedef UINT_PTR* PUINT_PTR;
+typedef s64 LONG_PTR;
+typedef LONG_PTR* PLONG_PTR;
+typedef s64 ULONG_PTR;
+typedef ULONG_PTR* PULONG_PTR;
 typedef s64 LONGLONG;
 typedef u64 ULONGLONG;
-typedef ULONG_PTR SIZE_T, *PSIZE_T;
+typedef ULONG_PTR SIZE_T;
+typedef SIZE_T* PSIZE_T
 typedef void* __ptr64 HANDLE64;
-typedef HANDLE64 *PHANDLE64;
-typedef void *HANDLE;
-typedef HANDLE *PHANDLE;
+typedef HANDLE64* PHANDLE64;
+typedef void* HANDLE;
+typedef HANDLE* PHANDLE;
 
 typedef int FARPROC();
 
@@ -72,8 +88,10 @@ typedef long HRESULT;
 
 #define SUCCEEDED(hr) (((HRESULT)(hr)) >= 0)
 
-typedef unsigned short UHALF_PTR, *PUHALF_PTR;
-typedef short HALF_PTR, *PHALF_PTR;
+typedef unsigned short UHALF_PTR;
+typedef UHALF_PTR* PUHALF_PTR;
+typedef short HALF_PTR;
+typedef HALF_PTR* PHALF_PTR;
 typedef  long SHANDLE_PTR;
 typedef  unsigned long HANDLE_PTR;
 
@@ -117,12 +135,17 @@ typedef int HFILE;
 #define APIPRIVATE  __stdcall
 #define PASCAL      __stdcall
 
+// TODO(Alexander): right now we don't have a keyword to denote this
+#define NEAR
+#define FAR
+
 #define MAX_PATH          260
 
 typedef struct _FILETIME {
     DWORD dwLowDateTime;
     DWORD dwHighDateTime;
-} FILETIME, *PFILETIME, *LPFILETIME;
+} FILETIME;
+//, *PFILETIME, *LPFILETIME;
 
 typedef union _LARGE_INTEGER {
     struct {
@@ -232,7 +255,7 @@ typedef struct tagRECT
     LONG    top;
     LONG    right;
     LONG    bottom;
-} RECT, *PRECT,  *NPRECT;
+} RECT;// *PRECT,  *NPRECT;
 typedef RECT* LPRECT;
 typedef const RECT * LPCRECT;
 typedef struct _RECTL       
@@ -241,30 +264,31 @@ typedef struct _RECTL
     LONG    top;
     LONG    right;
     LONG    bottom;
-} RECTL, *PRECTL, *LPRECTL;
+} RECTL;// *PRECTL, *LPRECTL;
 typedef const RECTL * LPCRECTL;
 typedef struct tagPOINT
 {
     LONG  x;
     LONG  y;
-} POINT, *PPOINT,  *NPPOINT,  *LPPOINT;
+} POINT;// *PPOINT,  *NPPOINT,  *LPPOINT;
 typedef struct _POINTL      
 {
     LONG  x;
     LONG  y;
-} POINTL, *PPOINTL;
+} POINTL;// *PPOINTL;
 typedef struct tagSIZE
 {
     LONG        cx;
     LONG        cy;
-} SIZE, *PSIZE, *LPSIZE;
-typedef SIZE               SIZEL;
-typedef SIZE               *PSIZEL, *LPSIZEL;
+} SIZE;// *PSIZE, *LPSIZE;
+typedef SIZE SIZEL;
+typedef SIZE* PSIZEL;
+typedef SIZE* LPSIZEL;
 typedef struct tagPOINTS
 {
     SHORT   x;
     SHORT   y;
-} POINTS, *PPOINTS, *LPPOINTS;
+} POINTS;// *PPOINTS, *LPPOINTS;
 
 //typedef LRESULT __stdcall(HWND, UINT, WPARAM, LPARAM)* WNDPROC;
 typedef LRESULT __stdcall WNDPROC(HWND, UINT, WPARAM, LPARAM);
@@ -770,13 +794,13 @@ typedef struct tagWNDCLASSA {
     HBRUSH      hbrBackground;
     LPCSTR      lpszMenuName;
     LPCSTR      lpszClassName;
-} WNDCLASSA, *PWNDCLASSA,  *NPWNDCLASSA,  *LPWNDCLASSA;
+} WNDCLASSA; //, *PWNDCLASSA,  *NPWNDCLASSA,  *LPWNDCLASSA;
 
 typedef struct tagRGBTRIPLE {
     BYTE    rgbtBlue;
     BYTE    rgbtGreen;
     BYTE    rgbtRed;
-} RGBTRIPLE, *PRGBTRIPLE,  *NPRGBTRIPLE,  *LPRGBTRIPLE;
+} RGBTRIPLE;// *PRGBTRIPLE,  *NPRGBTRIPLE,  *LPRGBTRIPLE;
 
 typedef struct tagRGBQUAD {
     BYTE    rgbBlue;
@@ -785,11 +809,11 @@ typedef struct tagRGBQUAD {
     BYTE    rgbReserved;
 } RGBQUAD;
 
-typedef RGBQUAD * LPRGBQUAD;
+typedef RGBQUAD* LPRGBQUAD;
 typedef LONG   LCSCSTYPE;
 typedef LONG    LCSGAMUTMATCH;
-typedef long            FXPT16DOT16,  *LPFXPT16DOT16;
-typedef long            FXPT2DOT30,  *LPFXPT2DOT30;
+typedef long            FXPT16DOT16;//,  *LPFXPT16DOT16;
+typedef long            FXPT2DOT30;//,  *LPFXPT2DOT30;
 
 typedef struct tagCIEXYZ
 {
@@ -797,7 +821,7 @@ typedef struct tagCIEXYZ
     FXPT2DOT30 ciexyzY;
     FXPT2DOT30 ciexyzZ;
 } CIEXYZ;
-typedef CIEXYZ   *LPCIEXYZ;
+typedef CIEXYZ* LPCIEXYZ;
 
 typedef struct tagICEXYZTRIPLE
 {
@@ -805,7 +829,7 @@ typedef struct tagICEXYZTRIPLE
     CIEXYZ  ciexyzGreen;
     CIEXYZ  ciexyzBlue;
 } CIEXYZTRIPLE;
-typedef CIEXYZTRIPLE     *LPCIEXYZTRIPLE;
+typedef CIEXYZTRIPLE* LPCIEXYZTRIPLE;
 
 typedef struct tagBITMAPINFOHEADER{
     DWORD      biSize;
@@ -819,12 +843,12 @@ typedef struct tagBITMAPINFOHEADER{
     LONG       biYPelsPerMeter;
     DWORD      biClrUsed;
     DWORD      biClrImportant;
-} BITMAPINFOHEADER,  *LPBITMAPINFOHEADER, *PBITMAPINFOHEADER;
+} BITMAPINFOHEADER;//,  *LPBITMAPINFOHEADER, *PBITMAPINFOHEADER;
 
 typedef struct tagBITMAPINFO {
     BITMAPINFOHEADER    bmiHeader;
     RGBQUAD             bmiColors[1];
-} BITMAPINFO,  *LPBITMAPINFO, *PBITMAPINFO;
+} BITMAPINFO;//,  *LPBITMAPINFO, *PBITMAPINFO;
 
 typedef struct tagMSG {
     HWND        hwnd;
@@ -833,7 +857,7 @@ typedef struct tagMSG {
     LPARAM      lParam;
     DWORD       time;
     POINT       pt;
-} MSG, *PMSG, *NPMSG;
+} MSG//, *PMSG, *NPMSG;
 typedef MSG* LPMSG;
 
 
@@ -1309,7 +1333,8 @@ typedef struct _DSBUFFERDESC
     DWORD           dwReserved;
     LPWAVEFORMATEX  lpwfxFormat;
     GUID            guid3DAlgorithm;
-} DSBUFFERDESC, *LPDSBUFFERDESC;
+} DSBUFFERDESC;
+typedef DSBUFFERDESC *LPDSBUFFERDESC;
 
 typedef const DSBUFFERDESC *LPCDSBUFFERDESC;
 
@@ -1447,6 +1472,8 @@ DECLARE_INTERFACE_(IDirectSoundBuffer, IUnknown)
 #define IDirectSoundBuffer_Unlock(p,a,b,c,d)            (p)->lpVtbl->Unlock(p,a,b,c,d)
 #define IDirectSoundBuffer_Restore(p)                   (p)->lpVtbl->Restore(p)
 
+typedef struct IDirectSound                 *LPDIRECTSOUND;
+typedef struct IDirectSoundBuffer           *LPDIRECTSOUNDBUFFER;
 
 /* OLD general waveform format structure (information common to all formats) */
 typedef struct waveformat_tag {
@@ -1590,19 +1617,19 @@ typedef struct _XINPUT_GAMEPAD
     SHORT                               sThumbLY;
     SHORT                               sThumbRX;
     SHORT                               sThumbRY;
-} XINPUT_GAMEPAD, *PXINPUT_GAMEPAD;
+} XINPUT_GAMEPAD// *PXINPUT_GAMEPAD;
 
 typedef struct _XINPUT_STATE
 {
     DWORD                               dwPacketNumber;
     XINPUT_GAMEPAD                      Gamepad;
-} XINPUT_STATE, *PXINPUT_STATE;
+} XINPUT_STATE;// *PXINPUT_STATE;
 
 typedef struct _XINPUT_VIBRATION
 {
     WORD                                wLeftMotorSpeed;
     WORD                                wRightMotorSpeed;
-} XINPUT_VIBRATION, *PXINPUT_VIBRATION;
+} XINPUT_VIBRATION;//, *PXINPUT_VIBRATION;
 
 typedef struct _XINPUT_CAPABILITIES
 {
@@ -1611,13 +1638,13 @@ typedef struct _XINPUT_CAPABILITIES
     WORD                                Flags;
     XINPUT_GAMEPAD                      Gamepad;
     XINPUT_VIBRATION                    Vibration;
-} XINPUT_CAPABILITIES, *PXINPUT_CAPABILITIES;
+} XINPUT_CAPABILITIES;//, *PXINPUT_CAPABILITIES;
 
 typedef struct _XINPUT_BATTERY_INFORMATION
 {
     BYTE BatteryType;
     BYTE BatteryLevel;
-} XINPUT_BATTERY_INFORMATION, *PXINPUT_BATTERY_INFORMATION;
+} XINPUT_BATTERY_INFORMATION;// *PXINPUT_BATTERY_INFORMATION;
 
 typedef struct _XINPUT_KEYSTROKE
 {
@@ -1626,4 +1653,4 @@ typedef struct _XINPUT_KEYSTROKE
     WORD    Flags;
     BYTE    UserIndex;
     BYTE    HidCode;
-} XINPUT_KEYSTROKE, *PXINPUT_KEYSTROKE;
+} XINPUT_KEYSTROKE;//, *PXINPUT_KEYSTROKE;

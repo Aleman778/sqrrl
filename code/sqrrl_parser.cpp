@@ -1542,56 +1542,59 @@ parse_type(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
                     
                     Ast* base_ident = base->Typedef.ident;
                     
-                    if (!base_ident || base_ident->kind != Ast_Ident) {
+                    if (!base_ident) {
+                        base->Typedef.ident = parse_identifier(parser);
+                    }
+                    
+#if 0
+                    if (parser->c_compatibility_mode) {
+                        Ast* curr = push_ast_node(parser);
+                        curr->kind = Ast_Compound;
+                        if (base->Typedef.ident) {
+                            curr->Compound.node = base->Typedef.ident;
+                            curr->Compound.next = push_ast_node(parser);
+                            
+                            base->Typedef.ident = curr;
+                            curr = curr->Compound.next;
+                        } else {
+                            base->Typedef.ident = curr;
+                        }
                         
-                        if (parser->c_compatibility_mode) {
-                            Ast* curr = push_ast_node(parser);
-                            curr->kind = Ast_Compound;
-                            if (base->Typedef.ident) {
-                                curr->Compound.node = base->Typedef.ident;
-                                curr->Compound.next = push_ast_node(parser);
-                                
-                                base->Typedef.ident = curr;
-                                curr = curr->Compound.next;
-                            } else {
-                                base->Typedef.ident = curr;
+                        for (;;) {
+                            token = peek_token(parser);
+                            if (token.type == Token_Semi) {
+                                next_token(parser);
+                                break;
                             }
                             
-                            for (;;) {
-                                token = peek_token(parser);
-                                if (token.type == Token_Semi) {
-                                    next_token(parser);
+                            // TODO(Alexander): for now we parse an expression
+                            // e.g. you can have typedefs in C land that looks like this
+                            // `typedef struct element element, *list, elements[5];`
+                            // so for now we should be able to get the most of our 
+                            // resuing the expression parser.
+                            curr->Compound.node = parse_expression(parser);
+                            curr->Compound.next = push_ast_node(parser);
+                            curr = curr->Compound.next;
+                            
+                            if (!next_token_if_matched(parser, Token_Comma, false)) {
+                                if (next_token_if_matched(parser, Token_Semi, false)) {
                                     break;
-                                }
-                                
-                                // TODO(Alexander): for now we parse an expression
-                                // e.g. you can have typedefs in C land that looks like this
-                                // `typedef struct element element, *list, elements[5];`
-                                // so for now we should be able to get the most of our 
-                                // resuing the expression parser.
-                                curr->Compound.node = parse_expression(parser);
-                                curr->Compound.next = push_ast_node(parser);
-                                curr = curr->Compound.next;
-                                
-                                if (!next_token_if_matched(parser, Token_Comma, false)) {
-                                    if (next_token_if_matched(parser, Token_Semi, false)) {
-                                        break;
-                                    } else {
-                                        token = peek_token(parser);
-                                        parse_error_unexpected_token(parser, Token_Comma, token);
-                                        for (;;) {
-                                            token = next_token(parser);
-                                            if (!is_token_valid(token) || token.type == Token_Semi) {
-                                                break;
-                                            }
+                                } else {
+                                    token = peek_token(parser);
+                                    parse_error_unexpected_token(parser, Token_Comma, token);
+                                    for (;;) {
+                                        token = next_token(parser);
+                                        if (!is_token_valid(token) || token.type == Token_Semi) {
+                                            break;
                                         }
                                     }
                                 }
                             }
-                        } else {
-                            base->Typedef.ident = parse_identifier(parser);
                         }
+                    } else {
+                        base->Typedef.ident = parse_identifier(parser);
                     }
+#endif
                     
                     return base;
                 } break;

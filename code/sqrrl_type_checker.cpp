@@ -755,6 +755,10 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 __debugbreak();
             }
             
+            if (function_type->kind == TypeKind_Pointer) {
+                function_type = function_type->Pointer;
+            }
+            
             if (function_type->kind != TypeKind_Function) {
                 if (report_error) {
                     string_id function_ident = ast_unwrap_ident(expr->Call_Expr.ident);
@@ -1272,6 +1276,11 @@ load_type_declaration(Type_Context* tcx, string_id ident, Span span, bool report
 
 Type*
 save_type_declaration(Type_Context* tcx, string_id ident, Ast* ast, bool report_error) {
+    
+    //if (ident == vars_save_cstring("Collision_Detection_Result")) {
+    //__debugbreak();
+    //}
+    
     if (ast->kind == Ast_Struct_Type || ast->kind == Ast_Union_Type) {
         // Forward declare structs and unions so they can refer to themselves
         smm type_index = map_get_index(tcx->global_type_table, ident);
@@ -1284,6 +1293,11 @@ save_type_declaration(Type_Context* tcx, string_id ident, Ast* ast, bool report_
     
     Type* type = create_type_from_ast(tcx, ast, report_error);
     if (type) {
+        
+        if (type->kind == TypeKind_Struct && type->ident == 0) {
+            pln("%: %", f_type(type), f_ast(ast));
+        }
+        
         if (ident == Kw_operator) {
             assert(type->kind == TypeKind_Function);
             assert(ast->kind == Ast_Function_Type);
@@ -1603,10 +1617,15 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         
         case Ast_Struct_Type: {
             string_id ident = try_unwrap_ident(ast->Struct_Type.ident);
+            //if (ident == vars_save_cstring("IDirectSound")) {
+            //__debugbreak();
+            //}
+            
             Ast* fields = ast->Struct_Type.fields;
             Type_Struct_Like struct_like = create_type_struct_like_from_ast(tcx, fields, false, report_error);
-            if (array_count(struct_like.types) > 0) {
-                if (!struct_like.has_error) {
+            if (!struct_like.has_error) {
+                if (array_count(struct_like.types) > 0) {
+                    
                     result = arena_push_struct(&tcx->type_arena, Type);
                     result->kind = TypeKind_Struct;
                     result->Struct.types = struct_like.types;
@@ -1616,9 +1635,12 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     result->ident = ident;
                     result->size = (s32) struct_like.size;
                     result->align = (s32) struct_like.align;
+                    
+                } else if (ident) {
+                    
+                    // Forward declare
+                    result = load_type_declaration(tcx, ident, ast->span, report_error);
                 }
-            } else if (ident) {
-                result = load_type_declaration(tcx, ident, ast->span, report_error);
             }
         } break;
         
@@ -2335,7 +2357,10 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
     
     if (is_ast_type(ast)) {
         string_id ident = comp_unit->ident;
-        save_type_declaration(tcx, ident, ast, report_error);
+        Type* type = save_type_declaration(tcx, ident, ast, report_error);
+        if (!type) {
+            result = false;
+        }
         
     } else if (is_ast_stmt(ast)) {
         Type* type = type_infer_statement(tcx, ast, report_error);
@@ -2350,7 +2375,7 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
     }
     
     if (!result) {
-        end_temporary_memory(&temp_memory);
+        //end_temporary_memory(&temp_memory);
     }
     
     

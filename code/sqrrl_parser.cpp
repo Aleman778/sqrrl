@@ -733,6 +733,7 @@ parse_assign_statement(Parser* parser, Ast* type) {
         Ast* ident_list_cont = parse_prefixed_compound(parser, Token_Comma, 
                                                        &parse_actual_identifier);
         Ast* ident_list_head = push_ast_node(parser);
+        ident_list_head->kind = Ast_Compound;
         ident_list_head->Compound.node = result->Assign_Stmt.ident;
         ident_list_head->Compound.next = ident_list_cont;
         result->Assign_Stmt.ident = ident_list_head;
@@ -1042,8 +1043,8 @@ parse_actual_struct_or_union_argument(Parser* parser) {
         if (next_token_if_matched(parser, Token_Colon, false)) {
             result->Argument.assign = parse_expression(parser);
         } else {
-            result->Argument.assign = result->Argument.ident;
-            result->Argument.ident = result->Argument.ident;
+            result->Argument.assign = parse_expression(parser, true, 1, result->Argument.ident);
+            result->Argument.ident = 0;
         }
     } else {
         result->Argument.assign = parse_expression(parser);
@@ -1112,6 +1113,7 @@ Ast*
 parse_switch_case(Parser* parser) {
     Ast* result = push_ast_node(parser);
     
+    
     // TODO(Alexander): add support for fallthrough to next case
     if (parse_keyword(parser, Kw_case)) {
         result->kind = Ast_Switch_Case;
@@ -1120,8 +1122,15 @@ parse_switch_case(Parser* parser) {
         if (peek_token_match(parser, Token_Open_Brace, false)) {
             result->Switch_Case.stmt = parse_block_statement(parser, false);
         }
+    } else {
+        Token token = next_token(parser);
+        while (token.type != Token_EOF) {
+            if (peek_token_match(parser, Token_Close_Brace, false)) {
+                break;
+            }
+            token = next_token(parser);
+        }
     }
-    
     return result;
 }
 
@@ -1854,18 +1863,18 @@ parse_top_level_declaration(Parser* parser, Ast_File* ast_file) {
         attributes = parse_prefixed_compound(parser, Token_Attribute, 
                                              &parse_declaration_attribute);
     }
-    token = peek_token(parser);
+    //token = peek_token(parser);
     
-    if (token.type != Token_Ident) {
-        next_token(parser);
-        parse_error_unexpected_token(parser, Token_Ident, token);
-        return;
-    }
+    //if (token.type != Token_Ident) {
+    //next_token(parser);
+    //parse_error_unexpected_token(parser, Token_Ident, token);
+    //return;
+    //}
     
     Ast_Decl_Modifier mods = AstDeclModifier_None;
     while (true) {
         token = peek_token(parser);
-        if (!is_token_valid(token)) {
+        if (token.type != Token_Ident) {
             break;
         }
         

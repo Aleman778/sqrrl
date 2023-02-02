@@ -14,7 +14,6 @@ VAR(defer)    \
 VAR(do)       \
 VAR(else)     \
 VAR(enum)     \
-VAR(error)    \
 VAR(false)    \
 VAR(for)      \
 VAR(global)   \
@@ -83,6 +82,7 @@ VAR(pragma)   \
 VAR(once)     \
 VAR(line)     \
 VAR(undef)    \
+VAR(error)    \
 VAR(main)     \
 VAR(__string) \
 VAR(__const)  \

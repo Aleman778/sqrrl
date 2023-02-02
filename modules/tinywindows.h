@@ -17,6 +17,7 @@ typedef unsigned char UCHAR;
 typedef UCHAR* PUCHAR;
 typedef char* PSZ;
 typedef u32 DWORD;
+typedef u64 DWORD64;
 typedef u16 WCHAR;    // wc,   16-bit UNICODE character
 typedef int BOOL;
 typedef u8 BYTE;
@@ -34,6 +35,7 @@ typedef WORD* LPWORD;
 typedef long* LPLONG;
 typedef DWORD* PDWORD;
 typedef DWORD* LPDWORD;
+typedef void* PVOID;
 typedef void* LPVOID;
 typedef const void* LPCVOID;
 
@@ -120,6 +122,11 @@ struct HWINSTA__{int unused;}; typedef struct HWINSTA__ *HWINSTA;
 struct HKL__{int unused;}; typedef struct HKL__ *HKL;
 typedef int HFILE;
 
+// Winerrors
+#define ERROR_SUCCESS                    0L
+#define ERROR_DEVICE_NOT_CONNECTED       1167L
+
+
 #ifndef FALSE
 #define FALSE               0
 #endif
@@ -134,10 +141,151 @@ typedef int HFILE;
 #define APIENTRY    WINAPI
 #define APIPRIVATE  __stdcall
 #define PASCAL      __stdcall
+#define STDMETHODCALLTYPE __cdecl
 
 // TODO(Alexander): right now we don't have a keyword to denote this
 #define NEAR
 #define FAR
+
+
+#define FILE_READ_DATA            ( 0x0001 )    // file & pipe
+#define FILE_LIST_DIRECTORY       ( 0x0001 )    // directory
+
+#define FILE_WRITE_DATA           ( 0x0002 )    // file & pipe
+#define FILE_ADD_FILE             ( 0x0002 )    // directory
+
+#define FILE_APPEND_DATA          ( 0x0004 )    // file
+#define FILE_ADD_SUBDIRECTORY     ( 0x0004 )    // directory
+#define FILE_CREATE_PIPE_INSTANCE ( 0x0004 )    // named pipe
+
+
+#define FILE_READ_EA              ( 0x0008 )    // file & directory
+
+#define FILE_WRITE_EA             ( 0x0010 )    // file & directory
+
+#define FILE_EXECUTE              ( 0x0020 )    // file
+#define FILE_TRAVERSE             ( 0x0020 )    // directory
+
+#define FILE_DELETE_CHILD         ( 0x0040 )    // directory
+
+#define FILE_READ_ATTRIBUTES      ( 0x0080 )    // all
+
+#define FILE_WRITE_ATTRIBUTES     ( 0x0100 )    // all
+
+#define FILE_ALL_ACCESS (STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE | 0x1FF)
+
+#define FILE_GENERIC_READ         (STANDARD_RIGHTS_READ     |\
+FILE_READ_DATA           |\
+FILE_READ_ATTRIBUTES     |\
+FILE_READ_EA             |\
+SYNCHRONIZE)
+
+
+#define FILE_GENERIC_WRITE        (STANDARD_RIGHTS_WRITE    |\
+FILE_WRITE_DATA          |\
+FILE_WRITE_ATTRIBUTES    |\
+FILE_WRITE_EA            |\
+FILE_APPEND_DATA         |\
+SYNCHRONIZE)
+
+
+#define FILE_GENERIC_EXECUTE      (STANDARD_RIGHTS_EXECUTE  |\
+FILE_READ_ATTRIBUTES     |\
+FILE_EXECUTE             |\
+SYNCHRONIZE)
+
+#define FILE_SHARE_READ                 0x00000001  
+#define FILE_SHARE_WRITE                0x00000002  
+#define FILE_SHARE_DELETE               0x00000004  
+#define FILE_ATTRIBUTE_READONLY             0x00000001  
+#define FILE_ATTRIBUTE_HIDDEN               0x00000002  
+#define FILE_ATTRIBUTE_SYSTEM               0x00000004  
+#define FILE_ATTRIBUTE_DIRECTORY            0x00000010  
+#define FILE_ATTRIBUTE_ARCHIVE              0x00000020  
+#define FILE_ATTRIBUTE_DEVICE               0x00000040  
+#define FILE_ATTRIBUTE_NORMAL               0x00000080  
+#define FILE_ATTRIBUTE_TEMPORARY            0x00000100  
+#define FILE_ATTRIBUTE_SPARSE_FILE          0x00000200  
+#define FILE_ATTRIBUTE_REPARSE_POINT        0x00000400  
+#define FILE_ATTRIBUTE_COMPRESSED           0x00000800  
+#define FILE_ATTRIBUTE_OFFLINE              0x00001000  
+#define FILE_ATTRIBUTE_NOT_CONTENT_INDEXED  0x00002000  
+#define FILE_ATTRIBUTE_ENCRYPTED            0x00004000  
+#define FILE_ATTRIBUTE_INTEGRITY_STREAM     0x00008000  
+#define FILE_ATTRIBUTE_VIRTUAL              0x00010000  
+#define FILE_ATTRIBUTE_NO_SCRUB_DATA        0x00020000  
+#define FILE_ATTRIBUTE_EA                   0x00040000  
+#define FILE_ATTRIBUTE_PINNED               0x00080000  
+#define FILE_ATTRIBUTE_UNPINNED             0x00100000  
+#define FILE_ATTRIBUTE_RECALL_ON_OPEN       0x00040000  
+#define FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS 0x00400000 
+#define TREE_CONNECT_ATTRIBUTE_PRIVACY      0x00004000  
+#define TREE_CONNECT_ATTRIBUTE_INTEGRITY    0x00008000  
+#define TREE_CONNECT_ATTRIBUTE_GLOBAL       0x00000004  
+#define TREE_CONNECT_ATTRIBUTE_PINNED       0x00000002  
+#define FILE_ATTRIBUTE_STRICTLY_SEQUENTIAL  0x20000000  
+#define FILE_NOTIFY_CHANGE_FILE_NAME    0x00000001   
+#define FILE_NOTIFY_CHANGE_DIR_NAME     0x00000002   
+#define FILE_NOTIFY_CHANGE_ATTRIBUTES   0x00000004   
+#define FILE_NOTIFY_CHANGE_SIZE         0x00000008   
+#define FILE_NOTIFY_CHANGE_LAST_WRITE   0x00000010   
+#define FILE_NOTIFY_CHANGE_LAST_ACCESS  0x00000020   
+#define FILE_NOTIFY_CHANGE_CREATION     0x00000040   
+#define FILE_NOTIFY_CHANGE_SECURITY     0x00000100   
+#define FILE_ACTION_ADDED                   0x00000001   
+#define FILE_ACTION_REMOVED                 0x00000002   
+#define FILE_ACTION_MODIFIED                0x00000003   
+#define FILE_ACTION_RENAMED_OLD_NAME        0x00000004   
+#define FILE_ACTION_RENAMED_NEW_NAME        0x00000005   
+#define MAILSLOT_NO_MESSAGE             ((DWORD)-1) 
+#define MAILSLOT_WAIT_FOREVER           ((DWORD)-1) 
+#define FILE_CASE_SENSITIVE_SEARCH          0x00000001  
+#define FILE_CASE_PRESERVED_NAMES           0x00000002  
+#define FILE_UNICODE_ON_DISK                0x00000004  
+#define FILE_PERSISTENT_ACLS                0x00000008  
+#define FILE_FILE_COMPRESSION               0x00000010  
+#define FILE_VOLUME_QUOTAS                  0x00000020  
+#define FILE_SUPPORTS_SPARSE_FILES          0x00000040  
+#define FILE_SUPPORTS_REPARSE_POINTS        0x00000080  
+#define FILE_SUPPORTS_REMOTE_STORAGE        0x00000100  
+#define FILE_RETURNS_CLEANUP_RESULT_INFO    0x00000200  
+#define FILE_SUPPORTS_POSIX_UNLINK_RENAME   0x00000400  
+#define FILE_SUPPORTS_BYPASS_IO             0x00000800  
+#define FILE_SUPPORTS_STREAM_SNAPSHOTS      0x00001000  
+#define FILE_SUPPORTS_CASE_SENSITIVE_DIRS   0x00002000  
+
+#define FILE_VOLUME_IS_COMPRESSED           0x00008000  
+#define FILE_SUPPORTS_OBJECT_IDS            0x00010000  
+#define FILE_SUPPORTS_ENCRYPTION            0x00020000  
+#define FILE_NAMED_STREAMS                  0x00040000  
+#define FILE_READ_ONLY_VOLUME               0x00080000  
+#define FILE_SEQUENTIAL_WRITE_ONCE          0x00100000  
+#define FILE_SUPPORTS_TRANSACTIONS          0x00200000  
+#define FILE_SUPPORTS_HARD_LINKS            0x00400000  
+#define FILE_SUPPORTS_EXTENDED_ATTRIBUTES   0x00800000  
+#define FILE_SUPPORTS_OPEN_BY_FILE_ID       0x01000000  
+#define FILE_SUPPORTS_USN_JOURNAL           0x02000000  
+#define FILE_SUPPORTS_INTEGRITY_STREAMS     0x04000000  
+#define FILE_SUPPORTS_BLOCK_REFCOUNTING     0x08000000  
+#define FILE_SUPPORTS_SPARSE_VDL            0x10000000  
+#define FILE_DAX_VOLUME                     0x20000000  
+#define FILE_SUPPORTS_GHOSTING              0x40000000  
+
+#define FILE_INVALID_FILE_ID               ((LONGLONG)-1LL) 
+
+struct FILE_ID_128 {                               
+    BYTE  Identifier[16];                                   
+} 
+typedef FILE_ID_128 *PFILE_ID_128;
+
+//
+//  These are the generic rights.
+//
+
+#define GENERIC_READ                     (0x80000000L)
+#define GENERIC_WRITE                    (0x40000000L)
+#define GENERIC_EXECUTE                  (0x20000000L)
+#define GENERIC_ALL                      (0x10000000L)
 
 #define MAX_PATH          260
 
@@ -158,6 +306,8 @@ typedef union _LARGE_INTEGER {
     } u;
     LONGLONG QuadPart;
 } LARGE_INTEGER;
+typedef LARGE_INTEGER* PLARGE_INTEGER;
+typedef LARGE_INTEGER* LPLARGE_INTEGER;
 
 typedef struct _SECURITY_ATTRIBUTES {
     DWORD nLength;
@@ -166,6 +316,22 @@ typedef struct _SECURITY_ATTRIBUTES {
 } SECURITY_ATTRIBUTES;
 typedef SECURITY_ATTRIBUTES* PSECURITY_ATTRIBUTES;
 typedef SECURITY_ATTRIBUTES* LPSECURITY_ATTRIBUTES;
+
+struct OVERLAPPED {
+    ULONG_PTR Internal;
+    ULONG_PTR InternalHigh;
+    union {
+        struct {
+            DWORD Offset;
+            DWORD OffsetHigh;
+        } DUMMYSTRUCTNAME;
+        PVOID Pointer;
+    } DUMMYUNIONNAME;
+    
+    HANDLE  hEvent;
+};
+typedef OVERLAPPED *LPOVERLAPPED;
+
 
 typedef struct _WIN32_FIND_DATAA {
     DWORD dwFileAttributes;
@@ -270,7 +436,8 @@ typedef struct tagPOINT
 {
     LONG  x;
     LONG  y;
-} POINT;// *PPOINT,  *NPPOINT,  *LPPOINT;
+} POINT;// *PPOINT,  *NPPOINT,  
+typedef POINT *LPPOINT;
 typedef struct _POINTL      
 {
     LONG  x;
@@ -542,10 +709,8 @@ WS_SYSMENU)
 #define VK_CANCEL         0x03
 #define VK_MBUTTON        0x04    /* NOT contiguous with L & RBUTTON */
 
-#if(_WIN32_WINNT >= 0x0500)
 #define VK_XBUTTON1       0x05    /* NOT contiguous with L & RBUTTON */
 #define VK_XBUTTON2       0x06    /* NOT contiguous with L & RBUTTON */
-#endif /* _WIN32_WINNT >= 0x0500 */
 
 /*
  * 0x07 : reserved
@@ -861,6 +1026,20 @@ typedef struct tagMSG {
 typedef MSG* LPMSG;
 
 
+// Time API
+typedef UINT MMRESULT;
+/* timer error return values */
+#define TIMERR_NOERROR        (0)                  /* no error */
+#define TIMERR_NOCANDO        (TIMERR_BASE+1)      /* request not completed */
+#define TIMERR_STRUCT         (TIMERR_BASE+33)     /* time struct size */
+
+@link("winmm.dll")
+extern {
+    MMRESULT timeBeginPeriod(UINT uPeriod);
+}
+
+#define ReadTimeStampCounter() __rdtsc()
+DWORD64 __rdtsc ();
 
 @link("kernel32.dll")
 extern {
@@ -880,6 +1059,11 @@ extern {
     void __stdcall Sleep(DWORD dwMilliseconds);
     
     DWORD __stdcall GetLastError();
+    
+    BOOL WINAPI QueryPerformanceCounter(LARGE_INTEGER* lpPerformanceCount);
+    
+    BOOL WINAPI QueryPerformanceFrequency(LARGE_INTEGER *lpFrequency);
+    
 }
 
 @link("user32.dll")
@@ -920,9 +1104,15 @@ extern {
                                    HINSTANCE hInstance,
                                    LPVOID lpParam);
     
+    BOOL WINAPI GetCursorPos(LPPOINT lpPoint);
+    
+    BOOL WINAPI ScreenToClient(HWND hWnd, LPPOINT lpPoint);
+    
     BOOL __stdcall GetWindowRect(HWND hWnd, LPRECT lpRect);
     
     BOOL __stdcall GetClientRect(HWND hWnd, LPRECT lpRect);
+    
+    SHORT WINAPI GetKeyState(int nVirtKey);
     
     BOOL ShowWindow(HWND hWnd, int nCmdShow);
     
@@ -930,8 +1120,62 @@ extern {
     
 }
 
+
+/* Device Parameters for GetDeviceCaps() */
+#define DRIVERVERSION 0     /* Device driver version                    */
+#define TECHNOLOGY    2     /* Device classification                    */
+#define HORZSIZE      4     /* Horizontal size in millimeters           */
+#define VERTSIZE      6     /* Vertical size in millimeters             */
+#define HORZRES       8     /* Horizontal width in pixels               */
+#define VERTRES       10    /* Vertical height in pixels                */
+#define BITSPIXEL     12    /* Number of bits per pixel                 */
+#define PLANES        14    /* Number of planes                         */
+#define NUMBRUSHES    16    /* Number of brushes the device has         */
+#define NUMPENS       18    /* Number of pens the device has            */
+#define NUMMARKERS    20    /* Number of markers the device has         */
+#define NUMFONTS      22    /* Number of fonts the device has           */
+#define NUMCOLORS     24    /* Number of colors the device supports     */
+#define PDEVICESIZE   26    /* Size required for device descriptor      */
+#define CURVECAPS     28    /* Curve capabilities                       */
+#define LINECAPS      30    /* Line capabilities                        */
+#define POLYGONALCAPS 32    /* Polygonal capabilities                   */
+#define TEXTCAPS      34    /* Text capabilities                        */
+#define CLIPCAPS      36    /* Clipping capabilities                    */
+#define RASTERCAPS    38    /* Bitblt capabilities                      */
+#define ASPECTX       40    /* Length of the X leg                      */
+#define ASPECTY       42    /* Length of the Y leg                      */
+#define ASPECTXY      44    /* Length of the hypotenuse                 */
+
+#define LOGPIXELSX    88    /* Logical pixels/inch in X                 */
+#define LOGPIXELSY    90    /* Logical pixels/inch in Y                 */
+
+#define SIZEPALETTE  104    /* Number of entries in physical palette    */
+#define NUMRESERVED  106    /* Number of reserved entries in palette    */
+#define COLORRES     108    /* Actual color resolution                  */
+
+// Printing related DeviceCaps. These replace the appropriate Escapes
+
+#define PHYSICALWIDTH   110 /* Physical Width in device units           */
+#define PHYSICALHEIGHT  111 /* Physical Height in device units          */
+#define PHYSICALOFFSETX 112 /* Physical Printable Area x margin         */
+#define PHYSICALOFFSETY 113 /* Physical Printable Area y margin         */
+#define SCALINGFACTORX  114 /* Scaling factor x                         */
+#define SCALINGFACTORY  115 /* Scaling factor y                         */
+// Display driver specific
+
+#define VREFRESH        116  /* Current vertical refresh rate of the    */
+/* display device (for displays only) in Hz*/
+#define DESKTOPVERTRES  117  /* Horizontal width of entire desktop in   */
+/* pixels                                  */
+#define DESKTOPHORZRES  118  /* Vertical height of entire desktop in    */
+/* pixels                                  */
+#define BLTALIGNMENT    119  /* Preferred blt alignment                 */
+
+
 @link("gdi32.dll")
 extern {
+    int   WINAPI GetDeviceCaps(HDC hdc, int index);
+    
     BOOL  __stdcall BitBlt(HDC hdc,
                            int x, int y, int cx, int cy,
                            HDC hdcSrc, 
@@ -993,7 +1237,24 @@ extern {
     
     BOOL WINAPI FindClose(HANDLE hFindFile);
     
+    DWORD WINAPI GetFileSize(HANDLE hFile,
+                             LPDWORD lpFileSizeHigh);
     
+    BOOL WINAPI GetFileSizeEx(HANDLE hFile,
+                              PLARGE_INTEGER lpFileSize);
+    
+    DWORD WINAPI GetFileType(HANDLE hFile);
+    
+    BOOL WINAPI ReadFile(HANDLE hFile,
+                         LPVOID lpBuffer,
+                         DWORD nNumberOfBytesToRead,
+                         LPDWORD lpNumberOfBytesRead,
+                         LPOVERLAPPED lpOverlapped);
+    BOOL WINAPI WriteFile(HANDLE hFile,
+                          LPCVOID lpBuffer,
+                          DWORD nNumberOfBytesToWrite,
+                          LPDWORD lpNumberOfBytesWritten,
+                          LPOVERLAPPED lpOverlapped);
 }
 
 /*
@@ -1288,44 +1549,7 @@ DEFINE_GUID(DSDEVID_DefaultVoiceCapture, 0xdef00003, 0x9c6d, 0x47ed, 0xaa, 0xf1,
 #define DS_CERTIFIED                0x00000000
 #define DS_UNCERTIFIED              0x00000001
 
-struct IUnknown {
-    const struct IUnknownVtbl* lpVtbl;
-}
-typedef /* [unique] */ IUnknown *LPUNKNOWN;
-
-
-// Part of COM API
-#define STDMETHOD(method)       HRESULT method
-#define STDMETHOD_(type,method) type method
-#define THIS_                   void* This,
-#define THIS                    void* This
-
-#define __STRUCT__ struct
-#define interface __STRUCT__
-
-#ifdef CONST_VTABLE
-#undef CONST_VTBL
-#define CONST_VTBL const
-#define DECLARE_INTERFACE(iface)    typedef interface iface { \
-const struct iface##Vtbl FAR* lpVtbl; \
-} iface; \
-typedef const struct iface##Vtbl iface##Vtbl; \
-const struct iface##Vtbl
-#else
-#undef CONST_VTBL
-#define CONST_VTBL
-#define DECLARE_INTERFACE(iface)    typedef interface iface { \
-struct iface##Vtbl FAR* lpVtbl; \
-} iface; \
-typedef struct iface##Vtbl iface##Vtbl; \
-struct iface##Vtbl
-#endif
-#define DECLARE_INTERFACE_(iface, baseiface)    DECLARE_INTERFACE(iface)
-#define DECLARE_INTERFACE_IID(iface, iid)               DECLARE_INTERFACE(iface)
-#define DECLARE_INTERFACE_IID_(iface, baseiface, iid)   DECLARE_INTERFACE_(iface, baseiface)
-
-
-typedef struct _DSBUFFERDESC
+struct DSBUFFERDESC
 {
     DWORD           dwSize;
     DWORD           dwFlags;
@@ -1333,7 +1557,7 @@ typedef struct _DSBUFFERDESC
     DWORD           dwReserved;
     LPWAVEFORMATEX  lpwfxFormat;
     GUID            guid3DAlgorithm;
-} DSBUFFERDESC;
+}
 typedef DSBUFFERDESC *LPDSBUFFERDESC;
 
 typedef const DSBUFFERDESC *LPCDSBUFFERDESC;
@@ -1379,6 +1603,52 @@ typedef struct _DSBCAPS
 typedef DSBCAPS *LPDSBCAPS;
 typedef const DSBCAPS *LPCDSBCAPS;
 
+
+// Part of COM API
+struct IUnknownVtbl
+{
+    HRESULT* STDMETHODCALLTYPE QueryInterface(IUnknown* This,
+                                              /* [in] */ REFIID riid,
+                                              /* [annotation][iid_is][out] */ 
+                                              void **ppvObject);
+    
+    ULONG* STDMETHODCALLTYPE AddRef(IUnknown* This);
+    
+    ULONG* STDMETHODCALLTYPE Release(IUnknown* This);
+}
+
+struct IUnknown
+{
+    IUnknownVtbl* lpVtbl;
+}
+
+typedef /* [unique] */ IUnknown *LPUNKNOWN;
+
+#define STDMETHOD(method)       HRESULT method
+#define STDMETHOD_(type,method) type method
+#define THIS_                   void* This,
+#define THIS                    void* This
+
+#ifdef CONST_VTABLE
+#undef CONST_VTBL
+#define CONST_VTBL const
+#define DECLARE_INTERFACE(iface) struct iface { \
+const iface##Vtbl FAR* lpVtbl; \
+} \
+const iface##Vtbl
+#else
+#undef CONST_VTBL
+#define CONST_VTBL
+#define DECLARE_INTERFACE(iface) struct iface { \
+iface##Vtbl FAR* lpVtbl; \
+} \
+struct iface##Vtbl
+#endif
+#define DECLARE_INTERFACE_(iface, baseiface)    DECLARE_INTERFACE(iface)
+#define DECLARE_INTERFACE_IID(iface, iid)               DECLARE_INTERFACE(iface)
+#define DECLARE_INTERFACE_IID_(iface, baseiface, iid)   DECLARE_INTERFACE_(iface, baseiface)
+
+
 DEFINE_GUID(IID_IDirectSound, 0x279AFA83, 0x4981, 0x11CE, 0xA5, 0x21, 0x00, 0x20, 0xAF, 0x0B, 0xE5, 0x60);
 
 #undef INTERFACE
@@ -1403,17 +1673,17 @@ DECLARE_INTERFACE_(IDirectSound, IUnknown)
 };
 
 
-#define IDirectSound_QueryInterface(p,a,b)       IUnknown_QueryInterface(p,a,b)
-#define IDirectSound_AddRef(p)                   IUnknown_AddRef(p)
-#define IDirectSound_Release(p)                  IUnknown_Release(p)
-#define IDirectSound_CreateSoundBuffer(p,a,b,c)  (p)->lpVtbl->CreateSoundBuffer(p,a,b,c)
-#define IDirectSound_GetCaps(p,a)                (p)->lpVtbl->GetCaps(p,a)
-#define IDirectSound_DuplicateSoundBuffer(p,a,b) (p)->lpVtbl->DuplicateSoundBuffer(p,a,b)
-#define IDirectSound_SetCooperativeLevel(p,a,b)  (p)->lpVtbl->SetCooperativeLevel(p,a,b)
-#define IDirectSound_Compact(p)                  (p)->lpVtbl->Compact(p)
-#define IDirectSound_GetSpeakerConfig(p,a)       (p)->lpVtbl->GetSpeakerConfig(p,a)
-#define IDirectSound_SetSpeakerConfig(p,b)       (p)->lpVtbl->SetSpeakerConfig(p,b)
-#define IDirectSound_Initialize(p,a)             (p)->lpVtbl->Initialize(p,a)
+#define IDirectSound_QueryInterface(p,a,b)       IUnknown_QueryInterface((void*) p,a,b)
+#define IDirectSound_AddRef(p)                   IUnknown_AddRef((void*) p)
+#define IDirectSound_Release(p)                  IUnknown_Release((void*) p)
+#define IDirectSound_CreateSoundBuffer(p,a,b,c)  (p)->lpVtbl->CreateSoundBuffer((void*) p,a,b,c)
+#define IDirectSound_GetCaps(p,a)                (p)->lpVtbl->GetCaps((void*) p,a)
+#define IDirectSound_DuplicateSoundBuffer(p,a,b) (p)->lpVtbl->DuplicateSoundBuffer((void*) p,a,b)
+#define IDirectSound_SetCooperativeLevel(p,a,b)  (p)->lpVtbl->SetCooperativeLevel((void*) p,a,b)
+#define IDirectSound_Compact(p)                  (p)->lpVtbl->Compact((void*) p)
+#define IDirectSound_GetSpeakerConfig(p,a)       (p)->lpVtbl->GetSpeakerConfig((void*) p,a)
+#define IDirectSound_SetSpeakerConfig(p,b)       (p)->lpVtbl->SetSpeakerConfig((void*) p,b)
+#define IDirectSound_Initialize(p,a)             (p)->lpVtbl->Initialize((void*) p,a)
 
 DEFINE_GUID(IID_IDirectSoundBuffer, 0x279AFA85, 0x4981, 0x11CE, 0xA5, 0x21, 0x00, 0x20, 0xAF, 0x0B, 0xE5, 0x60);
 
@@ -1450,30 +1720,32 @@ DECLARE_INTERFACE_(IDirectSoundBuffer, IUnknown)
     STDMETHOD(Restore)              (THIS);
 };
 
-#define IDirectSoundBuffer_QueryInterface(p,a,b)        IUnknown_QueryInterface(p,a,b)
-#define IDirectSoundBuffer_AddRef(p)                    IUnknown_AddRef(p)
-#define IDirectSoundBuffer_Release(p)                   IUnknown_Release(p)
-#define IDirectSoundBuffer_GetCaps(p,a)                 (p)->lpVtbl->GetCaps(p,a)
-#define IDirectSoundBuffer_GetCurrentPosition(p,a,b)    (p)->lpVtbl->GetCurrentPosition(p,a,b)
-#define IDirectSoundBuffer_GetFormat(p,a,b,c)           (p)->lpVtbl->GetFormat(p,a,b,c)
-#define IDirectSoundBuffer_GetVolume(p,a)               (p)->lpVtbl->GetVolume(p,a)
-#define IDirectSoundBuffer_GetPan(p,a)                  (p)->lpVtbl->GetPan(p,a)
-#define IDirectSoundBuffer_GetFrequency(p,a)            (p)->lpVtbl->GetFrequency(p,a)
-#define IDirectSoundBuffer_GetStatus(p,a)               (p)->lpVtbl->GetStatus(p,a)
-#define IDirectSoundBuffer_Initialize(p,a,b)            (p)->lpVtbl->Initialize(p,a,b)
-#define IDirectSoundBuffer_Lock(p,a,b,c,d,e,f,g)        (p)->lpVtbl->Lock(p,a,b,c,d,e,f,g)
-#define IDirectSoundBuffer_Play(p,a,b,c)                (p)->lpVtbl->Play(p,a,b,c)
-#define IDirectSoundBuffer_SetCurrentPosition(p,a)      (p)->lpVtbl->SetCurrentPosition(p,a)
-#define IDirectSoundBuffer_SetFormat(p,a)               (p)->lpVtbl->SetFormat(p,a)
-#define IDirectSoundBuffer_SetVolume(p,a)               (p)->lpVtbl->SetVolume(p,a)
-#define IDirectSoundBuffer_SetPan(p,a)                  (p)->lpVtbl->SetPan(p,a)
-#define IDirectSoundBuffer_SetFrequency(p,a)            (p)->lpVtbl->SetFrequency(p,a)
-#define IDirectSoundBuffer_Stop(p)                      (p)->lpVtbl->Stop(p)
-#define IDirectSoundBuffer_Unlock(p,a,b,c,d)            (p)->lpVtbl->Unlock(p,a,b,c,d)
-#define IDirectSoundBuffer_Restore(p)                   (p)->lpVtbl->Restore(p)
+#define IDirectSoundBuffer_QueryInterface(p,a,b)        IUnknown_QueryInterface((void*) p,a,b)
+#define IDirectSoundBuffer_AddRef(p)                    IUnknown_AddRef((void*) p)
+#define IDirectSoundBuffer_Release(p)                   IUnknown_Release((void*) p)
+#define IDirectSoundBuffer_GetCaps(p,a)                 (p)->lpVtbl->GetCaps((void*) p,a)
+#define IDirectSoundBuffer_GetCurrentPosition(p,a,b)    (p)->lpVtbl->GetCurrentPosition((void*) p,a,b)
+#define IDirectSoundBuffer_GetFormat(p,a,b,c)           (p)->lpVtbl->GetFormat((void*) p,a,b,c)
+#define IDirectSoundBuffer_GetVolume(p,a)               (p)->lpVtbl->GetVolume((void*) p,a)
+#define IDirectSoundBuffer_GetPan(p,a)                  (p)->lpVtbl->GetPan((void*) p,a)
+#define IDirectSoundBuffer_GetFrequency(p,a)            (p)->lpVtbl->GetFrequency((void*) p,a)
+#define IDirectSoundBuffer_GetStatus(p,a)               (p)->lpVtbl->GetStatus((void*) p,a)
+#define IDirectSoundBuffer_Initialize(p,a,b)            (p)->lpVtbl->Initialize((void*) p,a,b)
+#define IDirectSoundBuffer_Lock(p,a,b,c,d,e,f,g)        (p)->lpVtbl->Lock((void*) p,a,b,c,d,e,f,g)
+#define IDirectSoundBuffer_Play(p,a,b,c)                (p)->lpVtbl->Play((void*) p,a,b,c)
+#define IDirectSoundBuffer_SetCurrentPosition(p,a)      (p)->lpVtbl->SetCurrentPosition((void*) p,a)
+#define IDirectSoundBuffer_SetFormat(p,a)               (p)->lpVtbl->SetFormat((void*) p,a)
+#define IDirectSoundBuffer_SetVolume(p,a)               (p)->lpVtbl->SetVolume((void*) p,a)
+#define IDirectSoundBuffer_SetPan(p,a)                  (p)->lpVtbl->SetPan((void*) p,a)
+#define IDirectSoundBuffer_SetFrequency(p,a)            (p)->lpVtbl->SetFrequency((void*) p,a)
+#define IDirectSoundBuffer_Stop(p)                      (p)->lpVtbl->Stop((void*) p)
+#define IDirectSoundBuffer_Unlock(p,a,b,c,d)            (p)->lpVtbl->Unlock((void*) p,a,b,c,d)
+#define IDirectSoundBuffer_Restore(p)                   (p)->lpVtbl->Restore((void*) p)
 
-typedef struct IDirectSound                 *LPDIRECTSOUND;
-typedef struct IDirectSoundBuffer           *LPDIRECTSOUNDBUFFER;
+#undef INTERFACE
+
+typedef IDirectSound                 *LPDIRECTSOUND;
+typedef IDirectSoundBuffer           *LPDIRECTSOUNDBUFFER;
 
 /* OLD general waveform format structure (information common to all formats) */
 typedef struct waveformat_tag {

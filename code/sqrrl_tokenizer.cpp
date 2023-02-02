@@ -1,7 +1,6 @@
-
 internal void
 tokenization_error(Tokenizer* t, string message) {
-    pln("tokenization_error: %\n", f_string(message)); // TODO(alexander): real diagnostics
+    pln("%:%:%: error: %\n", f_string(t->file), f_umm(t->line_number), f_umm(t->column_number), f_string(message));
     DEBUG_log_backtrace();
 }
 
@@ -155,7 +154,7 @@ scan_escape_character(Tokenizer* tokenizer, u8 quote) {
             }
         } break;
         
-        case 'n': case 't': case '\\': case '0': {
+        case 'n': case 'r': case 't': case '\\': case '0': {
             utf8_advance_character(tokenizer);
         } break;
         

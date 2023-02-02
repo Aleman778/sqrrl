@@ -126,8 +126,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     // TODO(alexander): temp printing source
     //pln("Preprocessed source:\n%", f_string(preprocessed_source));
-    //DEBUG_write_entire_file("preprocessed.sq", preprocessed_source.data,
-    //(u32) preprocessed_source.count);
+    DEBUG_write_entire_file("preprocessed.sq", preprocessed_source.data,
+                            (u32) preprocessed_source.count);
     
 #if 0
     // Source group debugging

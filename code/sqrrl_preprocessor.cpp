@@ -406,7 +406,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                 }
             } break;
             
-            case Kw_error: {
+            case Sym_error: {
                 if (preprocessor->curr_branch_taken) {
                     preprocess_error(preprocessor, string_view(t->curr, t->end));
                 }

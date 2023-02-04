@@ -386,45 +386,69 @@ constant_folding_of_expressions(Ast* ast) {
     return result;
 }
 
-internal Type* 
-match_function_args(Type_Context* tcx, Type* proc_type, Ast* actual_args, bool report_error) {
-    assert(proc_type->kind == TypeKind_Function);
+internal bool
+match_function_args(Type_Context* tcx,  
+                    array(Type*)* formal_args, 
+                    array(Type*)* actual_args, 
+                    bool report_error) {
+    if (array_count(formal_args) != array_count(actual_args)) {
+        return false;
+    }
     
-    Type* result = proc_type;
-    Type_Function* proc = &proc_type->Function;
+    bool result = true;
     
-    s32 arg_index = 0;
     // TODO(Alexander): nice to have: support for keyworded args, default args
-    
-    for_compound(actual_args, actual_arg) {
+    for_array_v(actual_args, actual_type, arg_index) {
         Type* formal_type = 0;
-        
-        if (arg_index < array_count(proc->arg_idents)) {
-            string_id ident = proc->arg_idents[arg_index];
-            formal_type = proc->arg_types[arg_index];
+        if (arg_index < array_count(formal_args)) {
+            formal_type = formal_args[arg_index];
         }
         
-        constant_folding_of_expressions(actual_arg->Argument.assign);
-        Type* actual_type = type_infer_expression(tcx, 
-                                                  actual_arg->Argument.assign, 
-                                                  formal_type, 
-                                                  report_error);
         
         if (actual_type) {
-            if (formal_type && !type_equals(formal_type, actual_type)) {
-                if (actual_arg->Argument.assign->kind == Ast_Value) {
-                    actual_arg->Argument.assign->type = formal_type;
-                    actual_type = formal_type;
-                }
+            if (formal_type && !type_check_assignment(tcx, formal_type, actual_type, 
+                                                      empty_span, Op_Assign, report_error)) {
+                result = false;
+                break;
             }
-            
-            actual_arg->type = actual_type;
         } else {
-            result = 0;
+            result = false;
             break;
         }
         
         arg_index++;
+    }
+    
+    return result;
+}
+
+internal Ast*
+auto_type_conversion(Type_Context* tcx, Type* target_type, Ast* node, Operator op=Op_Assign) {
+    Ast* result = node;
+    Type* initial_type = node->type;
+    
+    // TODO(Alexander): we don't want to change types without doing explicit cast
+    // otherwise the backend gets confused and outputs wrong code.
+    if (type_check_assignment(tcx, target_type, initial_type, empty_span, op, false)) {
+        
+        if (type_equals(initial_type, target_type)) {
+            node->type = target_type;
+        } else {
+            if (node->kind == Ast_Value) {
+                node->type = target_type;
+            } else {
+                // TODO(Alexander): temporary use of calloc we need to find a better way to manipulate the Ast
+                Ast* cast_node = (Ast*) calloc(1, sizeof(Ast));
+                cast_node->kind = Ast_Cast_Expr;
+                cast_node->Cast_Expr.type = (Ast*) calloc(1, sizeof(Ast));
+                cast_node->Cast_Expr.type->kind = Ast_None;
+                cast_node->Cast_Expr.expr = node;
+                cast_node->type = target_type;
+                
+                result = cast_node;
+                //pln("type conversion on AST node:\n%", f_ast(expr));
+            }
+        }
     }
     
     return result;
@@ -637,57 +661,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             }
             
             if (result) {
-                
-                // TODO(Alexander): we don't want to change types without doing explicit cast
-                // otherwise the backend gets confused and outputs wrong code.
-                if (type_check_assignment(tcx, first_type, expr->Binary_Expr.first->type,
-                                          empty_span, op, false)) {
-                    
-                    if (type_equals(expr->Binary_Expr.first->type, first_type)) {
-                        expr->Binary_Expr.first->type = first_type;
-                    } else {
-                        if (expr->Binary_Expr.first->kind == Ast_Value) {
-                            expr->Binary_Expr.first->type = first_type;
-                        } else {
-                            // TODO(Alexander): temporary use of calloc we need to find a better way to manipulate the Ast
-                            Ast* cast_node = (Ast*) calloc(1, sizeof(Ast));
-                            cast_node->kind = Ast_Cast_Expr;
-                            cast_node->Cast_Expr.type = (Ast*) calloc(1, sizeof(Ast));
-                            cast_node->Cast_Expr.type->kind = Ast_None;
-                            cast_node->Cast_Expr.expr = expr->Binary_Expr.first;
-                            cast_node->type = first_type;
-                            
-                            expr->Binary_Expr.first = cast_node;
-                            
-                            //pln("first AST:\n%", f_ast(expr));
-                        }
-                    }
-                }
-                
-                if (type_check_assignment(tcx, second_type, expr->Binary_Expr.second->type,
-                                          empty_span, op, false)) {
-                    
-                    if (type_equals(expr->Binary_Expr.second->type, second_type)) {
-                        expr->Binary_Expr.second->type = second_type;
-                    } else {
-                        if (expr->Binary_Expr.second->kind == Ast_Value) {
-                            expr->Binary_Expr.second->type = second_type;
-                        } else {
-                            // TODO(Alexander): temporary use of calloc we need to find a better way to manipulate the Ast
-                            Ast* cast_node = (Ast*) calloc(1, sizeof(Ast));
-                            cast_node->kind = Ast_Cast_Expr;
-                            cast_node->Cast_Expr.type = (Ast*) calloc(1, sizeof(Ast));
-                            cast_node->Cast_Expr.type->kind = Ast_None;
-                            cast_node->Cast_Expr.expr = expr->Binary_Expr.second;
-                            cast_node->type = second_type;
-                            
-                            expr->Binary_Expr.second = cast_node;
-                            
-                            //pln("second AST:\n%", f_ast(expr));
-                        }
-                        
-                    }
-                }
+                expr->Binary_Expr.first = auto_type_conversion(tcx, first_type, expr->Binary_Expr.first, op);
+                expr->Binary_Expr.second = auto_type_conversion(tcx, second_type, expr->Binary_Expr.second, op);
                 
                 if (operator_is_comparator_table[expr->Binary_Expr.op]) {
                     result = t_bool;
@@ -720,12 +695,32 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         case Ast_Call_Expr: {
             Type* function_type = 0;
             string_id ident = try_unwrap_ident(expr->Call_Expr.ident);
+            
+            array(Type*)* actual_arg_types = 0;
+            Ast* actual_args = expr->Call_Expr.args;
+            for_compound(actual_args, actual_arg) {
+                constant_folding_of_expressions(actual_arg->Argument.assign);
+                Type* actual_type = type_infer_expression(tcx, 
+                                                          actual_arg->Argument.assign, 
+                                                          0, 
+                                                          report_error);
+                if (!actual_type) {
+                    return 0;
+                }
+                
+                actual_arg->type = actual_type;
+                array_push(actual_arg_types, actual_type);
+            }
+            
             if (ident) {
                 Overloaded_Function_List* overload = &map_get(tcx->overloaded_functions, ident);
                 if (overload && overload->is_valid) {
                     for_array_v(overload->functions, overload_func, _) {
-                        function_type = match_function_args(tcx, overload_func, expr->Call_Expr.args, report_error);
-                        if (function_type) {
+                        if (match_function_args(tcx, 
+                                                overload_func->Function.arg_types,
+                                                actual_arg_types,
+                                                false)) {
+                            function_type = overload_func;
                             break;
                         }
                     }
@@ -768,10 +763,27 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 break;
             }
             
-            Ast* actual_args = expr->Call_Expr.args;
-            if (!match_function_args(tcx, function_type, actual_args, report_error)) {
-                return 0;
+            //if (!match_function_args(tcx, 
+            //function_type->Function.arg_types, 
+            //actual_arg_types,
+            //report_error)) {
+            //return 0;
+            //}
+            
+            {
+                smm arg_index = 0;
+                smm formal_arg_count = array_count(function_type->Function.arg_types);
+                for_compound(expr->Call_Expr.args, arg) {
+                    //pln("% < % = %", f_smm(arg_index), f_smm(formal_arg_count), f_bool(arg_index < formal_arg_count));
+                    if (arg_index < formal_arg_count) {
+                        Type* formal_type = function_type->Function.arg_types[arg_index];
+                        arg->Argument.assign = auto_type_conversion(tcx, formal_type, arg->Argument.assign);
+                        arg->type = arg->Argument.assign->type;
+                        arg_index++;
+                    }
+                }
             }
+            
             
             expr->Call_Expr.function_type = function_type;
             result = normalize_basic_types(function_type->Function.return_type);
@@ -1024,9 +1036,20 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 }
                 
                 expr->type = result;
-            } else if (parent_type && parent_type->kind == TypeKind_Struct) {
+            } else if (parent_type && (parent_type->kind == TypeKind_Struct ||
+                                       parent_type->kind == TypeKind_Union)) {
                 
-                Type* type = parent_type;
+                Ident_Mapper* formal_ident_to_index = 0;
+                array(Type*)* formal_types = 0;
+                
+                if (parent_type->kind == TypeKind_Struct) {
+                    formal_ident_to_index = parent_type->Struct.ident_to_index;
+                    formal_types = parent_type->Struct.types;
+                } else {
+                    formal_ident_to_index = parent_type->Union.ident_to_index;
+                    formal_types = parent_type->Union.types;
+                }
+                
                 bool has_ident = false;
                 bool has_errors = false;
                 int next_field_index = 0;
@@ -1035,17 +1058,17 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     
                     if (field->Argument.ident) {
                         string_id ident = ast_unwrap_ident(field->Argument.ident);
-                        smm idx = map_get_index(type->Struct.ident_to_index, ident);
+                        smm idx = map_get_index(formal_ident_to_index, ident);
                         if (idx == -1) {
                             if (report_error) {
                                 type_error(tcx, string_format("`%` undeclared identifier in struct `%`",
                                                               f_string(vars_load_string(ident)),
-                                                              f_string(vars_load_string(type->ident))),
+                                                              f_type(parent_type)),
                                            expr->span);
                             }
                             continue;
                         }
-                        field_index = type->Struct.ident_to_index[idx].value;
+                        field_index = formal_ident_to_index[idx].value;
                         has_ident = true;
                     } else if (has_ident) {
                         type_error(tcx, string_lit("cannot combine named and anonymous values in struct literal"),
@@ -1055,13 +1078,13 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     }
                     
                     Type* field_type = 0;
-                    if (next_field_index <= array_count(type->Struct.types)) {
-                        field_type = type->Struct.types[field_index];
+                    if (next_field_index <= array_count(formal_types)) {
+                        field_type = formal_types[field_index];
                     } else {
                         if (report_error) {
-                            type_error(tcx, string_format("too many fields `%`, expected only `%`",
-                                                          f_string(vars_load_string(type->ident)),
-                                                          f_int(array_count(type->Struct.types))),
+                            type_error(tcx, string_format("too many fields in `%`, expected only `%`",
+                                                          f_type(parent_type),
+                                                          f_int(array_count(formal_types))),
                                        expr->span);
                         }
                         has_errors = true;
@@ -1078,17 +1101,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 }
                 
                 if (!has_errors) {
-                    expr->type = type;
-                    result = type;
-                }
-                
-            } else if (parent_type && parent_type->kind == TypeKind_Union) { 
-                Type* type = parent_type;
-                bool has_ident = false;
-                bool has_errors = false;
-                int next_field_index = 0;
-                for_compound(expr->Aggregate_Expr.elements, field) {
-                    
+                    result = parent_type;
+                    expr->type = result;
                 }
                 
             } else {
@@ -1353,6 +1367,7 @@ save_type_declaration(Type_Context* tcx, string_id ident, Ast* ast, bool report_
                     
                     if (type->kind == TypeKind_Function &&
                         old_type->kind == TypeKind_Function) {
+                        
                         // TODO(Alexander): func overload
                         Overloaded_Function_List* overload = &map_get(tcx->overloaded_functions, ident);
                         if (!overload || !overload->is_valid) {
@@ -1363,6 +1378,8 @@ save_type_declaration(Type_Context* tcx, string_id ident, Ast* ast, bool report_
                             array_push(overload->functions, old_type);
                         }
                         assert(overload);
+                        
+                        //pln("Added overload `%`", f_type(type));
                         
                         array_push(overload->functions, type);
                         
@@ -1930,6 +1947,9 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         
         case Ast_Return_Stmt: {
             result = type_infer_expression(tcx, stmt->Return_Stmt.expr, tcx->return_type, report_error);
+            if (!result) {
+                pln("%", f_ast(stmt));
+            }
             stmt->type = result;
         } break;
     }
@@ -2064,6 +2084,35 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
             
             Type_Function* t_func = &function_type->Function;
             int formal_arg_count = (int) array_count(t_func->arg_types);
+            int actual_arg_count = 0;
+            {
+                for_compound(expr->Call_Expr.args, _) {
+                    actual_arg_count++;
+                }
+            }
+            
+            if (actual_arg_count == 0 && t_func->first_default_arg_index > 0) {
+                type_error(tcx, 
+                           string_format("function `%` expected % argument(s)",
+                                         f_var(t_func->ident),
+                                         f_int(formal_arg_count)),
+                           expr->span);
+                return false;
+                
+            } else if (actual_arg_count < t_func->first_default_arg_index ||
+                       (actual_arg_count > formal_arg_count && !t_func->is_variadic)) {
+                //pln("arg_index >= % && arg_index <= % && variadic = %", t_func->first_default_arg_index, formal_arg_count, t_func->is_variadic);
+                
+                
+                // NOTE(Alexander): it is allowed to have more arguments only if the function is variadic
+                type_error(tcx, string_format("function `%` did not take % arguments, expected % arguments", 
+                                              f_var(t_func->ident), 
+                                              f_int(actual_arg_count), 
+                                              f_int(t_func->first_default_arg_index)),
+                           expr->span);
+                return false;
+            }
+            
             
             int arg_index = 0;
             for_compound(expr->Call_Expr.args, arg) {
@@ -2086,10 +2135,14 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                         }
                     }
                     Type* arg_type = t_func->arg_types[arg_index];
-                    if (!type_check_assignment(tcx, arg_type, 
-                                               arg->Argument.assign->type,
-                                               arg->Argument.assign->span)) {
+                    if (!type_equals(arg_type, arg->Argument.assign->type)) {
+                        //if (!type_check_assignment(tcx, arg_type, 
+                        //arg->Argument.assign->type,
+                        //arg->Argument.assign->span)) {
                         pln("%", f_ast(expr));
+                        type_error_mismatch(tcx, arg_type, 
+                                            arg->Argument.assign->type, 
+                                            arg->Argument.assign->span);
                         break;
                     }
                 }
@@ -2097,28 +2150,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                 arg_index++;
             }
             
-            if (arg_index == 0 && t_func->first_default_arg_index > 0) {
-                type_error(tcx, 
-                           string_format("function `%` expected % argument(s)",
-                                         f_var(t_func->ident),
-                                         f_int(formal_arg_count)),
-                           expr->span);
-                result = false;
-                
-            } else if (arg_index < t_func->first_default_arg_index && 
-                       arg_index > formal_arg_count && 
-                       !t_func->is_variadic) {
-                //pln("arg_index >= % && arg_index <= % && variadic = %", t_func->first_default_arg_index, formal_arg_count, t_func->is_variadic);
-                
-                
-                // NOTE(Alexander): it is allowed to have more arguments only if the function is variadic
-                type_error(tcx, string_format("function `%` did not take % arguments, expected % arguments", 
-                                              f_var(t_func->ident), 
-                                              f_int(arg_index), 
-                                              f_int(t_func->first_default_arg_index)),
-                           expr->span);
-                result = false;
-            }
+            
         } break;
         
         case Ast_Binary_Expr: {
@@ -2176,12 +2208,14 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                 }
                 
             } else {
-                if (type_check_assignment(tcx, first, second, expr->Binary_Expr.second->span)) {
+                if (type_check_assignment(tcx, first, second, expr->Binary_Expr.second->span, op)) {
                     if (!type_equals(first, second)) {
                         pln("%", f_ast(expr));
                         type_error_mismatch(tcx, first, second, expr->Binary_Expr.second->span);
                         result = false;
                     }
+                } else {
+                    pln("%", f_ast(expr));
                 }
             }
         } break;
@@ -2416,6 +2450,7 @@ _push_intrinsic(intrin_##name, name, is_variadic, interp_intrinsic_fp, intrinsic
 string_id arg_ident = vars_save_cstring(#arg_name); \
 array_push(intrin_name->Function.arg_idents, arg_ident); \
 array_push(intrin_name->Function.arg_types, arg_type); \
+intrin_name->Function.first_default_arg_index++; \
 }
 #define push_intrinsic_arg(name, arg_name, arg_type) _push_intrinsic_arg(intrin_##name, arg_name, arg_type)
     
@@ -2441,6 +2476,7 @@ array_push(intrin_name->Function.arg_types, arg_type); \
     // Intrinsic syntax: void assert(s32 expr)
     // Assets that expr is true, used as test case
     push_intrinsic(assert, false, &interp_intrinsic_assert, &intrinsic_assert, t_void);
+    push_intrinsic_arg(assert, expr, t_s32);
     
     // Intrinsic syntax: f32 cos(f32 num)
     push_intrinsic(cos, false, 0, &cosf, t_f32);

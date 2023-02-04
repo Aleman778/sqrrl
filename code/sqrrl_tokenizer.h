@@ -115,8 +115,8 @@ struct Token {
     
     Int_Base int_base;
     C_Int_Type c_int_type;
-    umm suffix_start; // optional defined for literal type suffix e.g.  10i8
-    umm num_hashes; // optionally defined for raw string literals.
+    smm suffix_start; // optional defined for literal type suffix e.g.  10i8
+    smm num_hashes; // optionally defined for raw string literals.
 };
 
 #define f_token(x) FormatType_cstring, token_type_repr[x]

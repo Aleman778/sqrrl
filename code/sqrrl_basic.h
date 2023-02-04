@@ -219,12 +219,12 @@ cstring_concat(cstring a, cstring b) {
 // NOTE(Alexander): strings
 struct string {
     u8* data;
-    umm count;
+    smm count;
 };
 
 
 inline string
-create_string(umm count, u8* data) {
+create_string(smm count, u8* data) {
     string result;
     result.count = count;
     result.data = data;
@@ -233,7 +233,7 @@ create_string(umm count, u8* data) {
 
 // TODO(Alexander): lazy!!!! don't use malloc for this, put in arena later...
 inline string
-string_alloc(umm count) {
+string_alloc(smm count) {
     string result;
     result.count = count;
     result.data = (u8*) malloc(count);
@@ -274,15 +274,15 @@ string_view(u8* begin, u8* end) {
     assert(begin <= end);
     
     string result;
-    result.count = (umm) (end - begin);
+    result.count = (smm) (end - begin);
     result.data = begin;
     return result;
 }
 
 inline int
 string_compare(string a, string b) {
-    umm count = min(a.count, b.count);
-    for (umm i = 0; i < count; i++) {
+    smm count = min(a.count, b.count);
+    for (smm i = 0; i < count; i++) {
         if (a.data[i] != b.data[i]) {
             return b.data[i] - a.data[i];
         }
@@ -313,7 +313,7 @@ string_ends_with(string str, string substr) {
 
 inline void
 string_to_lower_ascii_no_copy(string* str) {
-    for (umm i = 0; i < str->count; i++) {
+    for (smm i = 0; i < str->count; i++) {
         u8 c = str->data[i];
         u8 is_upper = (u8) (c >= 'A' && c <= 'Z');
         str->data[i] = is_upper * (c - 'A' + 'a') + !is_upper * c;
@@ -330,7 +330,7 @@ string_concat(string a, string b) {
 
 inline string
 string_concat(string a, cstring b) {
-    umm b_count = cstring_count(b);
+    smm b_count = cstring_count(b);
     string concat = string_alloc(a.count + b_count);
     copy_memory(concat.data, a.data, a.count);
     copy_memory(concat.data + a.count, b, b_count);
@@ -356,7 +356,7 @@ string_unquote_nocopy(string s) {
 // Memory string stores count and cstring next to each other in memory
 typedef cstring Memory_String;
 
-#define memory_string_count(s) *((umm*) (s) - 1)
+#define memory_string_count(s) *((smm*) (s) - 1)
 
 inline string
 mstring_to_string(Memory_String str) {
@@ -368,15 +368,15 @@ mstring_to_string(Memory_String str) {
 
 inline Memory_String
 string_copy_to_memory(string str, void* dest) {
-    *(umm*) dest = str.count;
-    memcpy((u8*)((umm*) dest + 1), str.data, str.count);
-    return (Memory_String) ((umm*) dest + 1);
+    *(smm*) dest = str.count;
+    memcpy((u8*)((smm*) dest + 1), str.data, str.count);
+    return (Memory_String) ((smm*) dest + 1);
 }
 
 struct String_Builder {
     u8* data;
-    umm size;
-    umm curr_used;
+    smm size;
+    smm curr_used;
 };
 
 inline void
@@ -394,7 +394,7 @@ string_builder_free(String_Builder* sb) {
 }
 
 inline void
-string_builder_alloc(String_Builder* sb, umm new_size) {
+string_builder_alloc(String_Builder* sb, smm new_size) {
     void* new_data = realloc(sb->data, new_size);
     if (!new_data) {
         new_data = malloc(new_size);
@@ -406,10 +406,10 @@ string_builder_alloc(String_Builder* sb, umm new_size) {
 }
 
 inline void
-string_builder_ensure_capacity(String_Builder* sb, umm capacity) {
-    umm min_size = sb->curr_used + capacity;
+string_builder_ensure_capacity(String_Builder* sb, smm capacity) {
+    smm min_size = sb->curr_used + capacity;
     if (min_size > sb->size) {
-        umm new_size = max(sb->size * 2, min_size);
+        smm new_size = max(sb->size * 2, min_size);
         string_builder_alloc(sb, new_size);
     }
     

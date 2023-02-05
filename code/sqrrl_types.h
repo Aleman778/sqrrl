@@ -83,7 +83,7 @@ enum Type_Kind {
 
 typedef map(string_id, s32) Ident_Mapper;
 
-struct Type_Struct {
+struct Struct_Like_Info {
     array(Type*)* types;
     array(string_id)* idents;
     array(umm)* offsets;
@@ -96,19 +96,20 @@ struct Struct_Field_Info {
 };
 
 inline Struct_Field_Info
-get_field_info(Type_Struct* t_struct, string_id ident) {
+get_field_info(Struct_Like_Info* struct_info, string_id ident) {
     Struct_Field_Info result;
-    int field_index = map_get(t_struct->ident_to_index, ident);
-    result.type = t_struct->types[field_index];
-    result.offset = t_struct->offsets[field_index];
+    int field_index = map_get(struct_info->ident_to_index, ident);
+    result.type = struct_info->types[field_index];
+    result.offset = struct_info->offsets[field_index];
     return result;
 }
 
+struct Type_Struct {
+    Struct_Like_Info info;
+};
+
 struct Type_Union {
-    array(Type*)* types;
-    array(string_id)* idents;
-    array(umm)* offsets;
-    Ident_Mapper* ident_to_index;
+    Struct_Like_Info info;
 };
 
 struct Type_Enum {
@@ -156,6 +157,7 @@ struct Type {
         } Basic;
         
         Type_Array Array;
+        Struct_Like_Info Struct_Like;
         Type_Struct Struct;
         Type_Union Union;
         Type_Enum Enum;

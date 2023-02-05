@@ -221,7 +221,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             smm index = map_get_index(globals, ident);
             Ic_Arg arg;
             if (index == -1) {
-                arg = ic_data(IC_T64, (s64) malloc(cu->ast->type->size));
+                arg = ic_data(IC_T64, (s64) allocate_zeros(cu->ast->type->size));
                 map_put(globals, ident, arg);
             } else {
                 arg = globals[index].value;
@@ -231,7 +231,12 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 void* dest = (void*) arg.disp;
                 Interp interp = {};
                 Interp_Value result = interp_expression(&interp, cu->ast->Assign_Stmt.expr);
+                if (result.value.type == Value_ast_node &&
+                    result.value.data.ast->kind == Ast_Aggregate_Expr) {
+                    result.value.data.data = convert_aggregate_literal_to_memory(result.value.data.ast);
+                }
                 value_store_in_memory(cu->ast->type, dest, result.value.data);
+                
             }
         }
     }

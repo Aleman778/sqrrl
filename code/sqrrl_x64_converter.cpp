@@ -325,7 +325,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 } else {
                     Ic_Raw_Type raw_type = convert_type_to_raw_type(type);
                     if (map_get_index(cu->globals, ident) == -1) {
-                        result = ic_data(IC_T64, (s64) malloc(type->size));
+                        result = ic_data(IC_T64, (s64) allocate_zeros(type->size));
                         map_put(cu->globals, ident, result);
                     } else {
                         result = map_get(cu->globals, ident);
@@ -348,49 +348,9 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
         } break;
         
         case Ast_Aggregate_Expr: {
-            Type* type = expr->type;
-            
-            if (type->kind == TypeKind_Array) {
-                smm capacity = type->Array.capacity;
-                assert(capacity > 0);
-                
-                type = type->Array.type;
-                
-                // TODO(Alexander): temporary use Memory_Arena
-                smm size = capacity*type->size;
-                void* data = calloc(1, size);
-                
-                u8* curr = (u8*) data;
-                for_compound(expr->Aggregate_Expr.elements, e) {
-                    assert(e->kind == Ast_Value);
-                    value_store_in_memory(e->type, curr, e->Value.value.data);
-                    curr += type->size;
-                }
-                
+            void* data = convert_aggregate_literal_to_memory(expr);
+            if (data) {
                 result = ic_data(IC_T64, (s64) data);
-                
-            } else if (type->kind == TypeKind_Struct) {
-                u8* data = 0;
-                // TODO(Alexander): temporary use Memory_Arena
-                for_compound(expr->Aggregate_Expr.elements, field) {
-                    assert(field->kind == Ast_Argument);
-                    
-                    if (!data) {
-                        data = (u8*) calloc(1, type->size);
-                    }
-                    
-                    string_id ident = ast_unwrap_ident(field->Argument.ident);
-                    Ast* assign = field->Argument.assign;
-                    // TODO(Alexander): make it possible to store dynamic things
-                    assert(assign->kind == Ast_Value);
-                    
-                    Struct_Field_Info info = get_field_info(&type->Struct, ident);
-                    value_store_in_memory(info.type, data + info.offset, assign->Value.value.data);
-                }
-                
-                if (data) {
-                    result = ic_data(IC_T64, (s64) data);
-                }
             }
         } break;
         
@@ -399,7 +359,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             string_id ident = ast_unwrap_ident(expr->Field_Expr.field);
             
             result = convert_expr_to_intermediate_code(cu, expr->Field_Expr.var);
-            assert(result.type & IC_STK);
+            assert(result.type & (IC_STK | IC_IMM));
             
             if (type->kind == TypeKind_Pointer) {
                 Ic_Arg tmp = ic_reg(IC_T64, X64_RDX);
@@ -409,8 +369,8 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 type = type->Pointer;
             }
             
-            if (type->kind == TypeKind_Struct) {
-                Struct_Field_Info info = get_field_info(&type->Struct, ident);
+            if (type->kind == TypeKind_Struct || type->kind == TypeKind_Union) {
+                Struct_Field_Info info = get_field_info(&type->Struct_Like, ident);
                 result.disp += info.offset;
                 result.raw_type = convert_type_to_raw_type(expr->type);
             } else if (type->kind == TypeKind_Array || type == t_string) {
@@ -421,11 +381,13 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     } break;
                     
                     case Sym_count: {
+                        assert(result.type & IC_IMM && "unimplemented");
                         result.raw_type = IC_S64;
                         result.disp += 8;
                     } break;
                     
                     case Sym_capacity: {
+                        assert(result.type & IC_IMM && "unimplemented");
                         result.raw_type = IC_S64;
                         result.disp += 16;
                     } break;
@@ -488,7 +450,11 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     result.reg = add_ic->dest.reg;
                 }
             } else {
-                unimplemented;
+                if (index.type & IC_IMM) {
+                    result.disp += type->size * index.disp;
+                } else {
+                    unimplemented;
+                }
             }
         } break;
         

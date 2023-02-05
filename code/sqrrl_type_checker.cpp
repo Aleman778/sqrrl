@@ -442,6 +442,18 @@ auto_type_conversion(Type_Context* tcx, Type* target_type, Ast* node, Operator o
         } else {
             if (node->kind == Ast_Value) {
                 node->type = target_type;
+                
+                
+                // HACK(Alexander): auto converting string to cstring
+                if (is_string(node->Value.value)) {
+                    if (target_type && target_type->kind == TypeKind_Basic &&
+                        target_type->Basic.kind == Basic_cstring) {
+                        node->Value.value.data.cstr = string_to_cstring(node->Value.value.data.str);
+                        node->Value.value.type = Value_cstring;
+                    }
+                }
+                
+                
             } else {
                 // TODO(Alexander): temporary use of calloc we need to find a better way to manipulate the Ast
                 Ast* cast_node = (Ast*) calloc(1, sizeof(Ast));
@@ -700,9 +712,9 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         
         case Ast_Call_Expr: {
             Type* function_type = 0;
-            string_id ident = try_unwrap_ident(expr->Call_Expr.ident);
+            const string_id ident = try_unwrap_ident(expr->Call_Expr.ident);
             
-            //if (ident == vars_save_cstring("push_sprite")) {
+            //if (ident == vars_save_cstring("print_format")) {
             //__debugbreak();
             //}
             
@@ -737,8 +749,10 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     
                     
                     if (!function_type) {
-                        // TODO(Alexander): can we improve this e.g. showing closest matched function?
-                        type_error(tcx, string_format("no overloaded function matched `%`", f_var(ident)), expr->span);
+                        if (report_error) {
+                            // TODO(Alexander): can we improve this e.g. showing closest matched function?
+                            type_error(tcx, string_format("no overloaded function matched `%`", f_var(ident)), expr->span);
+                        }
                         return 0;
                     }
                 }
@@ -756,6 +770,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 return 0;
             }
             
+            
             if (function_type->Function.ident == Sym___debugbreak) {
                 __debugbreak();
             }
@@ -770,15 +785,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     type_error(tcx, string_format("`%` is not a function", f_var(function_ident)),
                                expr->span);
                 }
-                break;
+                return 0;
             }
-            
-            //if (!match_function_args(tcx, 
-            //function_type->Function.arg_types, 
-            //actual_arg_types,
-            //report_error)) {
-            //return 0;
-            //}
             
             {
                 smm arg_index = 0;
@@ -801,12 +809,10 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             expr->type = result;
             
             // HACK(Alexander): for now print_format pushes the format type first then the value 
-            if (result && result->Function.intrinsic) {
-                void* intrinsic = result->Function.intrinsic;
+            if (function_type && function_type->Function.intrinsic) {
+                void* intrinsic = function_type->Function.intrinsic;
                 
                 if (intrinsic == &print_format) {
-                    //pln("ast = %", f_ast(actual_args));
-                    
                     s32 arg_index = 0;
                     Ast* prev_compound = 0;
                     Ast* curr_compound = actual_args;
@@ -815,6 +821,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                         if (prev_compound) {
                             Format_Type fmt_type = convert_type_to_format_type(actual_arg->type);
                             // TODO(Alexander): refactor this later when the AST storage gets updated
+                            
                             Ast* fmt_arg = arena_push_struct(&tcx->type_arena, Ast);
                             fmt_arg->kind = Ast_Argument;
                             fmt_arg->type = t_s32;
@@ -913,17 +920,11 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             }
             
             switch (type->kind) {
+                case TypeKind_Union:
                 case TypeKind_Struct: {
-                    smm index = map_get_index(type->Struct.ident_to_index, field_ident);
+                    smm index = map_get_index(type->Struct_Like.ident_to_index, field_ident);
                     if (index >= 0) {
-                        result = type->Struct.types[index];
-                    }
-                } break;
-                
-                case TypeKind_Union: {
-                    smm index = map_get_index(type->Union.ident_to_index, field_ident);
-                    if (index >= 0) {
-                        result = type->Union.types[index];
+                        result = type->Struct_Like.types[index];
                     }
                 } break;
                 
@@ -1013,6 +1014,15 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 smm count = 0;
                 for_compound(expr->Aggregate_Expr.elements, it) {
                     count++;
+                    if (it->kind == Ast_Argument) {
+                        if (it->Argument.ident || it->Argument.type) {
+                            type_error(tcx, string_lit("malformed array literal"), it->span);
+                            result = 0;
+                            break;
+                        }
+                        it = it->Argument.assign;
+                    }
+                    
                     if (!type_infer_expression(tcx, it, type, report_error)) {
                         result = 0;
                         break;
@@ -1046,80 +1056,84 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 }
                 
                 expr->type = result;
-            } else if (parent_type && (parent_type->kind == TypeKind_Struct ||
-                                       parent_type->kind == TypeKind_Union)) {
+            } else if (parent_type && parent_type->kind == TypeKind_Struct &&
+                       array_count(parent_type->Struct_Like.types) > 0) {
                 
-                Ident_Mapper* formal_ident_to_index = 0;
-                array(Type*)* formal_types = 0;
-                
-                if (parent_type->kind == TypeKind_Struct) {
-                    formal_ident_to_index = parent_type->Struct.ident_to_index;
-                    formal_types = parent_type->Struct.types;
-                } else {
-                    formal_ident_to_index = parent_type->Union.ident_to_index;
-                    formal_types = parent_type->Union.types;
-                }
-                
-                bool has_ident = false;
-                bool has_errors = false;
-                int next_field_index = 0;
-                for_compound(expr->Aggregate_Expr.elements, field) {
-                    int field_index = next_field_index++;
+                if (match_struct_like_args(tcx,
+                                           parent_type,
+                                           0, (int) array_count(parent_type->Struct_Like.types),
+                                           expr->Aggregate_Expr.elements,
+                                           report_error)) {
                     
-                    if (field->Argument.ident) {
-                        string_id ident = ast_unwrap_ident(field->Argument.ident);
-                        smm idx = map_get_index(formal_ident_to_index, ident);
-                        if (idx == -1) {
-                            if (report_error) {
-                                type_error(tcx, string_format("`%` undeclared identifier in struct `%`",
-                                                              f_string(vars_load_string(ident)),
-                                                              f_type(parent_type)),
-                                           expr->span);
-                            }
-                            continue;
-                        }
-                        field_index = formal_ident_to_index[idx].value;
-                        has_ident = true;
-                    } else if (has_ident) {
-                        type_error(tcx, string_lit("cannot combine named and anonymous values in struct literal"),
-                                   expr->span);
-                        has_errors = true;
-                        break;
-                    }
-                    
-                    Type* field_type = 0;
-                    if (next_field_index <= array_count(formal_types)) {
-                        field_type = formal_types[field_index];
-                    } else {
-                        if (report_error) {
-                            type_error(tcx, string_format("too many fields in `%`, expected only `%`",
-                                                          f_type(parent_type),
-                                                          f_int(array_count(formal_types))),
-                                       expr->span);
-                        }
-                        has_errors = true;
-                        break;
-                    }
-                    
-                    if (field->Argument.assign) {
-                        
-                        constant_folding_of_expressions(field->Argument.assign);
-                        type_infer_expression(tcx, field->Argument.assign, field_type, report_error);
-                    } else {
-                        type_infer_expression(tcx, field->Argument.ident, field_type, report_error);
-                    }
-                }
-                
-                if (!has_errors) {
                     result = parent_type;
                     expr->type = result;
                 }
+                
+            } else if (parent_type && parent_type->kind == TypeKind_Union &&
+                       array_count(parent_type->Struct_Like.offsets) > 0) {
+                
+                //__debugbreak();
+                
+                int first_index = 0;
+                int last_index = 0;
+                
+                for_array_v(parent_type->Struct_Like.offsets, offset, curr_index) {
+                    last_index = curr_index;
+                    
+                    if (offset == 0) {
+                        if (last_index - first_index > 0) {
+                            if (match_struct_like_args(tcx,
+                                                       parent_type,
+                                                       first_index,
+                                                       last_index,
+                                                       expr->Aggregate_Expr.elements,
+                                                       report_error)) {
+                                
+                                result = parent_type;
+                                expr->type = result;
+                            }
+                        }
+                        
+                        if (result) {
+                            break;
+                        }
+                        
+                        first_index = curr_index;
+                    }
+                }
+                last_index = (int) array_count(parent_type->Struct_Like.offsets);
+                
+                if (!result && last_index - first_index > 0) {
+                    if (match_struct_like_args(tcx,
+                                               parent_type,
+                                               first_index,
+                                               last_index,
+                                               expr->Aggregate_Expr.elements,
+                                               report_error)) {
+                        
+                        result = parent_type;
+                        expr->type = result;
+                    }
+                }
+                
+                
+                if (!result) {
+                    // TODO(Alexander): improve this by finding closest match and point (>= 1) error(s)
+                    if (report_error) {
+                        type_error(tcx,
+                                   string_format("mismatched fields for union `%`", 
+                                                 f_type(parent_type)), expr->span);
+                    }
+                    
+                }
+                
                 
             } else {
                 if (report_error) {
                     pln("%", f_ast(expr));
                     pln("%", f_type(parent_type));
-                    type_error(tcx, string_format("cannot assign aggregate initializer to non-aggregate type"), 
+                    type_error(tcx, string_format("cannot assign aggregate initializer to non-aggregate type `%`",
+                                                  f_type(parent_type)), 
                                expr->span);
                 }
             }
@@ -1148,6 +1162,106 @@ struct Type_Struct_Like {
     b32 has_error;
 };
 
+inline Type_Struct_Like
+convert_type_to_struct_like(Type* type) {
+    Type_Struct_Like result = {};
+    
+    if (type->kind == TypeKind_Struct) {
+        result.types = type->Struct_Like.types;
+        result.idents = type->Struct_Like.idents;
+        result.offsets = type->Struct_Like.offsets;
+        result.ident_to_index = type->Struct_Like.ident_to_index;
+    } else if (type->kind == TypeKind_Union) {
+        result.types = type->Struct_Like.types;
+        result.idents = type->Struct_Like.idents;
+        result.offsets = type->Struct_Like.offsets;
+        result.ident_to_index = type->Struct_Like.ident_to_index;
+    }
+    
+    return result;
+}
+
+bool
+match_struct_like_args(Type_Context* tcx, Type* formal_type, int first_field, int last_field, Ast* args, bool report_error) {
+    Type_Struct_Like formal = convert_type_to_struct_like(formal_type);
+    int formal_field_count = last_field - first_field;
+    
+    //pln("%: % - %", f_type(formal_type), f_int(last_field), f_int(first_field));
+    
+    cstring entity_name = formal_type->kind == TypeKind_Struct ? "struct" : "union";
+    
+    bool has_ident = false;
+    int next_field_index = first_field;
+    for_compound(args, field) {
+        int field_index = next_field_index++;
+        
+        if (field->Argument.ident) {
+            string_id ident = ast_unwrap_ident(field->Argument.ident);
+            
+            int idx = (int) map_get_index(formal.ident_to_index, ident);
+            if (idx == -1) {
+                if (report_error) {
+                    type_error(tcx, string_format("`%` is an undeclared identifier in % `%`",
+                                                  f_string(vars_load_string(ident)),
+                                                  f_cstring(entity_name),
+                                                  f_type(formal_type)),
+                               field->Argument.ident->span);
+                }
+                formal.has_error = true;
+                continue;
+            }
+            
+            field_index = formal.ident_to_index[idx].value;
+            has_ident = true;
+        } else if (has_ident) {
+            if (report_error) {
+                type_error(tcx, string_format("cannot combine named and anonymous values in % literal",
+                                              f_cstring(entity_name)), field->span);
+            }
+            formal.has_error = true;
+            break;
+        }
+        
+        if (field_index < first_field || field_index >= last_field) {
+            if (report_error) {
+                type_error(tcx, string_format("cannot use unrelated fields in % literal",
+                                              f_cstring(entity_name)), field->span);
+            }
+            formal.has_error = true;
+            break;
+        }
+        
+        Type* field_type = 0;
+        if (next_field_index <= last_field) {
+            field_type = formal.types[field_index];
+        } else {
+            if (report_error) {
+                type_error(tcx, string_format("too many fields in `%`, expected only `%`",
+                                              f_type(formal_type),
+                                              f_int(formal_field_count)),
+                           args->span);
+            }
+            formal.has_error = true;
+            break;
+        }
+        
+        Type* actual_type = 0;
+        if (field->Argument.assign) {
+            
+            constant_folding_of_expressions(field->Argument.assign);
+            actual_type = type_infer_expression(tcx, field->Argument.assign, field_type, report_error);
+        } else {
+            actual_type = type_infer_expression(tcx, field->Argument.ident, field_type, report_error);
+        }
+        
+        if (!actual_type) {
+            formal.has_error = true;
+            break;
+        }
+    }
+    
+    return !formal.has_error;
+}
 
 internal inline void 
 push_type_to_struct_like(Type_Struct_Like* dest, Type* type, string_id ident) {
@@ -1198,8 +1312,7 @@ create_type_struct_like_from_ast(Type_Context* tcx,
         switch (argument->Argument.ident->kind) {
             
             case Ast_Ident: {
-                assert(argument->Argument.ident->kind == Ast_Ident);
-                string_id ident = argument->Argument.ident->Ident;
+                string_id ident = ast_unwrap_ident(argument->Argument.ident);
                 if (type) {
                     push_type_to_struct_like(&result, type, ident);
                 } else {
@@ -1226,13 +1339,13 @@ create_type_struct_like_from_ast(Type_Context* tcx,
             
             default: {
                 if (type->kind == TypeKind_Struct) {
-                    for_array_v(type->Struct.idents, field_ident, field_index) {
-                        Type* field_type = type->Struct.types[field_index];
+                    for_array_v(type->Struct_Like.idents, field_ident, field_index) {
+                        Type* field_type = type->Struct_Like.types[field_index];
                         push_type_to_struct_like(&result, field_type, field_ident);
                     }
                 } else if (type->kind == TypeKind_Union) {
-                    for_array_v(type->Union.idents, field_ident, field_index) {
-                        Type* field_type = type->Union.types[field_index];
+                    for_array_v(type->Struct_Like.idents, field_ident, field_index) {
+                        Type* field_type = type->Struct_Like.types[field_index];
                         push_type_to_struct_like(&result, field_type, field_ident);
                     }
                     //pln("%", f_ast(ast_type));
@@ -1395,9 +1508,9 @@ save_type_declaration(Type_Context* tcx, string_id ident, Type* type, Span span,
                        old_type->kind == TypeKind_Struct) {
                 
                 // TODO(Alexander): hack to get forward declares working
-                if (array_count(type->Struct.types) == 0) {
+                if (array_count(type->Struct_Like.types) == 0) {
                     // do nothing
-                } else if (array_count(old_type->Struct.types) == 0) {
+                } else if (array_count(old_type->Struct_Like.types) == 0) {
                     memcpy(old_type, type, sizeof(Type));
                 } else {
                     type_error(tcx,
@@ -1411,9 +1524,9 @@ save_type_declaration(Type_Context* tcx, string_id ident, Type* type, Span span,
                        old_type->kind == TypeKind_Union) {
                 
                 // TODO(Alexander): hack to get forward declares working
-                if (array_count(type->Union.types) == 0) {
+                if (array_count(type->Struct_Like.types) == 0) {
                     // do nothing
-                } else if (array_count(old_type->Union.types) == 0) {
+                } else if (array_count(old_type->Struct_Like.types) == 0) {
                     memcpy(old_type, type, sizeof(Type));
                 } else {
                     type_error(tcx,
@@ -1432,7 +1545,9 @@ save_type_declaration(Type_Context* tcx, string_id ident, Type* type, Span span,
                 }
             }
         }
-        
+    }
+    
+    if (type) {
         // TODO(Alexander): distinguish between types and types of variables
         // E.g. in `int main(...)`, main is not a type it's a global variable
         // but `typedef u32 string_id;` in this case string_id is a type.
@@ -1694,10 +1809,10 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     
                     result = arena_push_struct(&tcx->type_arena, Type);
                     result->kind = TypeKind_Struct;
-                    result->Struct.types = struct_like.types;
-                    result->Struct.idents = struct_like.idents;
-                    result->Struct.offsets = struct_like.offsets;
-                    result->Struct.ident_to_index = struct_like.ident_to_index;
+                    result->Struct_Like.types = struct_like.types;
+                    result->Struct_Like.idents = struct_like.idents;
+                    result->Struct_Like.offsets = struct_like.offsets;
+                    result->Struct_Like.ident_to_index = struct_like.ident_to_index;
                     result->ident = ident;
                     result->size = (s32) struct_like.size;
                     result->align = (s32) struct_like.align;
@@ -1716,9 +1831,10 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             if (!struct_like.has_error) {
                 result = arena_push_struct(&tcx->type_arena, Type);
                 result->kind = TypeKind_Union;
-                result->Union.types = struct_like.types;
-                result->Union.idents = struct_like.idents;
-                result->Union.ident_to_index = struct_like.ident_to_index;
+                result->Struct_Like.types = struct_like.types;
+                result->Struct_Like.idents = struct_like.idents;
+                result->Struct_Like.offsets = struct_like.offsets;
+                result->Struct_Like.ident_to_index = struct_like.ident_to_index;
                 result->ident = try_unwrap_ident(ast->Struct_Type.ident);
                 result->size = (s32) struct_like.size;
                 result->align = (s32) struct_like.align;
@@ -1797,14 +1913,14 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             string_id ident = ast_unwrap_ident(ast->Typedef.ident);
             
             // TODO(Alexander): we don't care about locality of typedefs at the moment (always global)
-            result = map_get(tcx->global_type_table, ident);
+            //result = map_get(tcx->global_type_table, ident);
             
-            if (!result) {
-                //result = create_type_from_ast(tcx, ast->Typedef.type, report_error);
-                result = save_type_declaration_from_ast(tcx, ident, ast->Typedef.type, report_error);
-            } else {
-                type_error(tcx, string_format("`%` is already defined", f_var(ident)), ast->span);
-            }
+            //if (!result) {
+            //result = create_type_from_ast(tcx, ast->Typedef.type, report_error);
+            result = save_type_declaration_from_ast(tcx, ident, ast->Typedef.type, report_error);
+            //} else {
+            //type_error(tcx, string_format("`%` is already defined", f_var(ident)), ast->span);
+            //}
         } break;
         
         case Ast_Const_Type: {
@@ -1996,10 +2112,6 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         
         case Ast_Return_Stmt: {
             result = type_infer_expression(tcx, stmt->Return_Stmt.expr, tcx->return_type, report_error);
-            if (!result) {
-                type_error(tcx, string_lit("compiler bug! No return type registered"), stmt->span);
-                pln("%", f_ast(stmt));
-            }
             stmt->type = result;
         } break;
     }
@@ -2057,8 +2169,12 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span, Operat
                 lossy = lhs->Basic.flags & BasicFlag_Floating;
             }
             
-            if (!lossy && rhs->Basic.flags & BasicFlag_String) {
+            if (rhs->Basic.kind == Basic_string) {
                 lossy = (lhs->Basic.flags & BasicFlag_String) == 0;
+            }
+            
+            if (rhs->Basic.kind == Basic_cstring) {
+                lossy = rhs->Basic.kind != Basic_cstring;
             }
             
             if (op == Op_Logical_And || op == Op_Logical_Or) {
@@ -2336,7 +2452,12 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
         } break;
         
         case Ast_Return_Stmt: {
-            Type* found_type = stmt->Return_Stmt.expr->type;
+            Type* found_type = stmt->type;
+            if (!found_type) {
+                type_error(tcx, string_lit("compiler bug! No return type was found in return statement"), stmt->span);
+                pln("%", f_ast(stmt));
+            }
+            
             result = result && type_check_expression(tcx, stmt->Return_Stmt.expr);
             result = result && type_check_assignment(tcx, tcx->return_type, found_type,
                                                      stmt->Return_Stmt.expr->span);
@@ -2508,7 +2629,6 @@ intrin_name->Function.first_default_arg_index++; \
     // TODO(Alexander): these are kind of temporary, since we don't really have
     // the ability to create these functions yet, need FFI!
     // We will still have intrinsics but these intrinsics are just for debugging
-    
     
     // Intrinsic syntax: void print_format(string format...)
     // e.g. print_format %, lucky number is %\n", "world", 7);

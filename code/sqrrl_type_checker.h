@@ -175,36 +175,20 @@ type_equals(Type* a, Type* b) {
             }
         } break;
         
+        case TypeKind_Struct:
         case TypeKind_Union: {
             if (a->kind != b->kind) {
                 return false;
             }
             
-            Type_Struct* sa = &a->Struct;
-            Type_Struct* sb = &a->Struct;
-            
-            if (array_count(sa->types) != array_count(sb->types)) {
-                return false;
-            }
-            
-        } break;
-        
-        case TypeKind_Struct: {
-            if (a->kind != b->kind) {
-                return false;
-            }
-            
-            Type_Struct* sa = &a->Struct;
-            Type_Struct* sb = &a->Struct;
+            Struct_Like_Info* sa = &a->Struct_Like;
+            Struct_Like_Info* sb = &a->Struct_Like;
             
             if (array_count(sa->types) != array_count(sb->types)) {
                 return false;
             }
             
             // TODO(Alexander): check that entries in the struct/unions match
-            //for_array(table_a->) {
-            //}
-            
         } break;
         
         case TypeKind_Pointer: {
@@ -247,6 +231,7 @@ type_equals(Type* a, Type* b) {
 // NOTE(Alexander): forward declare
 struct Ast_File;
 
+bool match_struct_like_args(Type_Context* tcx, Type* formal_type, int first_field, int last_field, Ast* args, bool report_error);
 
 Type* type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool report_error);
 

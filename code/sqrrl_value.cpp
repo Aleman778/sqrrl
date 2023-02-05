@@ -29,21 +29,25 @@ value_store_in_memory(Type* type, void* dest, Value_Data src) {
         } break;
         
         case TypeKind_Array: {
-            // NOTE(Alexander): ugh little bit ugly hack to get this to work
-            smm* array_data = (smm*) dest;
-            *array_data++ = src.array.count;
-            void** elements = (void**) array_data;
-            *elements = src.array.elements;
+            if (type->Array.is_inplace) {
+                memcpy(dest, src.data, type->size);
+            } else {
+                // NOTE(Alexander): ugh little bit ugly hack to get this to work
+                smm* array_data = (smm*) dest;
+                *array_data++ = src.array.count;
+                void** elements = (void**) array_data;
+                *elements = src.array.elements;
+            }
         } break;
         
         
-        case TypeKind_Struct: {
+        case TypeKind_Struct:
+        case TypeKind_Union: {
             memcpy(dest, src.data, type->size);
         } break;
         
         case TypeKind_Function: 
-        case TypeKind_Pointer:
-        case TypeKind_Union: {
+        case TypeKind_Pointer: {
             *((smm*) dest) = src.pointer;
         } break;
         
@@ -51,6 +55,61 @@ value_store_in_memory(Type* type, void* dest, Value_Data src) {
             assert(0 && "invalid type"); 
         } break;
     }
+}
+
+void*
+convert_aggregate_literal_to_memory(Ast* expr) {
+    assert(expr->kind == Ast_Aggregate_Expr);
+    
+    u8* result = 0;
+    Type* type = expr->type;
+    
+    if (type->kind == TypeKind_Array) {
+        smm capacity = type->Array.capacity;
+        assert(capacity > 0);
+        
+        type = type->Array.type;
+        
+        // TODO(Alexander): temporary use Memory_Arena
+        smm size = capacity*type->size;
+        result = (u8*) allocate_zeros(size);
+        
+        u8* curr = (u8*) result;
+        for_compound(expr->Aggregate_Expr.elements, e) {
+            assert(e->kind == Ast_Argument);
+            e = e->Argument.assign;
+            
+            assert(e->kind == Ast_Value);
+            value_store_in_memory(e->type, curr, e->Value.value.data);
+            curr += type->size;
+        }
+        
+    } else if (type->kind == TypeKind_Struct || type->kind == TypeKind_Union) {
+        // TODO(Alexander): temporary use Memory_Arena
+        for_compound(expr->Aggregate_Expr.elements, field) {
+            assert(field->kind == Ast_Argument);
+            
+            if (!result) {
+                result = (u8*) allocate_zeros(type->size);
+            }
+            
+            string_id ident = ast_unwrap_ident(field->Argument.ident);
+            Ast* assign = field->Argument.assign;
+            // TODO(Alexander): make it possible to store dynamic things
+            if (assign->kind == Ast_Aggregate_Expr) {
+                assign->Value.value.data.data = convert_aggregate_literal_to_memory(assign);
+            } else if (assign->kind != Ast_Value) {
+                unimplemented;
+            }
+            
+            Struct_Field_Info info = get_field_info(&type->Struct_Like, ident);
+            value_store_in_memory(info.type, result + info.offset, assign->Value.value.data);
+        }
+    } else {
+        unimplemented;
+    }
+    
+    return result;
 }
 
 Value_Type 

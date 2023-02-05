@@ -438,7 +438,7 @@ interp_field_expr(Interp* interp, Interp_Value var, string_id ident) {
     switch (var.type.kind) {
         case TypeKind_Struct: {
             assert(var.value.type == Value_pointer);
-            Type_Struct* type = &var.type.Struct;
+            Struct_Like_Info* type = &var.type.Struct_Like;
             
             smm field_index = map_get(type->ident_to_index, ident);
             Type* field_type = type->types[field_index];
@@ -548,8 +548,9 @@ interp_statement(Interp* interp, Ast* ast) {
                     interp_push_entity_to_current_scope(interp, ident, data, type);
                 } break;
                 
+                case TypeKind_Union:
                 case TypeKind_Struct: {
-                    Type_Struct* t_struct = &type->Struct;
+                    Struct_Like_Info* t_struct = &type->Struct_Like;
                     assert(type->size > 0);
                     
                     void* base_address = arena_push_size(&interp->stack, 
@@ -619,10 +620,6 @@ interp_statement(Interp* interp, Ast* ast) {
                     value.data.data = base_address;
                     void* data = interp_push_value(interp, type, value.data);
                     interp_push_entity_to_current_scope(interp, ident, data, type);
-                } break;
-                
-                case TypeKind_Union: {
-                    unimplemented;
                 } break;
                 
                 default: {

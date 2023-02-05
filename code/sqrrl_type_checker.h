@@ -137,6 +137,12 @@ bool
 type_equals(Type* a, Type* b) {
     assert(a && b);
     
+    
+    if (a->kind == TypeKind_Any || 
+        b->kind == TypeKind_Any) {
+        return true;
+    }
+    
     if (a->kind == TypeKind_Enum) {
         a = a->Enum.type;
     }
@@ -251,3 +257,7 @@ s32 type_check_ast_file(Ast_File* ast_file);
 Type* create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error);
 
 Type* load_type_declaration(Type_Context* tcx, string_id ident, Span span, bool report_error);
+
+Type* save_operator_overload(Type_Context* tcx, Type* type, Operator op, Span span, bool report_error);
+Type* save_type_declaration(Type_Context* tcx, string_id ident, Type* type, Span span, bool report_error);
+Type* save_type_declaration_from_ast(Type_Context* tcx, string_id ident, Ast* ast, bool report_error);

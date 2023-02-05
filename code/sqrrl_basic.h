@@ -129,6 +129,23 @@ intrinsic_assert(int expr) {
 #define assert_enum(T, v) assert((v) > 0 && (v) < T##_Count && "enum value out of range")
 #define assert_power_of_two(x) assert(is_power_of_two(x) && "x is not power of two")
 
+
+// TODO(Alexander): create proper allocators
+void*
+allocate(umm size) {
+    return malloc(size);
+}
+
+void*
+allocate_zeros(umm size) {
+    return calloc(1, size);
+}
+
+s32
+abs_s32(s32 s) {
+    return s < 0 ? -s : s;
+}
+
 f32
 random_f32() {
     return (f32) rand() / (RAND_MAX + 1.0f);

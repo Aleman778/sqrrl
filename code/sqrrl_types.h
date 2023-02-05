@@ -71,13 +71,14 @@ enum {
 enum Type_Kind {
     TypeKind_Unresolved,
     TypeKind_Void,
+    TypeKind_Any,
     TypeKind_Basic,
     TypeKind_Array,
     TypeKind_Struct,
     TypeKind_Union,
     TypeKind_Enum,
     TypeKind_Function,
-    TypeKind_Pointer,
+    TypeKind_Pointer
 };
 
 typedef map(string_id, s32) Ident_Mapper;
@@ -176,6 +177,7 @@ Type basic_type_definitions[] = {
 };
 Type unresolved_type_definition = { TypeKind_Unresolved };
 Type void_type_definition = { TypeKind_Void };
+Type any_type_definition = { TypeKind_Any };
 
 internal Type 
 create_void_ptr_type_definition() {
@@ -189,6 +191,7 @@ Type void_ptr_type_definition = create_void_ptr_type_definition();
 global Type* t_unresolve = &unresolved_type_definition;
 global Type* t_void = &void_type_definition;
 global Type* t_void_ptr = &void_ptr_type_definition;
+global Type* t_any = &any_type_definition;
 #define BASIC(ident, ...) global Type* t_##ident = &basic_type_definitions[Basic_##ident];
 DEF_BASIC_TYPES
 #undef BASIC
@@ -255,6 +258,10 @@ string_builder_push(String_Builder* sb, Type* type) {
         
         case TypeKind_Void: {
             string_builder_push(sb, "void");
+        } break;
+        
+        case TypeKind_Any: {
+            string_builder_push(sb, "any");
         } break;
         
         case TypeKind_Basic: {

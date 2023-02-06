@@ -371,6 +371,11 @@ is_valid_ast(Ast* ast) {
 }
 
 inline bool
+is_ast_value(Ast* ast) {
+    return ast && ast->kind == Ast_Value;
+}
+
+inline bool
 is_ast_expr(Ast* ast) {
     return ast && ast->kind > Ast_Expr_Begin && ast->kind < Ast_Expr_End;
 }

@@ -1117,7 +1117,7 @@ parse_switch_case(Parser* parser) {
     // TODO(Alexander): add support for fallthrough to next case
     if (parse_keyword(parser, Kw_case)) {
         result->kind = Ast_Switch_Case;
-        result->Switch_Case.cond = parse_atom(parser, false);
+        result->Switch_Case.cond = parse_expression(parser, false);
         next_token_if_matched(parser, Token_Colon);
         if (peek_token_match(parser, Token_Open_Brace, false)) {
             result->Switch_Case.stmt = parse_block_statement(parser, false);

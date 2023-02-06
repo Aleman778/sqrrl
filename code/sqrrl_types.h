@@ -96,12 +96,18 @@ struct Struct_Field_Info {
 };
 
 inline Struct_Field_Info
-get_field_info(Struct_Like_Info* struct_info, string_id ident) {
-    Struct_Field_Info result;
-    int field_index = map_get(struct_info->ident_to_index, ident);
+get_field_info_by_index(Struct_Like_Info* struct_info, int field_index) {
+    assert(field_index < array_count(struct_info->types));
+    Struct_Field_Info result = {};
     result.type = struct_info->types[field_index];
     result.offset = struct_info->offsets[field_index];
     return result;
+}
+
+inline Struct_Field_Info
+get_field_info(Struct_Like_Info* struct_info, string_id ident) {
+    int field_index = map_get(struct_info->ident_to_index, ident);
+    return get_field_info_by_index(struct_info, field_index);
 }
 
 struct Type_Struct {

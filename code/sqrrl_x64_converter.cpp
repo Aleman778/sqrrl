@@ -1,7 +1,11 @@
 
 void
 convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg dest, Ic_Arg src) {
-    if (type->kind == TypeKind_Array || type->kind == TypeKind_Struct || (type->kind == TypeKind_Basic && type->Basic.kind == Basic_string)) {
+    if (type->kind == TypeKind_Array || 
+        type->kind == TypeKind_Struct || 
+        type->kind == TypeKind_Union || 
+        (type->kind == TypeKind_Basic && type->Basic.kind == Basic_string)) {
+        
         Intermediate_Code* ic = ic_add(cu, IC_MEMSET);
         ic->dest = dest;
         ic->src0 = ic_imm(IC_U8, 0);

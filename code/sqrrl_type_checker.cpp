@@ -412,7 +412,7 @@ match_function_args(Type_Context* tcx,
         
         
         if (actual_type) {
-            if (formal_type && !type_check_assignment(tcx, formal_type, actual_type, 
+            if (formal_type && !type_check_assignment(tcx, formal_type, actual_type, false,
                                                       empty_span, Op_Assign, report_error)) {
                 result = false;
                 break;
@@ -435,14 +435,16 @@ auto_type_conversion(Type_Context* tcx, Type* target_type, Ast* node, Operator o
     
     // TODO(Alexander): we don't want to change types without doing explicit cast
     // otherwise the backend gets confused and outputs wrong code.
-    if (type_check_assignment(tcx, target_type, initial_type, empty_span, op, false)) {
+    if (type_check_assignment(tcx, target_type, initial_type, node->kind == Ast_Value, empty_span, op, false)) {
         
         if (type_equals(initial_type, target_type)) {
             node->type = target_type;
         } else {
             if (node->kind == Ast_Value) {
                 node->type = target_type;
-                
+                node->Value.value = value_cast(node->Value.value, 
+                                               target_type->kind == TypeKind_Basic ? 
+                                               target_type->Basic.kind : Basic_s64);
                 
                 // HACK(Alexander): auto converting string to cstring
                 if (is_string(node->Value.value)) {
@@ -515,6 +517,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         
         case Ast_Ident: {
             string_id ident = ast_unwrap_ident(expr);
+            
             Type* type = map_get(tcx->locals, ident);
             
             if (type) {
@@ -641,7 +644,17 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                         
                     } else if ((first_type->Basic.flags & BasicFlag_Floating) == 
                                (second_type->Basic.flags & BasicFlag_Floating)) {
-                        result = first_type->size > second_type->size ? first_type : second_type;
+                        if (first_type->size > second_type->size) {
+                            result = first_type;
+                            if (expr->Binary_Expr.first->kind == Ast_Value) {
+                                result = second_type;
+                            }
+                        } else {
+                            result = second_type;
+                            if (expr->Binary_Expr.second->kind == Ast_Value) {
+                                result = first_type;
+                            }
+                        }
                         
                     } else if (first_type->Basic.flags & BasicFlag_Floating) {
                         result = first_type;
@@ -714,18 +727,27 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             Type* function_type = 0;
             const string_id ident = try_unwrap_ident(expr->Call_Expr.ident);
             
-            //if (ident == vars_save_cstring("print_format")) {
+            //if (ident == vars_save_cstring("CreateFileA")) {
             //__debugbreak();
             //}
             
             array(Type*)* actual_arg_types = 0;
             Ast* actual_args = expr->Call_Expr.args;
             for_compound(actual_args, actual_arg) {
-                constant_folding_of_expressions(actual_arg->Argument.assign);
-                Type* actual_type = type_infer_expression(tcx, 
-                                                          actual_arg->Argument.assign, 
-                                                          0, 
-                                                          report_error);
+                Type* actual_type = 0;
+                
+                if (is_valid_ast(actual_arg->Argument.assign)) {
+                    constant_folding_of_expressions(actual_arg->Argument.assign);
+                    actual_type = type_infer_expression(tcx, 
+                                                        actual_arg->Argument.assign, 
+                                                        0, 
+                                                        report_error);
+                    
+                } else if (is_valid_ast(actual_arg->Argument.type)) {
+                    
+                    actual_type = create_type_from_ast(tcx, actual_arg->Argument.type, report_error);
+                }
+                
                 if (!actual_type) {
                     return 0;
                 }
@@ -793,7 +815,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 smm formal_arg_count = array_count(function_type->Function.arg_types);
                 for_compound(expr->Call_Expr.args, arg) {
                     //pln("% < % = %", f_smm(arg_index), f_smm(formal_arg_count), f_bool(arg_index < formal_arg_count));
-                    if (arg_index < formal_arg_count) {
+                    if (arg_index < formal_arg_count && is_valid_ast(arg->Argument.assign)) {
                         Type* formal_type = function_type->Function.arg_types[arg_index];
                         arg->Argument.assign = auto_type_conversion(tcx, formal_type, arg->Argument.assign);
                         arg->type = arg->Argument.assign->type;
@@ -858,6 +880,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                         } else if (curr_compound->Compound.node) {
                             Ast* actual_arg = curr_compound->Compound.node;
                             expr->kind = Ast_Value;
+                            //pln("% (size = %)", f_ast(actual_arg), f_umm(intrinsic_proc(actual_arg->type)));
                             expr->Value.value =
                                 create_unsigned_int_value(intrinsic_proc(actual_arg->type));
                         }
@@ -2120,7 +2143,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
 }
 
 bool
-type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span, Operator op, bool report_error) {
+type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool is_rhs_value, Span span, Operator op, bool report_error) {
     assert(lhs && rhs);
     
     if (lhs->kind == TypeKind_Enum) {
@@ -2134,6 +2157,10 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span, Operat
         rhs = rhs->Enum.type;
     }
     
+    if (is_rhs_value && lhs->kind == TypeKind_Pointer) {
+        return true;
+    }
+    
     if (lhs->kind != rhs->kind) {
         if (report_error) {
             type_error_mismatch(tcx, lhs, rhs, span);
@@ -2143,6 +2170,7 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span, Operat
     
     switch (lhs->kind) {
         case TypeKind_Basic: {
+            
             if (operator_is_comparator(op) && 
                 lhs->Basic.flags & BasicFlag_Integer &&
                 rhs->Basic.flags & BasicFlag_Integer) {
@@ -2156,8 +2184,35 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span, Operat
                 }
             }
             
+            bool lossy = false;
+            
+            
+            if ((lhs->Basic.flags & (BasicFlag_Floating | BasicFlag_Integer)) &&
+                (rhs->Basic.flags & (BasicFlag_Floating | BasicFlag_Integer))) {
+                
+                if (is_rhs_value) {
+                    return true;
+                }
+                
+                bool lhs_float = lhs->Basic.flags & BasicFlag_Floating;
+                bool rhs_float = lhs->Basic.flags & BasicFlag_Floating;
+                if (lhs_float == rhs_float) {
+                    lossy = lhs->size < rhs->size;
+                } else {
+                    lossy = rhs_float;
+                }
+                
+            } else if (rhs->Basic.kind == Basic_string) {
+                lossy = (lhs->Basic.flags & BasicFlag_String) == 0;
+                
+            } else if (rhs->Basic.kind == Basic_cstring) {
+                lossy = rhs->Basic.kind != Basic_cstring;
+            }
+            
+            
+#if 0
             bool lossy = lhs->size < rhs->size;
-            if (!lossy && lhs->Basic.flags & BasicFlag_Floating) {
+            if (!lossy && ) {
                 lossy = rhs->Basic.flags & BasicFlag_Integer;
             }
             
@@ -2166,16 +2221,10 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span, Operat
             }
             
             if (!lossy && rhs->Basic.flags & BasicFlag_Integer) {
-                lossy = lhs->Basic.flags & BasicFlag_Floating;
+                lossy = (lhs->Basic.flags & BasicFlag_Floating | BasicFlag_Integer);
             }
+#endif
             
-            if (rhs->Basic.kind == Basic_string) {
-                lossy = (lhs->Basic.flags & BasicFlag_String) == 0;
-            }
-            
-            if (rhs->Basic.kind == Basic_cstring) {
-                lossy = rhs->Basic.kind != Basic_cstring;
-            }
             
             if (op == Op_Logical_And || op == Op_Logical_Or) {
                 if (((lhs->Basic.flags & BasicFlag_String) || (lhs->Basic.flags & BasicFlag_Integer)) &&
@@ -2196,7 +2245,7 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span, Operat
         } break;
         
         case TypeKind_Array: {
-            bool success = type_check_assignment(tcx, lhs->Pointer, rhs->Pointer, span, op, false);
+            bool success = type_check_assignment(tcx, lhs->Pointer, rhs->Pointer, false, span, op, false);
             
             if (lhs->Array.capacity != rhs->Array.capacity) {
                 success = false;
@@ -2226,7 +2275,7 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, Span span, Operat
         } break;
         
         case TypeKind_Pointer: {
-            bool success = type_check_assignment(tcx, lhs->Pointer, rhs->Pointer, span, op, false);
+            bool success = type_check_assignment(tcx, lhs->Pointer, rhs->Pointer, false, span, op, false);
             if (!success) {
                 if (report_error) {
                     type_error_mismatch(tcx, lhs, rhs, span);
@@ -2357,14 +2406,19 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                     }
                 } else if (operator_is_comparator(op)) {
                     if (second->kind != TypeKind_Pointer && second->kind != TypeKind_Function) {
-                        type_error(tcx, 
-                                   string_format("operator `%` expects pointer on right-hand side, found `%`", 
-                                                 f_cstring(operator_strings[op]),
-                                                 f_type(second)),
-                                   expr->span);
+                        
+                        if (expr->Binary_Expr.second->kind == Ast_Value) {
+                            expr->Binary_Expr.second->type = first;
+                        } else {
+                            type_error(tcx, 
+                                       string_format("operator `%` expects pointer on right-hand side, found `%`", 
+                                                     f_cstring(operator_strings[op]),
+                                                     f_type(second)),
+                                       expr->span);
+                        }
                     }
                 } else if (op == Op_Assign) {
-                    result = result && type_check_assignment(tcx, first, second, expr->Binary_Expr.second->span);
+                    result = result && type_check_assignment(tcx, first, second, expr->Binary_Expr.second->kind == Ast_Value, expr->Binary_Expr.second->span);
                 } else {
                     type_error(tcx, 
                                string_format("operator `%` is not supported for `%` on left-hand side",
@@ -2374,7 +2428,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                 }
                 
             } else {
-                if (type_check_assignment(tcx, first, second, expr->Binary_Expr.second->span, op)) {
+                if (type_check_assignment(tcx, first, second, is_ast_value(expr->Binary_Expr.second), expr->Binary_Expr.second->span, op)) {
                     if (!type_equals(first, second)) {
                         pln("%", f_ast(expr));
                         type_error_mismatch(tcx, first, second, expr->Binary_Expr.second->span);
@@ -2442,7 +2496,7 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
             
             Type* found_type = stmt->Assign_Stmt.expr->type;
             if (found_type) {
-                result = type_check_assignment(tcx, expected_type, found_type,
+                result = type_check_assignment(tcx, expected_type, found_type, is_ast_value(stmt->Assign_Stmt.expr),
                                                stmt->Assign_Stmt.expr->span);
             }
         } break;
@@ -2459,7 +2513,8 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
             }
             
             result = result && type_check_expression(tcx, stmt->Return_Stmt.expr);
-            result = result && type_check_assignment(tcx, tcx->return_type, found_type,
+            result = result && type_check_assignment(tcx, tcx->return_type, found_type, 
+                                                     is_ast_value(stmt->Return_Stmt.expr),
                                                      stmt->Return_Stmt.expr->span);
             
             if (!result) {

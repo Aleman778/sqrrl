@@ -63,8 +63,6 @@ solving them on your own first!
 
 
 
-#define pln(format, ...) print_format(format##"\n", ##__VA_ARGS__)
-
 void
 problem_1() {
     int n = 1000;

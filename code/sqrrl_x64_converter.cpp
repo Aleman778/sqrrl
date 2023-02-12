@@ -38,8 +38,143 @@ x64_clobber_register(Compilation_Unit* cu, Intermediate_Code* curr, Type* type, 
 }
 
 Ic_Arg
+convert_function_call_to_intermediate_code(Compilation_Unit* cu, 
+                                           Type* function_type,
+                                           array(Ast*)* args) {
+    
+    
+    Ic_Arg result = {};
+    
+    assert(function_type && function_type->kind == TypeKind_Function);
+    
+    Type_Function* proc = &function_type->Function;
+    
+    if (proc->intrinsic) {
+        if (proc->intrinsic == &interp_intrinsic_debug_break) {
+            ic_add(cu, IC_DEBUG_BREAK);
+            return result;
+        }
+    }
+    
+    s64 stk_args = 0;
+    array(X64_Arg_Copy)* copy_args = 0;
+    
+    // Setup return type
+    if (proc->return_type) {
+        Type* type = proc->return_type;
+        Ic_Raw_Type rt = convert_type_to_raw_type(type);
+        
+        if (type->size > 8) {
+            // NOTE(Alexander): if return argument cannot fit in RAX/ XMM0 then
+            //                  pass a pointer to it as the first argument
+            s64 disp = stk_args;
+            stk_args += 8;
+            // TODO(Alexander): we should use argument stack but this has to be allocated last
+            //Ic_Arg src = ic_stk(rt, disp, IcStkArea_Args);
+            
+            X64_Arg_Copy copy = {};
+            copy.type = proc->return_type;
+            array_push(copy_args, copy);
+        } else {
+            result = ic_reg(rt, X64_RAX); // NOTE: RAX == 0 && XMM0 == 0
+        }
+    }
+    
+    {
+        // Setup arguments
+        for_array_v(args, arg, arg_index) {
+            Ic_Raw_Type rt = convert_type_to_raw_type(arg->type);
+            s64 disp = stk_args;
+            stk_args += 8;
+            Ic_Arg dest = ic_stk(rt, disp, IcStkArea_Args);
+            
+            X64_Arg_Copy copy = {};
+            copy.type = arg->type;
+            copy.expr = arg;
+            copy.dest = dest;
+            array_push(copy_args, copy);
+        }
+    }
+    
+    // Store arguments according to the windows calling convention
+    for_array_reverse(copy_args, arg, arg_index) {
+        Ic_Arg src;
+        if (arg->expr) {
+            src = convert_expr_to_intermediate_code(cu, arg->expr);
+        } else {
+            src = ic_push_local(cu, arg->type);
+            arg->dest = src;
+            result = src;
+        }
+        
+        Ic_Arg dest;
+        if (arg_index < 4) {
+            if (src.type & IC_FLOAT) {
+                dest = ic_reg(src.raw_type, float_arg_registers_ccall_windows[arg_index]);
+            } else {
+                dest = ic_reg(src.raw_type, int_arg_registers_ccall_windows[arg_index]);
+            }
+        } else {
+            dest = arg->dest;
+        }
+        
+        if (src.type & IC_FLOAT) {
+            Intermediate_Code* ic = ic_add(cu, IC_FMOV);
+            ic->src0 = dest;
+            ic->src1 = src;
+        } else if (src.type & (IC_SINT | IC_UINT | IC_IMM) ||
+                   arg->type->kind == TypeKind_Pointer) {
+            ic_mov(cu, dest, src);
+        } else {
+            Ic_Arg tmp = {};
+            if (dest.type & IC_STK) {
+                tmp = dest;
+                dest = ic_reg(dest.type & IC_RT_MASK, X64_RAX);
+            }
+            Intermediate_Code* ic = ic_add(cu, IC_LEA);
+            ic->src0 = dest;
+            ic->src1 = src;
+            
+            if (tmp.type & IC_STK) {
+                ic_mov(cu, tmp, dest);
+                dest = tmp;
+            }
+        }
+        
+        if (proc->is_variadic && arg_index < 4 && src.type & IC_FLOAT) {
+            Intermediate_Code* ic = ic_add(cu, IC_REINTERP_F2S);
+            ic->src0 = ic_reg(IC_S64, int_arg_registers_ccall_windows[arg_index]);
+            ic->src1 = dest;
+        }
+    }
+    
+    cu->stk_args = max(cu->stk_args, stk_args);
+    if (proc->is_variadic) {
+        // NOTE(Alexander): make sure to allocate space for HOME registers
+        // even if they aren't used!
+        cu->stk_args = max(cu->stk_args, 4*8);
+    }
+    
+    Intermediate_Code* ic = ic_add(cu, IC_CALL, proc->unit);
+    if (proc->intrinsic) {
+        ic->dest = ic_imm(IC_S64, (s64) proc->intrinsic);
+    }
+    
+    return result;
+}
+
+Ic_Arg
 convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg prev_result={}) {
     assert(expr && expr->kind == Ast_Binary_Expr && "not a binary expression");
+    
+    if (expr->Binary_Expr.overload) {
+        
+        array(Ast*)* args = 0;
+        array_push(args, expr->Binary_Expr.first);
+        array_push(args, expr->Binary_Expr.second);
+        
+        return convert_function_call_to_intermediate_code(cu, expr->Binary_Expr.overload, args);
+    }
     
     Ic_Arg result;
     
@@ -280,27 +415,30 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
     Ic_Arg result = {};
     
     switch (expr->kind) {
+        case Ast_None: {
+        } break;
+        
         case Ast_Value: {
-            if (is_integer(expr->Value.value)) {
+            if (is_integer(expr->Value)) {
                 Ic_Raw_Type raw_type = convert_type_to_raw_type(expr->type);
                 result.type = raw_type + IC_IMM;
-                result.disp = value_to_s64(expr->Value.value);
+                result.disp = value_to_s64(expr->Value);
                 
-            } else if (is_floating(expr->Value.value)) {
+            } else if (is_floating(expr->Value)) {
                 Type* type = expr->type;
                 Ic_Raw_Type raw_type = convert_type_to_raw_type(expr->type);
                 void* data = malloc(type->size);
-                value_store_in_memory(type, data, expr->Value.value.data);
+                value_store_in_memory(type, data, expr->Value.data);
                 result = ic_data(raw_type, (s64) data);
                 
-            } else if (is_string(expr->Value.value)) {
+            } else if (is_string(expr->Value)) {
                 Ic_Raw_Type raw_type = IC_T64;
                 string* str = (string*) malloc(sizeof(string));
-                *str = expr->Value.value.data.str;
+                *str = expr->Value.data.str;
                 result = ic_data(raw_type, (s64) str);
                 
-            } else if (is_cstring(expr->Value.value)) {
-                cstring cstr = expr->Value.value.data.cstr;
+            } else if (is_cstring(expr->Value)) {
+                cstring cstr = expr->Value.data.cstr;
                 if (cstr == 0) {
                     result = ic_imm(IC_S64, 0);
                 } else {
@@ -385,16 +523,15 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     } break;
                     
                     case Sym_count: {
-                        assert(result.type & IC_IMM && "unimplemented");
-                        result.raw_type = IC_S64;
+                        result.raw_type = result.type & IC_STK ? IC_S64 : IC_T64;
                         result.disp += 8;
                     } break;
                     
                     case Sym_capacity: {
-                        assert(result.type & IC_IMM && "unimplemented");
-                        result.raw_type = IC_S64;
+                        result.raw_type = result.type & IC_STK ? IC_S64 : IC_T64;
                         result.disp += 16;
                     } break;
+                    
                     
                     default: {
                         assert(0 && "invalid field");
@@ -407,19 +544,27 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
         
         case Ast_Index_Expr: {
             Type* type = expr->type;
-            assert(expr->Index_Expr.array->type->kind == TypeKind_Array);
-            Type_Array* array_type = &expr->Index_Expr.array->type->Array;
+            Type* array_type = expr->Index_Expr.array->type;
+            
             
             Ic_Raw_Type rt = convert_type_to_raw_type(type);
             Ic_Arg arr = convert_expr_to_intermediate_code(cu, expr->Index_Expr.array);
             Ic_Arg index = convert_expr_to_intermediate_code(cu, expr->Index_Expr.index);
             
-            if (array_type->capacity == 0 || array_type->is_dynamic) {
-                // Array is stored as "wide" pointer
-                Ic_Arg tmp = ic_reg(arr.raw_type, X64_RDX);
-                ic_mov(cu, tmp, arr);
-                arr = ic_stk(tmp.raw_type, 0, IcStkArea_None, tmp.reg);
+            if (array_type->kind == TypeKind_Array) {
+                
+                if (array_type->Array.capacity == 0 || array_type->Array.is_dynamic) {
+                    // Array is stored as "wide" pointer
+                    Ic_Arg tmp = ic_reg(arr.raw_type, X64_RDX);
+                    ic_mov(cu, tmp, arr);
+                    arr = ic_stk(tmp.raw_type, 0, IcStkArea_None, tmp.reg);
+                }
             }
+            // else if (array_type->kind == TypeKind_Pointer) {
+            // Ic_Arg tmp = ic_reg(arr.raw_type, X64_RDX);
+            // ic_mov(cu, tmp, arr);
+            // arr = ic_stk(tmp.raw_type, 0, IcStkArea_None, tmp.reg);
+            // }
             
             // Array is stored in place
             result = arr;
@@ -578,119 +723,16 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
         } break;
         
         case Ast_Call_Expr: {
-            assert(expr->Call_Expr.function_type && 
-                   expr->Call_Expr.function_type->kind == TypeKind_Function);
-            Type_Function* proc = &expr->Call_Expr.function_type->Function;
-            
-            if (proc->intrinsic) {
-                if (proc->intrinsic == &interp_intrinsic_debug_break) {
-                    ic_add(cu, IC_DEBUG_BREAK);
-                    break;
-                }
-            }
-            
-            s64 stk_args = 0;
-            array(X64_Arg_Copy)* copy_args = 0;
-            
-            // Setup return type
-            if (proc->return_type) {
-                Type* type = proc->return_type;
-                Ic_Raw_Type rt = convert_type_to_raw_type(type);
-                
-                if (type->size > 8) {
-                    // NOTE(Alexander): if return argument cannot fit in RAX/ XMM0 then
-                    //                  pass a pointer to it as the first argument
-                    s64 disp = stk_args;
-                    stk_args += 8;
-                    // TODO(Alexander): we should use argument stack but this has to be allocated last
-                    //Ic_Arg src = ic_stk(rt, disp, IcStkArea_Args);
-                    
-                    X64_Arg_Copy copy = {};
-                    copy.type = proc->return_type;
-                    array_push(copy_args, copy);
-                } else {
-                    result = ic_reg(rt, X64_RAX); // NOTE: RAX == 0 && XMM0 == 0
-                }
-            }
-            
+            array(Ast*)* args = 0;
             
             // Setup arguments
             for_compound(expr->Call_Expr.args, arg) {
-                Ic_Raw_Type rt = convert_type_to_raw_type(arg->type);
-                s64 disp = stk_args;
-                stk_args += 8;
-                Ic_Arg dest = ic_stk(rt, disp, IcStkArea_Args);
-                
-                X64_Arg_Copy copy = {};
-                copy.type = arg->type;
-                copy.expr = arg->Argument.assign;
-                copy.dest = dest;
-                array_push(copy_args, copy);
+                assert(arg->kind == Ast_Argument);
+                array_push(args, arg->Argument.assign);
             }
             
-            // Store arguments according to the windows calling convention
-            for_array_reverse(copy_args, arg, arg_index) {
-                Ic_Arg src;
-                if (arg->expr) {
-                    src = convert_expr_to_intermediate_code(cu, arg->expr);
-                } else {
-                    src = ic_push_local(cu, arg->type);
-                    arg->dest = src;
-                    result = src;
-                }
-                
-                Ic_Arg dest;
-                if (arg_index < 4) {
-                    if (src.type & IC_FLOAT) {
-                        dest = ic_reg(src.raw_type, float_arg_registers_ccall_windows[arg_index]);
-                    } else {
-                        dest = ic_reg(src.raw_type, int_arg_registers_ccall_windows[arg_index]);
-                    }
-                } else {
-                    dest = arg->dest;
-                }
-                
-                if (src.type & IC_FLOAT) {
-                    Intermediate_Code* ic = ic_add(cu, IC_FMOV);
-                    ic->src0 = dest;
-                    ic->src1 = src;
-                } else if (src.type & (IC_SINT | IC_UINT | IC_IMM) ||
-                           arg->type->kind == TypeKind_Pointer) {
-                    ic_mov(cu, dest, src);
-                } else {
-                    Ic_Arg tmp = {};
-                    if (dest.type & IC_STK) {
-                        tmp = dest;
-                        dest = ic_reg(dest.type & IC_RT_MASK, X64_RAX);
-                    }
-                    Intermediate_Code* ic = ic_add(cu, IC_LEA);
-                    ic->src0 = dest;
-                    ic->src1 = src;
-                    
-                    if (tmp.type & IC_STK) {
-                        ic_mov(cu, tmp, dest);
-                        dest = tmp;
-                    }
-                }
-                
-                if (proc->is_variadic && arg_index < 4 && src.type & IC_FLOAT) {
-                    Intermediate_Code* ic = ic_add(cu, IC_REINTERP_F2S);
-                    ic->src0 = ic_reg(IC_S64, int_arg_registers_ccall_windows[arg_index]);
-                    ic->src1 = dest;
-                }
-            }
-            
-            cu->stk_args = max(cu->stk_args, stk_args);
-            if (proc->is_variadic) {
-                // NOTE(Alexander): make sure to allocate space for HOME registers
-                // even if they aren't used!
-                cu->stk_args = max(cu->stk_args, 4*8);
-            }
-            
-            Intermediate_Code* ic = ic_add(cu, IC_CALL, proc->unit);
-            if (proc->intrinsic) {
-                ic->dest = ic_imm(IC_S64, (s64) proc->intrinsic);
-            }
+            Type* function_type = expr->Call_Expr.function_type;
+            result = convert_function_call_to_intermediate_code(cu, function_type, args);
         } break;
         
         case Ast_Cast_Expr: {
@@ -861,6 +903,27 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Bloc
             convert_stmt_to_intermediate_code(cu, stmt->While_Stmt.block, bb_exit, bb_enter);
             ic_add(cu, IC_JMP, bb_enter);
             ic_add(cu, IC_LABEL, bb_exit);
+        } break;
+        
+        case Ast_Switch_Stmt: {
+            Ic_Basic_Block* bb_exit = ic_basic_block();
+            
+            pln("switch_stmt:%", f_ast(stmt));
+            Ic_Arg cond = convert_expr_to_intermediate_code(cu, stmt->Switch_Stmt.cond);
+            assert(cond.type & IC_STK);
+            
+            for_compound(stmt->Switch_Stmt.cases, it) {
+                assert(it->kind == Ast_Switch_Case);
+                Ast* case_cond = it->Switch_Case.cond;
+                
+                assert(case_cond->kind == Ast_Value);
+                Ic_Basic_Block* case_enter = ic_basic_block();
+                Intermediate_Code* ic_case = ic_add(cu, IC_SUB);
+                ic_case->dest = ic_reg(cond.raw_type);
+                ic_case->src0 = cond;
+                ic_case->src1 = ic_imm(cond.raw_type, case_cond->Value.data.signed_int);
+                ic_add(cu, IC_LABEL, case_enter);
+            }
         } break;
         
         case Ast_Return_Stmt: {

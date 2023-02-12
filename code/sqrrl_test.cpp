@@ -54,14 +54,12 @@ run_compiler_tests(string filename,
     }
     
     // Type checking
-    if (type_check_ast_file(&ast_file) != 0) {
+    Interp interp = {};
+    Type_Context tcx = {};
+    if (type_check_ast_file(&tcx, &ast_file, &interp) != 0) {
         pln("\nErrors found during type checking, exiting...\n");
         return 1;
     }
-    
-    // Prepare interpreter
-    Interp interp = {};
-    interp_ast_declarations(&interp, ast_file.decls);
     
     // Convert to intermediate code
     for_array(ast_file.units, cu, _) {
@@ -165,7 +163,7 @@ run_compiler_tests(string filename,
         // Interpreter
         if (is_bitflag_set(test->modes, TestExecutionMode_Interp)) {
             u32 prev_num_failed = test->num_failed;
-            interp_function_call(&interp, unit->ident, 0, unit->ast->type);
+            interp_function_call(&interp, 0, unit->ast->type);
             if (interp.error_count > 0) {
                 test->num_failed += interp.error_count;
                 test->num_tests +=  interp.error_count;

@@ -1,28 +1,15 @@
 
-// TODO(Alexander): entity is a confusing name, can be data or declaration.
-struct Interp_Entity {
-    void* data;
-    Type* type;
-    b32 is_valid;
-};
-
-struct Symbol_Table {
-    string_id key; 
-    Interp_Entity value;
-};
-
 struct Interp_Scope {
-    map(string_id, Interp_Entity)* locals;
+    map(string_id, void*)* locals;
     array(string_id)* local_stack;
     string_id name;
     Span span;
+    Interp_Scope* prev_scope;
 };
 
 struct Interp {
-    array(Interp_Scope)* scopes;
-    map(string_id, Interp_Entity)* globals;
-    
-    map(string_id, Type*) global_types;
+    Interp_Scope* global_scope;
+    Interp_Scope* curr_scope;
     
     Memory_Arena stack;
     smm base_pointer;
@@ -84,137 +71,85 @@ create_interp_value(Interp* interp) {
     return result;
 }
 
-Interp_Value
-value_to_interp_value(Interp* interp, Value value) {
+inline Interp_Value
+value_to_interp_value(Interp* interp, Value value, void* data=0) {
     Interp_Value result = create_interp_value(interp);
     result.value = value;
-    
+    result.data = data;
     return result;
-}
-
-inline Interp_Entity
-interp_load_entity_from_current_scope(Interp* interp, string_id ident) {
-    Interp_Entity result = {};
-    
-    if (array_count(interp->scopes) > 0) {
-        Interp_Scope* current_scope = interp->scopes + (array_count(interp->scopes) - 1);
-        result = map_get(current_scope->locals, ident);
-    }
-    
-    if (result.is_valid) {
-        return result;
-    }
-    
-    result = map_get(interp->globals, ident);
-    return result;
-}
-
-inline void
-interp_push_entity_to_scope(Interp_Scope* scope, string_id ident, void* data, Type* type) {
-    Interp_Entity entity;
-    entity.data = data;
-    entity.type = type;
-    entity.is_valid = true;
-    map_put(scope->locals, ident, entity);
-    array_push(scope->local_stack, ident);
-}
-
-inline Interp_Scope*
-interp_get_current_scope(Interp* interp) {
-    if (array_count(interp->scopes) == 0) {
-        return 0;
-    }
-    return interp->scopes + (array_count(interp->scopes) - 1);
-}
-
-inline void
-interp_push_entity_to_current_scope(Interp* interp, string_id ident, void* data, Type* type) {
-    Interp_Scope* current_scope = interp_get_current_scope(interp);
-    if (current_scope) {
-        interp_push_entity_to_scope(current_scope, ident, data, type);
-    } else {
-        Interp_Entity entity;
-        entity.data = data;
-        entity.type = type;
-        entity.is_valid = true;
-        map_put(interp->globals, ident, entity);
-    }
-}
-
-void interp_save_value(Type* type, void* storage, Value_Data data);
-Interp_Value interp_load_value(Interp* interp, Type* type, void* data);
-
-inline void*
-interp_push_value(Interp* interp, Type* type, Value_Data data) {
-    assert(type->size > 0 && "bad size");
-    assert(type->align > 0 && "bad align");
-    
-    void* result = arena_push_size(&interp->stack, type->size, type->align);
-    interp_save_value(type, result, data);
-    
-    return result;
-}
-
-inline bool
-interp_entity_is_assigned(Interp* interp, Interp_Entity* entity, string_id ident) {
-    if (!entity->data || !entity->type) {
-        if (entity->type) {
-            
-            // HACK(Alexander): maybe need to rethink what is legal to do here.
-            if (entity->type->kind == TypeKind_Enum) {
-                return true;
-            }
-            
-            interp_error(interp, string_format("`%`: declared but not assigned", f_string(vars_load_string(ident))));
-        } else {
-            interp_error(interp, string_format("`%`: undeclared identifier ", f_string(vars_load_string(ident))));
-        }
-        return false;
-    }
-    
-    return true;
-}
-
-inline bool
-interp_entity_is_declared(Interp* interp, Interp_Entity* entity, string_id ident) {
-    if (!entity->type) {
-        interp_error(interp, string_format("`%`: undeclared identifier ", f_string(vars_load_string(ident))));
-        // TODO(Alexander): what about int maybe primitives and types should get its own symbol table?
-        return false;
-    }
-    return true;
 }
 
 inline Interp_Value
-interp_load_value(Interp* interp, string_id ident) {
-    Interp_Value result = {};
-    
-    Interp_Entity entity = interp_load_entity_from_current_scope(interp, ident);
-    if (!entity.is_valid) {
-        return result;
+interp_value_load_from_memory(Interp* interp, Type* type, void* data) {
+    Value value = value_load_from_memory(type, data);
+    return value_to_interp_value(interp, value, data);
+}
+
+inline bool
+interp_value_exists(Interp* interp, string_id ident) {
+    if (!interp->curr_scope) {
+        return false;
+    }
+    return map_key_exists(interp->curr_scope->locals, ident);
+}
+
+inline void*
+get_interp_value_pointer(Interp* interp, string_id ident) {
+    if (interp_value_exists(interp, ident)) {
+        void* data = map_get(interp->curr_scope->locals, ident);
+        return data;
+    } else {
+        // TODO(Alexander): implement globals support
+        //unimplemented;
     }
     
-    if (entity.data == 0) {
-        result.type = *entity.type;
-        return result;
+    return 0;
+}
+
+Interp_Value
+get_interp_value(Interp* interp, Type* type, string_id ident) {
+    if (interp->curr_scope) {
+        void* data = get_interp_value_pointer(interp, ident);
+        if (data) {
+            Value value = value_load_from_memory(type, data);
+            return value_to_interp_value(interp, value, data);
+        }
     }
     
-    if (interp_entity_is_assigned(interp, &entity, ident)) {
-        result = interp_load_value(interp, entity.type, entity.data);
+    return {};
+}
+
+void*
+push_interp_value(Interp* interp, Type* type, string_id ident, Interp_Value value) {
+    if (!interp->curr_scope) {
+        Interp_Scope* first_scope = arena_push_struct(&interp->stack, Interp_Scope);
+        interp->curr_scope = first_scope;
     }
     
-    return result;
+    if (ident > 0 && interp_value_exists(interp, ident)) {
+        interp_error(interp, string_format("cannot redeclare previous local variable `%`",
+                                           f_var(ident)));
+        return 0;
+    }
+    
+    void* data = arena_push_size(&interp->stack, type->size, type->align);
+    if (!is_void(value.value)) {
+        value_store_in_memory(type, data, value.value.data);
+    }
+    
+    if (ident > 0) {
+        array_push(interp->curr_scope->local_stack, ident);
+        map_put(interp->curr_scope->locals, ident, data);
+    }
+    
+    return data;
 }
 
 Interp_Value interp_expression(Interp* interp, Ast* ast);
 Interp_Value interp_field_expr(Interp* interp, Interp_Value var, string_id ident);
-Interp_Value interp_function_call(Interp* interp, string_id ident, Ast* args, Type* function_type=0);
+Interp_Value interp_function_call(Interp* interp, Ast* args, Type* function_type);
 Interp_Value interp_statement(Interp* interp, Ast* ast);
 Interp_Value interp_block(Interp* interp, Ast* ast);
-
-void interp_declaration_statement(Interp* interp, Ast* ast);
-
-void interp_ast_declarations(Interp* interp, Ast_Decl_Table* decls);
 
 // Interpreter intrinsics
 Value interp_intrinsic_print_format(Interp* interp, array(Interp_Value)* var_args);

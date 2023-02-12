@@ -508,14 +508,16 @@ parse_atom(Parser* parser, bool report_error, u8 min_prec) {
                     result->Cast_Expr.type = inner;
                     result->Cast_Expr.expr = expr;
                 } else {
-                    if (inner->kind == Ast_Named_Type) {
+                    if (inner->kind == Ast_Named_Type && !is_builtin_keyword(try_unwrap_ident(inner->Named_Type))) {
                         // NOTE(Alexander): not an actualy type cast instead just (identifier)
                         result->kind = Ast_Paren_Expr;
                         result->Paren_Expr.expr = inner->Named_Type;
                     } else {
-                        unimplemented;
-                        // TODO(Alexander): write an error message for incomplete type cast
-                        //parse_error(parser, first_token, string_lit()
+                        //unimplemented;
+                        // TODO(Alexander): improve error message
+                        parse_error(parser, first_token, 
+                                    string_format("Failed to parse type cast, please try `cast(%)` instead", 
+                                                  f_string(first_token.source)));
                     }
                 }
             }

@@ -108,9 +108,6 @@ enum Value_Type {
     Value_string,
     Value_cstring,
     Value_memory_string,
-    
-    // TODO(Alexander): these don't really belong here, should be moved.
-    Value_ast_node,
 };
 
 union Value_Data {
@@ -135,6 +132,7 @@ struct Value {
 
 
 void value_store_in_memory(Type* type, void* dest, Value_Data src);
+void* convert_aggregate_literal_to_memory(Ast* expr);
 Value value_load_from_memory(Type* type, void* data);
 Value_Type value_type_from_basic_flags(u32 flags);
 
@@ -229,11 +227,6 @@ is_string(Value value) {
 inline bool
 is_cstring(Value value) {
     return value.type == Value_cstring;
-}
-
-inline bool
-is_ast_node(Value value) {
-    return value.type == Value_ast_node;
 }
 
 inline bool

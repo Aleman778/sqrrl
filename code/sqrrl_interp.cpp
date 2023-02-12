@@ -1,18 +1,4 @@
 
-void
-interp_save_value(Type* type, void* dest, Value_Data src) {
-    value_store_in_memory(type, dest, src);;
-}
-
-Interp_Value
-interp_load_value(Interp* interp, Type* type, void* data) {
-    Interp_Value result = create_interp_value(interp);
-    result.value = value_load_from_memory(type, data);
-    result.type = *type;
-    result.data = data;
-    return result;
-}
-
 Interp_Value 
 interp_expression(Interp* interp, Ast* ast) {
     assert(is_ast_expr(ast) || ast->kind == Ast_Value || ast->kind == Ast_Ident || ast->kind == Ast_None);
@@ -21,13 +7,12 @@ interp_expression(Interp* interp, Ast* ast) {
     
     switch (ast->kind) {
         case Ast_Value: {
-            result.value = ast->Value.value;
-            result.type = *ast->type;
+            result.value = ast->Value;
         } break;
         
         case Ast_Ident: {
-            result = interp_load_value(interp, ast->Ident);
-            if (!result.data && result.type.kind == TypeKind_Unresolved) {
+            result = get_interp_value(interp, ast->type, ast->Ident);
+            if (is_void(result.value)) {
                 if (interp->set_undeclared_to_zero) {
                     result.value = {};
                     result.value.type = Value_signed_int;
@@ -67,40 +52,28 @@ interp_expression(Interp* interp, Ast* ast) {
                 
                 case Op_Address_Of: {
                     Ast* expr = ast->Unary_Expr.first;
+                    Type* type = expr->type;
                     
                     if (expr->kind == Ast_Ident) {
-                        Interp_Entity entity = interp_load_entity_from_current_scope(interp, expr->Ident);
-                        if (entity.is_valid) {
-                            
-                            if (entity.data && entity.type) {
-                                result.value.type = Value_pointer;
-                                result.value.data.data = entity.data;
-                                
-                                Type type = {};
-                                type.kind = TypeKind_Pointer;
-                                type.Pointer = entity.type;
-                                result.type = type;
-                            } else {
-                                interp_error(interp, string_format("cannot take address of uninitialized variable `%`",
-                                                                   f_string(vars_load_string(expr->Ident))));
-                            }
-                        } else {
-                            interp_error(interp, string_format("`%` is an undeclared identifier", 
-                                                               f_string(vars_load_string(expr->Ident))));
-                        }
+                        string_id ident = ast_unwrap_ident(expr);
+                        void* data = get_interp_value_pointer(interp, ident);
+                        Value value;
+                        value.type = Value_pointer;
+                        value.data.data = data;
+                        result = value_to_interp_value(interp, value, data);
                     } else {
                         interp_error(interp, string_lit("address of operator expects an identifier"));
                     }
                 } break;
                 
                 case Op_Dereference: {
-                    Interp_Value op = interp_expression(interp, ast->Unary_Expr.first);
+                    Interp_Value first = interp_expression(interp, ast->Unary_Expr.first);
                     
-                    if (op.value.type == Value_pointer && op.type.kind == TypeKind_Pointer) {
-                        Type* deref_type = op.type.Pointer;
-                        result = interp_load_value(interp, deref_type, op.value.data.data);
+                    if (first.value.type == Value_pointer && first.data) {
+                        // TODO(Alexander): we should check the pointer to make sure it's within the interpreter memory address space.
+                        result = interp_value_load_from_memory(interp, ast->type, first.data);
                     } else {
-                        interp_error(interp, string_lit("dereference operator expects identifier"));
+                        interp_error(interp, string_lit("dereference of null pointer"));
                     }
                 } break;
             }
@@ -190,23 +163,18 @@ interp_expression(Interp* interp, Ast* ast) {
                 }
                 
                 // NOTE(Alexander): handle assign binary expression
-                if (result.value.type != Value_void && operator_is_assign(ast->Binary_Expr.op)) {
+                if (!is_void(result.value) && operator_is_assign(ast->Binary_Expr.op)) {
                     
+                    void* data = first_op.data;
                     if (ast->Binary_Expr.first->kind == Ast_Ident) {
-                        string_id ident = ast->Binary_Expr.first->Ident;
-                        Interp_Entity entity = interp_load_entity_from_current_scope(interp, ident);
-                        if (interp_entity_is_declared(interp, &entity, ident)) {
-                            if (entity.data) {
-                                interp_save_value(entity.type, entity.data, result.value.data);
-                            } else {
-                                entity.data = interp_push_value(interp, entity.type, result.value.data);
-                            }
-                        }
-                    } else if (first_op.data && first_op.type.kind) {
-                        interp_save_value(&first_op.type, first_op.data, first.data);
-                        
+                        string_id ident = ast_unwrap_ident(ast->Binary_Expr.first);
+                        data = get_interp_value_pointer(interp, ident);
+                    }
+                    
+                    if (data) {
+                        result = interp_value_load_from_memory(interp, ast->type, data);
                     } else {
-                        interp_error(interp, string_lit("unexpected assignment"));
+                        interp_error(interp, string_lit("assignment isn't possible"));
                     }
                 }
             }
@@ -232,7 +200,7 @@ interp_expression(Interp* interp, Ast* ast) {
         
         case Ast_Call_Expr: {
             string_id ident = ast_unwrap_ident(ast->Call_Expr.ident);
-            result = interp_function_call(interp, ident, ast->Call_Expr.args, ast->Call_Expr.function_type);
+            result = interp_function_call(interp, ast->Call_Expr.args, ast->Call_Expr.function_type);
             result.modifier = InterpValueMod_None; // NOTE(Alexander): avoids returing multiple times
         } break;
         
@@ -301,7 +269,7 @@ interp_expression(Interp* interp, Ast* ast) {
                         void* data = (void*) array_value.elements;
                         data = (u8*) data + array_index * elem_size;
                         
-                        result = interp_load_value(interp, elem_type, data);
+                        result = interp_value_load_from_memory(interp, ast->type, data);
                     } else {
                         interp_error(interp, string_lit("array index out of bounds"));
                     }
@@ -313,10 +281,13 @@ interp_expression(Interp* interp, Ast* ast) {
             }
         } break;
         
-        case Ast_Aggregate_Expr:
+        case Ast_Aggregate_Expr: {
+            result.value.type = Value_pointer;
+            result.value.data.data = convert_aggregate_literal_to_memory(ast);
+        } break;
+        
         case Ast_Tuple_Expr: {
-            result.value.type = Value_ast_node;
-            result.value.data.ast = ast;
+            unimplemented;
         } break;
     }
     
@@ -324,14 +295,9 @@ interp_expression(Interp* interp, Ast* ast) {
 }
 
 Interp_Value
-interp_function_call(Interp* interp, string_id ident, Ast* args, Type* function_type) {
+interp_function_call(Interp* interp, Ast* args, Type* function_type) {
     Interp_Value result = create_interp_value(interp);
     Type* type = function_type;
-    
-    if (!type) {
-        // Try to find local registered type using identifier provided
-        type = interp_load_entity_from_current_scope(interp, ident).type;
-    }
     
     if (type) {
         if (type->kind == TypeKind_Function) {
@@ -346,6 +312,9 @@ interp_function_call(Interp* interp, string_id ident, Ast* args, Type* function_
             array(Interp_Value)* variadic_arguments = 0;
             
             Interp_Scope new_scope = {};
+            new_scope.prev_scope = interp->curr_scope;
+            interp->curr_scope = &new_scope;
+            
             int arg_index = 0;
             if (args) { 
                 for_compound(args, arg_ast) {
@@ -360,9 +329,7 @@ interp_function_call(Interp* interp, string_id ident, Ast* args, Type* function_
                         
                         // NOTE(Alexander): we need to allocate it in order to pass it to the function
                         // Currently we only pass variables to functions through references
-                        arg.data = interp_push_value(interp, formal_type, arg.value.data);
-                        interp_push_entity_to_scope(&new_scope, arg_ident, arg.data, formal_type);
-                        
+                        push_interp_value(interp, formal_type, arg_ident, arg);
                     } else if (type->Function.is_variadic) {
                         array_push(variadic_arguments, arg);
                     }
@@ -377,7 +344,6 @@ interp_function_call(Interp* interp, string_id ident, Ast* args, Type* function_
             smm new_base = interp->stack.curr_used - sizeof(smm);
             *old_base = interp->base_pointer;
             interp->base_pointer = new_base;
-            array_push(interp->scopes, new_scope);
             
             // NOTE(Alexander): secondly push the evaluated arguments on stack
             if (args) {
@@ -385,14 +351,14 @@ interp_function_call(Interp* interp, string_id ident, Ast* args, Type* function_
                     
                     // NOTE(Alexander): it is allowed to have more arguments only if the function is variadic
                     interp_error(interp, string_format("function `%` did not take % arguments, expected % arguments", 
-                                                       f_string(vars_load_string(ident)), 
+                                                       f_var(function_type->Function.ident), 
                                                        f_int(arg_index), 
                                                        f_int(formal_arg_count)));
                     return result;
                 }
             } else if (formal_arg_count != 0) {
                 interp_error(interp, string_format("function `%` expected % arguments",
-                                                   f_string(vars_load_string(ident)),
+                                                   f_var(function_type->Function.ident), 
                                                    f_int(formal_arg_count)));
             }
             
@@ -408,24 +374,27 @@ interp_function_call(Interp* interp, string_id ident, Ast* args, Type* function_
                 if (type->Function.intrinsic) {
                     result.value = type->Function.interp_intrinsic(interp, variadic_arguments);
                 } else {
-                    interp_error(interp, string_format("`%` function has no definition and is no intrinsic", f_string(vars_load_string(ident))));
+                    interp_error(interp,
+                                 string_format("`%` function has no definition and is no intrinsic",
+                                               f_var(function_type->Function.ident)));
                 }
             }
             
             // Pop the scope and free the data stored in the scope
-            Interp_Scope old_scope = array_pop(interp->scopes);
-            map_free(old_scope.locals);
-            array_free(old_scope.local_stack);
+            map_free(interp->curr_scope->locals);
+            array_free(interp->curr_scope->local_stack);
+            interp->curr_scope = interp->curr_scope->prev_scope;
             
             // Pop the stack by restoring the old base pointer
             interp->stack.curr_used = interp->base_pointer;
             interp->base_pointer = *(smm*) ((u8*) interp->stack.base + interp->base_pointer);
             
         } else {
-            interp_error(interp, string_format("`%` is not a function", f_string(vars_load_string(ident))));
+            interp_error(interp, string_format("`%` is not a function", 
+                                               f_var(function_type->Function.ident)));
         }
     } else {
-        interp_unresolved_identifier_error(interp, ident);
+        interp_unresolved_identifier_error(interp, function_type->Function.ident);
     }
     
     return result;
@@ -442,11 +411,11 @@ interp_field_expr(Interp* interp, Interp_Value var, string_id ident) {
             
             smm field_index = map_get(type->ident_to_index, ident);
             Type* field_type = type->types[field_index];
-            if (field_type) {
-                void* data = var.value.data.data;
+            if (field_type && var.value.type == Value_pointer && var.data) {
+                void* data = var.data;
                 smm field_offset = type->offsets[field_index];
                 data = (u8*) data + field_offset;
-                result = interp_load_value(interp, field_type, data);
+                result = interp_value_load_from_memory(interp, field_type, data);
             } else {
                 interp_error(interp, string_format("`%` is not a field of type `%`",
                                                    f_string(vars_load_string(ident)), f_string(vars_load_string(var.type.ident))));
@@ -463,9 +432,9 @@ interp_field_expr(Interp* interp, Interp_Value var, string_id ident) {
         } break;
         
         case TypeKind_Pointer: {
-            if (var.value.type == Value_pointer && var.type.kind == TypeKind_Pointer) {
+            if (var.value.type == Value_pointer && var.data) {
                 Type* deref_type = var.type.Pointer;
-                var = interp_load_value(interp, deref_type, var.value.data.data);
+                var = interp_value_load_from_memory(interp, deref_type, var.value.data.data);
                 result = interp_field_expr(interp, var, ident);
                 
             } else {
@@ -491,143 +460,12 @@ interp_statement(Interp* interp, Ast* ast) {
     
     switch (ast->kind) {
         case Ast_Assign_Stmt: {
-            Interp_Value expr = interp_expression(interp, ast->Assign_Stmt.expr);
+            result = interp_expression(interp, ast->Assign_Stmt.expr);
             
             // TODO(Alexander): check expr.type and type
             Type* type = ast->type;
             string_id ident = ast->Assign_Stmt.ident->Ident;
-            
-            {
-                // NOTE(Alexander): check that ident isn't already occupied
-                Interp_Scope* scope = interp_get_current_scope(interp);
-                if (scope && map_get(scope->locals, ident).is_valid) {
-                    interp_error(interp, string_format("cannot redeclare previous local variable `%`",
-                                                       f_string(vars_load_string(ident))));
-                    break;
-                }
-            }
-            
-            switch (type->kind) {
-                case TypeKind_Array: {
-                    Array_Value array = {};
-                    
-                    if (is_ast_node(expr.value)) {
-                        ast = expr.value.data.ast;
-                        if (ast && ast->kind == Ast_Aggregate_Expr) {
-                            Ast* elements = ast->Aggregate_Expr.elements;
-                            Type* elem_type = type->Array.type;
-                            
-                            while (elements && elements->kind == Ast_Compound) {
-                                Ast* element = elements->Compound.node->Argument.assign;
-                                elements = elements->Compound.next;
-                                
-                                Value elem_value = interp_expression(interp, element).value;
-                                if (!is_void(elem_value)) {
-                                    void* elem = interp_push_value(interp, elem_type, elem_value.data);
-                                    array.count++;
-                                    if (!array.elements) {
-                                        array.elements = elem;
-                                    }
-                                } else {
-                                    interp_error(interp, string_lit("type error: expected literal value"));
-                                }
-                            }
-                        }
-                    } else {
-                        // TODO(Alexander): pre allocate array, MUST have a capacity
-                        
-                        
-                        
-                        assert(0 && "unimplemented :(");
-                    }
-                    
-                    Value value;
-                    value.type = Value_array;
-                    value.data.array = array;
-                    void* data = interp_push_value(interp, type, value.data);
-                    interp_push_entity_to_current_scope(interp, ident, data, type);
-                } break;
-                
-                case TypeKind_Union:
-                case TypeKind_Struct: {
-                    Struct_Like_Info* t_struct = &type->Struct_Like;
-                    assert(type->size > 0);
-                    
-                    void* base_address = arena_push_size(&interp->stack, 
-                                                         (umm) type->size, 
-                                                         (umm) type->align);
-                    
-                    if (is_ast_node(expr.value)) {
-                        assert(expr.value.type == Value_ast_node &&
-                               expr.value.data.ast->kind == Ast_Aggregate_Expr);
-                        
-                        // Struct initialization
-                        Ast* fields = expr.value.data.ast->Aggregate_Expr.elements;
-                        map(string_id, Value)* field_values = 0;
-                        
-                        // NOTE(Alexander): push elements onto the stack in the order defined by the type
-                        // so first push the compound actual values into a auxillary hash map.
-                        for_compound(fields, field) {
-                            assert(field->kind == Ast_Argument);
-                            
-                            Interp_Value field_expr = interp_expression(interp, field->Argument.assign);
-                            
-                            assert(field->Argument.ident);
-                            string_id field_ident = field->Argument.ident->Ident;
-                            
-                            // NOTE(Alexander): check that the actual type matches its definition
-                            s32 field_index = map_get(t_struct->ident_to_index, field_ident);
-                            Type* def_type = t_struct->types[field_index];
-                            if (type_equals(&field_expr.type, def_type)) {
-                                // TODO(Alexander): check that the value conforms to def_type
-                            } else {
-                                interp_mismatched_types(interp, def_type, &field_expr.type);
-                            }
-                            
-                            map_put(field_values, field_ident, field_expr.value);
-                        }
-                        
-                        // Store the result
-                        if (field_values) {
-                            for_map(field_values, field) {
-                                string_id field_ident = field->key;
-                                s32 field_index = map_get(t_struct->ident_to_index, field_ident);
-                                Type* field_type = t_struct->types[field_index];
-                                
-                                // TODO(Alexander): handle also nested structs
-                                assert(field_type->kind == TypeKind_Basic);
-                                
-                                Value field_value = value_cast(field->value, field_type->Basic.kind);
-                                smm offset = t_struct->offsets[field_index];
-                                void* storage = (u8*) base_address + offset;
-                                interp_save_value(field_type, storage, field_value.data);
-                            }
-                        } else {
-                            // TODO(Alexander): no fields specified, should we clear the memory maybe?
-                            memset((u8*) base_address, 0, (umm) type->size);
-                        }
-                        
-                    } else if (expr.value.type == Value_pointer) {
-                        copy_memory(base_address, expr.value.data.data, (umm) type->size);
-                    } else {
-                        // TODO(Alexander): for now we will clear entire struct/union memory
-                        // we will want the user to be able to disable this behaviour
-                        memset((u8*) base_address, 0, (umm) type->size);
-                    }
-                    
-                    Value value;
-                    value.type = Value_pointer;
-                    value.data.data = base_address;
-                    void* data = interp_push_value(interp, type, value.data);
-                    interp_push_entity_to_current_scope(interp, ident, data, type);
-                } break;
-                
-                default: {
-                    void* data = interp_push_value(interp, type, expr.value.data);
-                    interp_push_entity_to_current_scope(interp, ident, data, type);
-                } break;
-            }
-            
+            result.data = push_interp_value(interp, type, ident, result);
         } break;
         
         case Ast_Expr_Stmt: {
@@ -646,10 +484,6 @@ interp_statement(Interp* interp, Ast* ast) {
         case Ast_Continue_Stmt: {
             result.modifier = InterpValueMod_Continue;
             result.label = ast->Continue_Stmt.ident->Ident;
-        } break;
-        
-        case Ast_Decl_Stmt: {
-            interp_declaration_statement(interp, ast);
         } break;
         
         case Ast_If_Stmt: {
@@ -726,13 +560,12 @@ interp_statement(Interp* interp, Ast* ast) {
 
 Interp_Value
 interp_block(Interp* interp, Ast* ast) {
+    assert(interp->curr_scope);
     interp->block_depth++;
     
+    Interp_Scope* current_scope = interp->curr_scope;
     smm local_base_pointer = 0;
-    Interp_Scope* current_scope = interp_get_current_scope(interp);
-    if (current_scope) {
-        local_base_pointer = (smm) array_count(current_scope->local_stack);
-    }
+    local_base_pointer = (smm) array_count(interp->curr_scope->local_stack);
     
     Interp_Value result = {};
     while (ast->kind == Ast_Compound) {
@@ -750,13 +583,11 @@ interp_block(Interp* interp, Ast* ast) {
         ast = ast->Compound.next;
     }
     
-    if (current_scope) {
-        // Remove locals declared inside the block scope
-        smm take = (smm) array_count(current_scope->local_stack) - local_base_pointer;
-        while (take-- > 0) {
-            string_id ident = array_pop(current_scope->local_stack);
-            map_remove(current_scope->locals, ident);
-        }
+    // Remove locals declared inside the block scope
+    smm take = (smm) array_count(current_scope->local_stack) - local_base_pointer;
+    while (take-- > 0) {
+        string_id ident = array_pop(current_scope->local_stack);
+        map_remove(current_scope->locals, ident);
     }
     
     interp->block_depth--;
@@ -765,7 +596,7 @@ interp_block(Interp* interp, Ast* ast) {
 
 Value
 interp_intrinsic_print_format(Interp* interp, array(Interp_Value)* var_args) {
-    Interp_Value format = interp_load_value(interp, vars_save_cstring("format"));
+    Interp_Value format = get_interp_value(interp, t_cstring, vars_save_cstring("format"));
     
     if (format.value.type == Value_string || 
         (format.type.kind == TypeKind_Basic && format.type.Basic.kind == Basic_string)) {
@@ -871,7 +702,7 @@ interp_intrinsic_debug_break(Interp* interp, array(Interp_Value)* var_args) {
 
 Value
 interp_intrinsic_assert(Interp* interp, array(Interp_Value)* var_args) {
-    Interp_Value expr = interp_load_value(interp, vars_save_cstring("expr"));
+    Interp_Value expr = get_interp_value(interp, t_s32, vars_save_cstring("expr"));
     
     if (expr.value.type == Value_signed_int || 
         (expr.type.kind == TypeKind_Basic &&
@@ -884,47 +715,4 @@ interp_intrinsic_assert(Interp* interp, array(Interp_Value)* var_args) {
     
     Value result = {};
     return result;
-}
-
-void
-interp_declaration_statement(Interp* interp, Ast* ast) {
-    assert(ast->kind == Ast_Decl_Stmt);
-    
-    Type* type = ast->type;
-    
-    assert(ast->Decl_Stmt.ident->kind == Ast_Ident);
-    string_id ident = ast->Decl_Stmt.ident->Ident;
-    interp_push_entity_to_current_scope(interp, ident, 0, type);
-}
-
-void
-interp_ast_declarations(Interp* interp, Ast_Decl_Table* decls) {
-    Ast** interp_statements = 0;
-    
-    for_map (decls, it) {
-        string_id ident = it->key;
-        Ast* decl = it->value;
-        
-        if (decl->kind == Ast_Decl_Stmt) {
-            interp_declaration_statement(interp, decl);
-        } else if (decl->type) {
-            interp_push_entity_to_current_scope(interp, ident, 0, decl->type);
-        }
-    }
-    
-    // HACK(alexander): this should be merged with the loop above,
-    // but for the time being we don't want to run any code before injecting the types.
-    for_map (decls, decl) {
-        Ast* stmt = decl->value;
-        
-        if (is_ast_stmt(stmt) && stmt->kind != Ast_Decl_Stmt) {
-            Interp_Value interp_result = interp_statement(interp, stmt);
-            if (!is_void(interp_result.value)) {
-                void* data = interp_push_value(interp, &interp_result.type, interp_result.value.data);
-                if (!data) {
-                    interp_push_entity_to_current_scope(interp, decl->key, data, &interp_result.type);
-                }
-            }
-        }
-    }
 }

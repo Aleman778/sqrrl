@@ -88,6 +88,9 @@ typedef int FARPROC();
 
 typedef long HRESULT;
 
+// HRESULT codes
+#define S_OK 0
+
 #define SUCCEEDED(hr) (((HRESULT)(hr)) >= 0)
 
 typedef unsigned short UHALF_PTR;

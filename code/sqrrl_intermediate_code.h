@@ -137,6 +137,10 @@ basic_type_to_raw_type(Basic_Type basic) {
 inline Ic_Raw_Type
 convert_type_to_raw_type(Type* type) {
     Ic_Raw_Type raw_type = IC_T64;
+    if (type->kind == TypeKind_Enum) {
+        type = type->Enum.type;
+    }
+    
     if (type->kind == TypeKind_Basic) {
         raw_type = basic_type_to_raw_type(type->Basic.kind);
     }

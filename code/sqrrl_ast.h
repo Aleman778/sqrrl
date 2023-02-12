@@ -3,9 +3,7 @@
 #define DEF_AST                           \
 AST_GROUP(None,        "none")                  \
 AST(Abi,               "abi", string)           \
-AST(Value,             "value", struct {        \
-Value value;                                    \
-})                                              \
+AST(Value,             "value", Value)          \
 AST(Ident,             "identifier", string_id) \
 AST(Ident_Data,        "identifier", struct {   \
 string_id ident;                                \
@@ -310,6 +308,7 @@ typedef map(string_id, Ast*) Ast_Decl_Table;
 
 struct Compilation_Unit {
     Ast* ast;
+    Value interp_result;
     string_id ident;
     
     Ic_Arg ic_return;
@@ -439,7 +438,7 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
         
         case Ast_Value: {
             string_builder_push(sb, " ");
-            string_builder_push(sb, &node->Value.value);
+            string_builder_push(sb, &node->Value);
             
         } break;
         

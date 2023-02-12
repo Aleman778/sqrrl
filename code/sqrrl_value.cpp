@@ -40,7 +40,6 @@ value_store_in_memory(Type* type, void* dest, Value_Data src) {
             }
         } break;
         
-        
         case TypeKind_Struct:
         case TypeKind_Union: {
             memcpy(dest, src.data, type->size);
@@ -80,26 +79,23 @@ convert_aggregate_literal_to_memory(Ast* expr) {
             e = e->Argument.assign;
             
             assert(e->kind == Ast_Value);
-            value_store_in_memory(e->type, curr, e->Value.value.data);
+            value_store_in_memory(e->type, curr, e->Value.data);
             curr += type->size;
         }
         
     } else if (type->kind == TypeKind_Struct || type->kind == TypeKind_Union) {
         // TODO(Alexander): temporary use Memory_Arena
+        result = (u8*) allocate_zeros(type->size);
         
         int field_index = 0;
         for_compound(expr->Aggregate_Expr.elements, field) {
             assert(field->kind == Ast_Argument);
             
-            if (!result) {
-                result = (u8*) allocate_zeros(type->size);
-            }
-            
             string_id ident = try_unwrap_ident(field->Argument.ident);
             Ast* assign = field->Argument.assign;
             // TODO(Alexander): make it possible to store dynamic things
             if (assign->kind == Ast_Aggregate_Expr) {
-                assign->Value.value.data.data = convert_aggregate_literal_to_memory(assign);
+                assign->Value.data.data = convert_aggregate_literal_to_memory(assign);
             } else if (assign->kind != Ast_Value) {
                 unimplemented;
             }
@@ -111,7 +107,7 @@ convert_aggregate_literal_to_memory(Ast* expr) {
                 info = get_field_info_by_index(&type->Struct_Like, field_index);
             }
             
-            value_store_in_memory(info.type, result + info.offset, assign->Value.value.data);
+            value_store_in_memory(info.type, result + info.offset, assign->Value.data);
             
             field_index++;
         }

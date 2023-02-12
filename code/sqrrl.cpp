@@ -167,7 +167,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
     // Typecheck the AST
-    if (type_check_ast_file(&ast_file) != 0) {
+    Interp interp = {};
+    Type_Context tcx = {};
+    
+    if (type_check_ast_file(&tcx, &ast_file, &interp) != 0) {
         if (flag_print_ast) {
             pln("AST (not fully typed):");
             for_array(ast_file.units, unit, _) {
@@ -188,14 +191,15 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     if (flag_run_ast_interp) {
         // Interpret the AST
-        Interp interp = {};
-        interp_ast_declarations(&interp, ast_file.decls);
-        Interp_Value result = interp_function_call(&interp, Sym_main, 0);
+        Type* function_type = load_type_declaration(&tcx, Sym_main, empty_span, true);
+        assert(function_type->kind == TypeKind_Function);
+        Interp_Value result = interp_function_call(&interp, 0, function_type);
         if (result.modifier == InterpValueMod_Return && is_integer(result.value)) {
             pln("AST interpreter exited with code %\n", f_int((int) result.value.data.signed_int));
         } else {
             pln("AST interpreter exited with code 0\n");
         }
+        return 0;
     }
     
     Ic_Arg_Map* globals = 0;
@@ -229,14 +233,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             
             if (arg.raw_type == IC_T64) {
                 void* dest = (void*) arg.disp;
-                Interp interp = {};
                 Interp_Value result = interp_expression(&interp, cu->ast->Assign_Stmt.expr);
-                if (result.value.type == Value_ast_node &&
-                    result.value.data.ast->kind == Ast_Aggregate_Expr) {
-                    result.value.data.data = convert_aggregate_literal_to_memory(result.value.data.ast);
-                }
                 value_store_in_memory(cu->ast->type, dest, result.value.data);
-                
             }
         }
     }

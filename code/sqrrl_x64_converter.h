@@ -267,7 +267,7 @@ ic_add(Compilation_Unit* cu, Ic_Opcode opcode = IC_NOOP, void* data=0) {
 
 inline void
 ic_mov(Compilation_Unit* cu, Ic_Arg dest, Ic_Arg src) {
-    assert(dest.raw_type == src.raw_type);
+    //assert(dest.raw_type == src.raw_type);
     
     Intermediate_Code* ic = ic_add(cu, (dest.type & IC_FLOAT) ? IC_FMOV : IC_MOV);
     ic->src0 = dest;

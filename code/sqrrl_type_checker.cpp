@@ -256,10 +256,6 @@ type_check_value(Type_Context* tcx, Type* type, Value value, Span span, bool rep
         case Value_cstring: {
             result = type->kind == TypeKind_Basic && type->Basic.kind == Basic_cstring;
         } break;
-        
-        case Value_ast_node: {
-            compiler_bug("It shouldn't be possible to use ast node as a type");
-        } break;
     }
     
     if (report_error && !result) {
@@ -282,7 +278,7 @@ constant_folding_of_expressions(Ast* ast) {
     switch (ast->kind) {
         // TODO(alexander): do we want values to be expressions?
         case Ast_Value: {
-            result = ast->Value.value;
+            result = ast->Value;
         } break;
         
         case Ast_Unary_Expr: {
@@ -379,7 +375,7 @@ constant_folding_of_expressions(Ast* ast) {
     
     if (result.type != Value_void) {
         ast->kind = Ast_Value;
-        ast->Value.value = result;
+        ast->Value = result;
         //ast->type = 0;
     }
     
@@ -442,16 +438,16 @@ auto_type_conversion(Type_Context* tcx, Type* target_type, Ast* node, Operator o
         } else {
             if (node->kind == Ast_Value) {
                 node->type = target_type;
-                node->Value.value = value_cast(node->Value.value, 
-                                               target_type->kind == TypeKind_Basic ? 
-                                               target_type->Basic.kind : Basic_s64);
+                node->Value = value_cast(node->Value, 
+                                         target_type->kind == TypeKind_Basic ? 
+                                         target_type->Basic.kind : Basic_s64);
                 
                 // HACK(Alexander): auto converting string to cstring
-                if (is_string(node->Value.value)) {
+                if (is_string(node->Value)) {
                     if (target_type && target_type->kind == TypeKind_Basic &&
                         target_type->Basic.kind == Basic_cstring) {
-                        node->Value.value.data.cstr = string_to_cstring(node->Value.value.data.str);
-                        node->Value.value.type = Value_cstring;
+                        node->Value.data.cstr = string_to_cstring(node->Value.data.str);
+                        node->Value.type = Value_cstring;
                     }
                 }
                 
@@ -493,25 +489,25 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             if (!result) {
                 if (parent_type && parent_type->kind == TypeKind_Basic) {
                     result = parent_type;
-                    expr->Value.value = value_cast(expr->Value.value, result->Basic.kind);
+                    expr->Value = value_cast(expr->Value, result->Basic.kind);
                 } else {
-                    result = type_infer_value(tcx, expr->Value.value);
+                    result = type_infer_value(tcx, expr->Value);
                 }
             }
             
             result = normalize_basic_types(result);
             
             // HACK(Alexander): auto converting string to cstring
-            if (is_string(expr->Value.value)) {
+            if (is_string(expr->Value)) {
                 if (parent_type && parent_type->kind == TypeKind_Basic &&
                     parent_type->Basic.kind == Basic_cstring) {
                     result = parent_type;
-                    expr->Value.value.data.cstr = string_to_cstring(expr->Value.value.data.str);
-                    expr->Value.value.type = Value_cstring;
+                    expr->Value.data.cstr = string_to_cstring(expr->Value.data.str);
+                    expr->Value.type = Value_cstring;
                 }
             }
             
-            type_check_value(tcx, result, expr->Value.value, expr->span, report_error);
+            type_check_value(tcx, result, expr->Value, expr->span, report_error);
             expr->type = result;
         } break;
         
@@ -851,7 +847,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                             Ast* fmt_value = arena_push_struct(&tcx->type_arena, Ast);
                             fmt_value->kind = Ast_Value;
                             fmt_value->type = t_s32;
-                            fmt_value->Value.value = create_signed_int_value(fmt_type);
+                            fmt_value->Value = create_signed_int_value(fmt_type);
                             fmt_arg->Argument.assign = fmt_value;
                             
                             Ast* fmt_compound = arena_push_struct(&tcx->type_arena, Ast);
@@ -881,7 +877,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                             Ast* actual_arg = curr_compound->Compound.node;
                             expr->kind = Ast_Value;
                             //pln("% (size = %)", f_ast(actual_arg), f_umm(intrinsic_proc(actual_arg->type)));
-                            expr->Value.value =
+                            expr->Value =
                                 create_unsigned_int_value(intrinsic_proc(actual_arg->type));
                         }
                     }
@@ -956,7 +952,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     if (index >= 0) {
                         Value value = type->Enum.values[index].value;
                         expr->kind = Ast_Value;
-                        expr->Value.value = value;
+                        expr->Value = value;
                     }
                     result = type;
                 } break;
@@ -983,7 +979,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                                 capacity.data.signed_int = type->Array.capacity;
                                 
                                 expr->kind = Ast_Value;
-                                expr->Value.value = capacity;
+                                expr->Value = capacity;
                             }
                         } break;
                         
@@ -1023,6 +1019,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 
             } else {
                 if (report_error) {
+                    pln("%", f_ast(expr));
                     type_error(tcx, string_format("type `%` doesn't have field `%`", f_type(type), f_var(field_ident)), expr->span);
                 }
             }
@@ -1110,7 +1107,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                                                        first_index,
                                                        last_index,
                                                        expr->Aggregate_Expr.elements,
-                                                       report_error)) {
+                                                       false)) {
                                 
                                 result = parent_type;
                                 expr->type = result;
@@ -1132,7 +1129,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                                                first_index,
                                                last_index,
                                                expr->Aggregate_Expr.elements,
-                                               report_error)) {
+                                               false)) {
                         
                         result = parent_type;
                         expr->type = result;
@@ -1247,7 +1244,9 @@ match_struct_like_args(Type_Context* tcx, Type* formal_type, int first_field, in
         
         if (field_index < first_field || field_index >= last_field) {
             if (report_error) {
-                type_error(tcx, string_format("cannot use unrelated fields in % literal",
+                string_id field_ident = formal.idents[field_index];
+                type_error(tcx, string_format("cannot use unrelated field `%` in % literal",
+                                              f_var(field_ident), 
                                               f_cstring(entity_name)), field->span);
             }
             formal.has_error = true;
@@ -1502,11 +1501,16 @@ save_type_declaration(Type_Context* tcx, string_id ident, Type* type, Span span,
                 }
                 assert(overload);
                 
+                //if (ident == vars_save_cstring("abs")) {
+                //__debugbreak();
+                //}
                 
                 for_array_v(overload->functions, overloaded_fn, overload_index) {
                     if (match_function_args(tcx, overloaded_fn, 
                                             type->Function.arg_types, 
                                             report_error)) {
+                        
+                        // TODO(Alexander): we might not have stored the unit yet so this error isn't going to do anything
                         if (overloaded_fn->Function.unit) {
                             if (type->Function.unit) {
                                 type_error(tcx,
@@ -1783,9 +1787,9 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                             
                             Ast* target = first_arg->Argument.assign;
                             if (target && target->kind == Ast_Value &&
-                                target->Value.value.type == Value_string) {
+                                target->Value.type == Value_string) {
                                 
-                                cstring library = string_to_cstring(target->Value.value.data.str);
+                                cstring library = string_to_cstring(target->Value.data.str);
                                 vars_load_string(result->Function.ident);
                                 //pln("LoadLibraryA(\"%\")", f_cstring(library));
                                 
@@ -2133,8 +2137,45 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
             }
         } break;
         
+        case Ast_Switch_Stmt: {
+            
+            Type* cond = type_infer_expression(tcx, stmt->Switch_Stmt.cond, 0, report_error);
+            result = cond;
+            
+            bool has_default = false;
+            
+            for_compound(stmt->Switch_Stmt.cases, it) {
+                assert(it->kind == Ast_Switch_Case);
+                
+                if (!it->Switch_Case.cond || it->Switch_Case.cond->kind == Ast_None) {
+                    if (has_default) {
+                        type_error(tcx, string_lit("cannot define more than one default case"),
+                                   it->span);
+                    }
+                    has_default = true;
+                    break;
+                }
+                
+                Value case_cond = constant_folding_of_expressions(it->Switch_Case.cond);
+                if (is_integer(case_cond)) {
+                    type_error(tcx, string_format("expected integral case condition, found `%`",
+                                                  f_value(&case_cond)),
+                               it->Switch_Case.cond->span);
+                }
+                
+                if (it->Switch_Case.stmt && !type_infer_statement(tcx, 
+                                                                  it->Switch_Case.stmt, 
+                                                                  report_error)) {
+                    result = 0;
+                    break;
+                }
+            }
+            
+        } break;
+        
         case Ast_Return_Stmt: {
-            result = type_infer_expression(tcx, stmt->Return_Stmt.expr, tcx->return_type, report_error);
+            result = type_infer_expression(tcx, stmt->Return_Stmt.expr, 
+                                           tcx->return_type, report_error);
             stmt->type = result;
         } break;
     }
@@ -2158,6 +2199,13 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool is_rhs_value
     }
     
     if (is_rhs_value && lhs->kind == TypeKind_Pointer) {
+        return true;
+    }
+    
+    if (rhs->kind == TypeKind_Pointer && 
+        lhs->kind == TypeKind_Basic && 
+        lhs->Basic.flags == BasicFlag_Integer) {
+        
         return true;
     }
     
@@ -2455,7 +2503,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
             Type* type = expr->Index_Expr.array->type;
             
             if (expr->Index_Expr.index->kind == Ast_Value) {
-                Value index_value = expr->Index_Expr.index->Value.value;
+                Value index_value = expr->Index_Expr.index->Value;
                 smm index = value_to_smm(index_value);
                 if (index < 0) {
                     type_error(tcx, string_format("invalid index `%`", f_smm(index)), expr->span);
@@ -2487,6 +2535,8 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
     bool result = true;
     
     switch (stmt->kind) {
+        case Ast_None: break;
+        
         case Ast_Assign_Stmt: {
             if (stmt->Assign_Stmt.expr) {
                 type_check_expression(tcx, stmt->Assign_Stmt.expr);
@@ -2503,24 +2553,6 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
         
         case Ast_Expr_Stmt: {
             result = type_check_expression(tcx, stmt->Expr_Stmt);
-        } break;
-        
-        case Ast_Return_Stmt: {
-            Type* found_type = stmt->type;
-            if (!found_type) {
-                type_error(tcx, string_lit("compiler bug! No return type was found in return statement"), stmt->span);
-                pln("%", f_ast(stmt));
-            }
-            
-            result = result && type_check_expression(tcx, stmt->Return_Stmt.expr);
-            result = result && type_check_assignment(tcx, tcx->return_type, found_type, 
-                                                     is_ast_value(stmt->Return_Stmt.expr),
-                                                     stmt->Return_Stmt.expr->span);
-            
-            if (!result) {
-                pln("%", f_ast(stmt));
-            }
-            
         } break;
         
         case Ast_Block_Stmt: {
@@ -2561,7 +2593,31 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
             // TODO(Alexander): check that the condition is a boolean
         } break;
         
-        case Ast_None: break;
+        case Ast_Switch_Stmt: {
+            
+            Type* cond = type_infer_expression(tcx, stmt->Switch_Stmt.cond, 0, report_error);
+            
+            
+            
+        } break;
+        
+        case Ast_Return_Stmt: {
+            Type* found_type = stmt->type;
+            if (!found_type) {
+                type_error(tcx, string_lit("compiler bug! No return type was found in return statement"), stmt->span);
+                pln("%", f_ast(stmt));
+            }
+            
+            result = result && type_check_expression(tcx, stmt->Return_Stmt.expr);
+            result = result && type_check_assignment(tcx, tcx->return_type, found_type, 
+                                                     is_ast_value(stmt->Return_Stmt.expr),
+                                                     stmt->Return_Stmt.expr->span);
+            
+            if (!result) {
+                pln("%", f_ast(stmt));
+            }
+            
+        } break;
         
         default: assert(0 && stmt->kind);
     }
@@ -2570,12 +2626,13 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
 }
 
 bool
-type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error) {
+type_check_ast(Type_Context* tcx, Interp* interp, Compilation_Unit* comp_unit,
+               bool report_error) {
     bool result = true;
     Ast* ast = comp_unit->ast;
     
     
-    //if (comp_unit->ident == Kw_operator) {
+    //if (comp_unit->ident == vars_save_cstring("abs")) {
     //__debugbreak();
     //}
     
@@ -2626,6 +2683,15 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
         Type* type = type_infer_statement(tcx, ast, report_error);
         if (type) {
             result = type_check_statement(tcx, ast);
+            
+            if (result) {
+                
+                if (ast->kind != Ast_Decl_Stmt) {
+                    //pln("interp statement:%\n", f_ast(ast));
+                    Interp_Value interp_result = interp_statement(interp, ast);
+                    comp_unit->interp_result = interp_result.value;
+                }
+            }
         } else {
             // NOTE(Alexander): we are missing type info somewhere fail and retry later
             result = false;
@@ -2650,6 +2716,7 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* comp_unit, bool report_error
     
     return result;
 }
+
 void
 DEBUG_setup_intrinsic_types(Type_Context* tcx) {
     
@@ -2664,7 +2731,7 @@ type->Function.ident = ident; \
 type->Function.unit = 0; \
 type->Function.interp_intrinsic = interp_intrinsic_fp; \
 type->Function.intrinsic = intrinsic_fp; \
-type->Function.return_type = _return_type; \
+type->Function.return_type = normalize_basic_types(_return_type); \
     \
 save_type_declaration(tcx, ident, type, empty_span, false); \
 }
@@ -2675,7 +2742,7 @@ _push_intrinsic(intrin_##name, name, is_variadic, interp_intrinsic_fp, intrinsic
 { \
 string_id arg_ident = vars_save_cstring(#arg_name); \
 array_push(intrin_name->Function.arg_idents, arg_ident); \
-array_push(intrin_name->Function.arg_types, arg_type); \
+array_push(intrin_name->Function.arg_types, normalize_basic_types(arg_type)); \
 intrin_name->Function.first_default_arg_index++; \
 }
 #define push_intrinsic_arg(name, arg_name, arg_type) _push_intrinsic_arg(intrin_##name, arg_name, arg_type)
@@ -2735,6 +2802,14 @@ intrin_name->Function.first_default_arg_index++; \
     push_intrinsic(round, false, 0, &roundf, t_f32);
     push_intrinsic_arg(round, num, t_f32);
     
+    // Intrinsic syntax:  f32 floor(f32 num)
+    push_intrinsic(floor, false, 0, &floorf, t_f32);
+    push_intrinsic_arg(floor, num, t_f32);
+    
+    // Intrinsic syntax:  f32 ceil(f32 num)
+    push_intrinsic(ceil, false, 0, &ceilf, t_f32);
+    push_intrinsic_arg(ceil, num, t_f32);
+    
     // Intrinsic syntax:  s32 abs(s32 num)
     push_intrinsic(abs, false, 0, &abs_s32, t_s32);
     push_intrinsic_arg(abs, num, t_s32);
@@ -2762,13 +2837,19 @@ intrin_name->Function.first_default_arg_index++; \
     // Intrinsic syntax: void*  memory_alloc_zeros(umm size)
     push_intrinsic(allocate_zeros, false, 0, &allocate_zeros, t_void_ptr);
     push_intrinsic_arg(allocate_zeros, size, t_umm);
+    
+    // Intrinsic syntax: void*  set_memory(void* dest, int val, umm size)
+    push_intrinsic(set_memory, false, 0, &memset, t_void_ptr);
+    push_intrinsic_arg(set_memory, dest, t_void_ptr);
+    push_intrinsic_arg(set_memory, val, t_int);
+    push_intrinsic_arg(set_memory, size, t_umm);
+    
+    
 }
 
 s32
-type_check_ast_file(Ast_File* ast_file) {
-    Type_Context tcx = {};
-    
-    DEBUG_setup_intrinsic_types(&tcx);
+type_check_ast_file(Type_Context* tcx, Ast_File* ast_file, Interp* interp) {
+    DEBUG_setup_intrinsic_types(tcx);
     
     // Push all compilation units to queue
     array(Compilation_Unit*)* queue = 0;
@@ -2799,7 +2880,7 @@ type_check_ast_file(Ast_File* ast_file) {
             //__debugbreak();
             //}
             
-            if (!type_check_ast(&tcx, comp_unit, false)) {
+            if (!type_check_ast(tcx, interp, comp_unit, false)) {
                 // Failed, retry later
                 array_push(queue, comp_unit);
             }
@@ -2817,8 +2898,8 @@ type_check_ast_file(Ast_File* ast_file) {
         //return tcx.error_count;
         //}
         
-        type_check_ast(&tcx, comp_unit, true);
+        type_check_ast(tcx, interp, comp_unit, true);
     }
     
-    return tcx.error_count;
+    return tcx->error_count;
 }

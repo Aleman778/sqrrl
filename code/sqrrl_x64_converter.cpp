@@ -240,7 +240,12 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
         ic_add(cu, IC_JMP, bb_exit);
         ic_add(cu, IC_LABEL, bb_exit);
         
-        assert(src0.raw_type == src1.raw_type);
+        //#if BUILD_DEBUG
+        //if (src0.raw_type != src1.raw_type) {
+        //pln("Detected incompatible types - AST:%", f_ast(expr));
+        //assert(0 && src0.raw_type == src1.raw_type);
+        //}
+        //#endif
         
     } else {
         //Ic_Arg clobber;
@@ -906,24 +911,56 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Bloc
         } break;
         
         case Ast_Switch_Stmt: {
-            Ic_Basic_Block* bb_exit = ic_basic_block();
-            
             pln("switch_stmt:%", f_ast(stmt));
             Ic_Arg cond = convert_expr_to_intermediate_code(cu, stmt->Switch_Stmt.cond);
             assert(cond.type & IC_STK);
             
+            Ic_Basic_Block* bb_exit = ic_basic_block();
+            Ic_Basic_Block* bb_curr_stmt = ic_basic_block();
+            
+            bool has_default_case = false;
+            Ast* default_case_stmt = 0;
+            
             for_compound(stmt->Switch_Stmt.cases, it) {
                 assert(it->kind == Ast_Switch_Case);
                 Ast* case_cond = it->Switch_Case.cond;
+                if (case_cond && case_cond->kind == Ast_Value) {
+                    // TODO(Alexander): we can optimize this by merging cases with same stmt
+                    Intermediate_Code* ic_case = ic_add(cu, IC_SUB);
+                    ic_case->dest = ic_reg(cond.raw_type);
+                    ic_case->src0 = cond;
+                    ic_case->src1 = ic_imm(cond.raw_type, case_cond->Value.data.signed_int);
+                } else {
+                    has_default_case = true;
+                }
                 
-                assert(case_cond->kind == Ast_Value);
-                Ic_Basic_Block* case_enter = ic_basic_block();
-                Intermediate_Code* ic_case = ic_add(cu, IC_SUB);
-                ic_case->dest = ic_reg(cond.raw_type);
-                ic_case->src0 = cond;
-                ic_case->src1 = ic_imm(cond.raw_type, case_cond->Value.data.signed_int);
-                ic_add(cu, IC_LABEL, case_enter);
+                Ic_Basic_Block* bb_next_case = ic_basic_block();
+                if (it->Switch_Case.stmt) {
+                    ic_add(cu, IC_JNE, bb_next_case);
+                    ic_add(cu, IC_LABEL, bb_curr_stmt);
+                    if (has_default_case && !default_case_stmt) {
+                        default_case_stmt = it->Switch_Case.stmt;
+                    }
+                    convert_stmt_to_intermediate_code(cu, it->Switch_Case.stmt, 
+                                                      bb_exit, bb_continue);
+                    ic_add(cu, IC_JMP, bb_exit);
+                    
+                    bb_curr_stmt = ic_basic_block();
+                } else {
+                    ic_add(cu, IC_JE, bb_curr_stmt);
+                }
+                
+                ic_add(cu, IC_LABEL, bb_next_case);
             }
+            
+            if (default_case_stmt) {
+                ic_add(cu, IC_LABEL, bb_curr_stmt);
+                convert_stmt_to_intermediate_code(cu, default_case_stmt, 
+                                                  bb_exit, bb_continue);
+            }
+            
+            ic_add(cu, IC_LABEL, bb_exit);
+            
         } break;
         
         case Ast_Return_Stmt: {

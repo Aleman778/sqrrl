@@ -470,9 +470,9 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
             if (node->Binary_Expr.overload) { 
                 string_builder_push(sb, "\n");
                 for (u32 s = 0; s < spacing; s++) string_builder_push(sb, " ");
-                string_builder_push_format(sb, "(");
+                string_builder_push_format(sb, "(Overload <");
                 string_builder_push(sb, node->Binary_Expr.overload);
-                string_builder_push_format(sb, ")");
+                string_builder_push_format(sb, ">)");
             }
             string_builder_push(sb, node->Binary_Expr.first, tokenizer, spacing);
             string_builder_push(sb, node->Binary_Expr.second, tokenizer, spacing);

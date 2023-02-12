@@ -268,7 +268,7 @@ type_check_value(Type_Context* tcx, Type* type, Value value, Span span, bool rep
 
 // TODO(Alexander): this is a compile opt technique, this belongs in different file
 Value
-constant_folding_of_expressions(Ast* ast) {
+constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
     assert(is_ast_expr(ast) || 
            ast->kind == Ast_Value || 
            ast->kind == Ast_Ident || 
@@ -282,7 +282,7 @@ constant_folding_of_expressions(Ast* ast) {
         } break;
         
         case Ast_Unary_Expr: {
-            Value first = constant_folding_of_expressions(ast->Unary_Expr.first);
+            Value first = constant_folding_of_expressions(tcx, ast->Unary_Expr.first);
             if (!is_void(first)) {
                 switch (ast->Unary_Expr.op) {
                     case Op_Negate: {
@@ -312,10 +312,10 @@ constant_folding_of_expressions(Ast* ast) {
         case Ast_Binary_Expr: {
             if (operator_is_assign(ast->Binary_Expr.op)) {
                 // NOTE(Alexander): we cannot constant fold lhs of an assignemnt operator
-                constant_folding_of_expressions(ast->Binary_Expr.second);
+                constant_folding_of_expressions(tcx, ast->Binary_Expr.second);
             } else {
-                Value first = constant_folding_of_expressions(ast->Binary_Expr.first);
-                Value second = constant_folding_of_expressions(ast->Binary_Expr.second);
+                Value first = constant_folding_of_expressions(tcx, ast->Binary_Expr.first);
+                Value second = constant_folding_of_expressions(tcx, ast->Binary_Expr.second);
                 
                 if (!is_void(first) && !is_void(second)) {
                     
@@ -355,9 +355,9 @@ constant_folding_of_expressions(Ast* ast) {
         } break;
         
         case Ast_Ternary_Expr: {
-            Value first = constant_folding_of_expressions(ast->Ternary_Expr.first);
-            Value second = constant_folding_of_expressions(ast->Ternary_Expr.second);
-            Value third = constant_folding_of_expressions(ast->Ternary_Expr.third);
+            Value first = constant_folding_of_expressions(tcx, ast->Ternary_Expr.first);
+            Value second = constant_folding_of_expressions(tcx, ast->Ternary_Expr.second);
+            Value third = constant_folding_of_expressions(tcx, ast->Ternary_Expr.third);
             
             if (is_integer(first)) {
                 if (first.data.boolean) {
@@ -368,15 +368,30 @@ constant_folding_of_expressions(Ast* ast) {
             }
         } break;
         
+        case Ast_Field_Expr: {
+            if (ast->Field_Expr.var) {
+                string_id var_ident = try_unwrap_ident(ast->Field_Expr.var);
+                if (var_ident > 0) {
+                    Type* type = load_type_declaration(tcx, var_ident, 
+                                                       ast->Field_Expr.var->span, false);
+                    
+                    if (type && type->kind == TypeKind_Enum) {
+                        string_id ident = try_unwrap_ident(ast->Field_Expr.field);
+                        result = map_get(type->Enum.values, ident);
+                    }
+                }
+            }
+            
+        } break;
+        
         case Ast_Paren_Expr: {
-            result = constant_folding_of_expressions(ast->Paren_Expr.expr);
+            result = constant_folding_of_expressions(tcx, ast->Paren_Expr.expr);
         } break;
     }
     
     if (result.type != Value_void) {
         ast->kind = Ast_Value;
         ast->Value = result;
-        //ast->type = 0;
     }
     
     return result;
@@ -733,7 +748,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 Type* actual_type = 0;
                 
                 if (is_valid_ast(actual_arg->Argument.assign)) {
-                    constant_folding_of_expressions(actual_arg->Argument.assign);
+                    constant_folding_of_expressions(tcx, actual_arg->Argument.assign);
                     actual_type = type_infer_expression(tcx, 
                                                         actual_arg->Argument.assign, 
                                                         0, 
@@ -1270,7 +1285,7 @@ match_struct_like_args(Type_Context* tcx, Type* formal_type, int first_field, in
         Type* actual_type = 0;
         if (field->Argument.assign) {
             
-            constant_folding_of_expressions(field->Argument.assign);
+            constant_folding_of_expressions(tcx, field->Argument.assign);
             actual_type = type_infer_expression(tcx, field->Argument.assign, field_type, report_error);
         } else {
             actual_type = type_infer_expression(tcx, field->Argument.ident, field_type, report_error);
@@ -1654,7 +1669,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             // Array capacity
             smm capacity = 0;
             if (ast->Array_Type.shape) {
-                Value capacity_value = constant_folding_of_expressions(ast->Array_Type.shape);
+                Value capacity_value = constant_folding_of_expressions(tcx, ast->Array_Type.shape);
                 
                 if (is_integer(capacity_value)) {
                     capacity = value_to_smm(capacity_value);
@@ -1966,7 +1981,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         
         case Ast_Assign_Stmt: {
             // Get rid of unnecessary stuff
-            constant_folding_of_expressions(stmt->Assign_Stmt.expr);
+            constant_folding_of_expressions(tcx, stmt->Assign_Stmt.expr);
             
             Type* expected_type = create_type_from_ast(tcx, stmt->Assign_Stmt.type, report_error);
             if (!expected_type) {
@@ -2117,7 +2132,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
             
             Type* init = type_infer_statement(tcx, stmt->For_Stmt.init, report_error);
             Type* cond = type_infer_expression(tcx, stmt->For_Stmt.cond, t_bool, report_error);
-            constant_folding_of_expressions(stmt->For_Stmt.cond);
+            constant_folding_of_expressions(tcx, stmt->For_Stmt.cond);
             Type* update = type_infer_expression(tcx, stmt->For_Stmt.update, 0, report_error);
             Type* block = type_infer_statement(tcx, stmt->For_Stmt.block, report_error);
             
@@ -2138,7 +2153,6 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         } break;
         
         case Ast_Switch_Stmt: {
-            
             Type* cond = type_infer_expression(tcx, stmt->Switch_Stmt.cond, 0, report_error);
             result = cond;
             
@@ -2149,25 +2163,32 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                 
                 if (!it->Switch_Case.cond || it->Switch_Case.cond->kind == Ast_None) {
                     if (has_default) {
-                        type_error(tcx, string_lit("cannot define more than one default case"),
-                                   it->span);
+                        if (report_error) {
+                            type_error(tcx, string_lit("cannot define more than one default case"),
+                                       it->span);
+                        }
+                        return 0;
                     }
                     has_default = true;
-                    break;
-                }
-                
-                Value case_cond = constant_folding_of_expressions(it->Switch_Case.cond);
-                if (is_integer(case_cond)) {
-                    type_error(tcx, string_format("expected integral case condition, found `%`",
-                                                  f_value(&case_cond)),
-                               it->Switch_Case.cond->span);
+                    
+                } else {
+                    Value case_cond = constant_folding_of_expressions(tcx, it->Switch_Case.cond);
+                    if (!is_integer(case_cond)) {
+                        if (report_error) {
+                            if (!type_infer_expression(tcx, it->Switch_Case.cond, 0, true)) {
+                                type_error(tcx, string_format("expected integral case condition, found `%`",
+                                                              f_value(&case_cond)),
+                                           it->Switch_Case.cond->span);
+                            }
+                        }
+                        return 0;
+                    }
                 }
                 
                 if (it->Switch_Case.stmt && !type_infer_statement(tcx, 
                                                                   it->Switch_Case.stmt, 
                                                                   report_error)) {
-                    result = 0;
-                    break;
+                    return 0;
                 }
             }
             
@@ -2243,7 +2264,7 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool is_rhs_value
                 }
                 
                 bool lhs_float = lhs->Basic.flags & BasicFlag_Floating;
-                bool rhs_float = lhs->Basic.flags & BasicFlag_Floating;
+                bool rhs_float = rhs->Basic.flags & BasicFlag_Floating;
                 if (lhs_float == rhs_float) {
                     lossy = lhs->size < rhs->size;
                 } else {
@@ -2539,38 +2560,38 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
         
         case Ast_Assign_Stmt: {
             if (stmt->Assign_Stmt.expr) {
-                type_check_expression(tcx, stmt->Assign_Stmt.expr);
+                result = result && type_check_expression(tcx, stmt->Assign_Stmt.expr);
             }
             Type* expected_type = stmt->type;
             assert(expected_type && "compiler bug: assign statement has no type");
             
             Type* found_type = stmt->Assign_Stmt.expr->type;
             if (found_type) {
-                result = type_check_assignment(tcx, expected_type, found_type, is_ast_value(stmt->Assign_Stmt.expr),
-                                               stmt->Assign_Stmt.expr->span);
+                result = result &&  type_check_assignment(tcx, expected_type, found_type, is_ast_value(stmt->Assign_Stmt.expr),
+                                                          stmt->Assign_Stmt.expr->span);
             }
         } break;
         
         case Ast_Expr_Stmt: {
-            result = type_check_expression(tcx, stmt->Expr_Stmt);
+            result = result && type_check_expression(tcx, stmt->Expr_Stmt);
         } break;
         
         case Ast_Block_Stmt: {
             for_compound(stmt->Block_Stmt.stmts, it) {
-                type_check_statement(tcx, it);
+                result = result && type_check_statement(tcx, it);
             }
         } break;
         
         case Ast_Decl_Stmt: {
             if (stmt->Decl_Stmt.stmt) {
-                type_check_statement(tcx, stmt->Decl_Stmt.stmt);
+                result = result && type_check_statement(tcx, stmt->Decl_Stmt.stmt);
             }
         } break;
         
         case Ast_If_Stmt: {
-            type_check_expression(tcx, stmt->If_Stmt.cond);
-            type_check_statement(tcx, stmt->If_Stmt.then_block);
-            type_check_statement(tcx, stmt->If_Stmt.else_block);
+            result = result && type_check_expression(tcx, stmt->If_Stmt.cond);
+            result = result && type_check_statement(tcx, stmt->If_Stmt.then_block);
+            result = result && type_check_statement(tcx, stmt->If_Stmt.else_block);
             // TODO(Alexander): check that the condition is a boolean
         } break;
         
@@ -2580,25 +2601,30 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
         } break;
         
         case Ast_For_Stmt: {
-            type_check_statement(tcx, stmt->For_Stmt.init);
-            type_check_expression(tcx, stmt->For_Stmt.cond);
-            type_check_expression(tcx, stmt->For_Stmt.update);
-            type_check_statement(tcx, stmt->For_Stmt.block);
+            result = result && type_check_statement(tcx, stmt->For_Stmt.init);
+            result = result && type_check_expression(tcx, stmt->For_Stmt.cond);
+            result = result && type_check_expression(tcx, stmt->For_Stmt.update);
+            result = result && type_check_statement(tcx, stmt->For_Stmt.block);
             // TODO(Alexander): check that the condition is a boolean
         } break;
         
         case Ast_While_Stmt: {
-            type_check_expression(tcx, stmt->While_Stmt.cond);
-            type_check_statement(tcx, stmt->While_Stmt.block);
+            result = result && type_check_expression(tcx, stmt->While_Stmt.cond);
+            result = result && type_check_statement(tcx, stmt->While_Stmt.block);
             // TODO(Alexander): check that the condition is a boolean
         } break;
         
         case Ast_Switch_Stmt: {
-            
-            Type* cond = type_infer_expression(tcx, stmt->Switch_Stmt.cond, 0, report_error);
-            
-            
-            
+            //__debugbreak();
+            result = result && type_check_expression(tcx, stmt->Switch_Stmt.cond);
+            result = result && type_check_assignment(tcx, t_s64, 
+                                                     stmt->Switch_Stmt.cond->type, false, 
+                                                     stmt->Switch_Stmt.cond->span);
+            for_compound(stmt->Switch_Stmt.cases, it) {
+                if (it->Switch_Case.stmt) {
+                    result = result && type_check_statement(tcx, it->Switch_Case.stmt);
+                }
+            }
         } break;
         
         case Ast_Return_Stmt: {

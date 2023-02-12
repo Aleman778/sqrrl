@@ -87,7 +87,7 @@ convert_aggregate_literal_to_memory(Ast* expr) {
         // TODO(Alexander): temporary use Memory_Arena
         result = (u8*) allocate_zeros(type->size);
         
-        int field_index = 0;
+        int field_index = (int) expr->Aggregate_Expr.first_index;
         for_compound(expr->Aggregate_Expr.elements, field) {
             assert(field->kind == Ast_Argument);
             
@@ -97,7 +97,7 @@ convert_aggregate_literal_to_memory(Ast* expr) {
             if (assign->kind == Ast_Aggregate_Expr) {
                 assign->Value.data.data = convert_aggregate_literal_to_memory(assign);
             } else if (assign->kind != Ast_Value) {
-                unimplemented;
+                continue;
             }
             
             Struct_Field_Info info = {};

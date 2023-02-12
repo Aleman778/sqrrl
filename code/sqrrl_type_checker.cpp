@@ -331,9 +331,14 @@ constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
                         if (is_integer(first)) {
                             first.data.floating  = value_to_f64(first);
                             first.type = Value_floating;
+                            ast->type = ast->Binary_Expr.second->type;
                         } else if (is_integer(second)) {
                             second.data.floating = value_to_f64(second);
                             second.type = Value_floating;
+                            ast->type = ast->Binary_Expr.first->type;
+                        } else {
+                            //pln("%: %", f_ast(ast), f_type(ast->Binary_Expr.first->type));
+                            ast->type = ast->Binary_Expr.first->type;
                         }
                         
                         first = value_floating_binary_operation(first, second, ast->Binary_Expr.op);
@@ -344,6 +349,7 @@ constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
                         first.data.signed_int = value_integer_binary_operation(first, second, ast->Binary_Expr.op);
                         
                         result = first;
+                        ast->type = ast->Binary_Expr.first->type;
                         
                         if (operator_is_comparator(ast->Binary_Expr.op)) {
                             // Comparison operands always results in boolean
@@ -378,6 +384,7 @@ constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
                     if (type && type->kind == TypeKind_Enum) {
                         string_id ident = try_unwrap_ident(ast->Field_Expr.field);
                         result = map_get(type->Enum.values, ident);
+                        ast->type = type->Enum.type;
                     }
                 }
             }
@@ -386,6 +393,7 @@ constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
         
         case Ast_Paren_Expr: {
             result = constant_folding_of_expressions(tcx, ast->Paren_Expr.expr);
+            ast->type = ast->Paren_Expr.expr->type;
         } break;
     }
     
@@ -400,7 +408,8 @@ constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
 internal bool
 match_function_args(Type_Context* tcx,
                     Type* function_type,
-                    array(Type*)* actual_args, 
+                    array(Type*)* actual_args,
+                    array(bool)* actual_args_is_value,
                     bool report_error) {
     Type_Function* t_func = &function_type->Function;
     array(Type*)* formal_args = t_func->arg_types;
@@ -421,9 +430,14 @@ match_function_args(Type_Context* tcx,
             formal_type = formal_args[arg_index];
         }
         
+        bool arg_is_value = false;
+        if (actual_args_is_value) {
+            arg_is_value = actual_args_is_value[arg_index];
+        }
+        
         
         if (actual_type) {
-            if (formal_type && !type_check_assignment(tcx, formal_type, actual_type, false,
+            if (formal_type && !type_check_assignment(tcx, formal_type, actual_type, arg_is_value,
                                                       empty_span, Op_Assign, report_error)) {
                 result = false;
                 break;
@@ -616,14 +630,19 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             }
             
             
+            // TODO(Alexander): find another way to make this matching more robust and potentially more efficient
             Overloaded_Operator_List overloads =
                 map_get(tcx->overloaded_operators, expr->Binary_Expr.first->type);
             if (overloads.is_valid) {
                 
                 for_array(overloads.ops, overload, _) {
                     if (overload->op == op &&
-                        overload->rhs == expr->Binary_Expr.second->type) {
+                        type_check_assignment(tcx, overload->rhs, 
+                                              expr->Binary_Expr.second->type, 
+                                              is_ast_value(expr->Binary_Expr.second),
+                                              empty_span, Op_Assign, false)) {
                         expr->Binary_Expr.overload = overload->func;
+                        second_type = overload->rhs;
                     }
                 }
             }
@@ -743,6 +762,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             //}
             
             array(Type*)* actual_arg_types = 0;
+            array(bool)* actual_arg_is_value = 0;
             Ast* actual_args = expr->Call_Expr.args;
             for_compound(actual_args, actual_arg) {
                 Type* actual_type = 0;
@@ -765,6 +785,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 
                 actual_arg->type = actual_type;
                 array_push(actual_arg_types, actual_type);
+                bool arg_is_value = is_ast_value(actual_arg);
+                array_push(actual_arg_is_value, arg_is_value);
             }
             
             if (ident) {
@@ -774,6 +796,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                         if (match_function_args(tcx, 
                                                 overload_func,
                                                 actual_arg_types,
+                                                actual_arg_is_value,
                                                 false)) {
                             function_type = overload_func;
                             break;
@@ -968,8 +991,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                         Value value = type->Enum.values[index].value;
                         expr->kind = Ast_Value;
                         expr->Value = value;
+                        result = type;
                     }
-                    result = type;
                 } break;
                 
                 case TypeKind_Array: {
@@ -1126,6 +1149,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                                 
                                 result = parent_type;
                                 expr->type = result;
+                                expr->Aggregate_Expr.first_index = first_index;
                             }
                         }
                         
@@ -1148,6 +1172,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                         
                         result = parent_type;
                         expr->type = result;
+                        expr->Aggregate_Expr.first_index = first_index;
                     }
                 }
                 
@@ -1522,7 +1547,8 @@ save_type_declaration(Type_Context* tcx, string_id ident, Type* type, Span span,
                 
                 for_array_v(overload->functions, overloaded_fn, overload_index) {
                     if (match_function_args(tcx, overloaded_fn, 
-                                            type->Function.arg_types, 
+                                            type->Function.arg_types,
+                                            0,
                                             report_error)) {
                         
                         // TODO(Alexander): we might not have stored the unit yet so this error isn't going to do anything
@@ -2052,6 +2078,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         } break;
         
         case Ast_Expr_Stmt: {
+            constant_folding_of_expressions(tcx, stmt->Expr_Stmt);
             result = type_infer_expression(tcx, stmt->Expr_Stmt, 0, report_error);
         } break;
         
@@ -2344,12 +2371,17 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool is_rhs_value
         } break;
         
         case TypeKind_Pointer: {
-            bool success = type_check_assignment(tcx, lhs->Pointer, rhs->Pointer, false, span, op, false);
-            if (!success) {
-                if (report_error) {
-                    type_error_mismatch(tcx, lhs, rhs, span);
+            if (lhs->Pointer && lhs->Pointer->kind == TypeKind_Void) {
+                return true;
+                
+            } else {
+                bool success = type_check_assignment(tcx, lhs->Pointer, rhs->Pointer, false, span, op, false);
+                if (!success) {
+                    if (report_error) {
+                        type_error_mismatch(tcx, lhs, rhs, span);
+                    }
+                    return false;
                 }
-                return false;
             }
         } break;
     }
@@ -2656,6 +2688,7 @@ type_check_ast(Type_Context* tcx, Interp* interp, Compilation_Unit* comp_unit,
                bool report_error) {
     bool result = true;
     Ast* ast = comp_unit->ast;
+    comp_unit->interp = interp;
     
     
     //if (comp_unit->ident == vars_save_cstring("abs")) {

@@ -374,7 +374,7 @@ extern {
 //
 // Constants
 //
-#define INVALID_HANDLE_VALUE ((HANDLE)(LONG_PTR)-1)
+#define INVALID_HANDLE_VALUE (cast(HANDLE)cast(LONG_PTR)-1)
 
 BOOL WINAPI CloseHandle(HANDLE hObject);
 

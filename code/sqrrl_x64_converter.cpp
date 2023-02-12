@@ -469,21 +469,25 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     Intermediate_Code* ic = ic_add(cu, IC_LPROC, type->Function.unit);
                     ic->dest = ic_reg(IC_T64);
                     result = ic->dest;
+                    
                 } else {
                     Ic_Raw_Type raw_type = convert_type_to_raw_type(type);
-                    if (map_get_index(cu->globals, ident) == -1) {
-                        result = ic_data(IC_T64, (s64) allocate_zeros(type->size));
-                        map_put(cu->globals, ident, result);
-                    } else {
-                        result = map_get(cu->globals, ident);
+                    Interp_Value var = get_interp_value(cu->interp, type, ident);
+                    if (is_void(var.value)) {
+                        Type_Context tcx = {};
+                        type_error(&tcx, string_format("compiler bug: value of `%` is void", f_var(ident)), expr->span);
+                        //pln();
+                        assert(0);
                     }
+                    
+                    result = ic_imm(raw_type, var.value.data.signed_int);
                     
                     if (raw_type != IC_T64) {
                         Ic_Arg tmp = ic_reg(IC_T64, X64_RDX);
                         ic_mov(cu, tmp, result);
                         result = ic_stk(raw_type, 0, IcStkArea_None, tmp.reg);
                     }
-                    
+                    //
                     //pln("Unknown variable: %", f_var(expr->Ident));
                     //unimplemented;
                 }
@@ -495,9 +499,40 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
         } break;
         
         case Ast_Aggregate_Expr: {
+            Type* type = expr->type;
             void* data = convert_aggregate_literal_to_memory(expr);
+            
             if (data) {
                 result = ic_data(IC_T64, (s64) data);
+                
+                // Write to non-constant fields
+                int field_index = 0;
+                for_compound(expr->Aggregate_Expr.elements, field) {
+                    assert(field->kind == Ast_Argument);
+                    
+                    string_id ident = try_unwrap_ident(field->Argument.ident);
+                    Ast* assign = field->Argument.assign;
+                    // TODO(Alexander): make it possible to store dynamic things
+                    if (assign->kind != Ast_Value && 
+                        assign->kind != Ast_Aggregate_Expr) {
+                        
+                        Struct_Field_Info info = {};
+                        if (ident) {
+                            info = get_field_info(&type->Struct_Like, ident);
+                        } else {
+                            info = get_field_info_by_index(&type->Struct_Like, field_index);
+                        }
+                        //pln("Adding non-constant field: %", f_ast(assign));
+                        
+                        Ic_Arg src = convert_expr_to_intermediate_code(cu, assign);
+                        Ic_Arg dest = result;
+                        dest.raw_type = src.raw_type;
+                        dest.disp += info.offset;
+                        ic_mov(cu, result, src);
+                    }
+                    
+                    field_index++;
+                }
             }
         } break;
         
@@ -505,45 +540,54 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             Type* type = expr->Field_Expr.var->type;
             string_id ident = ast_unwrap_ident(expr->Field_Expr.field);
             
-            result = convert_expr_to_intermediate_code(cu, expr->Field_Expr.var);
-            assert(result.type & (IC_STK | IC_IMM));
-            
-            if (type->kind == TypeKind_Pointer) {
-                Ic_Arg tmp = ic_reg(IC_T64, X64_RDX);
-                ic_mov(cu, tmp, result);
-                result = ic_stk(tmp.raw_type, 0, IcStkArea_None, tmp.reg);
+            if (type->kind == TypeKind_Enum) {
+                Ic_Raw_Type raw_type = convert_type_to_raw_type(type->Enum.type);
+                Value value = map_get(type->Enum.values, ident);
+                assert(!is_void(value));
+                result = ic_imm(raw_type, value.data.signed_int);
                 
-                type = type->Pointer;
-            }
-            
-            if (type->kind == TypeKind_Struct || type->kind == TypeKind_Union) {
-                Struct_Field_Info info = get_field_info(&type->Struct_Like, ident);
-                result.disp += info.offset;
-                result.raw_type = convert_type_to_raw_type(expr->type);
-            } else if (type->kind == TypeKind_Array || type == t_string) {
-                // TODO(Alexander): this has hardcoded sizes and types for now
-                switch (ident) {
-                    case Sym_data: {
-                        result.raw_type = IC_T64;
-                    } break;
-                    
-                    case Sym_count: {
-                        result.raw_type = result.type & IC_STK ? IC_S64 : IC_T64;
-                        result.disp += 8;
-                    } break;
-                    
-                    case Sym_capacity: {
-                        result.raw_type = result.type & IC_STK ? IC_S64 : IC_T64;
-                        result.disp += 16;
-                    } break;
-                    
-                    
-                    default: {
-                        assert(0 && "invalid field");
-                    } break;
-                }
             } else {
-                assert(0 && "invalid type for field expr");
+                result = convert_expr_to_intermediate_code(cu, expr->Field_Expr.var);
+                assert(result.type & (IC_STK | IC_IMM));
+                
+                if (type->kind == TypeKind_Pointer) {
+                    Ic_Arg tmp = ic_reg(IC_T64, X64_RDX);
+                    ic_mov(cu, tmp, result);
+                    result = ic_stk(tmp.raw_type, 0, IcStkArea_None, tmp.reg);
+                    
+                    type = type->Pointer;
+                }
+                
+                if (type->kind == TypeKind_Struct || type->kind == TypeKind_Union) {
+                    Struct_Field_Info info = get_field_info(&type->Struct_Like, ident);
+                    result.disp += info.offset;
+                    result.raw_type = convert_type_to_raw_type(expr->type);
+                    
+                } else if (type->kind == TypeKind_Array || type == t_string) {
+                    // TODO(Alexander): this has hardcoded sizes and types for now
+                    switch (ident) {
+                        case Sym_data: {
+                            result.raw_type = IC_T64;
+                        } break;
+                        
+                        case Sym_count: {
+                            result.raw_type = result.type & IC_STK ? IC_S64 : IC_T64;
+                            result.disp += 8;
+                        } break;
+                        
+                        case Sym_capacity: {
+                            result.raw_type = result.type & IC_STK ? IC_S64 : IC_T64;
+                            result.disp += 16;
+                        } break;
+                        
+                        
+                        default: {
+                            assert(0 && "invalid field");
+                        } break;
+                    }
+                } else {
+                    assert(0 && "invalid type for field expr");
+                }
             }
         } break;
         
@@ -678,7 +722,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 } break;
                 
                 case Op_Address_Of: {
-                    assert(src.type & IC_STK);
+                    assert(src.type & (IC_STK | IC_IMM));
                     
                     Intermediate_Code* ic = ic_add(cu, IC_LEA);
                     ic->src0 = ic_reg(IC_T64);
@@ -783,7 +827,12 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                         ic->src1 = src;
                         result = ic->src0;
                     } else if (t_dest->Basic.flags & BasicFlag_Floating) {
-                        unimplemented;
+                        if (t_dest->size != t_src->size) {
+                            Intermediate_Code* ic = ic_add(cu, IC_CAST_F2F);
+                            ic->src0 = ic_reg(dest_raw_type);
+                            ic->src1 = src;
+                            result = ic->src0;
+                        }
                     } else {
                         assert(0 && "invalid type cast");
                     }
@@ -911,7 +960,6 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Bloc
         } break;
         
         case Ast_Switch_Stmt: {
-            pln("switch_stmt:%", f_ast(stmt));
             Ic_Arg cond = convert_expr_to_intermediate_code(cu, stmt->Switch_Stmt.cond);
             assert(cond.type & IC_STK);
             
@@ -1744,6 +1792,10 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                 x64_convert_type(ic, 0x2A);
             } break;
             
+            case IC_CAST_F2F: {
+                x64_convert_type(ic, 0x5A);
+            } break;
+            
             case IC_MEMCPY: {
                 x64_string_op(ic, 
                               ic->dest.type, ic->dest.reg, ic->dest.disp, 
@@ -1759,7 +1811,11 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
             } break;
             
             case IC_LEA: {
-                x64_lea(ic, ic->src0.reg, ic->src1.reg, ic->src1.disp, (s64) buf + rip);
+                if (ic->src1.type & IC_IMM) {
+                    x64_lea(ic, ic->src0.reg, X64_RIP, ic->src1.disp, (s64) buf + rip);
+                } else {
+                    x64_lea(ic, ic->src0.reg, ic->src1.reg, ic->src1.disp, (s64) buf + rip);
+                }
             } break;
             
             case IC_LPROC: {

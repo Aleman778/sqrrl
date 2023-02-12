@@ -59,9 +59,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
 #if BUILD_DEBUG
         // TODO(Alexander): temporary files for testing
         //filepath = string_lit("../personal/first.sq");
+        filepath = string_lit("../../platformer/code/win32_platform.cpp");
         //filepath = string_lit("../examples/backend_test.sq");
         //filepath = string_lit("../examples/raytracer/first.cpp");
-        filepath = string_lit("../../platformer/code/win32_platform.cpp");
         //filepath = string_lit("../tests/preprocessor.sq");
 #else
         if (argc <= 1) {
@@ -202,39 +202,17 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         return 0;
     }
     
-    Ic_Arg_Map* globals = 0;
-    
     Compilation_Unit* main_cu = 0;
     for_array(ast_file.units, cu, _) {
         if (cu->ast->kind == Ast_Decl_Stmt) {
             Type* type = cu->ast->type;
             if (type->kind == TypeKind_Function) {
                 bool is_main = cu->ident == Sym_main;
-                cu->globals = globals;
                 convert_procedure_to_intermediate_code(cu, is_debugger_present && is_main);
-                globals = cu->globals;
-                
                 
                 if (is_main) {
                     main_cu = cu;
                 }
-            }
-        } else if (cu->ast->kind == Ast_Assign_Stmt) {
-            
-            string_id ident = ast_unwrap_ident(cu->ast->Assign_Stmt.ident);
-            smm index = map_get_index(globals, ident);
-            Ic_Arg arg;
-            if (index == -1) {
-                arg = ic_data(IC_T64, (s64) allocate_zeros(cu->ast->type->size));
-                map_put(globals, ident, arg);
-            } else {
-                arg = globals[index].value;
-            }
-            
-            if (arg.raw_type == IC_T64) {
-                void* dest = (void*) arg.disp;
-                Interp_Value result = interp_expression(&interp, cu->ast->Assign_Stmt.expr);
-                value_store_in_memory(cu->ast->type, dest, result.value.data);
             }
         }
     }

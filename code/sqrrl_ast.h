@@ -64,6 +64,7 @@ Ast* index;                                     \
 })                                              \
 AST(Aggregate_Expr, "aggregate initializer", struct { \
 Ast* elements;                                  \
+smm first_index;                                \
 })                                              \
 AST(Tuple_Expr,        "tuple", struct {        \
 Ast* values;                                    \
@@ -308,6 +309,7 @@ typedef map(string_id, Ast*) Ast_Decl_Table;
 
 struct Compilation_Unit {
     Ast* ast;
+    Interp* interp;
     Value interp_result;
     string_id ident;
     
@@ -317,7 +319,6 @@ struct Compilation_Unit {
     Ic_Basic_Block *bb_return;
     Ic_Basic_Block *bb_data;
     Ic_Arg_Map* locals;
-    Ic_Arg_Map* globals;
     
     s64 stk_args = 0;
     s64 stk_locals = 0;
@@ -449,6 +450,15 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
         
         case Ast_Attribute: {
             string_builder_push(sb, node->Attribute.expr, tokenizer, spacing);
+        } break;
+        
+        case Ast_Aggregate_Expr: {
+            string_builder_push(sb, "\n");
+            for (u32 s = 0; s < spacing; s++) string_builder_push(sb, " ");
+            string_builder_push_format(sb, "(First_Index %", 
+                                       f_smm(node->Aggregate_Expr.first_index));
+            string_builder_push(sb, ")");
+            string_builder_push(sb, node->Aggregate_Expr.elements, tokenizer, spacing);
         } break;
         
         case Ast_Assign_Stmt: {

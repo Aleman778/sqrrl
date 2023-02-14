@@ -374,6 +374,22 @@ constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
             }
         } break;
         
+        case Ast_Cast_Expr: {
+            Value value = constant_folding_of_expressions(tcx, ast->Cast_Expr.expr);
+            
+            if (!is_void(value)) {
+                Type* type = ast->type;
+                if (!type && is_valid_ast(ast->Cast_Expr.type)) {
+                    type = create_type_from_ast(tcx, ast->Cast_Expr.type, false);
+                }
+                if (type && type->kind == TypeKind_Basic) {
+                    value = value_cast(value, type->Basic.kind);
+                    result = result;
+                    ast->type = type;
+                }
+            }
+        } break;
+        
         case Ast_Field_Expr: {
             if (ast->Field_Expr.var) {
                 string_id var_ident = try_unwrap_ident(ast->Field_Expr.var);
@@ -391,9 +407,19 @@ constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
             
         } break;
         
+        case Ast_Call_Expr: {
+            for_compound(ast->Call_Expr.args, arg) {
+                if (arg->Argument.assign) {
+                    constant_folding_of_expressions(tcx, arg->Argument.assign);
+                }
+            }
+        }
+        
         case Ast_Paren_Expr: {
             result = constant_folding_of_expressions(tcx, ast->Paren_Expr.expr);
-            ast->type = ast->Paren_Expr.expr->type;
+            if (!is_void(result)) {
+                ast->type = ast->Paren_Expr.expr->type;
+            }
         } break;
     }
     
@@ -401,6 +427,10 @@ constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
         ast->kind = Ast_Value;
         ast->Value = result;
     }
+    
+    //if (ast->type && ast->type->kind == TypeKind_Function) {
+    //__debugbreak();
+    //}
     
     return result;
 }
@@ -768,7 +798,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 Type* actual_type = 0;
                 
                 if (is_valid_ast(actual_arg->Argument.assign)) {
-                    constant_folding_of_expressions(tcx, actual_arg->Argument.assign);
                     actual_type = type_infer_expression(tcx, 
                                                         actual_arg->Argument.assign, 
                                                         0, 
@@ -2006,9 +2035,6 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
     switch (stmt->kind) {
         
         case Ast_Assign_Stmt: {
-            // Get rid of unnecessary stuff
-            constant_folding_of_expressions(tcx, stmt->Assign_Stmt.expr);
-            
             Type* expected_type = create_type_from_ast(tcx, stmt->Assign_Stmt.type, report_error);
             if (!expected_type) {
                 // TODO(Alexander): we can add support for auto types
@@ -2019,6 +2045,8 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                                                      stmt->Assign_Stmt.expr, 
                                                      expected_type,
                                                      report_error);
+            
+            constant_folding_of_expressions(tcx, stmt->Assign_Stmt.expr);
             
             if (found_type) {
                 if (expected_type) {
@@ -2078,8 +2106,8 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         } break;
         
         case Ast_Expr_Stmt: {
-            constant_folding_of_expressions(tcx, stmt->Expr_Stmt);
             result = type_infer_expression(tcx, stmt->Expr_Stmt, 0, report_error);
+            constant_folding_of_expressions(tcx, stmt->Expr_Stmt);
         } break;
         
         case Ast_Block_Stmt: {
@@ -2136,6 +2164,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         
         case Ast_If_Stmt: {
             Type* cond = type_infer_expression(tcx, stmt->If_Stmt.cond, t_bool, report_error);
+            constant_folding_of_expressions(tcx, stmt->If_Stmt.cond);
             Type* then_block = type_infer_statement(tcx, stmt->If_Stmt.then_block, report_error);
             if (is_ast_stmt(stmt->If_Stmt.else_block)) {
                 Type* else_block = type_infer_statement(tcx, stmt->If_Stmt.else_block, report_error);
@@ -2172,6 +2201,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         
         case Ast_While_Stmt: {
             Type* cond = type_infer_expression(tcx, stmt->While_Stmt.cond, t_bool, report_error);
+            constant_folding_of_expressions(tcx, stmt->While_Stmt.cond);
             Type* block = type_infer_statement(tcx, stmt->While_Stmt.block, report_error);
             
             if (cond && block) {
@@ -2181,6 +2211,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         
         case Ast_Switch_Stmt: {
             Type* cond = type_infer_expression(tcx, stmt->Switch_Stmt.cond, 0, report_error);
+            constant_folding_of_expressions(tcx, stmt->Switch_Stmt.cond);
             result = cond;
             
             bool has_default = false;
@@ -2224,6 +2255,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         case Ast_Return_Stmt: {
             result = type_infer_expression(tcx, stmt->Return_Stmt.expr, 
                                            tcx->return_type, report_error);
+            constant_folding_of_expressions(tcx, stmt->Return_Stmt.expr);
             stmt->type = result;
         } break;
     }

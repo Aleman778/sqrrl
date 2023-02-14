@@ -281,6 +281,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                         }
                     }
                     
+                    if (curr->comment) {
+                        string_builder_push_format(&sb, "// %", f_cstring(curr->comment));
+                    }
+                    
                     if (curr->next) {
                         string_builder_push(&sb, "\n");
                     }

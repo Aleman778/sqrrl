@@ -198,6 +198,7 @@ typedef map(string_id, Ic_Arg) Ic_Arg_Map;
 struct Intermediate_Code {
     Intermediate_Code* next;
     void* data;
+    cstring comment;
     
     Ic_Opcode opcode;
     Ic_Arg dest, src0, src1;

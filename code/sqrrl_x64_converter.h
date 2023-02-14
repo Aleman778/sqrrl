@@ -219,8 +219,12 @@ ic_add_orphan(Compilation_Unit* cu, Ic_Opcode opcode = IC_NOOP, void* data=0) {
     return result;
 }
 
+#define S1(x) #x
+#define S2(x) S1(x)
+#define ic_add(cu, opcode, ...) _ic_add(cu, opcode, __FILE__ ":" S2(__LINE__), __VA_ARGS__)
+
 Intermediate_Code*
-ic_add(Compilation_Unit* cu, Ic_Opcode opcode = IC_NOOP, void* data=0) {
+_ic_add(Compilation_Unit* cu, Ic_Opcode opcode = IC_NOOP, cstring comment=0, void* data=0) {
     // TODO(Alexander): temporary bump allocation for now
     Intermediate_Code* result = ic_add_orphan(cu, opcode, data);
     
@@ -262,14 +266,17 @@ ic_add(Compilation_Unit* cu, Ic_Opcode opcode = IC_NOOP, void* data=0) {
     bb->ic_last = result;
     cu->ic_last = result;
     
+    result->comment = comment;
+    
     return result;
 }
 
+#define ic_mov(cu, dest, src) _ic_mov(cu, dest, src, __FILE__ ":" S2(__LINE__))
+
 inline void
-ic_mov(Compilation_Unit* cu, Ic_Arg dest, Ic_Arg src) {
+_ic_mov(Compilation_Unit* cu, Ic_Arg dest, Ic_Arg src, cstring comment=0) {
     //assert(dest.raw_type == src.raw_type);
-    
-    Intermediate_Code* ic = ic_add(cu, (dest.type & IC_FLOAT) ? IC_FMOV : IC_MOV);
+    Intermediate_Code* ic = _ic_add(cu, (dest.type & IC_FLOAT) ? IC_FMOV : IC_MOV, comment);
     ic->src0 = dest;
     ic->src1 = src;
 }

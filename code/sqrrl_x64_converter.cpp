@@ -1,12 +1,14 @@
 
+#define convert_assign_to_intermediate_code(cu, type, dest, src) _convert_assign_to_intermediate_code(cu, type, dest, src, __FILE__ ":" S2(__LINE__))
+
 void
-convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg dest, Ic_Arg src) {
+_convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg dest, Ic_Arg src, cstring comment=0) {
     if (type->kind == TypeKind_Array || 
         type->kind == TypeKind_Struct || 
         type->kind == TypeKind_Union || 
         (type->kind == TypeKind_Basic && type->Basic.kind == Basic_string)) {
         
-        Intermediate_Code* ic = ic_add(cu, IC_MEMSET);
+        Intermediate_Code* ic = _ic_add(cu, IC_MEMSET, comment);
         ic->dest = dest;
         ic->src0 = ic_imm(IC_U8, 0);
         ic->src1 = ic_imm(0, type->size);
@@ -17,7 +19,12 @@ convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg des
         }
     } else {
         if (src.type) {
-            ic_mov(cu, dest, src);
+            if ((dest.type & IC_IMM) && (dest.type & IC_FLOAT) == 0) {
+                Ic_Arg tmp = ic_reg(IC_T64, X64_RDX);
+                ic_mov(cu, tmp, dest);
+                dest = ic_stk(IC_T64, 0, IcStkArea_None, tmp.reg);
+            }
+            _ic_mov(cu, dest, src, comment);
         }
     }
 }
@@ -301,12 +308,12 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
             }
         } 
         
-#if BUILD_DEBUG
-        if (src0.raw_type != 0 && src0.raw_type != src1.raw_type) {
-            pln("AST:\n%", f_ast(expr));
-            assert(0);
-        }
-#endif
+        //#if BUILD_DEBUG
+        //if (src0.raw_type != 0 && src0.raw_type != src1.raw_type) {
+        //pln("AST:\n%", f_ast(expr));
+        //assert(0);
+        //}
+        //#endif
         
         bool isFloat = src0.type & IC_FLOAT;
         
@@ -333,7 +340,7 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
         if (op == Op_None) {
             result = src1;
         } else {
-            Intermediate_Code* ic = ic_add(cu);
+            Intermediate_Code* ic = ic_add(cu, IC_NOOP);
             ic->dest = ic_reg(src0.raw_type);
             ic->src0 = src0;
             ic->src1 = src1;
@@ -344,7 +351,7 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
                 ic->opcode = isFloat ? IC_FCMP : IC_CMP;
                 ic->dest = result;
                 
-                ic = ic_add(cu);
+                ic = ic_add(cu, IC_NOOP);
                 ic->dest = result;
             }
             
@@ -381,6 +388,10 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
                 assert(0);
             }
 #endif
+            
+            //if (src0.type & IC_IMM) {
+            //pln("%", f_ast(expr));
+            //}
             
             convert_assign_to_intermediate_code(cu, expr->type, src0, result);
         }
@@ -464,13 +475,14 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 Ic_Raw_Type raw_type = convert_type_to_raw_type(type);
                 result = map_get(cu->locals, ident);
             } else {
-                if (type->kind == TypeKind_Function) {
-                    assert(type->Function.unit);
+                if (type->kind == TypeKind_Function && type->Function.unit) {
+                    
                     Intermediate_Code* ic = ic_add(cu, IC_LPROC, type->Function.unit);
                     ic->dest = ic_reg(IC_T64);
                     result = ic->dest;
                     
                 } else {
+                    
                     Ic_Raw_Type raw_type = convert_type_to_raw_type(type);
                     Interp_Value var = get_interp_value(cu->interp, type, ident);
                     if (is_void(var.value)) {
@@ -506,6 +518,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 result = ic_data(IC_T64, (s64) data);
                 
                 // Write to non-constant fields
+                Ic_Arg result_dest = {};
                 int field_index = 0;
                 for_compound(expr->Aggregate_Expr.elements, field) {
                     assert(field->kind == Ast_Argument);
@@ -525,10 +538,16 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                         //pln("Adding non-constant field: %", f_ast(assign));
                         
                         Ic_Arg src = convert_expr_to_intermediate_code(cu, assign);
-                        Ic_Arg dest = result;
+                        if (!result_dest.type) {
+                            Ic_Arg dest = ic_reg(IC_T64, X64_RDX);
+                            ic_mov(cu, dest, result);
+                            result_dest = ic_stk(IC_T64, 0, IcStkArea_None, dest.reg);
+                        }
+                        
+                        Ic_Arg dest = result_dest;
                         dest.raw_type = src.raw_type;
                         dest.disp += info.offset;
-                        ic_mov(cu, result, src);
+                        ic_mov(cu, dest, src);
                     }
                     
                     field_index++;
@@ -722,12 +741,18 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 } break;
                 
                 case Op_Address_Of: {
-                    assert(src.type & (IC_STK | IC_IMM));
-                    
-                    Intermediate_Code* ic = ic_add(cu, IC_LEA);
-                    ic->src0 = ic_reg(IC_T64);
-                    ic->src1 = src;
-                    result = ic->src0;
+                    Type* first_type = expr->Unary_Expr.first->type;
+                    if (first_type && first_type->kind == TypeKind_Function) {
+                        result = src;
+                        
+                    } else {
+                        assert(src.type & (IC_STK | IC_IMM));
+                        
+                        Intermediate_Code* ic = ic_add(cu, IC_LEA);
+                        ic->src0 = ic_reg(IC_T64);
+                        ic->src1 = src;
+                        result = ic->src0;
+                    }
                 } break;
                 
                 case Op_Dereference: {
@@ -792,6 +817,10 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             Ic_Arg src = convert_expr_to_intermediate_code(cu, expr->Cast_Expr.expr);
             result = src;
             result.raw_type = convert_type_to_raw_type(expr->type);
+            
+            if (result.type & IC_IMM) {
+                return result;
+            }
             
             
             if (t_dest->kind == TypeKind_Basic && t_src->kind == TypeKind_Basic) {
@@ -883,17 +912,34 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Bloc
         
         case Ast_Assign_Stmt: {
             Type* type = stmt->type;
-            string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
             
             Ic_Arg src = {};
             if (is_valid_ast(stmt->Assign_Stmt.expr)) {
                 src = convert_expr_to_intermediate_code(cu, stmt->Assign_Stmt.expr);
             }
             
+            
             // NOTE(Alexander): push local first then it can be found elsewhere
-            ic_push_local(cu, type, ident);
-            Ic_Arg dest = convert_expr_to_intermediate_code(cu, stmt->Assign_Stmt.ident);
-            convert_assign_to_intermediate_code(cu, stmt->type, dest, src);
+            if (stmt->Assign_Stmt.ident->kind == Ast_Ident) {
+                string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
+                ic_push_local(cu, type, ident);
+                
+                Ic_Arg dest = convert_expr_to_intermediate_code(cu, stmt->Assign_Stmt.ident);
+                convert_assign_to_intermediate_code(cu, stmt->type, dest, src);
+                
+            } else if (stmt->Assign_Stmt.ident->kind == Ast_Compound) {
+                for_compound(stmt->Assign_Stmt.ident, it) {
+                    string_id ident = ast_unwrap_ident(it);
+                    ic_push_local(cu, type, ident);
+                    
+                    it->type = type; // TODO(Alexander): isn't type checker doing this?
+                    Ic_Arg dest = convert_expr_to_intermediate_code(cu, it);
+                    convert_assign_to_intermediate_code(cu, stmt->type, dest, src);
+                }
+            } else {
+                assert(0 && "invalid assign statment identifier");
+            }
+            
         } break;
         
         case Ast_Block_Stmt: {
@@ -1170,6 +1216,15 @@ x64_binary(Intermediate_Code* ic,
            Ic_Type t2, s64 r2, s64 d2,
            u8 reg_field, u8 opcode) {
     
+    if (t1 & IC_IMM) {
+        Ic_Type tmpt = IC_REG + (t1 & IC_RT_MASK);
+        s64 tmpr = X64_RAX;
+        x64_mov(ic, tmpt, tmpr, 0, t1, r1, d1);
+        t1 = tmpt;
+        r1 = tmpr;
+        d1 = 0;
+    }
+    
     switch (t1 & IC_TF_MASK) {
         case IC_REG: {
             if (t2 & IC_IMM) {
@@ -1288,6 +1343,14 @@ x64_mov_rax_u64(Intermediate_Code* ic, u64 disp) {
 }
 
 void
+x64_rip_relative(Intermediate_Code* ic, s64 r, s64 data, s64 rip) {
+    ic_u8(ic, (u8) r<<3 | (u8) X64_RBP);
+    
+    s64 disp = (s64) data - (rip + ic->count + 4);
+    ic_u32(ic, (u32) disp);
+}
+
+void
 x64_mov(Intermediate_Code* ic,
         Ic_Type t1, s64 r1, s64 d1,
         Ic_Type t2, s64 r2, s64 d2) {
@@ -1364,19 +1427,10 @@ x64_mov(Intermediate_Code* ic,
 }
 
 void
-x64_rip_relative(Intermediate_Code* ic, s64 r, s64 data, s64 rip) {
-    ic_u8(ic, (u8) r<<3 | (u8) X64_RBP);
-    
-    s64 disp = (s64) data - (rip + ic->count + 4);
-    ic_u32(ic, (u32) disp);
-}
-
-void
 x64_fmov(Intermediate_Code* ic,
          Ic_Type t1, s64 r1, s64 d1,
          Ic_Type t2, s64 r2, s64 d2, s64 rip) {
     assert(t1 & IC_FLOAT);
-    
     
     if (t1 & IC_STK && (t2 & (IC_IMM | IC_STK))) {
         Ic_Type tmpt = IC_REG + (t2 & IC_RT_MASK);
@@ -1420,7 +1474,16 @@ x64_fmov(Intermediate_Code* ic,
 inline void
 x64_mul(Intermediate_Code* ic) {
     assert(ic->dest.type & IC_REG);
+    
+    if (ic->src0.type & IC_IMM) {
+        Ic_Arg tmp = ic->src0;
+        ic->src0 = ic->src1;
+        ic->src1 = tmp;
+    }
+    
+    
     assert(ic->src0.type & (IC_REG | IC_STK));
+    
     
     if (ic->src1.type & IC_IMM) {
         // 69 /r id 	IMUL r32, r/m32, imm32 	RMI
@@ -1630,17 +1693,25 @@ x64_shr(Intermediate_Code* ic,
         Ic_Type t2, s64 r2, s64 d2, 
         Ic_Type t3, s64 r3, s64 d3, 
         u8 sar_reg_field, u8 shr_reg_field) {
-    assert(t3 & IC_IMM);
+    
+    u8 reg_field = (t2 & IC_SINT) ? sar_reg_field : shr_reg_field;
     
     // TODO(Alexander): non immediate right-hand side
     x64_mov(ic, t1, r1, d1, t2, r2, d2);
     
-    // C1 /7 ib 	SAR r/m32, imm8 	MI (signed)
-    // C1 /5 ib 	SHR r/m32, imm8 	MI (unsigned)
-    ic_u8(ic, 0xC1);
-    u8 reg_field = (t2 & IC_SINT) ? sar_reg_field : shr_reg_field;
-    x64_modrm(ic, t1, d1, reg_field, r1);
-    ic_u8(ic, (u8) d3);
+    if (t3 & IC_IMM) {
+        // C1 /7 ib 	SAR r/m32, imm8 	MI (signed)
+        // C1 /5 ib 	SHR r/m32, imm8 	MI (unsigned)
+        ic_u8(ic, 0xC1);
+        x64_modrm(ic, t1, d1, reg_field, r1);
+        ic_u8(ic, (u8) d3);
+    } else { 
+        
+        // D3 /7 	SAR r/m32, CL 	MC (signed)
+        // D3 /5 	SHR r/m16, CL     MC (unsigned)
+        ic_u8(ic, 0xC1);
+        x64_modrm(ic, t1, d1, reg_field, r1);
+    }
 }
 
 s64

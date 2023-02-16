@@ -419,6 +419,10 @@ convert_ic_to_conditional_jump(Compilation_Unit* cu, Intermediate_Code* code, Ic
         }
         code->data = false_target;
     } else {
+        if (cond.type == 0) {
+            __debugbreak();
+        }
+        
         Intermediate_Code* cmp = ic_add(cu, IC_CMP);
         cmp->src0 = cond;
         cmp->src1 = ic_imm(IC_S8, 0);
@@ -445,20 +449,20 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 Ic_Raw_Type raw_type = convert_type_to_raw_type(expr->type);
                 void* data = malloc(type->size);
                 value_store_in_memory(type, data, expr->Value.data);
-                result = ic_data(raw_type, (s64) data);
+                result = ic_rip_disp32(raw_type, data);
                 
             } else if (is_string(expr->Value)) {
                 Ic_Raw_Type raw_type = IC_T64;
                 string* str = (string*) malloc(sizeof(string));
                 *str = expr->Value.data.str;
-                result = ic_data(raw_type, (s64) str);
+                result = ic_rip_disp32(raw_type, str);
                 
             } else if (is_cstring(expr->Value)) {
                 cstring cstr = expr->Value.data.cstr;
                 if (cstr == 0) {
                     result = ic_imm(IC_S64, 0);
                 } else {
-                    result = ic_data(IC_T64, (s64) cstr);
+                    result = ic_rip_disp32(IC_T64, (void*) cstr);
                 }
                 
             } else {
@@ -482,26 +486,15 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     result = ic->dest;
                     
                 } else {
-                    
                     Ic_Raw_Type raw_type = convert_type_to_raw_type(type);
-                    Interp_Value var = get_interp_value(cu->interp, type, ident);
-                    if (is_void(var.value)) {
+                    void* data = get_interp_value_pointer(cu->interp, ident);
+                    if (!data) {
                         Type_Context tcx = {};
                         type_error(&tcx, string_format("compiler bug: value of `%` is void", f_var(ident)), expr->span);
                         //pln();
                         assert(0);
                     }
-                    
-                    result = ic_imm(raw_type, var.value.data.signed_int);
-                    
-                    if (raw_type != IC_T64) {
-                        Ic_Arg tmp = ic_reg(IC_T64, X64_RDX);
-                        ic_mov(cu, tmp, result);
-                        result = ic_stk(raw_type, 0, IcStkArea_None, tmp.reg);
-                    }
-                    //
-                    //pln("Unknown variable: %", f_var(expr->Ident));
-                    //unimplemented;
+                    result = ic_rip_disp32(raw_type, data);
                 }
             }
         } break;
@@ -515,7 +508,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             void* data = convert_aggregate_literal_to_memory(expr);
             
             if (data) {
-                result = ic_data(IC_T64, (s64) data);
+                result = ic_rip_disp32(IC_T64, data);
                 
                 // Write to non-constant fields
                 Ic_Arg result_dest = {};
@@ -697,7 +690,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                         Intermediate_Code* ic = ic_add(cu, IC_FXOR);
                         ic->dest = ic_reg(rt);
                         ic->src0 = src;
-                        ic->src1 = ic_data(rt, (s64) data);
+                        ic->src1 = ic_rip_disp32(rt, data);
                         result = ic->dest;
                         
                     } else {
@@ -983,8 +976,10 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Bloc
             convert_stmt_to_intermediate_code(cu, stmt->For_Stmt.init, bb_break, bb_continue);
             
             ic_add(cu, IC_LABEL, bb_enter);
-            Ic_Arg cond = convert_expr_to_intermediate_code(cu, stmt->For_Stmt.cond);
-            convert_ic_to_conditional_jump(cu, cu->ic_last, cond, bb_exit);
+            if (is_valid_ast(stmt->For_Stmt.cond)) {
+                Ic_Arg cond = convert_expr_to_intermediate_code(cu, stmt->For_Stmt.cond);
+                convert_ic_to_conditional_jump(cu, cu->ic_last, cond, bb_exit);
+            }
             
             convert_stmt_to_intermediate_code(cu, stmt->For_Stmt.block, bb_exit, bb_enter);
             convert_expr_to_intermediate_code(cu, stmt->For_Stmt.update);
@@ -1176,7 +1171,15 @@ x64_sib(Intermediate_Code* ic, u8 scale, u8 index, u8 base) {
 }
 
 void
-x64_modrm(Intermediate_Code* ic, Ic_Type t, s64 d, s64 r, s64 rm) {
+x64_rip_relative(Intermediate_Code* ic, s64 r, s64 data, s64 rip) {
+    ic_u8(ic, (u8) r<<3 | (u8) X64_RBP);
+    
+    s64 disp = (s64) data - (rip + ic->count + 4);
+    ic_u32(ic, (u32) disp);
+}
+
+void
+x64_modrm(Intermediate_Code* ic, Ic_Type t, s64 d, s64 r, s64 rm, s64 rip=0) {
     if (t & IC_STK) {
         if (d < S8_MIN || d > S8_MAX) {
             ic_u8(ic, MODRM_INDIRECT_DISP32 | (((u8) r&7)<<3) | (u8) rm&7);
@@ -1191,15 +1194,17 @@ x64_modrm(Intermediate_Code* ic, Ic_Type t, s64 d, s64 r, s64 rm) {
             }
             ic_u8(ic, (u8) d);
         }
+    } else if (t & IC_RIP_DISP32) {
+        x64_rip_relative(ic, r, d, rip);
     } else {
         ic_u8(ic, MODRM_DIRECT | (((u8) r&7)<<3) | (u8) rm&7);
     }
 }
 
 inline void
-x64_unary(Intermediate_Code* ic, Ic_Type t, s64 r, s64 d, u8 reg_field) {
+x64_unary(Intermediate_Code* ic, Ic_Type t, s64 r, s64 d, u8 reg_field, s64 rip) {
     if (ic->dest.type & IC_REG) {
-        x64_mov(ic, ic->dest.type, ic->dest.reg, ic->dest.disp, t, r, d);
+        x64_mov(ic, ic->dest.type, ic->dest.reg, ic->dest.disp, t, r, d, rip);
         t = ic->dest.type;
         r = ic->dest.reg;
         d = ic->dest.disp;
@@ -1214,12 +1219,12 @@ inline void
 x64_binary(Intermediate_Code* ic,
            Ic_Type t1, s64 r1, s64 d1, 
            Ic_Type t2, s64 r2, s64 d2,
-           u8 reg_field, u8 opcode) {
+           u8 reg_field, u8 opcode, s64 rip) {
     
     if (t1 & IC_IMM) {
         Ic_Type tmpt = IC_REG + (t1 & IC_RT_MASK);
         s64 tmpr = X64_RAX;
-        x64_mov(ic, tmpt, tmpr, 0, t1, r1, d1);
+        x64_mov(ic, tmpt, tmpr, 0, t1, r1, d1, rip);
         t1 = tmpt;
         r1 = tmpr;
         d1 = 0;
@@ -1285,8 +1290,8 @@ x64_binary(Intermediate_Code* ic,
                 ic_u8(ic, opcode + 1);
                 x64_modrm(ic, t1, d1, r2, r1);
             } else if (t2 & IC_STK) {
-                x64_mov(ic, IC_REG + (t2 & IC_RT_MASK), X64_RAX, 0, t2, r2, d2);
-                x64_binary(ic, t1, r1, d1, IC_REG + (t1 & IC_RT_MASK), X64_RAX, 0, reg_field, opcode);
+                x64_mov(ic, IC_REG + (t2 & IC_RT_MASK), X64_RAX, 0, t2, r2, d2, rip);
+                x64_binary(ic, t1, r1, d1, IC_REG + (t1 & IC_RT_MASK), X64_RAX, 0, reg_field, opcode, rip);
             } else {
                 assert(0 && "invalid instruction");
             }
@@ -1302,14 +1307,14 @@ x64_add(Intermediate_Code* ic,
         Ic_Type t1, s64 r1, s64 d1, 
         Ic_Type t2, s64 r2, s64 d2, 
         Ic_Type t3, s64 r3, s64 d3, 
-        u8 reg_field, u8 opcode) {
+        u8 reg_field, u8 opcode, s64 rip) {
     
     s64 tmpr = -1;
     if (t1 & IC_REG) {
         if (!(t2 & IC_REG) && t1 != t3 && r1 != r3) {
-            x64_mov(ic, t1, r1, d1, t2, r2, d2);
+            x64_mov(ic, t1, r1, d1, t2, r2, d2, rip);
         } else  {
-            x64_mov(ic, t1, X64_RCX, 0, t2, r2, d2);
+            x64_mov(ic, t1, X64_RCX, 0, t2, r2, d2, rip);
             tmpr = r1;
             r1 = X64_RCX;
         }
@@ -1317,10 +1322,10 @@ x64_add(Intermediate_Code* ic,
         unimplemented;
     }
     
-    x64_binary(ic, t1, r1, d1, t3, r3, d3, reg_field, opcode);
+    x64_binary(ic, t1, r1, d1, t3, r3, d3, reg_field, opcode, rip);
     
     if (tmpr != -1) {
-        x64_mov(ic, t1, tmpr, 0, t1, X64_RCX, 0);
+        x64_mov(ic, t1, tmpr, 0, t1, X64_RCX, 0, rip);
         tmpr = -1;
     }
 }
@@ -1343,17 +1348,9 @@ x64_mov_rax_u64(Intermediate_Code* ic, u64 disp) {
 }
 
 void
-x64_rip_relative(Intermediate_Code* ic, s64 r, s64 data, s64 rip) {
-    ic_u8(ic, (u8) r<<3 | (u8) X64_RBP);
-    
-    s64 disp = (s64) data - (rip + ic->count + 4);
-    ic_u32(ic, (u32) disp);
-}
-
-void
 x64_mov(Intermediate_Code* ic,
         Ic_Type t1, s64 r1, s64 d1,
-        Ic_Type t2, s64 r2, s64 d2) {
+        Ic_Type t2, s64 r2, s64 d2, s64 rip) {
     
     switch (t1 & IC_TF_MASK) {
         case IC_REG: {
@@ -1374,23 +1371,24 @@ x64_mov(Intermediate_Code* ic,
                     ic_u32(ic, (u32) d2);
                 }
                 
-            } else if (t2 & (IC_REG | IC_STK)) {
+            } else if (t2 & (IC_REG | IC_STK | IC_RIP_DISP32)) {
                 if (t1 & IC_T64 || r1&8 || r2&8) {
                     x64_rex(ic, (t1&IC_T64) | ((u8) r1&8)>>1 | ((u8)r2&8)>>3);
                 }
                 // 8B /r 	MOV r32,r/m32 	RM
                 ic_u8(ic, 0x8B);
-                x64_modrm(ic, t2, d2, r1, r2);
+                x64_modrm(ic, t2, d2, r1, r2, rip);
             } else {
                 assert(0 && "invalid instruction");
             }
         } break;
         
-        case IC_STK: {
+        case IC_STK:
+        case IC_RIP_DISP32: {
             if (t2 & IC_IMM) {
                 if ((u64) d2 > U32_MAX) {
                     x64_mov_rax_u64(ic, d2);
-                    x64_mov(ic, t1, r1, d1, IC_T64 + IC_REG, X64_RAX, 0);
+                    x64_mov(ic, t1, r1, d1, IC_T64 + IC_REG, X64_RAX, 0, rip);
                 } else {
                     // C7 /0 id 	MOV r/m32, imm32 	MI
                     if (t1 & IC_T64) {
@@ -1398,7 +1396,11 @@ x64_mov(Intermediate_Code* ic,
                     }
                     
                     ic_u8(ic, 0xC7);
-                    x64_modrm(ic, t1, d1, 0, r1);
+                    if (t1 & IC_RIP_DISP32)  {
+                        x64_modrm(ic, t1, d1, 0, r1, rip + 4);
+                    } else {
+                        x64_modrm(ic, t1, d1, 0, r1, rip);
+                    }
                     ic_u32(ic, (u32) d2);
                 }
             } else if (t2 & IC_REG) {
@@ -1407,7 +1409,7 @@ x64_mov(Intermediate_Code* ic,
                     x64_rex(ic, t2&IC_T64|((u8) r2&8)>>1);
                 }
                 ic_u8(ic, 0x89);
-                x64_modrm(ic, t1, d1, r2&7, r1);
+                x64_modrm(ic, t1, d1, r2&7, r1, rip);
             } else if (t2 & IC_STK) {
                 // NOTE(Alexander): x64 doesn't allow MOV STK, STK, move to tmp reg
                 // TODO(Alexander): reg hardcoded RAX
@@ -1415,8 +1417,8 @@ x64_mov(Intermediate_Code* ic,
                 if (r2 == tmpr || r1 == tmpr) {
                     tmpr = X64_RCX;
                 }
-                x64_mov(ic, IC_REG + (t2 & IC_RT_MASK), tmpr, 0, t2, r2, d2);
-                x64_mov(ic, t1, r1, d1, IC_REG + (t1 & IC_RT_MASK), tmpr, 0);
+                x64_mov(ic, IC_REG + (t2 & IC_RT_MASK), tmpr, 0, t2, r2, d2, rip);
+                x64_mov(ic, t1, r1, d1, IC_REG + (t1 & IC_RT_MASK), tmpr, 0, rip);
             } else {
                 assert(0 && "invalid instruction");
             }
@@ -1432,7 +1434,7 @@ x64_fmov(Intermediate_Code* ic,
          Ic_Type t2, s64 r2, s64 d2, s64 rip) {
     assert(t1 & IC_FLOAT);
     
-    if (t1 & IC_STK && (t2 & (IC_IMM | IC_STK))) {
+    if (t1 & IC_STK && (t2 & (IC_RIP_DISP32 | IC_STK))) {
         Ic_Type tmpt = IC_REG + (t2 & IC_RT_MASK);
         s64 tmpr = X64_XMM0;
         x64_fmov(ic, tmpt, tmpr, 0, t2, r2, d2, rip);
@@ -1472,7 +1474,7 @@ x64_fmov(Intermediate_Code* ic,
 }
 
 inline void
-x64_mul(Intermediate_Code* ic) {
+x64_mul(Intermediate_Code* ic, s64 rip) {
     assert(ic->dest.type & IC_REG);
     
     if (ic->src0.type & IC_IMM) {
@@ -1481,9 +1483,14 @@ x64_mul(Intermediate_Code* ic) {
         ic->src1 = tmp;
     }
     
-    
-    assert(ic->src0.type & (IC_REG | IC_STK));
-    
+    if (ic->src0.type & IC_IMM) {
+        ic->src0.disp = ic->src0.disp * ic->src1.disp;
+        x64_mov(ic, 
+                ic->dest.type, ic->dest.reg, ic->dest.disp, 
+                ic->src0.type, ic->src0.reg, ic->src0.disp, rip);
+        
+        return;
+    }
     
     if (ic->src1.type & IC_IMM) {
         // 69 /r id 	IMUL r32, r/m32, imm32 	RMI
@@ -1507,7 +1514,7 @@ x64_mul(Intermediate_Code* ic) {
         if (t1 & IC_STK) {
             // NOTE(Alexander): swap the order of mul
             if (t2 & IC_STK || r2 != ic->dest.reg) {
-                x64_mov(ic, ic->dest.type, ic->dest.reg, ic->dest.disp, t2, r2, d2);
+                x64_mov(ic, ic->dest.type, ic->dest.reg, ic->dest.disp, t2, r2, d2, rip);
             }
             t2 = t1;
             r2 = r1;
@@ -1525,10 +1532,10 @@ x64_mul(Intermediate_Code* ic) {
 }
 
 inline void
-x64_div(Intermediate_Code* ic, bool remainder) {
+x64_div(Intermediate_Code* ic, bool remainder, s64 rip) {
     
-    x64_mov(ic, ic->src0.raw_type + IC_REG, X64_RAX, 0, ic->src0.type, ic->src0.reg, ic->src0.disp);
-    x64_mov(ic, ic->src1.raw_type + IC_REG, X64_RCX, 0, ic->src1.type, ic->src1.reg, ic->src1.disp);
+    x64_mov(ic, ic->src0.raw_type + IC_REG, X64_RAX, 0, ic->src0.type, ic->src0.reg, ic->src0.disp, rip);
+    x64_mov(ic, ic->src1.raw_type + IC_REG, X64_RCX, 0, ic->src1.type, ic->src1.reg, ic->src1.disp, rip);
     ic_u8(ic, 0x99); // CDQ
     
     // F7 /6 	DIV r/m32 	M
@@ -1543,7 +1550,7 @@ x64_div(Intermediate_Code* ic, bool remainder) {
 #endif
     
     s64 dest_reg = remainder ? X64_RDX : X64_RAX;
-    x64_mov(ic, ic->dest.type, ic->dest.reg, ic->dest.disp, IC_REG, dest_reg, 0);
+    x64_mov(ic, ic->dest.type, ic->dest.reg, ic->dest.disp, IC_REG, dest_reg, 0, rip);
 }
 
 inline void
@@ -1663,16 +1670,16 @@ x64_string_op(Intermediate_Code* ic,
               Ic_Type srct, s64 srcr, s64 srcd, 
               s64 count, u16 opcode, s64 rip, s64 src_int_reg=X64_RAX) {
     // Move RCX bytes from [RSI] to [RDI].
-    x64_mov(ic, IC_S64 + IC_REG, X64_RCX, 0, IC_S64 + IC_IMM, 0, count);
+    x64_mov(ic, IC_S64 + IC_REG, X64_RCX, 0, IC_S64 + IC_IMM, 0, count, rip);
     
     if (destt & (IC_UINT | IC_SINT)) {
-        x64_mov(ic, IC_S64 + IC_REG, X64_RDI, 0, IC_S64 + IC_STK, X64_RSP, destd);
+        x64_mov(ic, IC_S64 + IC_REG, X64_RDI, 0, IC_S64 + IC_STK, X64_RSP, destd, rip);
     } else {
         x64_lea(ic, X64_RDI, destr, destd, rip);
     }
     
     if (srct & (IC_UINT | IC_SINT)) {
-        x64_mov(ic, IC_S64 + IC_REG, src_int_reg, 0, srct, srcr, srcd);
+        x64_mov(ic, IC_S64 + IC_REG, src_int_reg, 0, srct, srcr, srcd, rip);
     } else if (srct & IC_T64) {
         //if (srct & IC_IMM) {
         //x64_lea(ic, X64_RSI, X64_RIP, disp, rip);
@@ -1692,12 +1699,12 @@ x64_shr(Intermediate_Code* ic,
         Ic_Type t1, s64 r1, s64 d1, 
         Ic_Type t2, s64 r2, s64 d2, 
         Ic_Type t3, s64 r3, s64 d3, 
-        u8 sar_reg_field, u8 shr_reg_field) {
+        u8 sar_reg_field, u8 shr_reg_field, s64 rip) {
     
     u8 reg_field = (t2 & IC_SINT) ? sar_reg_field : shr_reg_field;
     
     // TODO(Alexander): non immediate right-hand side
-    x64_mov(ic, t1, r1, d1, t2, r2, d2);
+    x64_mov(ic, t1, r1, d1, t2, r2, d2, rip);
     
     if (t3 & IC_IMM) {
         // C1 /7 ib 	SAR r/m32, imm8 	MI (signed)
@@ -1731,62 +1738,62 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
             case IC_NOOP: break;
             
             case IC_PRLG: {
-                x64_binary(ic, IC_REG + IC_S64, X64_RSP, 0, IC_IMM + IC_S32, 0, stk_usage, 5, 28);
+                x64_binary(ic, IC_REG + IC_S64, X64_RSP, 0, IC_IMM + IC_S32, 0, stk_usage, 5, 28, (s64) buf + rip);
             } break;
             
             case IC_EPLG: {
-                x64_binary(ic, IC_REG + IC_S64, X64_RSP, 0, IC_IMM + IC_S32, 0, stk_usage, 0, 0);
+                x64_binary(ic, IC_REG + IC_S64, X64_RSP, 0, IC_IMM + IC_S32, 0, stk_usage, 0, 0, (s64) buf + rip);
                 ic_u8(ic, 0xC3);
             } break;
             
             case IC_NEG: {
-                x64_unary(ic, ic->src0.type, ic->src0.reg, ic->src0.disp, 3);
+                x64_unary(ic, ic->src0.type, ic->src0.reg, ic->src0.disp, 3, (s64) buf + rip);
             } break;
             
             case IC_NOT: {
-                x64_unary(ic, ic->src0.type, ic->src0.reg, ic->src0.disp, 2);
+                x64_unary(ic, ic->src0.type, ic->src0.reg, ic->src0.disp, 2, (s64) buf + rip);
             } break;
             
             case IC_ADD: {
                 x64_add(ic, 
                         ic->dest.type, ic->dest.reg, ic->dest.disp,
                         ic->src0.type, ic->src0.reg, ic->src0.disp,
-                        ic->src1.type, ic->src1.reg, ic->src1.disp, 0, 0);
+                        ic->src1.type, ic->src1.reg, ic->src1.disp, 0, 0, (s64) buf + rip);
             } break;
             
             case IC_SUB: {
                 x64_add(ic, 
                         ic->dest.type, ic->dest.reg, ic->dest.disp,
                         ic->src0.type, ic->src0.reg, ic->src0.disp,
-                        ic->src1.type, ic->src1.reg, ic->src1.disp, 5, 0x28);
+                        ic->src1.type, ic->src1.reg, ic->src1.disp, 5, 0x28, (s64) buf + rip);
             } break;
             
             case IC_AND: {
                 x64_add(ic, 
                         ic->dest.type, ic->dest.reg, ic->dest.disp,
                         ic->src0.type, ic->src0.reg, ic->src0.disp,
-                        ic->src1.type, ic->src1.reg, ic->src1.disp, 4, 0x20);
+                        ic->src1.type, ic->src1.reg, ic->src1.disp, 4, 0x20, (s64) buf + rip);
             } break;
             
             case IC_OR: {
                 x64_add(ic, 
                         ic->dest.type, ic->dest.reg, ic->dest.disp,
                         ic->src0.type, ic->src0.reg, ic->src0.disp,
-                        ic->src1.type, ic->src1.reg, ic->src1.disp, 1, 0x8);
+                        ic->src1.type, ic->src1.reg, ic->src1.disp, 1, 0x8, (s64) buf + rip);
             } break;
             
             case IC_XOR: {
                 x64_add(ic, 
                         ic->dest.type, ic->dest.reg, ic->dest.disp,
                         ic->src0.type, ic->src0.reg, ic->src0.disp,
-                        ic->src1.type, ic->src1.reg, ic->src1.disp, 6, 0x30);
+                        ic->src1.type, ic->src1.reg, ic->src1.disp, 6, 0x30, (s64) buf + rip);
             } break;
             
             case IC_SHL: {
                 x64_shr(ic, 
                         ic->dest.type, ic->dest.reg, ic->dest.disp,
                         ic->src0.type, ic->src0.reg, ic->src0.disp,
-                        ic->src1.type, ic->src1.reg, ic->src1.disp, 4, 4);
+                        ic->src1.type, ic->src1.reg, ic->src1.disp, 4, 4, (s64) buf + rip);
                 
             } break;
             
@@ -1794,26 +1801,26 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                 x64_shr(ic, 
                         ic->dest.type, ic->dest.reg, ic->dest.disp,
                         ic->src0.type, ic->src0.reg, ic->src0.disp,
-                        ic->src1.type, ic->src1.reg, ic->src1.disp, 7, 5);
+                        ic->src1.type, ic->src1.reg, ic->src1.disp, 7, 5, (s64) buf + rip);
             } break;
             
             case IC_MUL: {
-                x64_mul(ic);
+                x64_mul(ic, (s64) buf + rip);
             } break;
             
             case IC_DIV: {
-                x64_div(ic, false);
+                x64_div(ic, false, (s64) buf + rip);
             } break;
             
             case IC_MOD: {
-                x64_div(ic, true);
+                x64_div(ic, true, (s64) buf + rip);
             } break;
             
             case IC_MOV:
             case IC_MOVZX: {
                 x64_mov(ic,
                         ic->src0.type, ic->src0.reg, ic->src0.disp,
-                        ic->src1.type, ic->src1.reg, ic->src1.disp);
+                        ic->src1.type, ic->src1.reg, ic->src1.disp, (s64) buf + rip);
             } break;
             
             case IC_MOVSX: {
@@ -1908,13 +1915,13 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                 if (t1 & IC_IMM) {
                     Ic_Type tmpt = IC_REG + (ic->src0.type & IC_RT_MASK);
                     s64 tmpr = (t2 & IC_REG) ? X64_RCX : X64_RAX, tmpd = 0;
-                    x64_mov(ic, tmpt, tmpr, tmpd, ic->src0.type, ic->src0.reg, ic->src0.disp);
+                    x64_mov(ic, tmpt, tmpr, tmpd, ic->src0.type, ic->src0.reg, ic->src0.disp, (s64) buf + rip);
                     t1 = tmpt;
                     r1 = tmpr;
                     d1 = tmpd;
                 }
                 x64_binary(ic, t1, r1, d1,
-                           ic->src1.type, ic->src1.reg, ic->src1.disp, 7, 0x38);
+                           ic->src1.type, ic->src1.reg, ic->src1.disp, 7, 0x38, (s64) buf + rip);
             } break;
             
             case IC_TEST: {
@@ -1924,11 +1931,11 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                 if (ic->src0.type & IC_T8) {
                     // 84 /r 	TEST r/m8, r8 	MR
                     ic_u8(ic, 0x84);
-                    x64_modrm(ic, ic->src0.type, ic->src0.disp, ic->src1.reg, ic->src0.reg);
+                    x64_modrm(ic, ic->src0.type, ic->src0.disp, ic->src1.reg, ic->src0.reg, (s64) buf + rip);
                 } else {
                     // 85 /r 	TEST r/m32, r32 	MR
                     ic_u8(ic, 0x85);
-                    x64_modrm(ic, ic->src0.type, ic->src0.disp, ic->src1.reg, ic->src0.reg);
+                    x64_modrm(ic, ic->src0.type, ic->src0.disp, ic->src1.reg, ic->src0.reg, (s64) buf + rip);
                 }
             } break;
             
@@ -2164,6 +2171,10 @@ string_builder_push(String_Builder* sb, Ic_Arg arg) {
             } else {
                 string_builder_push(sb, "[RBP]");
             }
+        } break;
+        
+        case IC_RIP_DISP32: {
+            string_builder_push_format(sb, "[0x%]", f_u64_HEX(arg.disp));
         } break;
     }
 }

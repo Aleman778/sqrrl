@@ -131,11 +131,11 @@ ic_imm(Ic_Raw_Type t, s64 d) {
 }
 
 inline Ic_Arg
-ic_data(Ic_Raw_Type t, s64 ptr) {
+ic_rip_disp32(Ic_Raw_Type t, void* data) {
     Ic_Arg result = {};
-    result.type = t + IC_IMM;
+    result.type = t + IC_RIP_DISP32;
     result.reg = X64_RIP;
-    result.disp = ptr;
+    result.disp = (s64) data;
     return result;
 }
 
@@ -308,13 +308,13 @@ x64_rex(Intermediate_Code* ic, u8 flags) {
 
 inline void x64_mov(Intermediate_Code* ic, 
                     Ic_Type t1, s64 r1, s64 d1, 
-                    Ic_Type t2, s64 r2, s64 d2);
+                    Ic_Type t2, s64 r2, s64 d2, s64 rip);
 
 inline void x64_add(Intermediate_Code* ic, 
                     Ic_Type t1, s64 r1, s64 d1, 
                     Ic_Type t2, s64 r2, s64 d2, 
                     Ic_Type t3, s64 r3, s64 d3,
-                    u8 reg_field, u8 opcode);
+                    u8 reg_field, u8 opcode, s64 rip);
 
 Ic_Arg convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr);
 

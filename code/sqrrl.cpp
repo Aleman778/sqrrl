@@ -252,7 +252,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             int bb_index = 0;
             Intermediate_Code* curr = cu->ic_first;
             while (curr) {
-                
+                smm start_used = sb.curr_used;
                 
                 if (curr->opcode == IC_LABEL) {
                     if (bb_index > 0) {
@@ -282,6 +282,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     }
                     
                     if (curr->comment) {
+                        smm used = sb.curr_used - start_used;
+                        for (smm i = used; i < 35; i++) {
+                            string_builder_push(&sb, " ");
+                        }
                         string_builder_push_format(&sb, "// %", f_cstring(curr->comment));
                     }
                     

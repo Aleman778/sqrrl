@@ -152,6 +152,7 @@ enum {
     IC_IMM = bit(8),
     IC_REG = bit(9),
     IC_STK = bit(10),
+    IC_RIP_DISP32 = bit(11),
 };
 typedef u8 Ic_Type_Flags;
 

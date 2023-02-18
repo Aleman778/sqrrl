@@ -204,8 +204,8 @@ dieletric_scatter(ray r, Hit_Result hit) {
     Scatter_Result result;
     result.attenuation = vec3(1.0f, 1.0f, 1.0f);
     
-    hit.normal = vec3(-0.027596, 0.827434, 0.560884);
-    r.direction = vec3(-1.408918, 0.574960, -1.000000);
+    hit.normal = vec3(-0.027596f, 0.827434f, 0.560884f);
+    r.direction = vec3(-1.408918f, 0.574960f, -1.000000f);
     //print_vec3(r.direction);
     //hit.normal = vec3_normalize(vec3(1.0f, 1.0f, 0.0f));
     

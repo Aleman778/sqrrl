@@ -137,7 +137,24 @@ struct Tokenizer {
     umm column_number; // starts at zero
     u32 curr_utf32_character; // the current character as unicode codepoint
     array(smm)* lines; // array of byte offsets for each line
+    
+    s32 error_count;
 };
+
+internal void
+tokenization_error(Tokenizer* t, string message) {
+    if (t->error_count == 0) {
+        pln("%:%:%: error: %\n", f_string(t->file), f_umm(t->line_number), f_umm(t->column_number), f_string(message));
+        DEBUG_log_backtrace();
+    }
+    
+    t->error_count++;
+}
+
+internal inline void
+tokenization_error(Tokenizer* t, cstring message) {
+    tokenization_error(t, string_lit(message));
+}
 
 // NOTE(alexander): forward declare function
 void utf8_advance_character(Tokenizer* tokenizer);
@@ -356,6 +373,9 @@ inline s32
 scan_while(Tokenizer* tokenizer, bool predicate(u32)) {
     int num_scanned = 0;
     while (predicate(tokenizer->curr_utf32_character) && tokenizer->next <= tokenizer->end) {
+        if (tokenizer->error_count > 0) {
+            break;
+        }
         utf8_advance_character(tokenizer);
         num_scanned++;
     }

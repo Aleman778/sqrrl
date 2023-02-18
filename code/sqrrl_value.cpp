@@ -511,6 +511,10 @@ void string_builder_push(String_Builder* sb, Value* value) {
             string_builder_push_format(sb, "\"%\"", f_string(value->data.str));
         } break;
         
+        case Value_cstring: {
+            string_builder_push_format(sb, "\"%\"", f_cstring(value->data.cstr));
+        } break;
+        
         case Value_memory_string: {
             int count = (int) memory_string_count(value->data.mstr);
             string_builder_push_cformat(sb, "\"%.*s\"", count, (cstring) value->data.mstr);

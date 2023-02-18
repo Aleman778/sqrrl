@@ -125,7 +125,7 @@ ic_push_local(Compilation_Unit* cu, Type* type, string_id ident=0) {
 inline Ic_Arg
 ic_imm(Ic_Raw_Type t, s64 d) {
     Ic_Arg result = {};
-    result.type = t + IC_IMM;
+    result.type = t + IC_DISP;
     result.disp = d;
     return result;
 }
@@ -284,10 +284,29 @@ _ic_mov(Compilation_Unit* cu, Ic_Arg dest, Ic_Arg src, cstring comment=0) {
 inline Ic_Arg
 ic_reg_mov(Compilation_Unit* cu, u8 dest_reg, Ic_Arg src) {
     Ic_Arg result = ic_reg(src.raw_type, dest_reg);
-    if ((src.type & IC_REG && src.reg != dest_reg) || (src.type & (IC_STK | IC_IMM))) {
+    if ((src.type & IC_REG && src.reg != dest_reg) || (src.type & (IC_STK | IC_DISP))) {
         ic_mov(cu, result, src);
     }
     return result;
+}
+
+#define ic_lea(cu, dest, src, ...) _ic_lea(cu, dest, src, __FILE__ ":" S2(__LINE__))
+
+inline void
+_ic_lea(Compilation_Unit* cu, Ic_Arg dest, Ic_Arg src, cstring comment=0, u8 tmp_reg=X64_RAX) {
+    Ic_Arg tmp = {};
+    if (dest.type & IC_STK) {
+        tmp = dest;
+        dest = ic_reg(dest.type & IC_RT_MASK, tmp_reg);
+    }
+    Intermediate_Code* ic = _ic_add(cu, IC_LEA, comment);
+    ic->src0 = dest;
+    ic->src1 = src;
+    
+    if (tmp.type & IC_STK) {
+        _ic_mov(cu, tmp, dest, comment);
+        dest = tmp;
+    }
 }
 
 #define REX_PATTERN 0x40

@@ -1,13 +1,3 @@
-internal void
-tokenization_error(Tokenizer* t, string message) {
-    pln("%:%:%: error: %\n", f_string(t->file), f_umm(t->line_number), f_umm(t->column_number), f_string(message));
-    DEBUG_log_backtrace();
-}
-
-internal inline void
-tokenization_error(Tokenizer* t, cstring message) {
-    tokenization_error(t, string_lit(message));
-}
 
 Utf8_To_Utf32_Result
 utf8_convert_to_utf32(u8* curr, u8* end) {
@@ -27,7 +17,7 @@ utf8_convert_to_utf32(u8* curr, u8* end) {
         }
         
         c = *curr++;
-        if ((u8) (c & 0xC0) == (u8) 0x80) {
+        if ((u8) (c & 0xC0) != (u8) 0x80) {
             result.num_bytes = 0;
             break;
         }
@@ -370,6 +360,11 @@ advance_token(Tokenizer* tokenizer) {
         return token;
     }
     
+    if (tokenizer->error_count > 0) {
+        token.type = Token_Error;
+        return token;
+    }
+    
     if (is_whitespace(tokenizer->curr_utf32_character)) {
         utf8_advance_character(tokenizer);
         scan_while(tokenizer, &is_whitespace);
@@ -395,15 +390,23 @@ advance_token(Tokenizer* tokenizer) {
         utf8_advance_character(tokenizer);
         
         if (*tokenizer->curr == '/') {
-            do utf8_advance_character(tokenizer);
-            while (tokenizer->curr < tokenizer->end &&
-                   !(*tokenizer->curr == '\n' || *tokenizer->curr == '\r'));
+            do {
+                utf8_advance_character(tokenizer);
+                if (tokenizer->error_count > 0) {
+                    break;
+                }
+            } while (tokenizer->curr < tokenizer->end &&
+                     !(*tokenizer->curr == '\n' || *tokenizer->curr == '\r'));
             token.type = Token_Line_Comment;
             
         } else if (*tokenizer->curr == '*') {
             utf8_advance_character(tokenizer);
             int depth = 1;
             while (tokenizer->curr < tokenizer->end) {
+                if (tokenizer->error_count > 0) {
+                    break;
+                }
+                
                 if (*tokenizer->curr == '/' && *tokenizer->next == '*') {
                     utf8_advance_character(tokenizer);
                     depth++;

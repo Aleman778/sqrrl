@@ -6,15 +6,15 @@ struct Bc_Basic_Block;
 // OP(symbol, prec, assoc, is_comparator)
 #define DEF_OPERATORS \
 OP(None,                !,  0, Assoc_Left,  false) \
-OP(Post_Increment,     ++, 14, Assoc_Left,  false) \
-OP(Post_Decrement,     --, 14, Assoc_Left,  false) \
+OP(Post_Increment,     a++, 14, Assoc_Left,  false) \
+OP(Post_Decrement,     a--, 14, Assoc_Left,  false) \
 OP(Negate,              -, 13, Assoc_Right, false) \
 OP(Logical_Not,         !, 13, Assoc_Right, false) \
 OP(Bitwise_Not,         ~, 13, Assoc_Right, false) \
 OP(Address_Of,          &, 13, Assoc_Right, false) \
 OP(Dereference,         *, 13, Assoc_Right, false) \
-OP(Pre_Increment,      ++, 13, Assoc_Right, false) \
-OP(Pre_Decrement,      --, 13, Assoc_Right, false) \
+OP(Pre_Increment,      ++a, 13, Assoc_Right, false) \
+OP(Pre_Decrement,      --a, 13, Assoc_Right, false) \
 OP(Multiply,           *,  11, Assoc_Left,  false) \
 OP(Divide,             /,  11, Assoc_Left,  false) \
 OP(Modulo,             %,  11, Assoc_Left,  false) \

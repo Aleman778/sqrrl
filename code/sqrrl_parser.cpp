@@ -696,6 +696,7 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
             unary_expr->Unary_Expr.op = token.type == Token_Increment ? 
                 Op_Post_Increment : Op_Post_Decrement;
             unary_expr->Unary_Expr.first = lhs_expr;
+            lhs_expr = unary_expr;
             
         } else if (token.type == Token_Question) {
             Ast* ternary_expr = push_ast_node(parser);
@@ -901,6 +902,8 @@ parse_statement(Parser* parser, bool report_error) {
             }
         }
     } else if (token.type == Token_String) {
+        next_token(parser);
+        
         Ast* context = parse_string(parser);
         token = next_token(parser);
         result = parse_block_statement(parser, &token);
@@ -1527,7 +1530,7 @@ parse_type(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
                 case Kw_enum: { 
                     base = push_ast_node(parser);
                     base->kind = Ast_Enum_Type;
-                    base->Enum_Type.ident = parse_identifier(parser);
+                    base->Enum_Type.ident = parse_identifier(parser, !parser->c_compatibility_mode);
                     if (next_token_if_matched(parser, Token_Colon, false)) {
                         base->Enum_Type.elem_type = parse_type(parser);
                     }

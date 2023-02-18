@@ -8,6 +8,8 @@ IC(LABEL) \
 IC(CALL) \
 IC(NEG) \
 IC(NOT) \
+IC(INC) \
+IC(DEC) \
 IC(ADD) \
 IC(SUB) \
 IC(MUL) \
@@ -149,12 +151,15 @@ convert_type_to_raw_type(Type* type) {
 }
 
 enum {
-    IC_IMM = bit(8),
+    IC_DISP = bit(8),
     IC_REG = bit(9),
     IC_STK = bit(10),
     IC_RIP_DISP32 = bit(11),
 };
 typedef u8 Ic_Type_Flags;
+
+#define IC_STK_RIP (IC_STK | IC_RIP_DISP32)
+#define IC_DISP_STK_RIP (IC_DISP | IC_STK | IC_RIP_DISP32)
 
 #define IC_TF_MASK 0xFF00
 

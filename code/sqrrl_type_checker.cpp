@@ -2234,9 +2234,15 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         
         case Ast_Return_Stmt: {
             if (tcx->return_type) {
-                result = type_infer_expression(tcx, stmt->Return_Stmt.expr, 
-                                               tcx->return_type, report_error);
-                constant_folding_of_expressions(tcx, stmt->Return_Stmt.expr);
+                if (is_valid_ast(stmt->Return_Stmt.expr)) {
+                    result = type_infer_expression(tcx, stmt->Return_Stmt.expr, 
+                                                   tcx->return_type, report_error);
+                    constant_folding_of_expressions(tcx, stmt->Return_Stmt.expr);
+                    stmt->Return_Stmt.expr = auto_type_conversion(tcx, tcx->return_type, stmt->Return_Stmt.expr);
+                    result = stmt->Return_Stmt.expr->type;
+                } else {
+                    result = t_void;
+                }
                 stmt->type = result;
             } else {
                 if (report_error) {
@@ -2547,7 +2553,10 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                                expr->span);
                 }
                 
-            } else if (first->kind == TypeKind_Basic) {
+            } else if (first->kind == TypeKind_Basic || 
+                       first->kind == TypeKind_Enum || 
+                       op == Op_Assign) {
+                
                 if (type_check_assignment(tcx, first, second, is_ast_value(expr->Binary_Expr.second), expr->Binary_Expr.second->span, op)) {
                     if (!type_equals(first, second)) {
                         pln("%", f_ast(expr));
@@ -2908,9 +2917,8 @@ intrin_name->Function.first_default_arg_index++; \
     _push_intrinsic(intrin_abs2, abs, false, 0, &fabsf, t_f32);
     _push_intrinsic_arg(intrin_abs2, num, t_f32);
     
-    // Intrinsic syntax: f32 random_f32(f32 num)
+    // Intrinsic syntax: f32 random_f32()
     push_intrinsic(random_f32, false, 0, &random_f32, t_f32);
-    push_intrinsic_arg(random_f32, num, t_f32);
     
     // Intrinsic syntax: umm sizeof(T)
     push_intrinsic(sizeof, false, 0, &type_sizeof, t_umm);
@@ -2989,7 +2997,7 @@ type_check_ast_file(Type_Context* tcx, Ast_File* ast_file, Interp* interp) {
         type_infer_ast(tcx, interp, comp_unit, true);
     }
     
-    if (array_count(queue) == 0) {
+    if (tcx->error_count == 0) {
         // Run type checking on statements
         for_array(ast_file->units, cu, _c) {
             if (is_ast_stmt(cu->ast)) {

@@ -601,12 +601,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         case Ast_Unary_Expr: {
             if (parent_type) {
                 if (expr->Unary_Expr.op == Op_Dereference) {
-                    Type* new_parent_type = arena_push_struct(&tcx->type_arena, Type);
-                    new_parent_type->kind = TypeKind_Pointer;
-                    new_parent_type->Pointer = parent_type;
-                    new_parent_type->size = sizeof(umm);
-                    new_parent_type->align = alignof(umm);
-                    parent_type = new_parent_type;
+                    parent_type = type_wrap_pointer(tcx, parent_type);
                 }
             }
             
@@ -628,11 +623,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     } break;
                     
                     case Op_Address_Of: {
-                        result = arena_push_struct(&tcx->type_arena, Type);
-                        result->kind = TypeKind_Pointer;
-                        result->Pointer = type;
-                        result->size = sizeof(umm);
-                        result->align = alignof(umm);
+                        result = type_wrap_pointer(tcx, type);
                     } break;
                     
                     default: {
@@ -664,7 +655,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             Overloaded_Operator_List overloads =
                 map_get(tcx->overloaded_operators, expr->Binary_Expr.first->type);
             if (overloads.is_valid) {
-                
                 for_array(overloads.ops, overload, _) {
                     if (overload->op == op &&
                         type_check_assignment(tcx, overload->rhs, 
@@ -1699,16 +1689,6 @@ save_type_declaration_from_ast(Type_Context* tcx, string_id ident, Ast* ast, boo
 }
 
 Type*
-type_wrap_pointer(Type_Context* tcx, Type* type) {
-    Type* result = arena_push_struct(&tcx->type_arena, Type);
-    result->kind = TypeKind_Pointer;
-    result->Pointer = type;
-    result->size = sizeof(smm);
-    result->align = alignof(smm);
-    return result;
-}
-
-Type*
 create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
     assert(is_ast_type(ast));
     
@@ -2253,10 +2233,17 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         } break;
         
         case Ast_Return_Stmt: {
-            result = type_infer_expression(tcx, stmt->Return_Stmt.expr, 
-                                           tcx->return_type, report_error);
-            constant_folding_of_expressions(tcx, stmt->Return_Stmt.expr);
-            stmt->type = result;
+            if (tcx->return_type) {
+                result = type_infer_expression(tcx, stmt->Return_Stmt.expr, 
+                                               tcx->return_type, report_error);
+                constant_folding_of_expressions(tcx, stmt->Return_Stmt.expr);
+                stmt->type = result;
+            } else {
+                if (report_error) {
+                    type_error(tcx, string_lit("cannot use `return` outside of a function"),
+                               stmt->span);
+                }
+            }
         } break;
     }
     
@@ -2560,7 +2547,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                                expr->span);
                 }
                 
-            } else {
+            } else if (first->kind == TypeKind_Basic) {
                 if (type_check_assignment(tcx, first, second, is_ast_value(expr->Binary_Expr.second), expr->Binary_Expr.second->span, op)) {
                     if (!type_equals(first, second)) {
                         pln("%", f_ast(expr));
@@ -2570,6 +2557,11 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                 } else {
                     pln("%", f_ast(expr));
                 }
+            } else {
+                type_error(tcx, string_format("unexpected type `%` on left-hand side for operator `%`", 
+                                              f_type(first), f_cstring(operator_strings[op])), 
+                           expr->Binary_Expr.first->span);
+                result = false;
             }
         } break;
         
@@ -2692,6 +2684,8 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
         } break;
         
         case Ast_Return_Stmt: {
+            assert(tcx->return_type);
+            
             Type* found_type = stmt->type;
             if (!found_type) {
                 type_error(tcx, string_lit("compiler bug! No return type was found in return statement"), stmt->span);
@@ -2716,24 +2710,21 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
 }
 
 bool
-type_check_ast(Type_Context* tcx, Interp* interp, Compilation_Unit* comp_unit,
+type_infer_ast(Type_Context* tcx, Interp* interp, Compilation_Unit* cu,
                bool report_error) {
+    
     bool result = true;
-    Ast* ast = comp_unit->ast;
-    comp_unit->interp = interp;
+    Ast* ast = cu->ast;
+    cu->interp = interp;
     
-    
-    //if (comp_unit->ident == vars_save_cstring("abs")) {
-    //__debugbreak();
-    //}
-    
+    tcx->return_type = 0;
     if (ast->kind == Ast_Decl_Stmt) {
         Type* type = ast->Decl_Stmt.type->type;
         ast->type = type;
         
         if (type && type->kind == TypeKind_Function) {
             push_type_scope(tcx);
-            type->Function.unit = comp_unit;
+            type->Function.unit = cu;
             
             // Store the arguments in local context
             Type_Function* func = &type->Function;
@@ -2764,7 +2755,7 @@ type_check_ast(Type_Context* tcx, Interp* interp, Compilation_Unit* comp_unit,
     Temporary_Memory temp_memory = begin_temporary_memory(&tcx->type_arena);
     
     if (is_ast_type(ast)) {
-        string_id ident = comp_unit->ident;
+        string_id ident = cu->ident;
         Type* type = save_type_declaration_from_ast(tcx, ident, ast, report_error);
         if (!type) {
             result = false;
@@ -2772,21 +2763,7 @@ type_check_ast(Type_Context* tcx, Interp* interp, Compilation_Unit* comp_unit,
         
     } else if (is_ast_stmt(ast)) {
         Type* type = type_infer_statement(tcx, ast, report_error);
-        if (type) {
-            result = type_check_statement(tcx, ast);
-            
-            if (result) {
-                
-                if (ast->kind != Ast_Decl_Stmt) {
-                    //pln("interp statement:%\n", f_ast(ast));
-                    Interp_Value interp_result = interp_statement(interp, ast);
-                    comp_unit->interp_result = interp_result.value;
-                }
-            }
-        } else {
-            // NOTE(Alexander): we are missing type info somewhere fail and retry later
-            result = false;
-        }
+        result = type;
     } else {
         assert(0 && "illegal type: expected X_Stmt or any X_Type node");
     }
@@ -2794,7 +2771,6 @@ type_check_ast(Type_Context* tcx, Interp* interp, Compilation_Unit* comp_unit,
     if (!result) {
         //end_temporary_memory(&temp_memory);
     }
-    
     
     while (tcx->active_scope) {
         pop_type_scope(tcx);
@@ -2804,6 +2780,29 @@ type_check_ast(Type_Context* tcx, Interp* interp, Compilation_Unit* comp_unit,
     map_free(tcx->locals);
     
     tcx->block_depth = 0;
+    
+    return result;
+}
+
+bool
+type_check_ast(Type_Context* tcx, Compilation_Unit* cu) {
+    Ast* ast = cu->ast;
+    if (ast->kind == Ast_Decl_Stmt) {
+        Type* type = ast->Decl_Stmt.type->type;
+        if (type && type->kind == TypeKind_Function) {
+            tcx->return_type = type->Function.return_type;
+        }
+    }
+    
+    bool result = type_check_statement(tcx, ast);
+    if (result) {
+        
+        if (cu->ast->kind != Ast_Decl_Stmt) {
+            //pln("interp statement:%\n", f_ast(ast));
+            Interp_Value interp_result = interp_statement(cu->interp, ast);
+            cu->interp_result = interp_result.value;
+        }
+    }
     
     return result;
 }
@@ -2945,17 +2944,15 @@ type_check_ast_file(Type_Context* tcx, Ast_File* ast_file, Interp* interp) {
     // Push all compilation units to queue
     array(Compilation_Unit*)* queue = 0;
     
-    for_array(ast_file->units, it, _a) {
-        Ast* decl = it->ast;
-        if (decl->kind != Ast_Decl_Stmt) {
-            array_push(queue, it);
+    for_array(ast_file->units, cu, _a) {
+        if (is_ast_type(cu->ast)) {
+            array_push(queue, cu);
         }
     }
     // Push actual declarations last
-    for_array(ast_file->units, it, _b) {
-        Ast* decl = it->ast;
-        if (decl->kind == Ast_Decl_Stmt) {
-            array_push(queue, it);
+    for_array(ast_file->units, cu, _b) {
+        if (is_ast_stmt(cu->ast)) {
+            array_push(queue, cu);
         }
     }
     
@@ -2971,7 +2968,7 @@ type_check_ast_file(Type_Context* tcx, Ast_File* ast_file, Interp* interp) {
             //__debugbreak();
             //}
             
-            if (!type_check_ast(tcx, interp, comp_unit, false)) {
+            if (!type_infer_ast(tcx, interp, comp_unit, false)) {
                 // Failed, retry later
                 array_push(queue, comp_unit);
             }
@@ -2989,7 +2986,16 @@ type_check_ast_file(Type_Context* tcx, Ast_File* ast_file, Interp* interp) {
         //return tcx.error_count;
         //}
         
-        type_check_ast(tcx, interp, comp_unit, true);
+        type_infer_ast(tcx, interp, comp_unit, true);
+    }
+    
+    if (array_count(queue) == 0) {
+        // Run type checking on statements
+        for_array(ast_file->units, cu, _c) {
+            if (is_ast_stmt(cu->ast)) {
+                type_check_ast(tcx, cu);
+            }
+        }
     }
     
     return tcx->error_count;

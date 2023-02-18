@@ -30,6 +30,8 @@ struct Type_Context {
     map(string_id, Type*)* local_type_table;
     map(string_id, Type*)* global_type_table;
     
+    map(Type*, Type*)* type_to_pointer;
+    
     map(Type*, Overloaded_Operator_List)* overloaded_operators;
     map(string_id, Overloaded_Function_List)* overloaded_functions;
     
@@ -82,6 +84,23 @@ type_warning(Type_Context* tcx, string message, Span span) {
     pln("%:%:%: warning: %\n", f_string(filename), f_smm(spand.begin_line), f_smm(spand.begin_column), f_string(message));
     DEBUG_log_backtrace();
     tcx->warning_count++;
+}
+
+Type*
+type_wrap_pointer(Type_Context* tcx, Type* type) {
+    Type* result = 0;
+    
+    result = map_get(tcx->type_to_pointer, type);
+    if (!result) {
+        result = arena_push_struct(&tcx->type_arena, Type);
+        result->kind = TypeKind_Pointer;
+        result->Pointer = type;
+        result->size = sizeof(umm);
+        result->align = alignof(umm);
+        map_put(tcx->type_to_pointer, type, result);
+    }
+    
+    return result;
 }
 
 bool

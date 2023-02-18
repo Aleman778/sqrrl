@@ -8,14 +8,22 @@ _convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg de
         type->kind == TypeKind_Union || 
         (type->kind == TypeKind_Basic && type->Basic.kind == Basic_string)) {
         
-        Intermediate_Code* ic = _ic_add(cu, IC_MEMSET, comment);
-        ic->dest = dest;
-        ic->src0 = ic_imm(IC_U8, 0);
-        ic->src1 = ic_imm(0, type->size);
-        
-        if (src.type & (IC_IMM | IC_STK)) {
-            ic->opcode = IC_MEMCPY;
+        if (src.type) {
+            Intermediate_Code* ic = _ic_add(cu, IC_MEMCPY, comment);
+            ic->dest = dest;
             ic->src0 = src;
+            ic->src1 = ic_imm(0, type->size);
+            
+        } else {
+            Intermediate_Code* ic = _ic_add(cu, IC_MEMSET, comment);
+            ic->dest = dest;
+            ic->src0 = ic_imm(IC_U8, 0);
+            ic->src1 = ic_imm(0, type->size);
+            
+            if (src.type & (IC_IMM | IC_STK)) {
+                ic->opcode = IC_MEMCPY;
+                ic->src0 = src;
+            }
         }
     } else {
         if (src.type) {
@@ -1450,7 +1458,7 @@ x64_fmov(Intermediate_Code* ic,
             ic_u8(ic, (t1 & IC_T32) ? 0xF3 : 0xF2);
             ic_u8(ic, 0x0F);
             ic_u8(ic, 0x10);
-            if (t2 & IC_IMM) {
+            if (t2 & IC_RIP_DISP32) {
                 x64_rip_relative(ic, r1, d2, rip);
             } else {
                 x64_modrm(ic, t2, d2, r1, r2);

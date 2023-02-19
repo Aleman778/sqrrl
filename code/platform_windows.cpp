@@ -377,6 +377,12 @@ find_windows_kits_include_dir() {
     return result;
 }
 
+void
+DEBUG_set_current_directory(cstring path) {
+    BOOL result = SetCurrentDirectoryA(path);
+    assert(result && "failed to set current directory");
+}
+
 int 
 main(int argc, char* argv[]) {
     // Enable UTF-8 encoding

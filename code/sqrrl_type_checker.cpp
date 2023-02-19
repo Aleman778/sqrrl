@@ -729,7 +729,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     }
 #endif
                 } else {
-                    if (parent_type && !operator_is_comparator(op)) {
+                    if (parent_type && !operator_is_comparator(op) && op != Op_Logical_And && op != Op_Logical_Or) {
                         result = parent_type;
                     } else {
                         result = first_type;
@@ -2424,6 +2424,16 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
             assert(function_type->kind == TypeKind_Function);
             
             Type_Function* t_func = &function_type->Function;
+            
+#if 0
+            if (!t_func->unit && !t_func->intrinsic) {
+                type_error(tcx, 
+                           string_format("function `%` has no body", f_var(t_func->ident)),
+                           expr->span);
+            }
+#endif
+            
+            
             int formal_arg_count = (int) array_count(t_func->arg_types);
             int actual_arg_count = 0;
             {
@@ -2943,6 +2953,12 @@ intrin_name->Function.first_default_arg_index++; \
     push_intrinsic_arg(set_memory, size, t_umm);
     
     
+    /******************************************************
+    /* X64 architecture specific intrinsics
+/******************************************************/
+    
+    // Intrinsic syntax: u64 rdtsc()
+    push_intrinsic(rdtsc, false, 0, &x64_intrin_rdtsc, t_u64);
 }
 
 s32

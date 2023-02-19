@@ -1,4 +1,5 @@
 
+Ic_Opcode x64_intrin_rdtsc = IC_RDTSC;
 
 enum {
     X64_RAX,

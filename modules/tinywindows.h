@@ -1083,8 +1083,7 @@ extern {
     MMRESULT timeBeginPeriod(UINT uPeriod);
 }
 
-#define ReadTimeStampCounter() __rdtsc()
-DWORD64 __rdtsc ();
+#define ReadTimeStampCounter() rdtsc()
 
 @link("kernel32.dll")
 extern {

@@ -34,6 +34,8 @@ void DEBUG_free_file_memory(void* memory);
 
 void* DEBUG_get_external_procedure_address(cstring library, cstring procedure_name);
 
+void DEBUG_set_current_directory(cstring path);
+
 // TODO:
 // * We want to be able to handle virtual memory allocations here.
 // * Also we want to be able to make a virtual memory block executable for jitting code.

@@ -31,6 +31,7 @@ IC(MOVSX) \
 IC(MOVZX) \
 IC(MEMCPY) \
 IC(MEMSET) \
+IC(RDTSC) \
 IC(CMP) \
 IC(TEST) \
 IC(FMOV) \
@@ -158,6 +159,12 @@ enum {
 };
 typedef u8 Ic_Type_Flags;
 
+enum {
+    IC_POST_INC = bit(0),
+    IC_POST_DEC = bit(1),
+};
+typedef u8 Ic_Arg_Flags;
+
 #define IC_STK_RIP (IC_STK | IC_RIP_DISP32)
 #define IC_DISP_STK_RIP (IC_DISP | IC_STK | IC_RIP_DISP32)
 
@@ -185,6 +192,7 @@ struct Ic_Arg {
             Ic_Type_Flags type_flags;
         };
     };
+    Ic_Arg_Flags flags;
     u8 reg;
     u8 scale;
     u8 index;

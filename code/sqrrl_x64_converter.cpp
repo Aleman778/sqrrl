@@ -1,4 +1,19 @@
 
+
+Ic_Arg
+ic_inc(Compilation_Unit* cu, Ic_Arg src, Ic_Opcode opcode = IC_INC) {
+    assert(src.type & IC_STK_RIP);
+    
+    Ic_Arg tmp = ic_reg(src.raw_type, X64_RCX);
+    ic_mov(cu, tmp, src);
+    
+    Intermediate_Code* ic = ic_add(cu, opcode);
+    ic->src0 = tmp;
+    
+    ic_mov(cu, src, tmp);
+    return src;
+}
+
 #define convert_assign_to_intermediate_code(cu, type, dest, src) _convert_assign_to_intermediate_code(cu, type, dest, src, __FILE__ ":" S2(__LINE__))
 
 void
@@ -55,6 +70,23 @@ _convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg de
             _ic_mov(cu, dest, src, comment);
         }
     }
+    
+    
+    if (dest.flags & IC_POST_INC) {
+        ic_inc(cu, dest, IC_INC);
+    }
+    
+    if (dest.flags & IC_POST_DEC) {
+        ic_inc(cu, dest, IC_DEC);
+    }
+    
+    if (src.flags & IC_POST_INC) {
+        ic_inc(cu, src, IC_INC);
+    }
+    
+    if (src.flags & IC_POST_DEC) {
+        ic_inc(cu, src, IC_DEC);
+    }
 }
 
 Ic_Arg
@@ -75,7 +107,8 @@ x64_clobber_register(Compilation_Unit* cu, Intermediate_Code* curr, Type* type, 
 Ic_Arg
 convert_function_call_to_intermediate_code(Compilation_Unit* cu, 
                                            Type* function_type,
-                                           array(Ast*)* args) {
+                                           array(Ast*)* args,
+                                           Ast* call_ident) {
     
     
     Ic_Arg result = {};
@@ -85,9 +118,13 @@ convert_function_call_to_intermediate_code(Compilation_Unit* cu,
     Type_Function* proc = &function_type->Function;
     
     if (proc->intrinsic) {
+        
         if (proc->intrinsic == &interp_intrinsic_debug_break) {
             ic_add(cu, IC_DEBUG_BREAK);
             return result;
+        } else if (proc->intrinsic == &x64_intrin_rdtsc) {
+            ic_add(cu, x64_intrin_rdtsc);
+            return ic_reg(IC_U64, X64_RAX);
         }
     }
     
@@ -179,6 +216,13 @@ convert_function_call_to_intermediate_code(Compilation_Unit* cu,
         cu->stk_args = max(cu->stk_args, 4*8);
     }
     
+    if (!proc->unit && !proc->intrinsic && call_ident) {
+        Ic_Arg addr = convert_expr_to_intermediate_code(cu, call_ident);
+        if (addr.type & IC_DISP_STK_RIP) {
+            ic_mov(cu, ic_reg(addr.raw_type, X64_RAX), addr);
+        }
+    }
+    
     Intermediate_Code* ic = ic_add(cu, IC_CALL, proc->unit);
     if (proc->intrinsic) {
         ic->dest = ic_imm(IC_S64, (s64) proc->intrinsic);
@@ -197,7 +241,7 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
         array_push(args, expr->Binary_Expr.first);
         array_push(args, expr->Binary_Expr.second);
         
-        return convert_function_call_to_intermediate_code(cu, expr->Binary_Expr.overload, args);
+        return convert_function_call_to_intermediate_code(cu, expr->Binary_Expr.overload, args, 0);
     }
     
     Ic_Arg result;
@@ -205,22 +249,23 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
     Operator op = expr->Binary_Expr.op;
     
     if (op == Op_Logical_Or) {
-        Intermediate_Code* test_lhs, *test_rhs;
+        Intermediate_Code* test_lhs;
+        Intermediate_Code* test_rhs;
         Ic_Basic_Block* bb_true = ic_basic_block();
         Ic_Basic_Block* bb_exit = ic_basic_block();
         
         Ic_Arg src0 = convert_expr_to_intermediate_code(cu, expr->Binary_Expr.first);
         result = ic_reg_mov(cu, X64_RAX, src0);
-        test_lhs = ic_add(cu, IC_TEST);
+        test_lhs = ic_add(cu, IC_CMP);
         test_lhs->src0 = result;
-        test_lhs->src1 = result;
+        test_lhs->src1 = ic_imm(result.raw_type, 0);
         ic_add(cu, IC_JNE, bb_true);
         
         Ic_Arg src1 = convert_expr_to_intermediate_code(cu, expr->Binary_Expr.second);
         ic_reg_mov(cu, X64_RAX, src1);
-        test_rhs = ic_add(cu, IC_TEST);
+        test_rhs = ic_add(cu, IC_CMP);
         test_rhs->src0 = result;
-        test_rhs->src1 = result;
+        test_rhs->src1 = ic_imm(result.raw_type, 0);
         ic_add(cu, IC_JNE, bb_true);
         
         // false
@@ -242,16 +287,16 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
         
         Ic_Arg src0 = convert_expr_to_intermediate_code(cu, expr->Binary_Expr.first);
         result = ic_reg_mov(cu, X64_RAX, src0);
-        test_lhs = ic_add(cu, IC_TEST);
+        test_lhs = ic_add(cu, IC_CMP);
         test_lhs->src0 = result;
-        test_lhs->src1 = result;
+        test_lhs->src1 = ic_imm(result.raw_type, 0);
         ic_add(cu, IC_JE, bb_false);
         
         Ic_Arg src1 = convert_expr_to_intermediate_code(cu, expr->Binary_Expr.second);
         ic_reg_mov(cu, X64_RAX, src1);
-        test_rhs = ic_add(cu, IC_TEST);
+        test_rhs = ic_add(cu, IC_CMP);
         test_rhs->src0 = result;
-        test_rhs->src1 = result;
+        test_rhs->src1 = ic_imm(result.raw_type, 0);
         ic_add(cu, IC_JE, bb_false);
         
         // true
@@ -727,9 +772,9 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     Ic_Basic_Block* bb_unset = ic_basic_block();
                     Ic_Basic_Block* bb_exit = ic_basic_block();
                     
-                    Intermediate_Code* ic = ic_add(cu, IC_TEST);
+                    Intermediate_Code* ic = ic_add(cu, IC_CMP);
                     ic->src0 = src;
-                    ic->src1 = src;
+                    ic->src1 = ic_imm(src.raw_type, 0);
                     
                     ic_add(cu, IC_JNE, bb_unset);
                     ic_mov(cu, result, ic_imm(rt, 1));
@@ -768,6 +813,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 case Op_Dereference: {
                     if (src.type & IC_REG) {
                         result = ic_stk(rt, 0, IcStkArea_None, src.reg);
+                        result.flags = src.flags;
                     } else {
                         assert(src.type & IC_STK);
                         
@@ -775,19 +821,33 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                         ic->src0 = ic_reg(IC_T64, X64_RDX);
                         ic->src1 = src;
                         result = ic_stk(rt, 0, IcStkArea_None, ic->src0.reg);
+                        
+                        if (src.flags & IC_POST_INC) {
+                            ic_inc(cu, src, IC_INC);
+                        }
+                        
+                        if (src.flags & IC_POST_DEC) {
+                            ic_inc(cu, src, IC_DEC);
+                        }
                     }
                 } break;
                 
-                case Op_Post_Decrement:
+                case Op_Pre_Increment: {
+                    ic_inc(cu, src, IC_INC);
+                } break;
+                
+                case Op_Pre_Decrement: {
+                    ic_inc(cu, src, IC_DEC);
+                } break;
+                
                 case Op_Post_Increment: {
-                    assert(src.type & IC_DISP_STK_RIP);
-                    
-                    result = ic_reg(convert_type_to_raw_type(expr->type), X64_RDX);
-                    ic_mov(cu, result, src);
-                    
-                    Ic_Opcode opcode = expr->Unary_Expr.op == Op_Post_Decrement ? IC_DEC : IC_INC;
-                    Intermediate_Code* ic = ic_add(cu, opcode);
-                    ic->src0 = src;
+                    result = src;
+                    result.flags |= IC_POST_INC;
+                } break;
+                
+                case Op_Post_Decrement: {
+                    result = src;
+                    result.flags |= IC_POST_DEC;
                 } break;
                 
                 default: assert(0 && "invalid unary operator");
@@ -828,7 +888,8 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             }
             
             Type* function_type = expr->Call_Expr.function_type;
-            result = convert_function_call_to_intermediate_code(cu, function_type, args);
+            result = convert_function_call_to_intermediate_code(cu, function_type, args, 
+                                                                expr->Call_Expr.ident);
         } break;
         
         case Ast_Cast_Expr: {
@@ -929,7 +990,15 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Bloc
         } break;
         
         case Ast_Expr_Stmt: {
-            convert_expr_to_intermediate_code(cu, stmt->Expr_Stmt);
+            Ic_Arg src = convert_expr_to_intermediate_code(cu, stmt->Expr_Stmt);
+            
+            if (src.flags & IC_POST_INC) {
+                ic_inc(cu, src, IC_INC);
+            }
+            
+            if (src.flags & IC_POST_DEC) {
+                ic_inc(cu, src, IC_DEC);
+            }
         } break;
         
         case Ast_Assign_Stmt: {
@@ -1011,7 +1080,15 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Bloc
             }
             
             convert_stmt_to_intermediate_code(cu, stmt->For_Stmt.block, bb_exit, bb_enter);
-            convert_expr_to_intermediate_code(cu, stmt->For_Stmt.update);
+            Ic_Arg src = convert_expr_to_intermediate_code(cu, stmt->For_Stmt.update);
+            
+            if (src.flags & IC_POST_INC) {
+                ic_inc(cu, src, IC_INC);
+            }
+            
+            if (src.flags & IC_POST_DEC) {
+                ic_inc(cu, src, IC_DEC);
+            }
             ic_add(cu, IC_JMP, bb_enter);
             ic_add(cu, IC_LABEL, bb_exit);
         } break;
@@ -1237,7 +1314,9 @@ x64_unary(Intermediate_Code* ic, Ic_Type t, s64 r, s64 d, u8 opcode, u8 reg_fiel
         r = ic->dest.reg;
         d = ic->dest.disp;
     }
-    
+    if (t & IC_T64) {
+        x64_rex(ic, REX_FLAG_64_BIT);
+    }
     // F7 /3 	NEG r/m32 	M
     ic_u8(ic, opcode);
     x64_modrm(ic, t, d, reg_field, r, rip);
@@ -1307,7 +1386,8 @@ x64_binary(Intermediate_Code* ic,
                 // 81 /0 id 	ADD r/m32, imm32 	MI
                 ic_u8(ic, (t1 & IC_T8) ? 0x80 : 0x81);
                 //ic_u8(ic, 0xC7);
-                x64_modrm(ic, t1, d1, reg_field, r1, rip);
+                int disp_size = t1 & IC_T8 ? 1 : 4;
+                x64_modrm(ic, t1, d1, reg_field, r1, rip + disp_size);
                 if (t1 & IC_T8) {
                     ic_u8(ic, (u8) d2);
                 } else {
@@ -1508,19 +1588,19 @@ inline void
 x64_mul(Intermediate_Code* ic, s64 rip) {
     assert(ic->dest.type & IC_REG);
     
-    if (ic->src0.type & IC_DISP) {
-        Ic_Arg tmp = ic->src0;
-        ic->src0 = ic->src1;
-        ic->src1 = tmp;
-    }
-    
-    if (ic->src0.type & IC_DISP) {
+    if (ic->src0.type & IC_DISP && ic->src1.type & IC_DISP) {
         ic->src0.disp = ic->src0.disp * ic->src1.disp;
         x64_mov(ic, 
                 ic->dest.type, ic->dest.reg, ic->dest.disp, 
                 ic->src0.type, ic->src0.reg, ic->src0.disp, rip);
         
         return;
+    }
+    
+    if (ic->src0.type & IC_DISP) {
+        Ic_Arg tmp = ic->src0;
+        ic->src0 = ic->src1;
+        ic->src1 = tmp;
     }
     
     if (ic->src1.type & IC_DISP) {
@@ -1558,7 +1638,7 @@ x64_mul(Intermediate_Code* ic, s64 rip) {
         
         // 0F AF /r 	IMUL r32, r/m32
         ic_u16(ic, 0xAF0F);
-        x64_modrm(ic, t2, d2, r1, r2);
+        x64_modrm(ic, t2, d2, r1, r2, rip);
     }
 }
 
@@ -2146,7 +2226,9 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                     ic_u8(ic, 0xE8);
                     x64_jump(ic, target->bb_first, rip);
                 } else {
-                    x64_mov_rax_u64(ic, (u64) ic->dest.disp);
+                    if (ic->dest.type & IC_DISP) {
+                        x64_mov_rax_u64(ic, (u64) ic->dest.disp);
+                    }
                     
                     // FF /2 	CALL r/m64 	M 	
                     ic_u8(ic, 0xFF);
@@ -2156,6 +2238,21 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
             
             case IC_DEBUG_BREAK: {
                 ic_u8(ic, 0xCC);
+            } break;
+            
+            case IC_RDTSC: {
+                ic_u16(ic, 0x310F);
+                
+                // REX.W + C1 /4 ib  -> shl rdx, 32
+                x64_rex(ic, REX_FLAG_W);
+                ic_u8(ic, 0xC1);
+                x64_modrm(ic, IC_REG, 0, 4, X64_RDX);
+                ic_u8(ic, 32);
+                
+                // REX.W + 09 /r  -> or rax, rdx
+                x64_rex(ic, REX_FLAG_W);
+                ic_u8(ic, 0x09);
+                x64_modrm(ic, IC_REG, 0, X64_RDX, X64_RAX);
             } break;
             
             case IC_LABEL: {

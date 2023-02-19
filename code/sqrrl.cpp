@@ -348,6 +348,13 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     asm_make_executable(asm_buffer, rip);
     void* asm_buffer_main = (u8*) asm_buffer + main_cu->bb_first->addr;
     
+    
+    if (working_directory.data) {
+        cstring dir = string_to_cstring(working_directory);
+        DEBUG_set_current_directory(dir);
+        cstring_free(dir);
+    }
+    
     if (type == t_s32) {
         asm_main* func = (asm_main*) asm_buffer_main;
         int jit_exit_code = (int) func();

@@ -277,7 +277,16 @@ _ic_add(Compilation_Unit* cu, Ic_Opcode opcode = IC_NOOP, cstring comment=0, voi
 inline void
 _ic_mov(Compilation_Unit* cu, Ic_Arg dest, Ic_Arg src, cstring comment=0) {
     //assert(dest.raw_type == src.raw_type);
-    Intermediate_Code* ic = _ic_add(cu, (dest.type & IC_FLOAT) ? IC_FMOV : IC_MOV, comment);
+    Ic_Opcode opcode = (dest.type & IC_FLOAT) ? IC_FMOV : IC_MOV;
+    if (opcode == IC_MOV && dest.type & IC_REG && src.type & (IC_T8 | IC_T16)) {
+        if (src.type & IC_DISP) {
+            src.raw_type = dest.raw_type;
+        } else {
+            opcode = (dest.type & IC_SINT) ? IC_MOVSX : IC_MOVZX;
+        }
+    }
+    
+    Intermediate_Code* ic = _ic_add(cu, opcode, comment);
     ic->src0 = dest;
     ic->src1 = src;
 }
@@ -285,7 +294,7 @@ _ic_mov(Compilation_Unit* cu, Ic_Arg dest, Ic_Arg src, cstring comment=0) {
 inline Ic_Arg
 ic_reg_mov(Compilation_Unit* cu, u8 dest_reg, Ic_Arg src) {
     Ic_Arg result = ic_reg(src.raw_type, dest_reg);
-    if ((src.type & IC_REG && src.reg != dest_reg) || (src.type & (IC_STK | IC_DISP))) {
+    if ((src.type & IC_REG && src.reg != dest_reg) || (src.type & (IC_DISP_STK_RIP))) {
         ic_mov(cu, result, src);
     }
     return result;

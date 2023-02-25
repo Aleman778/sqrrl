@@ -45,6 +45,14 @@ print_format(const char* format...) {
                     printf("%c", va_arg(args, char));
                 } break;
                 
+                case FormatType_s8: {
+                    printf("%ld", (s32) va_arg(args, s8));
+                } break;
+                
+                case FormatType_s16: {
+                    printf("%ld", (s32) va_arg(args, s16));
+                } break;
+                
                 case FormatType_int: {
                     printf("%d", va_arg(args, int));
                 } break;
@@ -59,6 +67,14 @@ print_format(const char* format...) {
                 
                 case FormatType_s64: {
                     printf("%lld", va_arg(args, s64));
+                } break;
+                
+                case FormatType_u8: {
+                    printf("%c", (char) va_arg(args, u8));
+                } break;
+                
+                case FormatType_u16: {
+                    printf("%lu", (u32) va_arg(args, u16));
                 } break;
                 
                 case FormatType_u32: {

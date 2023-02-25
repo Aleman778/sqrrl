@@ -76,6 +76,7 @@ VAR(defined)  \
 VAR(elif)     \
 VAR(endif)    \
 VAR(include)  \
+VAR(assert)    \
 VAR(ifdef)    \
 VAR(ifndef)   \
 VAR(pragma)   \
@@ -117,6 +118,7 @@ VAR(count)    \
 VAR(capacity) \
 VAR(pln)      \
 VAR(format)   \
+VAR(expr)   \
 VAR(link)
 
 typedef u32 string_id;

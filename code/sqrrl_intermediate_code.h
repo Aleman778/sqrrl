@@ -156,6 +156,7 @@ enum {
     IC_REG = bit(9),
     IC_STK = bit(10),
     IC_RIP_DISP32 = bit(11),
+    IC_TF_MASK = 0xFF00,
 };
 typedef u8 Ic_Type_Flags;
 

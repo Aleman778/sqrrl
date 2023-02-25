@@ -98,9 +98,9 @@ DEBUG_log_backtrace();
 #endif
 #if BUILD_DEBUG
 void
-__assert(cstring expression, cstring file, int line) {
+__assert(cstring expression, cstring file, smm line) {
     // TODO(Alexander): improve assertion printing.
-    fprintf(stderr, "%s:%d: Assertion failed: %s\n", file, line, expression);
+    fprintf(stderr, "%s:%zd: Assertion failed: %s\n", file, line, expression);
     DEBUG_log_backtrace();
     
     // Flush the standard streams make sure we get all debug data
@@ -115,9 +115,15 @@ __assert(cstring expression, cstring file, int line) {
 #endif
 
 #if !BUILD_TEST
-extern "C" void
-intrinsic_assert(int expr) {
-    assert(expr && "assertion in external code");
+extern "C" bool
+intrinsic_assert(int test, cstring msg, cstring file, smm line) {
+    if (test == 0) {
+        pln("%:%: Assertion failed: %", f_cstring(file), f_smm(line), f_cstring(msg));
+        fflush(stdout);
+        *(int *)0 = 0;
+        return false;
+    }
+    return true;
 }
 #endif
 
@@ -160,7 +166,7 @@ safe_truncate_u64(u64 value) {
 inline s32
 safe_truncate_s64(s64 value) {
     assert(value >= S32_MIN && value <= S32_MAX && "s64 cannot fit in s32");
-    return (u32) value;
+    return (s32) value;
 }
 
 inline u32
@@ -272,8 +278,8 @@ string_lit(cstring str) {
 
 // NOTE(Alexander): allocates a new cstring that is null terminated
 inline cstring
-string_to_cstring(string str) {
-    char* result = (char*) malloc(str.count + 1);
+string_to_cstring(string str, char* dest=0) {
+    char* result = dest ? dest : (char*) malloc(str.count + 1);
     copy_memory(result, str.data, str.count);
     result[str.count] = 0;
     return (cstring) result;
@@ -438,6 +444,13 @@ string_builder_push(String_Builder* sb, string str) {
     
     copy_memory(sb->data + sb->curr_used, str.data, str.count);
     sb->curr_used += str.count;
+}
+
+inline void
+string_builder_push_char(String_Builder* sb, u8 c) {
+    string_builder_ensure_capacity(sb, 1);
+    *(sb->data + sb->curr_used) = c;
+    sb->curr_used += 1;
 }
 
 void

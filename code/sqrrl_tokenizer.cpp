@@ -144,7 +144,7 @@ scan_escape_character(Tokenizer* tokenizer, u8 quote) {
             }
         } break;
         
-        case 'n': case 'r': case 't': case '\\': case '0': {
+        case 'n': case 'r': case 't': case '\\': case '0': case '"': case '\'': {
             utf8_advance_character(tokenizer);
         } break;
         

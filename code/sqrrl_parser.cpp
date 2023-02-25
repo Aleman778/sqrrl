@@ -1775,21 +1775,35 @@ register_top_level_declaration(Parser* parser, Ast_File* ast_file,
                 map_put(ast_file->decls, ident, decl);
                 
                 // Replicate attributes and modifiers to decl/type
-                if (decl->Decl_Stmt.type && 
-                    decl->Decl_Stmt.type->kind == Ast_Function_Type) {
+                if (decl->Decl_Stmt.type) {
+                    Ast* type_ast = decl->Decl_Stmt.type;
                     
-                    Ast* proc_ast = decl->Decl_Stmt.type;
-                    proc_ast->Function_Type.mods |= mods;
-                    
-                    Ast* last_attr = proc_ast->Function_Type.attributes;
-                    if (last_attr) {
-                        while (last_attr->Compound.next) last_attr = last_attr->Compound.next;
-                        last_attr->Compound.next = attributes;
-                    } else {
-                        proc_ast->Function_Type.attributes = attributes;
+                    switch (decl->Decl_Stmt.type->kind) {
+                        case Ast_Function_Type: {
+                            type_ast->Function_Type.mods |= mods;
+                            
+                            Ast* last_attr = type_ast->Function_Type.attributes;
+                            if (last_attr) {
+                                while (last_attr->Compound.next) last_attr = last_attr->Compound.next;
+                                last_attr->Compound.next = attributes;
+                            } else {
+                                type_ast->Function_Type.attributes = attributes;
+                            }
+                        } break;
+                        
+                        case Ast_Struct_Type: {
+                            type_ast->Struct_Type.attributes = attributes;
+                        } break;
+                        
+                        case Ast_Union_Type: {
+                            type_ast->Struct_Type.attributes = attributes;
+                        } break;
+                        
+                        case Ast_Enum_Type: {
+                            type_ast->Struct_Type.attributes = attributes;
+                        } break;
                     }
                 }
-                
                 
                 Compilation_Unit comp_unit = {};
                 comp_unit.ident = ident;

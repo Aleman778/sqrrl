@@ -428,10 +428,6 @@ constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
         ast->Value = result;
     }
     
-    //if (ast->type && ast->type->kind == TypeKind_Function) {
-    //__debugbreak();
-    //}
-    
     return result;
 }
 
@@ -650,7 +646,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 break;
             }
             
-            
             // TODO(Alexander): find another way to make this matching more robust and potentially more efficient
             Overloaded_Operator_List overloads =
                 map_get(tcx->overloaded_operators, expr->Binary_Expr.first->type);
@@ -732,7 +727,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     if (parent_type && !operator_is_comparator(op) && op != Op_Logical_And && op != Op_Logical_Or) {
                         result = parent_type;
                     } else {
-                        result = first_type;
+                        result = first_type->size > second_type->size ?
+                            first_type : second_type;
                     }
                     //result = normalize_basic_types(t_smm);
                 }
@@ -745,7 +741,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 expr->Binary_Expr.first = auto_type_conversion(tcx, first_type, expr->Binary_Expr.first, op);
                 expr->Binary_Expr.second = auto_type_conversion(tcx, second_type, expr->Binary_Expr.second, op);
                 
-                if (operator_is_comparator_table[expr->Binary_Expr.op]) {
+                if (operator_is_comparator_table[expr->Binary_Expr.op] ||
+                    op == Op_Logical_And || op == Op_Logical_Or) {
                     result = t_bool;
                 }
                 expr->type = result;
@@ -1345,19 +1342,16 @@ match_struct_like_args(Type_Context* tcx, Type* formal_type, int first_field, in
 }
 
 internal inline void 
-push_type_to_struct_like(Type_Struct_Like* dest, Type* type, string_id ident) {
-    dest->offset = align_forward(dest->offset, type->align);
+push_type_to_struct_like(Type_Struct_Like* dest, Type* type, string_id ident, int pack) {
+    if (pack != 0) {
+        dest->offset = align_forward(dest->offset, pack > 0 ? pack : type->align);
+    }
     
     s32 index = (s32) array_count(dest->types);
     array_push(dest->types, type);
     array_push(dest->idents, ident);
     array_push(dest->offsets, dest->offset);
     map_put(dest->ident_to_index, ident, index);
-    
-    //string_id testid = vars_save_cstring("material");
-    //if (ident == testid) {
-    //pln("type->size = %", f_int(type->size));
-    //}
     
     dest->offset += type->size;
     dest->size = max(dest->size, dest->offset);
@@ -1371,7 +1365,8 @@ internal Type_Struct_Like
 create_type_struct_like_from_ast(Type_Context* tcx, 
                                  Ast* arguments, 
                                  bool is_union,
-                                 bool report_error) {
+                                 bool report_error,
+                                 int pack) {
     
     Type_Struct_Like result = {};
     
@@ -1395,7 +1390,7 @@ create_type_struct_like_from_ast(Type_Context* tcx,
             case Ast_Ident: {
                 string_id ident = ast_unwrap_ident(argument->Argument.ident);
                 if (type) {
-                    push_type_to_struct_like(&result, type, ident);
+                    push_type_to_struct_like(&result, type, ident, pack);
                 } else {
                     result.has_error = true;
                 }
@@ -1407,7 +1402,7 @@ create_type_struct_like_from_ast(Type_Context* tcx,
                     for_compound(argument->Argument.ident, ast_ident) {
                         assert(ast_ident->kind == Ast_Ident);
                         string_id ident = ast_ident->Ident;
-                        push_type_to_struct_like(&result, type, ident);
+                        push_type_to_struct_like(&result, type, ident, pack);
                         
                         if (is_union) {
                             result.offset = 0;
@@ -1422,19 +1417,19 @@ create_type_struct_like_from_ast(Type_Context* tcx,
                 if (type->kind == TypeKind_Struct) {
                     for_array_v(type->Struct_Like.idents, field_ident, field_index) {
                         Type* field_type = type->Struct_Like.types[field_index];
-                        push_type_to_struct_like(&result, field_type, field_ident);
+                        push_type_to_struct_like(&result, field_type, field_ident, pack);
                     }
                 } else if (type->kind == TypeKind_Union) {
                     for_array_v(type->Struct_Like.idents, field_ident, field_index) {
                         Type* field_type = type->Struct_Like.types[field_index];
-                        push_type_to_struct_like(&result, field_type, field_ident);
+                        push_type_to_struct_like(&result, field_type, field_ident, pack);
                     }
                     //pln("%", f_ast(ast_type));
                     //unimplemented;
                 } else if (type->kind == TypeKind_Function) {
                     string_id ident = type->Function.ident;
                     if (ident) {
-                        push_type_to_struct_like(&result, type, ident);
+                        push_type_to_struct_like(&result, type, ident, pack);
                     } else {
                         if (report_error) {
                             // TODO(Alexander): need to come up with a good error message?
@@ -1874,13 +1869,17 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         } break;
         
         case Ast_Struct_Type: {
-            string_id ident = try_unwrap_ident(ast->Struct_Type.ident);
-            //if (ident == vars_save_cstring("IDirectSound")) {
-            //__debugbreak();
-            //}
+            int pack = -1;
+            for_compound(ast->Function_Type.attributes, attr) {
+                string_id ident = ast_unwrap_ident(attr->Attribute.ident);
+                if (ident == Sym_pack) {
+                    pack = 0;
+                }
+            }
             
+            string_id ident = try_unwrap_ident(ast->Struct_Type.ident);
             Ast* fields = ast->Struct_Type.fields;
-            Type_Struct_Like struct_like = create_type_struct_like_from_ast(tcx, fields, false, report_error);
+            Type_Struct_Like struct_like = create_type_struct_like_from_ast(tcx, fields, false, report_error, pack);
             if (!struct_like.has_error) {
                 if (array_count(struct_like.types) > 0) {
                     
@@ -1904,7 +1903,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         
         case Ast_Union_Type: {
             Ast* fields = ast->Union_Type.fields;
-            Type_Struct_Like struct_like = create_type_struct_like_from_ast(tcx, fields, true, report_error);
+            Type_Struct_Like struct_like = create_type_struct_like_from_ast(tcx, fields, true, report_error, -1);
             if (!struct_like.has_error) {
                 result = arena_push_struct(&tcx->type_arena, Type);
                 result->kind = TypeKind_Union;
@@ -2275,9 +2274,9 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool is_rhs_value
         return true;
     }
     
-    if (rhs->kind == TypeKind_Pointer && 
-        lhs->kind == TypeKind_Basic && 
-        lhs->Basic.flags == BasicFlag_Integer) {
+    if (lhs->kind == TypeKind_Pointer && 
+        rhs->kind == TypeKind_Basic && 
+        rhs->Basic.flags & BasicFlag_Integer) {
         
         return true;
     }
@@ -2827,6 +2826,11 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* cu) {
 }
 
 void
+flush_stdout() {
+    fflush(stdout);
+}
+
+void
 DEBUG_setup_intrinsic_types(Type_Context* tcx) {
     
 #define _push_intrinsic(type, name, _is_variadic, interp_intrinsic_fp, intrinsic_fp, _return_type) \
@@ -2874,10 +2878,13 @@ intrin_name->Function.first_default_arg_index++; \
     // Inserts a breakpoint (e.g. int3 on x64) to enable debugger
     push_intrinsic(__debug_break, false, &interp_intrinsic_debug_break, &interp_intrinsic_debug_break, t_void);
     
-    // Intrinsic syntax: void assert(s32 expr)
+    // Intrinsic syntax: void __assert(int test, cstring msg cstring file, smm line)
     // Assets that expr is true, used as test case
-    push_intrinsic(assert, false, &interp_intrinsic_assert, &intrinsic_assert, t_void);
-    push_intrinsic_arg(assert, expr, t_s32);
+    push_intrinsic(__assert, false, &interp_intrinsic_assert, &intrinsic_assert, t_bool);
+    push_intrinsic_arg(__assert, test, t_int);
+    push_intrinsic_arg(__assert, msg, t_cstring);
+    push_intrinsic_arg(__assert, file, t_cstring);
+    push_intrinsic_arg(__assert, line, t_smm);
     
     // Intrinsic syntax: f32 cos(f32 num)
     push_intrinsic(cos, false, 0, &cosf, t_f32);
@@ -2952,6 +2959,8 @@ intrin_name->Function.first_default_arg_index++; \
     push_intrinsic_arg(set_memory, val, t_int);
     push_intrinsic_arg(set_memory, size, t_umm);
     
+    // Intrinsic syntax: void flush_stdout()
+    push_intrinsic(flush_stdout, false, 0, &flush_stdout, t_void);
     
     /******************************************************
     /* X64 architecture specific intrinsics

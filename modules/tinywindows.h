@@ -376,7 +376,11 @@ extern {
 //
 #define INVALID_HANDLE_VALUE (cast(HANDLE)cast(LONG_PTR)-1)
 
-BOOL WINAPI CloseHandle(HANDLE hObject);
+
+@link("kernel32.dll")
+extern {
+    BOOL WINAPI CloseHandle(HANDLE hObject);
+}
 
 /*
 * Libloader API

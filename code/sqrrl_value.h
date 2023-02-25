@@ -236,6 +236,8 @@ value_to_bool(Value value) {
         case Value_unsigned_int: return value.data.unsigned_int != 0;
         case Value_signed_int: return value.data.signed_int != 0;
         case Value_pointer: return value.data.pointer != 0;
+        case Value_string: return value.data.data != 0;
+        case Value_cstring: return value.data.cstr != 0;
         default: return false;
     }
 }
@@ -258,7 +260,7 @@ value_to_s64(Value value) {
         case Value_signed_int: return value.data.signed_int;
         case Value_floating: return (s64) value.data.floating;
         case Value_pointer: return (s64) value.data.pointer;
-        default: return (u64) value.data.unsigned_int;
+        default: return (s64) value.data.signed_int;
     }
 }
 

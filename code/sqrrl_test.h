@@ -21,7 +21,6 @@ global bool is_test_mode;
 global Test_Result* curr_test;
 global Test_Execution_Modes curr_test_exec_mode;
 
-extern "C" void intrinsic_assert(int expr);
 
 int run_compiler_tests(string filepath);
 

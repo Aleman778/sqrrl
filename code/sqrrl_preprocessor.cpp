@@ -465,9 +465,14 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
                             string_id ident);
 
 internal inline Token
-preprocess_actual_argument_next_token(Preprocessor* preprocessor, Tokenizer* t, int* paren_depth) {
+preprocess_actual_argument_next_token(Preprocessor* preprocessor, Tokenizer* t, int* paren_depth, String_Builder* sb) {
     // This will merge with below line if it reaches the end line
+    
+    u8* begin = t->curr;
     Token token = advance_semantical_token(t);
+    if (token.source.data) {
+        string_builder_push(sb, string_view(begin, token.source.data));
+    }
     if (token.type == Token_EOF) {
         preprocess_splice_next_line(preprocessor, t);
         token = advance_semantical_token(t);
@@ -486,7 +491,7 @@ preprocess_parse_actual_arguments(Preprocessor* preprocessor, Tokenizer* t, Prep
     
     int paren_depth = 1;
     String_Builder sb = {};
-    Token token = preprocess_actual_argument_next_token(preprocessor, t, &paren_depth);
+    Token token = preprocess_actual_argument_next_token(preprocessor, t, &paren_depth, &sb);
     while (is_token_valid(token) && paren_depth > 0) {
         
         sb.curr_used = 0;
@@ -507,7 +512,7 @@ preprocess_parse_actual_arguments(Preprocessor* preprocessor, Tokenizer* t, Prep
                 string_builder_push(&sb, token.source);
             }
             
-            token = preprocess_actual_argument_next_token(preprocessor, t, &paren_depth);
+            token = preprocess_actual_argument_next_token(preprocessor, t, &paren_depth, &sb);
         }
         
         
@@ -522,7 +527,7 @@ preprocess_parse_actual_arguments(Preprocessor* preprocessor, Tokenizer* t, Prep
             break;
         }
         
-        token = preprocess_actual_argument_next_token(preprocessor, t, &paren_depth);
+        token = preprocess_actual_argument_next_token(preprocessor, t, &paren_depth, &sb);
     }
     
     string_builder_free(&sb);
@@ -548,68 +553,105 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
                             Replacement_List args, 
                             string_id ident) {
     
-    if (ident == Sym_defined) {
-        
-        string_id macro_ident = Kw_invalid;
-        
-        // Parse macro identifier e.g. defined(MACRO) or defined MACRO
-        Token token = advance_semantical_token(t);
-        if (token.type == Token_Open_Paren) {
-            token = advance_semantical_token(t);
+    switch (ident) {
+        case Sym_defined: {
             
-            if (token.type == Token_Ident) {
-                macro_ident = vars_save_string(token.source);
-                
+            string_id macro_ident = Kw_invalid;
+            
+            // Parse macro identifier e.g. defined(MACRO) or defined MACRO
+            Token token = advance_semantical_token(t);
+            if (token.type == Token_Open_Paren) {
                 token = advance_semantical_token(t);
-                if (token.type != Token_Close_Paren) {
-                    preprocess_error(preprocessor, string_format("expected `)`, found `%`", f_token(token.type)));
-                    return false;
+                
+                if (token.type == Token_Ident) {
+                    macro_ident = vars_save_string(token.source);
+                    
+                    token = advance_semantical_token(t);
+                    if (token.type != Token_Close_Paren) {
+                        preprocess_error(preprocessor, string_format("expected `)`, found `%`", f_token(token.type)));
+                        return false;
+                    }
+                }
+            } else if (token.type == Token_Ident) {
+                macro_ident = vars_save_string(token.source);
+            }
+            
+            if (macro_ident != Kw_invalid) {
+                Preprocessor_Macro macro = map_get(preprocessor->macros, macro_ident);
+                string_builder_push(sb, macro.is_valid ? "1" : "0");
+                return true;
+            } else {
+                preprocess_error(preprocessor, string_lit("built in function-like macro `defined` expects an identifier as argument"));
+                return false;
+            }
+        } break;
+        
+        case Sym___VA_ARGS__: {
+            umm formal_arg_count = map_count(parent_macro.arg_mapper);
+            umm actual_arg_count = array_count(args.list);
+            
+            for (umm arg_index = formal_arg_count; 
+                 arg_index < actual_arg_count; 
+                 arg_index++) {
+                
+                string source = args.list[arg_index];
+                
+                Tokenizer tokenizer = {};
+                tokenizer_set_source(&tokenizer, source, string_lit("args"), 0);
+                preprocess_expand_macro(preprocessor, sb, &tokenizer, parent_macro, {});
+                
+                if (arg_index + 1 < actual_arg_count) {
+                    string_builder_push(sb, ",");
                 }
             }
-        } else if (token.type == Token_Ident) {
-            macro_ident = vars_save_string(token.source);
-        }
-        
-        if (macro_ident != Kw_invalid) {
-            Preprocessor_Macro macro = map_get(preprocessor->macros, macro_ident);
-            string_builder_push(sb, macro.is_valid ? "1" : "0");
+            
             return true;
-        } else {
-            preprocess_error(preprocessor, string_lit("built in function-like macro `defined` expects an identifier as argument"));
-            return false;
-        }
+        } break;
         
-    } else if (ident == Sym___VA_ARGS__) {
-        
-        umm formal_arg_count = map_count(parent_macro.arg_mapper);
-        umm actual_arg_count = array_count(args.list);
-        
-        for (umm arg_index = formal_arg_count; 
-             arg_index < actual_arg_count; 
-             arg_index++) {
-            
-            string source = args.list[arg_index];
-            
-            Tokenizer tokenizer = {};
-            tokenizer_set_source(&tokenizer, source, string_lit("args"), 0);
-            preprocess_expand_macro(preprocessor, sb, &tokenizer, parent_macro, {});
-            
-            if (arg_index + 1 < actual_arg_count) {
-                string_builder_push(sb, ",");
+        case Sym___FILE__: {
+            int num_backslash = 0;
+            for (int i = 0; i < t->file.count; i++) {
+                if (t->file.data[i] == '\\') num_backslash++;
             }
-        }
-        
-        return true;
-    } else {
-        smm arg_index = map_get_index(parent_macro.arg_mapper, ident);
-        if (arg_index != -1) {
-            // TODO(Alexander): in order to support macro expanding the inserted argument
-            // we should make this process in two phases first expand arguments then second
-            // phase expands the macros used.
-            assert(array_count(args.list) > arg_index);
-            string_builder_push(sb, args.list[arg_index]);
+            
+            // TODO(Alexander): hacky way to escape backslashes in filename
+            string filename = t->file;
+            if (num_backslash > 0) {
+                filename = string_alloc(t->file.count + num_backslash);
+                int last_copy = 0;
+                int j = 0;
+                for (int i = 0; i < t->file.count; i++) {
+                    filename.data[j++] = t->file.data[i];
+                    if (t->file.data[i] == '\\') {
+                        filename.data[j++] = '\\';
+                    }
+                }
+            }
+            
+            string_builder_push_format(sb, "\"%\"", f_string(filename));
             return true;
-        }
+        } break;
+        
+        case Sym___LINE__: {
+            string_builder_push_cformat(sb, "%zu", (umm) t->line_number + 1);
+            return true;
+        } break;
+        
+        case Sym___COUNTER__: {
+            unimplemented;
+        } break;
+        
+        default: {
+            smm arg_index = map_get_index(parent_macro.arg_mapper, ident);
+            if (arg_index != -1) {
+                // TODO(Alexander): in order to support macro expanding the inserted argument
+                // we should make this process in two phases first expand arguments then second
+                // phase expands the macros used.
+                assert(array_count(args.list) > arg_index);
+                string_builder_push(sb, args.list[arg_index]);
+                return true;
+            }
+        } break;
     }
     
     Preprocessor_Macro macro = map_get(preprocessor->macros, ident);
@@ -621,7 +663,7 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
             
             int paren_depth = 0;
             Tokenizer_State restore_t = save_tokenizer(t);
-            Token token = preprocess_actual_argument_next_token(preprocessor, t, &paren_depth);
+            Token token = preprocess_actual_argument_next_token(preprocessor, t, &paren_depth, sb);
             
             if (token.type == Token_Open_Paren) {
                 macro_args = preprocess_parse_actual_arguments(preprocessor, t, parent_macro, args);
@@ -654,7 +696,7 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
         
         // TODO(Alexander): record line/ col of this
         Tokenizer tokenizer = {};
-        tokenizer_set_source(&tokenizer, macro.source, string_lit("macro"), 0);
+        tokenizer_set_source(&tokenizer, macro.source, t->file, t->file_index, t->line_number);
         preprocess_expand_macro(preprocessor, sb, &tokenizer, macro, macro_args);
         
         string expanded_source = string_view(sb->data + first_used, sb->data + sb->curr_used);
@@ -677,6 +719,7 @@ preprocess_expand_macro(Preprocessor* preprocessor,
                         Preprocessor_Macro macro, 
                         Replacement_List args) {
     
+    bool inside_stringification = false;
     Token token = advance_token(t);
     while (is_token_valid(token)) {
         switch (token.type) {
@@ -692,12 +735,29 @@ preprocess_expand_macro(Preprocessor* preprocessor,
                         return;
                     }
                     string arg_source = args.list[arg_index];
-                    string_builder_push(sb, arg_source);
+                    if (inside_stringification) { 
+                        // NOTE(Alexander): need to escape strings
+                        for (int i = 0; i < arg_source.count; i++) {
+                            if (arg_source.data[i] == '"') {
+                                string_builder_push_char(sb, '\\');
+                            }
+                            string_builder_push_char(sb, arg_source.data[i]);
+                        }
+                    } else {
+                        string_builder_push(sb, arg_source);
+                    }
                 } else {
                     if (!preprocess_try_expand_ident(preprocessor, sb, t, macro, args, ident)) {
                         string_builder_push(sb, token.source);
                     }
                 }
+            } break;
+            
+            case Token_Directive: {
+                string_builder_push(sb, "\"");
+                token = advance_token(t);
+                inside_stringification = true;
+                continue;
             } break;
             
             case Token_Backslash: 
@@ -707,6 +767,11 @@ preprocess_expand_macro(Preprocessor* preprocessor,
             default: {
                 string_builder_push(sb, token.source);
             } break;
+        }
+        
+        if (inside_stringification) {
+            inside_stringification = false;
+            string_builder_push(sb, "\"");
         }
         
         token = advance_token(t);

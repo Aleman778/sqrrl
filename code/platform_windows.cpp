@@ -91,6 +91,57 @@ DEBUG_log_backtrace() {
     
     SymCleanup(process);
 }
+
+void
+DEBUG_add_debug_symbols(Ast_File* ast_file, u8* base_address_ptr) {
+    // Open the PDB file for writing
+    HANDLE pdb_file = CreateFile("sqrrl2.pdb", GENERIC_WRITE, FILE_SHARE_WRITE, 0, OPEN_ALWAYS, 0, 0);
+    
+    // Initialize the symbol handler
+    SymInitialize(GetCurrentProcess(), NULL, FALSE);
+    
+    // Load the module into the symbol handler
+    DWORD64 base_address = (DWORD64) base_address_ptr;
+    DWORD64 module_handle = SymLoadModuleEx(GetCurrentProcess(), pdb_file, "sqrrl.exe", NULL, base_address, megabytes(1), NULL, SLMFLAG_VIRTUAL);
+    
+    for_array(ast_file->units, cu, _5) {
+        if (cu->ast->kind != Ast_Decl_Stmt) continue;
+        
+        if (cu->bb_first && cu->ast->type->kind == TypeKind_Function) {
+            
+            Type* type = cu->ast->type;
+            Type_Function* t_func = &type->Function;
+            
+            // Define the function symbol
+            DWORD64 function_address = base_address + (DWORD64) cu->bb_first->addr;
+            string function_name = vars_load_string(t_func->ident);
+            DWORD64 symbol_address = function_address  - base_address;
+            
+            pln("Adding %", f_string(function_name));
+            
+            // Add the function symbol to the PDB file
+            IMAGEHLP_SYMBOL64 symbol = {};
+            symbol.SizeOfStruct = sizeof(symbol);
+            symbol.Address = symbol_address;
+            symbol.Size = 0;
+            symbol.Flags = 0;
+            string_to_cstring(function_name, (char*) symbol.Name);
+            BOOL result = SymAddSymbol(GetCurrentProcess(), module_handle, symbol.Name, symbol_address, 0, 0);
+            if (!result) {
+                pln("Failed with code: 0x%", f_u64_HEX(GetLastError()));
+            }
+            //assert(result && "failed to add symbol");
+        }
+    }
+    
+    SymUnloadModule64(GetCurrentProcess(), module_handle);
+    SymCleanup(GetCurrentProcess());
+    CloseHandle(pdb_file);
+}
+
+
+
+
 #else
 void 
 DEBUG_log_backtrace() {

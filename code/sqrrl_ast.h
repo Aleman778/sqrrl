@@ -132,22 +132,25 @@ Ast* elem_types;                                \
 AST(Infer_Type,        "infer", void*)          \
 AST(Function_Type,     "function", struct {     \
 Ast* ident;                                     \
+Ast* attributes;                                \
 Ast* return_type;                               \
 Ast* arguments;                                 \
-Ast* attributes;                                \
 Operator overload_operator;                    \
 Ast_Decl_Modifier mods;                         \
 })                                              \
 AST(Struct_Type,       "struct", struct {       \
 Ast* ident;                                     \
+Ast* attributes;                                \
 Ast* fields;                                    \
 })                                              \
 AST(Union_Type,        "union", struct {        \
 Ast* ident;                                     \
+Ast* attributes;                                \
 Ast* fields;                                    \
 })                                              \
 AST(Enum_Type,         "enum", struct {         \
 Ast* ident;                                     \
+Ast* attributes;                                \
 Ast* elem_type;                                 \
 Ast* fields;                                    \
 })                                              \

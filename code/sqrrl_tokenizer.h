@@ -160,7 +160,7 @@ tokenization_error(Tokenizer* t, cstring message) {
 void utf8_advance_character(Tokenizer* tokenizer);
 
 inline void
-tokenizer_set_source(Tokenizer* tokenizer, string source, string file, umm file_index) {
+tokenizer_set_source(Tokenizer* tokenizer, string source, string file, umm file_index, umm line_number=0) {
     tokenizer->start = source.data;
     tokenizer->end = tokenizer->start + source.count;
     tokenizer->end_of_file = tokenizer->end;
@@ -170,6 +170,7 @@ tokenizer_set_source(Tokenizer* tokenizer, string source, string file, umm file_
     tokenizer->curr_line = tokenizer->start;
     tokenizer->file = file;
     tokenizer->file_index = file_index;
+    tokenizer->line_number = line_number;
     utf8_advance_character(tokenizer);
     
     //pln("tokenizer_set_source(%, %)", f_string(file), f_umm(file_index));

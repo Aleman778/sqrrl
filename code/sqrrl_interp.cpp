@@ -707,7 +707,8 @@ interp_intrinsic_assert(Interp* interp, array(Interp_Value)* var_args) {
     if (expr.value.type == Value_signed_int || 
         (expr.type.kind == TypeKind_Basic &&
          is_bitflag_set(expr.type.Basic.flags, BasicFlag_Integer))) {
-        intrinsic_assert((int) expr.value.data.signed_int);
+        // TODO(Alexander): add support for file and line number here
+        intrinsic_assert((int) expr.value.data.signed_int, "user code", "interp", 0);
     } else {
         interp_error(interp, string_format("expected `int` as first argument, found `%`",
                                            f_type(&expr.type)));

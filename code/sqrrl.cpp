@@ -112,6 +112,23 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         map_put(preprocessor.macros, pln_id, pln_macro);
     }
     
+    {
+        
+        
+        // Create global pln macro
+        Preprocessor_Macro assert_macro = {};
+        assert_macro.source = string_lit("(void) ((expr) || __assert(expr, #expr \" \" __VA_ARGS__, __FILE__, __LINE__))");
+        string_id expr_id = Sym_expr;
+        map_put(assert_macro.arg_mapper, expr_id, 0);
+        assert_macro.is_functional = true;
+        assert_macro.is_variadic = true;
+        assert_macro.is_valid = true;
+        
+        string_id assert_id = Sym_assert;
+        map_put(preprocessor.macros, assert_id, assert_macro);
+    }
+    
+    
     string preprocessed_source = preprocess_file(&preprocessor, 
                                                  file.source, file.abspath, file.extension, file.index);
     
@@ -126,8 +143,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     // TODO(alexander): temp printing source
     //pln("Preprocessed source:\n%", f_string(preprocessed_source));
-    DEBUG_write_entire_file("preprocessed.sq", preprocessed_source.data,
-                            (u32) preprocessed_source.count);
+    //DEBUG_write_entire_file("preprocessed.sq", preprocessed_source.data,
+    //(u32) preprocessed_source.count);
     
 #if 0
     // Source group debugging
@@ -260,6 +277,17 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     }
                     bb_index++;
                     
+                } else if (curr->opcode == IC_CALL) {
+                    string_builder_push(&sb, "  CALL ");
+                    if (curr->data) {
+                        Compilation_Unit* call_cu = (Compilation_Unit*) curr->data;
+                        if (call_cu->ident) {
+                            string_builder_push(&sb, call_cu->ident);
+                        }
+                    }
+                    string_builder_push(&sb, "\n");
+                    bb_index++;
+                    
                 } else {
                     string_builder_push(&sb, "  ");
                     
@@ -311,12 +339,15 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         rip = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage, 0, 0, rip);
     }
     
+    global_asm_buffer = (s64) asm_buffer;
+    
     s64 rip2 = 0;
     for_array(ast_file.units, cu, _5) {
         rip2 = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage,
                                            (u8*) asm_buffer, (s64) asm_size, rip2);
     }
     assert(rip == rip2);
+    
     
 #if 0
     pln("\nX64 Machine Code (% bytes):", f_umm(rip));
@@ -347,7 +378,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     asm_make_executable(asm_buffer, rip);
     void* asm_buffer_main = (u8*) asm_buffer + main_cu->bb_first->addr;
-    
+    //DEBUG_add_debug_symbols(&ast_file, (u8*) asm_buffer);
     
     if (working_directory.data) {
         cstring dir = string_to_cstring(working_directory);

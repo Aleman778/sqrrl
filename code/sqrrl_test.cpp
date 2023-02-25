@@ -6,18 +6,23 @@ typedef void asm_test(void);
 
 // TODO(Alexander): this is just a simple assertion function to get started, improve this
 // this is intended to be called from the compiled program
-void
-intrinsic_assert(int expr) {
+extern "C" bool
+intrinsic_assert(int expr, cstring msg, cstring file, smm line) {
     if (is_test_mode && curr_test) {
         curr_test->num_tests++;
         if (expr == 0) {
             curr_test->num_failed++;
+            return false;
         } else {
             curr_test->num_passed++;
+            return true;
         }
     } else {
-        assert(expr && "assert from external code");
+        pln("%:%: Assertion failed: %", f_cstring(file), f_smm(line), f_cstring(msg));
+        fflush(stdout);
+        *(int *)0 = 0;
     }
+    return false;
 }
 
 int

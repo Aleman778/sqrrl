@@ -113,8 +113,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
     {
-        
-        
         // Create global pln macro
         Preprocessor_Macro assert_macro = {};
         assert_macro.source = string_lit("(void) ((expr) || __assert(expr, #expr \" \" __VA_ARGS__, __FILE__, __LINE__))");
@@ -269,68 +267,21 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             int bb_index = 0;
             Intermediate_Code* curr = cu->ic_first;
             while (curr) {
-                smm start_used = sb.curr_used;
-                
                 if (curr->opcode == IC_LABEL) {
-                    if (bb_index > 0) {
-                        string_builder_push_format(&sb, "\nbb%:\n", f_int(bb_index));
-                    }
-                    bb_index++;
-                    
-                } else if (curr->opcode == IC_CALL) {
-                    string_builder_push(&sb, "  CALL ");
-                    if (curr->data) {
-                        Compilation_Unit* call_cu = (Compilation_Unit*) curr->data;
-                        if (call_cu->ident) {
-                            string_builder_push(&sb, call_cu->ident);
-                        }
-                    }
                     string_builder_push(&sb, "\n");
-                    bb_index++;
-                    
-                } else {
-                    string_builder_push(&sb, "  ");
-                    
-                    if (curr->dest.type) {
-                        string_builder_push(&sb, curr->dest);
-                        string_builder_push(&sb, " = ");
-                    }
-                    
-                    string_builder_push(&sb, ic_opcode_names[curr->opcode]);
-                    
-                    if (curr->src0.type) {
-                        string_builder_push(&sb, " ");
-                        string_builder_push(&sb, curr->src0);
-                        
-                        if (curr->src1.type) {
-                            string_builder_push(&sb, ", ");
-                            string_builder_push(&sb, curr->src1);
-                            
-                        }
-                    }
-                    
-                    if (curr->comment) {
-                        smm used = sb.curr_used - start_used;
-                        for (smm i = used; i < 35; i++) {
-                            string_builder_push(&sb, " ");
-                        }
-                        string_builder_push_format(&sb, "// %", f_cstring(curr->comment));
-                    }
-                    
-                    if (curr->next) {
-                        string_builder_push(&sb, "\n");
-                    }
                 }
                 
+                string_builder_push(&sb, curr, &bb_index);
+                if (curr->next) {
+                    string_builder_push(&sb, "\n");
+                }
                 curr = curr->next;
             }
             
-            string_builder_push(&sb, "\n");
+            string s = string_builder_to_string_nocopy(&sb);
+            pln("%", f_string(s));
+            string_builder_free(&sb);
         }
-        
-        string s = string_builder_to_string_nocopy(&sb);
-        pln("%", f_string(s));
-        string_builder_free(&sb);
     }
     
     // Convert to X64 machine code

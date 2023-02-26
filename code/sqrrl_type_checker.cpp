@@ -884,7 +884,12 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             if (function_type && function_type->Function.intrinsic) {
                 void* intrinsic = function_type->Function.intrinsic;
                 
-                if (intrinsic == &print_format) {
+                if (intrinsic == &print_format && !expr->Call_Expr.added_format_types) {
+                    
+                    
+                    //pln("%", f_ast(expr));
+                    //__debugbreak();
+                    
                     s32 arg_index = 0;
                     Ast* prev_compound = 0;
                     Ast* curr_compound = actual_args;
@@ -914,6 +919,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                         prev_compound = curr_compound;
                         curr_compound = curr_compound->Compound.next;
                     }
+                    
+                    expr->Call_Expr.added_format_types = true;
                 } else if (intrinsic == &type_sizeof || intrinsic == &type_alignof) {
                     intrin_type_def* intrinsic_proc = (intrin_type_def*) intrinsic;
                     
@@ -1420,10 +1427,18 @@ create_type_struct_like_from_ast(Type_Context* tcx,
                         push_type_to_struct_like(&result, field_type, field_ident, pack);
                     }
                 } else if (type->kind == TypeKind_Union) {
+                    smm prev_offset = result.offset;
+                    smm next_offset = result.offset;
                     for_array_v(type->Struct_Like.idents, field_ident, field_index) {
                         Type* field_type = type->Struct_Like.types[field_index];
                         push_type_to_struct_like(&result, field_type, field_ident, pack);
+                        if (result.offset > next_offset) {
+                            next_offset = result.offset;
+                        }
+                        result.offset = prev_offset;
                     }
+                    
+                    result.offset = next_offset;
                     //pln("%", f_ast(ast_type));
                     //unimplemented;
                 } else if (type->kind == TypeKind_Function) {
@@ -1792,7 +1807,12 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     array_push(func->arg_idents, ident);
                     array_push(func->arg_types, type);
                     
-                    if (!is_valid_ast(ast_argument->Argument.assign)) {
+                    if (is_valid_ast(ast_argument->Argument.assign)) {
+                        Ast* default_arg = ast_argument->Argument.assign;
+                        type_infer_expression(tcx, default_arg, type, true);
+                        constant_folding_of_expressions(tcx, default_arg);
+                        array_push(func->default_args, default_arg);
+                    } else {
                         if (func->first_default_arg_index == arg_index) {
                             func->first_default_arg_index++;
                         } else {
@@ -2030,6 +2050,10 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
             if (found_type) {
                 if (expected_type) {
                     result = expected_type;
+                    if (is_valid_ast(stmt->Assign_Stmt.expr)) {
+                        stmt->Assign_Stmt.expr =
+                            auto_type_conversion(tcx, expected_type, stmt->Assign_Stmt.expr);
+                    }
                     
                     //if (stmt->Assign_Stmt.expr && 
                     //stmt->Assign_Stmt.expr->kind == Ast_Value) {

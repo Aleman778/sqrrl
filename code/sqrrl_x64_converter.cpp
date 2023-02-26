@@ -45,6 +45,36 @@ _convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg de
             }
         } else {
             if (src.type) {
+#if 0
+                if (dest.type & IC_STK && dest.reg == X64_RDX &&
+                    src.type & IC_STK && src.reg == X64_RDX &&
+                    cu->ic_last && cu->ic_last->prev) {
+                    
+                    Intermediate_Code* ic_dest = cu->ic_last->prev;
+                    Intermediate_Code* ic_src = cu->ic_last;
+                    
+                    if (ic_dest->prev) {
+                        Intermediate_Code* ic_prev = ic_dest->prev;
+                        ic_prev->next = ic_src;
+                        ic_src->prev = ic_prev;
+                    } else {
+                        cu->ic_first = ic_src;
+                    }
+                    cu->ic_last = ic_src;
+                    
+                    Ic_Arg tmp_src = ic_reg(src.raw_type, X64_RAX);
+                    _ic_mov(cu, tmp_src, src, comment);
+                    
+                    Intermediate_Code* ic_tmp_src = cu->ic_last;
+                    ic_tmp_src->next = ic_dest;
+                    ic_dest->prev = ic_tmp_src;
+                    cu->ic_last = ic_dest;
+                    
+                    _ic_mov(cu, dest, tmp_src, comment);
+                } else {
+                    _ic_mov(cu, dest, src, comment);
+                }
+#endif
                 _ic_mov(cu, dest, src, comment);
             } else {
                 if (dest.type & IC_FLOAT) {
@@ -90,18 +120,38 @@ _convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg de
 }
 
 Ic_Arg
-x64_clobber_register(Compilation_Unit* cu, Intermediate_Code* curr, Type* type, Ic_Arg prev_result) {
-    Ic_Arg clobber = ic_push_local(cu, type); // TODO(Alexander): temp allocation
+ic_clobber_register(Compilation_Unit* cu, Intermediate_Code* ic_curr, Type* prev_type,
+                    Ic_Arg prev_result, Ic_Arg new_result) {
+    if (prev_result.type & (IC_REG | IC_STK) &&
+        new_result.type & (IC_REG | IC_STK) &&
+        prev_result.reg == new_result.reg &&
+        prev_result.reg != X64_RSP && 
+        (prev_result.raw_type & IC_FLOAT) == (new_result.raw_type & IC_FLOAT)) {
+        
+        Ic_Arg clobber = ic_push_local(cu, prev_type); // TODO(Alexander): temp allocation
+        
+        Intermediate_Code* mov_clobber = ic_add_orphan(cu, (prev_result.type & IC_FLOAT) ? IC_FMOV : IC_MOV);
+        mov_clobber->src0 = clobber;
+        mov_clobber->src1 = prev_result;
+        
+        Intermediate_Code* ic_next = ic_curr->next;
+        ic_curr->next = mov_clobber;
+        
+        if (ic_next) {
+            mov_clobber->next = ic_next;
+        } else {
+            // Second argument hasn't been put in an instruction yet, then mov clobber is the last instruction
+            cu->ic_last = mov_clobber;
+            Ic_Basic_Block* bb = cu->bb_last;
+            if (bb) {
+                bb->ic_last = mov_clobber;
+            }
+        }
+        
+        return clobber;
+    }
     
-    Intermediate_Code* mov_clobber = ic_add_orphan(cu, (prev_result.type & IC_FLOAT) ? IC_FMOV : IC_MOV);
-    mov_clobber->src0 = clobber;
-    mov_clobber->src1 = prev_result;
-    
-    Intermediate_Code* tmp = curr->next;
-    curr->next = mov_clobber;
-    mov_clobber->next = tmp;
-    
-    return clobber;
+    return prev_result;
 }
 
 Ic_Arg
@@ -154,17 +204,43 @@ convert_function_call_to_intermediate_code(Compilation_Unit* cu,
     
     {
         // Setup arguments
-        for_array_v(args, arg, arg_index) {
-            Ic_Raw_Type rt = convert_type_to_raw_type(arg->type);
-            s64 disp = stk_args;
-            stk_args += 8;
-            Ic_Arg dest = ic_stk(rt, disp, IcStkArea_Args);
+        int arg_index = 0;
+        {
+            for_array_v(args, arg, _) {
+                Ic_Raw_Type rt = convert_type_to_raw_type(arg->type);
+                s64 disp = stk_args;
+                stk_args += 8;
+                Ic_Arg dest = ic_stk(rt, disp, IcStkArea_Args);
+                
+                X64_Arg_Copy copy = {};
+                copy.type = arg->type;
+                copy.expr = arg;
+                copy.dest = dest;
+                array_push(copy_args, copy);
+                
+                arg_index++;
+            }
+        }
+        
+        if (arg_index < array_count(proc->arg_types)) {
+            for_array_v(proc->default_args, arg, index) {
+                int default_arg_index = proc->first_default_arg_index + index;
+                if (default_arg_index >= arg_index) {
+                    
+                    Type* type = arg->type;
+                    Ic_Raw_Type rt = convert_type_to_raw_type(arg->type);
+                    s64 disp = stk_args;
+                    stk_args += 8;
+                    Ic_Arg dest = ic_stk(rt, disp, IcStkArea_Args);
+                    
+                    X64_Arg_Copy copy = {};
+                    copy.type = arg->type;
+                    copy.expr = arg;
+                    copy.dest = dest;
+                    array_push(copy_args, copy);
+                }
+            }
             
-            X64_Arg_Copy copy = {};
-            copy.type = arg->type;
-            copy.expr = arg;
-            copy.dest = dest;
-            array_push(copy_args, copy);
         }
     }
     
@@ -333,7 +409,7 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
         }
         
         {
-            Intermediate_Code* curr = cu->ic_last;
+            Intermediate_Code* ic_curr = cu->ic_last;
             Ast* second = expr->Binary_Expr.second;
             if (second->kind == Ast_Binary_Expr) { 
                 src1 = convert_binary_expr_to_intermediate_code(cu, second, prev_result);
@@ -341,12 +417,7 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
                 src1 = convert_expr_to_intermediate_code(cu, second);
             }
             
-            if (src0.type & (IC_REG | IC_STK) && 
-                src0.reg != X64_RSP && 
-                src0.type == src1.type && 
-                src0.reg == src1.reg) {
-                src0 = x64_clobber_register(cu, curr, second->type, src0);
-            }
+            src0 = ic_clobber_register(cu, ic_curr, second->type, src0, src1);
         }
         
         bool is_pointer_arithmetic = src0.type > 0 && (src0.type & (IC_SINT | IC_UINT | IC_FLOAT)) == 0; 
@@ -447,21 +518,25 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
         }
         
         if (is_assign) {
-            Intermediate_Code* curr = cu->ic_last;
+            Intermediate_Code* ic_curr = cu->ic_last;
             src0 = convert_expr_to_intermediate_code(cu, expr->Binary_Expr.first);
+            src1 = result;
             
 #if BUILD_DEBUG
-            if (src0.raw_type != result.raw_type) {
+            if (src0.raw_type != src1.raw_type) {
                 pln("AST:\n%", f_ast(expr));
                 assert(0);
             }
 #endif
             
+            src1 = ic_clobber_register(cu, ic_curr, expr->Binary_Expr.first->type, src1, src0);
+            
+            
             //if (src0.type & IC_DISP) {
             //pln("%", f_ast(expr));
             //}
             
-            convert_assign_to_intermediate_code(cu, expr->type, src0, result);
+            convert_assign_to_intermediate_code(cu, expr->type, src0, src1);
         }
     }
     
@@ -599,13 +674,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                         //pln("Adding non-constant field: %", f_ast(assign));
                         
                         Ic_Arg src = convert_expr_to_intermediate_code(cu, assign);
-                        if (!result_dest.type) {
-                            Ic_Arg dest = ic_reg(IC_T64, X64_RDX);
-                            ic_mov(cu, dest, result);
-                            result_dest = ic_stk(IC_T64, 0, IcStkArea_None, dest.reg);
-                        }
-                        
-                        Ic_Arg dest = result_dest;
+                        Ic_Arg dest = result;
                         dest.raw_type = src.raw_type;
                         dest.disp += info.offset;
                         ic_mov(cu, dest, src);
@@ -647,7 +716,13 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     // TODO(Alexander): this has hardcoded sizes and types for now
                     switch (ident) {
                         case Sym_data: {
-                            result.raw_type = IC_T64;
+                            if (type->Array.is_inplace) {
+                                Ic_Arg tmp = ic_reg(IC_T64, X64_RDX);
+                                ic_lea(cu, tmp, result);
+                                result = tmp;
+                            } else {
+                                result.raw_type = IC_T64;
+                            }
                         } break;
                         
                         case Sym_count: {
@@ -678,7 +753,10 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             
             Ic_Raw_Type rt = convert_type_to_raw_type(type);
             Ic_Arg arr = convert_expr_to_intermediate_code(cu, expr->Index_Expr.array);
+            Intermediate_Code* ic_curr = cu->ic_last;
+            
             Ic_Arg index = convert_expr_to_intermediate_code(cu, expr->Index_Expr.index);
+            arr = ic_clobber_register(cu, ic_curr, array_type, arr, index);
             
             if (array_type->kind == TypeKind_Pointer ||
                 (array_type->kind == TypeKind_Array &&
@@ -890,9 +968,11 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             array(Ast*)* args = 0;
             
             // Setup arguments
+            int arg_count = 0;
             for_compound(expr->Call_Expr.args, arg) {
                 assert(arg->kind == Ast_Argument);
                 array_push(args, arg->Argument.assign);
+                arg_count++;
             }
             
             Type* function_type = expr->Call_Expr.function_type;
@@ -1082,6 +1162,7 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Bloc
         case Ast_For_Stmt: {
             Ic_Basic_Block* bb_enter = ic_basic_block();
             Ic_Basic_Block* bb_exit = ic_basic_block();
+            Ic_Basic_Block* bb_update = ic_basic_block();
             
             convert_stmt_to_intermediate_code(cu, stmt->For_Stmt.init, bb_break, bb_continue);
             
@@ -1091,7 +1172,9 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Bloc
                 convert_ic_to_conditional_jump(cu, cu->ic_last, cond, bb_exit);
             }
             
-            convert_stmt_to_intermediate_code(cu, stmt->For_Stmt.block, bb_exit, bb_enter);
+            convert_stmt_to_intermediate_code(cu, stmt->For_Stmt.block, bb_exit, bb_update);
+            
+            ic_add(cu, IC_LABEL, bb_update);
             Ic_Arg src = convert_expr_to_intermediate_code(cu, stmt->For_Stmt.update);
             
             if (src.flags & IC_POST_INC) {
@@ -2150,7 +2233,7 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                     ic_u8(ic, 0x66);
                 }
                 ic_u16(ic, 0x2F0F);
-                x64_modrm(ic, t2, d2, r1, r2);
+                x64_modrm(ic, t2, d2, r1, r2, (s64) buf + rip);
             } break;
             
             case IC_SETA: {
@@ -2342,13 +2425,13 @@ string_builder_push(String_Builder* sb, Ic_Arg arg) {
         } break;
         
         case IC_STK: {
-            if (arg.disp != 0) {
+            if (arg.stk.disp != 0) {
                 string_builder_push_format(sb, "[% % %]",
                                            f_cstring(int_register_names[arg.reg]),
-                                           f_char(arg.disp > 0 ? '+' : '-'), 
-                                           f_s64(arg.disp > 0 ? arg.disp : -arg.disp));
+                                           f_char(arg.stk.disp > 0 ? '+' : '-'), 
+                                           f_s64(arg.stk.disp > 0 ? arg.stk.disp : -arg.stk.disp));
             } else {
-                string_builder_push(sb, "[RBP]");
+                string_builder_push_format(sb, "[%]", f_cstring(int_register_names[arg.reg]));
             }
         } break;
         
@@ -2356,4 +2439,64 @@ string_builder_push(String_Builder* sb, Ic_Arg arg) {
             string_builder_push_format(sb, "[0x%]", f_u64_HEX(arg.disp));
         } break;
     }
+}
+
+void
+string_builder_push(String_Builder* sb, Intermediate_Code* ic, int* bb_index=0) {
+    smm start_used = sb->curr_used;
+    
+    if (ic->opcode == IC_LABEL) {
+        if (bb_index && *bb_index > 0) {
+            string_builder_push_format(sb, "bb%:", f_int(*bb_index));
+            *bb_index += 1;
+        }
+        
+    } else if (ic->opcode == IC_CALL) {
+        string_builder_push(sb, "  CALL ");
+        if (ic->data) {
+            Compilation_Unit* call_cu = (Compilation_Unit*) ic->data;
+            if (call_cu->ident) {
+                string_builder_push(sb, call_cu->ident);
+            }
+        }
+        
+    } else {
+        string_builder_push(sb, "  ");
+        
+        if (ic->dest.type) {
+            string_builder_push(sb, ic->dest);
+            string_builder_push(sb, " = ");
+        }
+        
+        string_builder_push(sb, ic_opcode_names[ic->opcode]);
+        
+        if (ic->src0.type) {
+            string_builder_push(sb, " ");
+            string_builder_push(sb, ic->src0);
+            
+            if (ic->src1.type) {
+                string_builder_push(sb, ", ");
+                string_builder_push(sb, ic->src1);
+                
+            }
+        }
+        
+        if (ic->comment) {
+            smm used = sb->curr_used - start_used;
+            for (smm i = used; i < 35; i++) {
+                string_builder_push(sb, " ");
+            }
+            string_builder_push_format(sb, " // %", f_cstring(ic->comment));
+        }
+    }
+}
+
+void 
+print_intermediate_code(Intermediate_Code* value) {
+    String_Builder sb = {};
+    string_builder_alloc(&sb, 60);
+    string_builder_push(&sb, value);
+    string result = string_builder_to_string_nocopy(&sb);
+    pln("%", f_string(result));
+    string_builder_free(&sb);
 }

@@ -46,6 +46,7 @@ AST(Call_Expr,         "call", struct {         \
 Ast* ident;                                     \
 Ast* args;                                      \
 Type* function_type;                            \
+bool added_format_types;                        \
 })                                              \
 AST(Field_Expr,        "field", struct {        \
 Ast* var;                                       \

@@ -2,6 +2,10 @@
 // NOTE(Alexander): forward declare
 struct Ast_Node;
 
+
+struct Intermediate_Code;
+void print_intermediate_code(Intermediate_Code* value);
+
 void
 print_format(const char* format...) {
     va_list args;
@@ -129,6 +133,10 @@ print_format(const char* format...) {
                 
                 case FormatType_value: {
                     print_value(va_arg(args, Value*));
+                } break;
+                
+                case FormatType_intermediate_code: {
+                    print_intermediate_code(va_arg(args, Intermediate_Code*));
                 } break;
                 
                 default: {

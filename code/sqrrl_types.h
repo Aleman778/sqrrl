@@ -135,6 +135,7 @@ struct Type_Function {
     array(string_id)* arg_idents;
     array(Type*)* arg_types;
     Ident_Mapper* ident_to_index;
+    array(Ast*)* default_args;
     Type* return_type;
     Calling_Convention cconv;
     Compilation_Unit* unit;

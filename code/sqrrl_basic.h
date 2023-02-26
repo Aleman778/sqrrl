@@ -509,6 +509,7 @@ enum Format_Type { // TODO(Alexander): add more types
     FormatType_ast,
     FormatType_value,
     FormatType_type,
+    FormatType_intermediate_code,
 };
 
 // TODO(Alexander): add more types
@@ -530,6 +531,7 @@ enum Format_Type { // TODO(Alexander): add more types
 #define f_ast(x) FormatType_ast, (Ast*) (x)
 #define f_value(x) FormatType_value, (Value*) (x)
 #define f_type(x) FormatType_type, (Type*) (x)
+#define f_ic(x) FormatType_intermediate_code, (Intermediate_Code*) (x)
 
 void print_format(cstring format...);
 string string_format(cstring format...);

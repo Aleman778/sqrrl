@@ -147,6 +147,14 @@ convert_type_to_raw_type(Type* type) {
     
     if (type->kind == TypeKind_Basic) {
         raw_type = basic_type_to_raw_type(type->Basic.kind);
+    } else {
+        if (type->size == 4) {
+            raw_type = IC_T32;
+        } else if (type->size == 2) {
+            raw_type = IC_T16;
+        } else if (type->size == 1) {
+            raw_type = IC_T8;
+        }
     }
     return raw_type;
 }

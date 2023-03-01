@@ -305,7 +305,7 @@ ic_reg_mov(Compilation_Unit* cu, u8 dest_reg, Ic_Arg src) {
 inline void
 _ic_lea(Compilation_Unit* cu, Ic_Arg dest, Ic_Arg src, cstring comment=0, u8 tmp_reg=X64_RAX) {
     Ic_Arg tmp = {};
-    if (dest.type & IC_STK) {
+    if (dest.type & IC_STK_RIP) {
         tmp = dest;
         dest = ic_reg(dest.type & IC_RT_MASK, tmp_reg);
     }
@@ -313,7 +313,7 @@ _ic_lea(Compilation_Unit* cu, Ic_Arg dest, Ic_Arg src, cstring comment=0, u8 tmp
     ic->src0 = dest;
     ic->src1 = src;
     
-    if (tmp.type & IC_STK) {
+    if (tmp.type & IC_STK_RIP) {
         _ic_mov(cu, tmp, dest, comment);
         dest = tmp;
     }

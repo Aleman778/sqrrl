@@ -1,25 +1,11 @@
 
-
-Ic_Arg
-ic_inc(Compilation_Unit* cu, Ic_Arg src, Ic_Opcode opcode = IC_INC) {
-    assert(src.type & IC_STK_RIP);
-    
-    Ic_Arg tmp = ic_reg(src.raw_type, X64_RCX);
-    ic_mov(cu, tmp, src);
-    
-    Intermediate_Code* ic = ic_add(cu, opcode);
-    ic->src0 = tmp;
-    
-    ic_mov(cu, src, tmp);
-    return src;
-}
-
 #define convert_assign_to_intermediate_code(cu, type, dest, src, store_inplace) \
 _convert_assign_to_intermediate_code(cu, type, dest, src, store_inplace, __FILE__ ":" S2(__LINE__))
 
 void
 _convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg dest, Ic_Arg src,
                                      bool store_inplace, cstring comment=0) {
+    
     if (type->kind == TypeKind_Array || 
         type->kind == TypeKind_Struct || 
         type->kind == TypeKind_Union || 
@@ -76,85 +62,107 @@ _convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg de
             _ic_mov(cu, dest, src, comment);
         }
     }
-    
-    
-    if (dest.flags & IC_POST_INC) {
-        ic_inc(cu, dest, IC_INC);
+}
+
+internal Ic_Arg
+ic_inc(Compilation_Unit* cu, Type* type, Ic_Arg src, Ic_Opcode inc_opcode, Ic_Opcode add_opcode, bool post_increment) {
+    s64 elem_size = 1;
+    if (type->kind == TypeKind_Pointer) {
+        elem_size = type->Pointer->size;
     }
     
-    if (dest.flags & IC_POST_DEC) {
-        ic_inc(cu, dest, IC_DEC);
+    Ic_Arg result = src;
+    result = src;
+    if ((src.type & IC_REG) == 0) {
+        result = ic_reg(src.raw_type, X64_RAX);
+        ic_mov(cu, result, src);
     }
     
-    if (src.flags & IC_POST_INC) {
-        ic_inc(cu, src, IC_INC);
+    Ic_Arg post = result;
+    if (post_increment) {
+        post = ic_reg(result.raw_type, X64_RCX);
+        ic_mov(cu, post, result);
     }
     
-    if (src.flags & IC_POST_DEC) {
-        ic_inc(cu, src, IC_DEC);
+    if (elem_size == 1) {
+        Intermediate_Code* ic = ic_add(cu, inc_opcode);
+        ic->src0 = post;
+    } else {
+        Intermediate_Code* ic = ic_add(cu, add_opcode);
+        ic->dest = post;
+        ic->src0 = post;
+        ic->src1 = ic_imm(IC_S32, elem_size);
     }
+    ic_mov(cu, src, post);
+    
+    return result;
 }
 
 Ic_Arg
 ic_clobber_register(Compilation_Unit* cu, Intermediate_Code* ic_first, Type* prev_type, Ic_Arg prev_result, Ic_Arg new_result) {
     
-    if (!prev_result.type) {
-        return prev_result;
-    }
-    
-    bool clobbered = false;
-    Intermediate_Code* ic_curr = ic_first->next;
-    while (new_result.type && ic_curr) {
-        if (ic_curr->opcode == IC_CALL) {
-            clobbered = true;
-            break;
-        }
+    if (prev_result.type & (IC_REG | IC_STK) && prev_result.reg != X64_RSP) {
         
-        if (prev_result.type & (IC_REG | IC_STK) &&
-            new_result.type & (IC_REG | IC_STK) &&
-            prev_result.reg == new_result.reg &&
-            prev_result.reg != X64_RSP && 
-            (prev_result.raw_type & IC_FLOAT) == (new_result.raw_type & IC_FLOAT)) {
-            clobbered = true;
-            break;
-        }
-        
-        new_result.type = 0;
-        
-        ic_curr = ic_curr->next;
-        if (ic_curr) {
-            new_result = (ic_curr->opcode == IC_MOV ||
-                          ic_curr->opcode == IC_LEA ||
-                          ic_curr->opcode == IC_FMOV ||
-                          ic_curr->opcode == IC_MOVZX ||
-                          ic_curr->opcode == IC_MOVSX) ? ic_curr->src0 : ic_curr->dest;
-        } else {
+        bool clobbered = false;
+        Intermediate_Code* ic_curr = ic_first->next;
+        while (new_result.type && ic_curr) {
+            if (ic_curr->opcode == IC_CALL) {
+                clobbered = true;
+                break;
+            }
             
-        }
-    }
-    
-    if (clobbered) {
-        Ic_Arg clobber = ic_push_local(cu, prev_type); // TODO(Alexander): temp allocation
-        
-        Intermediate_Code* mov_clobber = ic_add_orphan(cu, (prev_result.type & IC_FLOAT) ? IC_FMOV : IC_MOV);
-        mov_clobber->src0 = clobber;
-        mov_clobber->src1 = prev_result;
-        
-        Intermediate_Code* ic_next = ic_first->next;
-        ic_first->next = mov_clobber;
-        
-        if (ic_next) {
-            mov_clobber->next = ic_next;
-        } else {
-            // Second argument hasn't been put in an instruction yet, then mov clobber is the last instruction
-            cu->ic_last = mov_clobber;
-            Ic_Basic_Block* bb = cu->bb_last;
-            if (bb) {
-                bb->ic_last = mov_clobber;
+            if (ic_curr->opcode == IC_DIV) {
+                clobbered = ((prev_result.raw_type & IC_FLOAT) == 0 && 
+                             (prev_result.reg == X64_RAX || prev_result.reg == X64_RDX));
+                if (clobbered) {
+                    break;
+                }
+            }
+            
+            if (new_result.type & (IC_REG | IC_STK) &&
+                prev_result.reg == new_result.reg &&
+                (prev_result.raw_type & IC_FLOAT) == (new_result.raw_type & IC_FLOAT)) {
+                clobbered = true;
+                break;
+            }
+            
+            new_result.type = 0;
+            
+            ic_curr = ic_curr->next;
+            if (ic_curr) {
+                new_result = (ic_curr->opcode == IC_MOV ||
+                              ic_curr->opcode == IC_LEA ||
+                              ic_curr->opcode == IC_FMOV ||
+                              ic_curr->opcode == IC_MOVZX ||
+                              ic_curr->opcode == IC_MOVSX) ? ic_curr->src0 : ic_curr->dest;
+            } else {
+                
             }
         }
         
-        return clobber;
+        if (clobbered) {
+            Ic_Arg clobber = ic_push_local(cu, prev_type); // TODO(Alexander): temp allocation
+            
+            Intermediate_Code* mov_clobber = ic_add_orphan(cu, (prev_result.type & IC_FLOAT) ? IC_FMOV : IC_MOV);
+            mov_clobber->src0 = clobber;
+            mov_clobber->src1 = prev_result;
+            
+            Intermediate_Code* ic_next = ic_first->next;
+            ic_first->next = mov_clobber;
+            
+            if (ic_next) {
+                mov_clobber->next = ic_next;
+            } else {
+                // Second argument hasn't been put in an instruction yet, then mov clobber is the last instruction
+                cu->ic_last = mov_clobber;
+                Ic_Basic_Block* bb = cu->bb_last;
+                if (bb) {
+                    bb->ic_last = mov_clobber;
+                }
+            }
+            
+            return clobber;
+        }
     }
     
     return prev_result;
@@ -431,30 +439,28 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
             src0 = ic_clobber_register(cu, ic_curr, second->type, src0, src1);
         }
         
-        bool is_pointer_arithmetic = src0.type > 0 && (src0.type & (IC_SINT | IC_UINT | IC_FLOAT)) == 0; 
-        if (is_pointer_arithmetic) {
-            if (src1.type & (IC_SINT | IC_UINT)) {
-                // pointer +/- integral
-                //pln("AST:\n%", f_ast(expr));
-                assert(op == Op_Add || op == Op_Subtract ||
-                       op == Op_Add_Assign || op == Op_Subtract_Assign);
-                
-                Type* ptr_type = expr->Binary_Expr.first->type;
-                int sizeof_elem = ptr_type->Pointer->size;
-                
-                if (sizeof_elem != 1) {
-                    Intermediate_Code* ic = ic_add(cu, IC_MUL);
-                    ic->dest = ic_reg(IC_S64);
-                    ic->src0 = src1;
-                    ic->src1 = ic_imm(IC_S64, sizeof_elem);
-                    if (is_power_of_two(sizeof_elem)) {
-                        ic->opcode = IC_SHL;
-                        ic->src1.disp = (int) sqrt(ic->src1.disp);
-                    }
-                    
-                    src1 = ic->dest;
-                    src1.raw_type = src0.raw_type;
+        Type* first_type = expr->Binary_Expr.first->type;
+        if (first_type->kind == TypeKind_Pointer && (op == Op_Add || 
+                                                     op == Op_Subtract ||
+                                                     op == Op_Add_Assign || 
+                                                     op == Op_Subtract_Assign)) {
+            
+            //pln("Pointer arithmetic AST:\n%", f_ast(expr));
+            // pointer +/- integral
+            
+            int sizeof_elem = first_type->Pointer->size;
+            if (sizeof_elem != 1) {
+                Intermediate_Code* ic = ic_add(cu, IC_MUL);
+                ic->dest = ic_reg(IC_S64);
+                ic->src0 = src1;
+                ic->src1 = ic_imm(IC_S64, sizeof_elem);
+                if (is_power_of_two(sizeof_elem)) {
+                    ic->opcode = IC_SHL;
+                    ic->src1.disp = (int) sqrt(ic->src1.disp);
                 }
+                
+                src1 = ic->dest;
+                src1.raw_type = src0.raw_type;
             }
         } 
         
@@ -505,6 +511,7 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
                 ic->dest = result;
             }
             
+            bool isUnsignedIntOrFloat = src0.type & (IC_FLOAT | IC_UINT);
             switch (op) {
                 case Op_Add: ic->opcode = isFloat ? IC_FADD : IC_ADD; break;
                 case Op_Subtract: ic->opcode = isFloat ? IC_FSUB : IC_SUB; break;
@@ -518,10 +525,10 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
                 case Op_Not_Equals: ic->opcode = IC_SETNE; break;
                 case Op_Shift_Left: ic->opcode = IC_SHL; break;
                 case Op_Shift_Right: ic->opcode = IC_SHR; break;
-                case Op_Greater_Than: ic->opcode = isFloat ? IC_SETA : IC_SETG; break;
-                case Op_Greater_Equals: ic->opcode = isFloat ? IC_SETAE : IC_SETGE; break;
-                case Op_Less_Than: ic->opcode = isFloat ? IC_SETB : IC_SETL; break;
-                case Op_Less_Equals: ic->opcode = isFloat ? IC_SETBE : IC_SETLE; break;
+                case Op_Greater_Than: ic->opcode = isUnsignedIntOrFloat ? IC_SETA : IC_SETG; break;
+                case Op_Greater_Equals: ic->opcode = isUnsignedIntOrFloat ? IC_SETAE : IC_SETGE; break;
+                case Op_Less_Than: ic->opcode = isUnsignedIntOrFloat ? IC_SETB : IC_SETL; break;
+                case Op_Less_Equals: ic->opcode = isUnsignedIntOrFloat ? IC_SETBE : IC_SETLE; break;
                 case Op_None: break;
                 
                 default: unimplemented;
@@ -547,7 +554,7 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
             //pln("%", f_ast(expr));
             //}
             
-            convert_assign_to_intermediate_code(cu, expr->type, src0, src1, false);
+            convert_assign_to_intermediate_code(cu, expr->type, src0, src1, true);
         }
     }
     
@@ -557,17 +564,18 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
 inline void
 convert_ic_to_conditional_jump(Compilation_Unit* cu, Intermediate_Code* code, Ic_Arg cond, Ic_Basic_Block* false_target) {
     if (code && ic_is_setcc(code->opcode)) {
+        // NOTE(Alexander): we always invert the jump conditions for convenience
         switch (code->opcode) {
             case IC_SETE: code->opcode = IC_JNE; break;
             case IC_SETNE: code->opcode = IC_JE; break;
-            case IC_SETG: code->opcode = IC_JNG; break;
-            case IC_SETGE: code->opcode = IC_JNGE; break;
-            case IC_SETL: code->opcode = IC_JNL; break;
-            case IC_SETLE: code->opcode = IC_JNLE; break;
-            case IC_SETA: code->opcode = IC_JNA; break;
-            case IC_SETAE: code->opcode = IC_JNAE; break;
-            case IC_SETB: code->opcode = IC_JNB; break;
-            case IC_SETBE: code->opcode = IC_JNBE; break;
+            case IC_SETG: code->opcode = IC_JLE; break;
+            case IC_SETGE: code->opcode = IC_JL; break;
+            case IC_SETL: code->opcode = IC_JGE; break;
+            case IC_SETLE: code->opcode = IC_JG; break;
+            case IC_SETA: code->opcode = IC_JBE; break;
+            case IC_SETAE: code->opcode = IC_JB; break;
+            case IC_SETB: code->opcode = IC_JAE; break;
+            case IC_SETBE: code->opcode = IC_JA; break;
             
             default: unimplemented;
         }
@@ -666,7 +674,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 
                 // Write to non-constant fields
                 Ic_Arg result_dest = {};
-                int field_index = 0;
+                int field_index = (int) expr->Aggregate_Expr.first_index;
                 for_compound(expr->Aggregate_Expr.elements, field) {
                     assert(field->kind == Ast_Argument);
                     
@@ -728,6 +736,11 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     switch (ident) {
                         case Sym_data: {
                             result.raw_type = IC_T64;
+                            if (type->Array.is_inplace) {
+                                Ic_Arg tmp = ic_reg(result.raw_type, X64_RAX);
+                                ic_lea(cu, tmp, result);
+                                result = tmp;
+                            }
                         } break;
                         
                         case Sym_count: {
@@ -868,8 +881,9 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
         case Ast_Unary_Expr: {
             Ic_Arg src = convert_expr_to_intermediate_code(cu, expr->Unary_Expr.first);
             Ic_Raw_Type rt = convert_type_to_raw_type(expr->type);
+            Operator op = expr->Unary_Expr.op;
             
-            switch (expr->Unary_Expr.op) {
+            switch (op) {
                 case Op_Negate: {
                     assert(src.type & IC_STK | IC_REG);
                     
@@ -948,39 +962,28 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 case Op_Dereference: {
                     if (src.type & IC_REG) {
                         result = ic_stk(rt, 0, IcStkArea_None, src.reg);
-                        result.flags = src.flags;
                     } else {
                         Intermediate_Code* ic = ic_add(cu, IC_MOV);
                         ic->src0 = ic_reg(IC_T64, X64_RDX);
                         ic->src1 = src;
                         result = ic_stk(rt, 0, IcStkArea_None, ic->src0.reg);
-                        
-                        if (src.flags & IC_POST_INC) {
-                            ic_inc(cu, src, IC_INC);
-                        }
-                        
-                        if (src.flags & IC_POST_DEC) {
-                            ic_inc(cu, src, IC_DEC);
-                        }
                     }
                 } break;
                 
                 case Op_Pre_Increment: {
-                    ic_inc(cu, src, IC_INC);
+                    result = ic_inc(cu, expr->type, src, IC_INC, IC_ADD, false);
                 } break;
                 
                 case Op_Pre_Decrement: {
-                    ic_inc(cu, src, IC_DEC);
+                    result = ic_inc(cu, expr->type, src, IC_DEC, IC_SUB, false);
                 } break;
                 
                 case Op_Post_Increment: {
-                    result = src;
-                    result.flags |= IC_POST_INC;
+                    result = ic_inc(cu, expr->type, src, IC_INC, IC_ADD, true);
                 } break;
                 
                 case Op_Post_Decrement: {
-                    result = src;
-                    result.flags |= IC_POST_DEC;
+                    result = ic_inc(cu, expr->type, src, IC_DEC, IC_SUB, true);
                 } break;
                 
                 default: assert(0 && "invalid unary operator");
@@ -1130,14 +1133,6 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Bloc
         
         case Ast_Expr_Stmt: {
             Ic_Arg src = convert_expr_to_intermediate_code(cu, stmt->Expr_Stmt);
-            
-            if (src.flags & IC_POST_INC) {
-                ic_inc(cu, src, IC_INC);
-            }
-            
-            if (src.flags & IC_POST_DEC) {
-                ic_inc(cu, src, IC_DEC);
-            }
         } break;
         
         case Ast_Assign_Stmt: {
@@ -1227,13 +1222,6 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Bloc
             ic_add(cu, IC_LABEL, bb_update);
             Ic_Arg src = convert_expr_to_intermediate_code(cu, stmt->For_Stmt.update);
             
-            if (src.flags & IC_POST_INC) {
-                ic_inc(cu, src, IC_INC);
-            }
-            
-            if (src.flags & IC_POST_DEC) {
-                ic_inc(cu, src, IC_DEC);
-            }
             ic_add(cu, IC_JMP, bb_enter);
             ic_add(cu, IC_LABEL, bb_exit);
         } break;
@@ -1557,8 +1545,12 @@ x64_binary(Intermediate_Code* ic,
                 x64_modrm(ic, t1, d1, r2, r1, rip);
                 
             } else if (t2 & IC_STK_RIP) {
-                x64_mov(ic, IC_REG + (t2 & IC_RT_MASK), X64_RAX, 0, t2, r2, d2, rip);
-                x64_binary(ic, t1, r1, d1, IC_REG + (t1 & IC_RT_MASK), X64_RAX, 0, reg_field, opcode, rip);
+                s64 tmpr = X64_RAX;
+                if (r2 == tmpr || r1 == tmpr) {
+                    tmpr = X64_RCX;
+                }
+                x64_mov(ic, IC_REG + (t2 & IC_RT_MASK), tmpr, 0, t2, r2, d2, rip);
+                x64_binary(ic, t1, r1, d1, IC_REG + (t1 & IC_RT_MASK), tmpr, 0, reg_field, opcode, rip);
             } else {
                 assert(0 && "invalid instruction");
             }
@@ -1867,19 +1859,55 @@ x64_float_binary(Intermediate_Code* ic, u8 opcode, s64 rip, s64 prefix_opcode=-1
     
 }
 
+// TODO(Alexander): we can simplify these conversion functions into a single function
 inline void
-x64_convert_type(Intermediate_Code* ic, u8 opcode, s64 rip) {
-    Ic_Type t1 = ic->src0.type, t2 = ic->src1.type;
+x64_convert_float_type(Intermediate_Code* ic, s64 rip) {
+    Ic_Type t1 = ic->src0.type;
+    Ic_Type t2 = ic->src1.type;
+    s64 r1 = ic->src0.reg, d1 = ic->src0.disp, r2 = ic->src1.reg, d2 = ic->src1.disp;
+    assert(t1 & IC_REG);
+    assert(t2 & (IC_REG | IC_STK | IC_RIP_DISP32));
+    
+    // F2 0F 5A /r CVTSD2SS xmm1, xmm2/m64
+    // F3 0F 5A /r CVTSS2SD xmm1, xmm2/m32
+    ic_u8(ic, t2 & IC_T64 ? 0xF2 : 0xF3);
+    ic_u16(ic, 0x5A0F);
+    x64_modrm(ic, t2, d2, r1, r2, rip);
+}
+
+inline void
+x64_convert_int_to_float_type(Intermediate_Code* ic, s64 rip) {
+    Ic_Type t1 = ic->src0.type;
+    Ic_Type t2 = ic->src1.type;
+    s64 r1 = ic->src0.reg, d1 = ic->src0.disp, r2 = ic->src1.reg, d2 = ic->src1.disp;
+    assert(t1 & IC_REG);
+    assert(t2 & (IC_REG | IC_STK | IC_RIP_DISP32));
+    
+    // F3 0F 2A /r CVTSI2SS xmm1, r/m32
+    // F2 0F 2A /r CVTSI2SD xmm1, r32/m32
+    ic_u8(ic, t1 & IC_T64 ? 0xF2 : 0xF3);
+    if (t2 & IC_T64) {
+        x64_rex(ic, REX_FLAG_64_BIT);
+    }
+    ic_u16(ic, 0x2A0F);
+    x64_modrm(ic, t2, d2, r1, r2, rip);
+}
+
+inline void
+x64_convert_float_to_int_type(Intermediate_Code* ic, s64 rip) {
+    Ic_Type t1 = ic->src0.type;
+    Ic_Type t2 = ic->src1.type;
     s64 r1 = ic->src0.reg, d1 = ic->src0.disp, r2 = ic->src1.reg, d2 = ic->src1.disp;
     assert(t1 & IC_REG);
     assert(t2 & (IC_REG | IC_STK | IC_RIP_DISP32));
     
     // F3 0F 2D /r CVTSS2SI r32, xmm1/m32
+    // F2 0F 2D /r CVTSD2SI r32, xmm1/m64
     ic_u8(ic, t2 & IC_T64 ? 0xF2 : 0xF3);
     if (t1 & IC_T64) {
         x64_rex(ic, REX_FLAG_64_BIT);
     }
-    ic_u16(ic, 0x0F|(opcode<<8));
+    ic_u16(ic, 0x2D0F);
     x64_modrm(ic, t2, d2, r1, r2, rip);
 }
 
@@ -2150,15 +2178,15 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
             } break;
             
             case IC_CAST_F2S: {
-                x64_convert_type(ic, 0x2C, (s64) buf + rip);
+                x64_convert_float_to_int_type(ic, (s64) buf + rip);
             } break;
             
             case IC_CAST_S2F: {
-                x64_convert_type(ic, 0x2A, (s64) buf + rip);
+                x64_convert_int_to_float_type(ic, (s64) buf + rip);
             } break;
             
             case IC_CAST_F2F: {
-                x64_convert_type(ic, 0x5A, (s64) buf + rip);
+                x64_convert_float_type(ic, (s64) buf + rip);
             } break;
             
             case IC_MEMCPY: {
@@ -2279,110 +2307,31 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                 x64_modrm(ic, t2, d2, r1, r2, (s64) buf + rip);
             } break;
             
-            case IC_SETA: {
-                ic_u16(ic, 0x970F);
-                ic_u8(ic, 0xC0); // RAX
-            } break;
-            
-            case IC_SETAE: {
-                ic_u16(ic, 0x930F);
-                ic_u8(ic, 0xC0); // RAX
-            } break;
-            
-            case IC_SETB: {
-                ic_u16(ic, 0x920F);
-                ic_u8(ic, 0xC0); // RAX
-            } break;
-            
-            case IC_SETBE: {
-                ic_u16(ic, 0x960F);
-                ic_u8(ic, 0xC0); // RAX
-            } break;
-            
-            case IC_SETG: {
-                ic_u16(ic, 0x9F0F);
-                ic_u8(ic, 0xC0); // RAX
-            } break;
-            
-            case IC_SETGE: {
-                ic_u16(ic, 0x9D0F);
-                ic_u8(ic, 0xC0); // RAX
-            } break;
-            
-            case IC_SETL: {
-                ic_u16(ic, 0x9C0F);
-                ic_u8(ic, 0xC0); // RAX
-            } break;
-            
-            case IC_SETLE: {
-                ic_u16(ic, 0x9E0F);
-                ic_u8(ic, 0xC0); // RAX
-            } break;
-            
-            case IC_SETE: {
-                ic_u16(ic, 0x940F);
-                ic_u8(ic, 0xC0); // RAX
-            } break;
-            
+            case IC_SETA: 
+            case IC_SETAE:
+            case IC_SETB:
+            case IC_SETBE:
+            case IC_SETE:
+            case IC_SETG:
+            case IC_SETGE:
+            case IC_SETL:
+            case IC_SETLE:
             case IC_SETNE: {
-                ic_u16(ic, 0x950F);
-                ic_u8(ic, 0xC0); // RAX
+                // setcc al
+                ic_u24(ic, x64_setcc_opcodes[ic->opcode - IC_SETA]); 
             } break;
             
-            case IC_JNA: {
-                ic_u16(ic, 0x860F);
-                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
-            } break;
-            
-            case IC_JNAE: {
-                ic_u16(ic, 0x820F);
-                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
-            } break;
-            
-            case IC_JNB: {
-                ic_u16(ic, 0x830F);
-                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
-            } break;
-            
-            case IC_JNBE: {
-                ic_u16(ic, 0x870F);
-                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
-            } break;
-            
-            //case IC_JZ:
-            case IC_JE: {
-                ic_u16(ic, 0x840F);
-                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
-            } break;
-            
-            //case IC_JNZ:
+            case IC_JA: 
+            case IC_JAE:
+            case IC_JB:
+            case IC_JBE:
+            case IC_JE:
+            case IC_JG:
+            case IC_JGE:
+            case IC_JL:
+            case IC_JLE:
             case IC_JNE: {
-                ic_u16(ic, 0x850F);
-                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
-            } break;
-            
-            //case IC_JLE:
-            case IC_JNG: {
-                ic_u16(ic, 0x8E0F);
-                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
-            } break;
-            
-            //case IC_JL:
-            case IC_JNGE: {
-                ic_u16(ic, 0x8C0F);
-                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
-            } break;
-            
-            //case IC_JGE:
-            case IC_JNL: {
-                // TODO(Alexander): short jumps
-                ic_u16(ic, 0x8D0F);
-                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
-            } break;
-            
-            case IC_JNLE: {
-                // TODO(Alexander): short jumps
-                ic_u16(ic, 0x8F0F);
+                ic_u16(ic, x64_jcc_opcodes[ic->opcode - IC_JA]);
                 x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
             } break;
             

@@ -47,22 +47,22 @@ IC(SETAE) \
 IC(SETB) \
 IC(SETBE) \
 IC(SETE) \
-IC(SETNE) \
 IC(SETG) \
 IC(SETGE) \
 IC(SETL) \
 IC(SETLE) \
+IC(SETNE) \
 IC_JMP(JMP) \
-IC_JMP(JNA) \
-IC_JMP(JNAE) \
-IC_JMP(JNB) \
-IC_JMP(JNBE) \
+IC_JMP(JA) \
+IC_JMP(JAE) \
+IC_JMP(JB) \
+IC_JMP(JBE) \
 IC_JMP(JE) \
+IC_JMP(JG) \
+IC_JMP(JGE) \
+IC_JMP(JL) \
+IC_JMP(JLE) \
 IC_JMP(JNE) \
-IC_JMP(JNG) \
-IC_JMP(JNGE) \
-IC_JMP(JNL) \
-IC_JMP(JNLE) \
 
 enum Ic_Opcode {
 #define IC(name) IC_##name,
@@ -168,12 +168,6 @@ enum {
 };
 typedef u8 Ic_Type_Flags;
 
-enum {
-    IC_POST_INC = bit(0),
-    IC_POST_DEC = bit(1),
-};
-typedef u8 Ic_Arg_Flags;
-
 #define IC_STK_RIP (IC_STK | IC_RIP_DISP32)
 #define IC_DISP_STK_RIP (IC_DISP | IC_STK | IC_RIP_DISP32)
 
@@ -201,12 +195,11 @@ struct Ic_Arg {
             Ic_Type_Flags type_flags;
         };
     };
-    Ic_Arg_Flags flags;
     u8 reg;
     u8 scale;
     u8 index;
     union {
-        s64 disp; // alt. imm
+        s64 disp;
         
         // unresolved stk disp
         struct {
@@ -241,6 +234,13 @@ ic_u16(Intermediate_Code* ic, u16 w) {
     assert(ic->count + 2 < fixed_array_count(ic->code));
     *((u16*) (ic->code + ic->count)) = w;
     ic->count += 2;
+}
+
+inline void
+ic_u24(Intermediate_Code* ic, u32 dw) {
+    assert(ic->count + 4 < fixed_array_count(ic->code));
+    *((u32*) (ic->code + ic->count)) = dw;
+    ic->count += 3;
 }
 
 inline void

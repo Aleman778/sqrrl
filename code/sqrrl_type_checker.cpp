@@ -1153,8 +1153,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             } else if (parent_type && parent_type->kind == TypeKind_Union &&
                        array_count(parent_type->Struct_Like.offsets) > 0) {
                 
-                //__debugbreak();
-                
                 int first_index = 0;
                 int last_index = 0;
                 

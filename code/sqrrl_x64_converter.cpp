@@ -104,7 +104,7 @@ ic_clobber_register(Compilation_Unit* cu, Intermediate_Code* ic_first, Type* pre
     if (prev_result.type & (IC_REG | IC_STK) && prev_result.reg != X64_RSP) {
         
         bool clobbered = false;
-        Intermediate_Code* ic_curr = ic_first->next;
+        Intermediate_Code* ic_curr = ic_first;
         while (new_result.type && ic_curr) {
             if (ic_curr->opcode == IC_CALL) {
                 clobbered = true;
@@ -135,8 +135,6 @@ ic_clobber_register(Compilation_Unit* cu, Intermediate_Code* ic_first, Type* pre
                               ic_curr->opcode == IC_FMOV ||
                               ic_curr->opcode == IC_MOVZX ||
                               ic_curr->opcode == IC_MOVSX) ? ic_curr->src0 : ic_curr->dest;
-            } else {
-                
             }
         }
         
@@ -444,10 +442,8 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
                                                      op == Op_Subtract ||
                                                      op == Op_Add_Assign || 
                                                      op == Op_Subtract_Assign)) {
-            
+            // Pointer arithmetic
             //pln("Pointer arithmetic AST:\n%", f_ast(expr));
-            // pointer +/- integral
-            
             int sizeof_elem = first_type->Pointer->size;
             if (sizeof_elem != 1) {
                 Intermediate_Code* ic = ic_add(cu, IC_MUL);
@@ -496,11 +492,24 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
         if (op == Op_None) {
             result = src1;
         } else {
+            // Make sure STK operand size is 32- or 64-bit for src0 and src1
+            if (src0.type & IC_STK && src0.type & (IC_T8 | IC_T16)) {
+                Ic_Arg tmpt = ic_reg((src0.type & ~(IC_T8 | IC_T16)) | IC_T32, X64_RCX);
+                ic_mov(cu, tmpt, src0);
+                src0 = tmpt;
+            }
+            if (src1.type & IC_STK && src1.type & (IC_T8 | IC_T16)) {
+                Ic_Arg tmpt = ic_reg((src1.type & ~(IC_T8 | IC_T16)) | IC_T32, X64_RAX);
+                ic_mov(cu, tmpt, src1);
+                src1 = tmpt;
+            }
+            
             Intermediate_Code* ic = ic_add(cu, IC_NOOP);
             ic->dest = ic_reg(src0.raw_type);
             ic->src0 = src0;
             ic->src1 = src1;
             result = ic->dest;
+            result.raw_type = convert_type_to_raw_type(expr->type);
             
             if (operator_is_comparator(op)) {
                 result.raw_type = IC_U8;
@@ -640,6 +649,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             if (map_key_exists(cu->locals, ident)) {
                 Ic_Raw_Type raw_type = convert_type_to_raw_type(type);
                 result = map_get(cu->locals, ident);
+                
             } else {
                 if (type->kind == TypeKind_Function && type->Function.unit) {
                     
@@ -1063,7 +1073,6 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                             result = ic->src0;
                             
                         }
-                        // TODO(Alexander): do we need truncation instruction?
                         
                     } else if (t_dest->Basic.flags & BasicFlag_Floating) {
                         Intermediate_Code* ic = ic_add(cu, IC_CAST_S2F);
@@ -1568,17 +1577,15 @@ x64_add(Intermediate_Code* ic,
         Ic_Type t3, s64 r3, s64 d3, 
         u8 reg_field, u8 opcode, s64 rip) {
     
+    assert(t1 & IC_REG);
+    
     s64 tmpr = -1;
-    if (t1 & IC_REG) {
-        if (!(t2 & IC_REG) && t1 != t3 && r1 != r3) {
-            x64_mov(ic, t1, r1, d1, t2, r2, d2, rip);
-        } else  {
-            x64_mov(ic, t1, X64_RCX, 0, t2, r2, d2, rip);
-            tmpr = r1;
-            r1 = X64_RCX;
-        }
-    } else {
-        unimplemented;
+    if (!(t2 & IC_REG) && t1 != t3 && r1 != r3) {
+        x64_mov(ic, t1, r1, d1, t2, r2, d2, rip);
+    } else  {
+        x64_mov(ic, t1, X64_RCX, 0, t2, r2, d2, rip);
+        tmpr = r1;
+        r1 = X64_RCX;
     }
     
     x64_binary(ic, t1, r1, d1, t3, r3, d3, reg_field, opcode, rip);
@@ -1805,7 +1812,7 @@ x64_div(Intermediate_Code* ic, bool remainder, s64 rip) {
     
     // F7 /6 	DIV r/m32 	M
     ic_u8(ic, 0xF7);
-    ic_u8(ic, (ic->src0.type & IC_UINT) ? 0xF0 : 0xF8 | (u8) X64_RCX);
+    ic_u8(ic, ((ic->src0.type & IC_UINT) ? 0xF0 : 0xF8) | (u8) X64_RCX);
     
     s64 dest_reg = remainder ? X64_RDX : X64_RAX;
     x64_mov(ic, ic->dest.type, ic->dest.reg, ic->dest.disp, IC_REG, dest_reg, 0, rip);

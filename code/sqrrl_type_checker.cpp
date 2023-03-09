@@ -723,11 +723,17 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                         }
                     }
 #endif
+                } else if (first_type->kind == TypeKind_Pointer ||
+                           second_type->kind == TypeKind_Pointer) {
+                    
+                    result = first_type->kind == TypeKind_Pointer ? first_type : second_type;
                 } else {
                     if (parent_type && !operator_is_comparator(op) && op != Op_Logical_And && op != Op_Logical_Or) {
                         result = parent_type;
                     } else {
-                        result = first_type->size > second_type->size ?
+                        s32 first_size = first_type->size;
+                        s32 second_size = second_type->size;
+                        result = first_size > second_size ?
                             first_type : second_type;
                     }
                     //result = normalize_basic_types(t_smm);
@@ -967,19 +973,21 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         } break;
         
         case Ast_Index_Expr: {
-            type_infer_expression(tcx, expr->Index_Expr.index, t_smm, report_error);
-            Type* type = type_infer_expression(tcx, expr->Index_Expr.array, parent_type, report_error);
-            if (type) {
-                if (type->kind == TypeKind_Array) {
-                    result = type->Array.type;
-                } else if (type->kind == TypeKind_Pointer) {
-                    result = type->Pointer;
-                } else {
-                    if (report_error) {
-                        type_error(tcx, string_lit("index operator expects an array"), expr->span);
+            if (type_infer_expression(tcx, expr->Index_Expr.index, t_smm, report_error)) {
+                Type* type = type_infer_expression(tcx, expr->Index_Expr.array, parent_type, report_error);
+                if (type) {
+                    
+                    if (type->kind == TypeKind_Array) {
+                        result = type->Array.type;
+                    } else if (type->kind == TypeKind_Pointer) {
+                        result = type->Pointer;
+                    } else {
+                        if (report_error) {
+                            type_error(tcx, string_lit("index operator expects an array"), expr->span);
+                        }
                     }
+                    expr->type = result;
                 }
-                expr->type = result;
             }
         } break;
         

@@ -1904,10 +1904,22 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             }
             
             string_id ident = try_unwrap_ident(ast->Struct_Type.ident);
+            //if (ident == vars_save_cstring("Collision")) {
+            //__debugbreak();
+            //}
+            
+            // TODO(Alexander): We need to look at registering all the types first and add a is_valid flag or something,
+            // because this succeeds with an invalid struct of size 0 which shouldn't be possible.
             Ast* fields = ast->Struct_Type.fields;
             Type_Struct_Like struct_like = create_type_struct_like_from_ast(tcx, fields, false, report_error, pack);
             if (!struct_like.has_error) {
                 if (array_count(struct_like.types) > 0) {
+                    
+                    //if (ident == vars_save_cstring("Entity")) {
+                    //for_array_v(struct_like.idents, ident2, index) {
+                    //pln("Entity.% + % (size = %, align = %)", f_var(ident2), f_int(struct_like.offsets[index]),f_int(struct_like.types[index]->size),f_int(struct_like.types[index]->align));
+                    //} 
+                    //}
                     
                     result = arena_push_struct(&tcx->type_arena, Type);
                     result->kind = TypeKind_Struct;

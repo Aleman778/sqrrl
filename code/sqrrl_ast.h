@@ -329,6 +329,7 @@ struct Compilation_Unit {
     s64 stk_caller_args = 0;
     array(Ic_Stk_Entry)* stk_entries;
     s64 stk_usage;
+    u8 data_reg; // TODO(Alexander): hack temporary register allocation strategy
 };
 
 struct Ast_File {

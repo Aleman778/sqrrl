@@ -55,7 +55,7 @@ _convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg de
             
         } else if (src.type) {
             if ((dest.type & IC_DISP) && (dest.type & IC_FLOAT) == 0) {
-                Ic_Arg tmp = ic_reg(IC_T64, X64_RDX);
+                Ic_Arg tmp = ic_reg(IC_T64, cu->data_reg);
                 ic_mov(cu, tmp, dest);
                 dest = ic_stk(IC_T64, 0, IcStkArea_None, tmp.reg);
             }
@@ -113,7 +113,7 @@ ic_clobber_register(Compilation_Unit* cu, Intermediate_Code* ic_first, Type* pre
             
             if (ic_curr->opcode == IC_DIV) {
                 clobbered = ((prev_result.raw_type & IC_FLOAT) == 0 && 
-                             (prev_result.reg == X64_RAX || prev_result.reg == X64_RDX));
+                             (prev_result.reg == X64_RAX || prev_result.reg == cu->data_reg));
                 if (clobbered) {
                     break;
                 }
@@ -219,6 +219,7 @@ convert_function_call_to_intermediate_code(Compilation_Unit* cu,
         int arg_index = 0;
         {
             for_array_v(args, arg, _) {
+                
                 Ic_Raw_Type rt = convert_type_to_raw_type(arg->type);
                 s64 disp = stk_args;
                 stk_args += 8;
@@ -228,8 +229,18 @@ convert_function_call_to_intermediate_code(Compilation_Unit* cu,
                 copy.type = arg->type;
                 copy.expr = arg;
                 copy.dest = dest;
-                array_push(copy_args, copy);
                 
+                if (arg->kind == Ast_Call_Expr) {
+                    // TODO(Alexander): we can also have call within binary expr etc. e.g. bar(1 + foo())
+                    // NOTE(Alexander): unroll inner function calls and evaulate them before the
+                    //                  rest of the arguments.
+                    Ic_Arg src = convert_expr_to_intermediate_code(cu, arg);
+                    Ic_Arg src_dest = ic_push_local(cu, arg->type);
+                    convert_assign_to_intermediate_code(cu, arg->type, src_dest, src, true);
+                    copy.src = src_dest;
+                }
+                
+                array_push(copy_args, copy);
                 arg_index++;
             }
         }
@@ -258,13 +269,23 @@ convert_function_call_to_intermediate_code(Compilation_Unit* cu,
     
     // Store arguments according to the windows calling convention
     for_array_reverse(copy_args, arg, arg_index) {
+        if (arg_index == 0) {
+            // TODO(Alexander): temporary hack to prevent RDX from getting overwritten
+            cu->data_reg = X64_RCX;
+        }
+        
+        
         Ic_Arg src;
-        if (arg->expr) {
-            src = convert_expr_to_intermediate_code(cu, arg->expr);
-        } else {
-            src = ic_push_local(cu, arg->type);
-            arg->dest = src;
-            result = src;
+        if (arg->src.type) {
+            src = arg->src;
+        } else{
+            if (arg->expr) {
+                src = convert_expr_to_intermediate_code(cu, arg->expr);
+            } else {
+                src = ic_push_local(cu, arg->type);
+                arg->dest = src;
+                result = src;
+            }
         }
         
         Ic_Arg dest;
@@ -303,6 +324,9 @@ convert_function_call_to_intermediate_code(Compilation_Unit* cu,
             ic->src1 = dest;
         }
     }
+    
+    // TODO(Alexander): RESET temporary hack to prevent RDX from getting overwritten
+    cu->data_reg = X64_RDX;
     
     cu->stk_args = max(cu->stk_args, stk_args);
     // NOTE(Alexander): make sure to allocate space for HOME registers
@@ -729,7 +753,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 assert(result.type & (IC_STK | IC_DISP | IC_RIP_DISP32));
                 
                 if (type->kind == TypeKind_Pointer) {
-                    Ic_Arg tmp = ic_reg(IC_T64, X64_RDX);
+                    Ic_Arg tmp = ic_reg(IC_T64, cu->data_reg);
                     ic_mov(cu, tmp, result);
                     result = ic_stk(tmp.raw_type, 0, IcStkArea_None, tmp.reg);
                     
@@ -740,6 +764,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     Struct_Field_Info info = get_field_info(&type->Struct_Like, ident);
                     result.disp += info.offset;
                     result.raw_type = convert_type_to_raw_type(expr->type);
+                    //pln("%: offset: %", f_var(ident), f_int(info.offset));
                     
                 } else if (type->kind == TypeKind_Array || type == t_string) {
                     // TODO(Alexander): this has hardcoded sizes and types for now
@@ -795,8 +820,8 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             
             Intermediate_Code* ic_curr = cu->ic_last;
             Ic_Arg arr = convert_expr_to_intermediate_code(cu, expr->Index_Expr.array);
-            if (!(arr.type & IC_REG && arr.reg == X64_RDX)) {
-                Ic_Arg tmp = ic_reg(convert_type_to_raw_type(array_type), X64_RDX);
+            if (!(arr.type & IC_REG && arr.reg == cu->data_reg)) {
+                Ic_Arg tmp = ic_reg(convert_type_to_raw_type(array_type), cu->data_reg);
                 
                 if (array_type->kind == TypeKind_Array && array_type->Array.is_inplace) {
                     ic_lea(cu, tmp, arr);
@@ -831,12 +856,12 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                  (array_type->Array.capacity == 0 || array_type->Array.is_dynamic))) {
                 
                 // Array is stored as pointer or "wide" pointer
-                Ic_Arg tmp = ic_reg(arr.raw_type, X64_RDX);
+                Ic_Arg tmp = ic_reg(arr.raw_type, cu->data_reg);
                 ic_mov(cu, tmp, arr);
                 arr = ic_stk(tmp.raw_type, 0, IcStkArea_None, tmp.reg);
             }
             // else if (array_type->kind == TypeKind_Pointer) {
-            // Ic_Arg tmp = ic_reg(arr.raw_type, X64_RDX);
+            // Ic_Arg tmp = ic_reg(arr.raw_type, cu->data_reg);
             // ic_mov(cu, tmp, arr);
             // arr = ic_stk(tmp.raw_type, 0, IcStkArea_None, tmp.reg);
             // }
@@ -974,7 +999,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                         result = ic_stk(rt, 0, IcStkArea_None, src.reg);
                     } else {
                         Intermediate_Code* ic = ic_add(cu, IC_MOV);
-                        ic->src0 = ic_reg(IC_T64, X64_RDX);
+                        ic->src0 = ic_reg(IC_T64, cu->data_reg);
                         ic->src1 = src;
                         result = ic_stk(rt, 0, IcStkArea_None, ic->src0.reg);
                     }
@@ -1324,6 +1349,8 @@ convert_procedure_to_intermediate_code(Compilation_Unit* cu, bool insert_debug_b
     if (!cu->ast->Decl_Stmt.stmt) {
         return;
     }
+    
+    cu->data_reg = X64_RDX;
     
     Type_Function* proc = &cu->ast->type->Function;
     
@@ -1831,9 +1858,9 @@ x64_float_binary(Intermediate_Code* ic, u8 opcode, s64 rip, s64 prefix_opcode=-1
     // Make sure first argument is a register
     if (t1 & IC_DISP_STK_RIP) {
         if (t2 & IC_REG && ic->dest.reg == r2) {
-            x64_fmov(ic, ic->dest.type, X64_XMM1, 0, t2, r2, d2, rip);
+            x64_fmov(ic, ic->dest.type, X64_XMM5, 0, t2, r2, d2, rip);
             t2 = ic->dest.type;
-            r2 = X64_XMM1;
+            r2 = X64_XMM5;
         }
         x64_fmov(ic, ic->dest.type, ic->dest.reg, ic->dest.disp, 
                  t1, r1, d1, rip);
@@ -2289,11 +2316,11 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                 
                 if (t1 & IC_STK) {
                     Ic_Type tmpt = IC_REG + (ic->src0.type & IC_RT_MASK);
-                    x64_fmov(ic, tmpt, X64_XMM1, 0,
+                    x64_fmov(ic, tmpt, X64_XMM5, 0,
                              ic->src0.type, ic->src0.reg, ic->src0.disp, 
                              (s64) buf + rip);
                     t1 = tmpt;
-                    r1 = X64_XMM1;
+                    r1 = X64_XMM5;
                 }
                 
                 if (t2 & (IC_STK | IC_DISP)) {

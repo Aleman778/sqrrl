@@ -65,6 +65,7 @@ struct X64_Arg_Copy {
         string_id ident;
     };
     Ic_Arg dest;
+    Ic_Arg src;
 };
 
 inline Ic_Arg

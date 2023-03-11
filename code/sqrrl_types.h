@@ -231,6 +231,8 @@ convert_type_to_format_type(Type* type) {
         
     } else if (type->kind == TypeKind_Pointer) {
         return FormatType_u64_HEX;
+    } else if (type->kind == TypeKind_Enum) {
+        return convert_type_to_format_type(type->Enum.type);
     } else {
         unimplemented;
     }

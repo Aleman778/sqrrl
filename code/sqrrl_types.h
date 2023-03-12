@@ -345,6 +345,122 @@ type_alignof(Type* type) {
     return type->align;
 }
 
+//
+// Type introspection
+//
+
+enum TI_Basic_Type_Info {
+    TI_Bool,
+    TI_S8,
+    TI_S16,
+    TI_S32,
+    TI_S64,
+    TI_U8,
+    TI_U16,
+    TI_U32,
+    TI_U64,
+    TI_F32,
+    TI_F64,
+    TI_String,
+    TI_CString
+};
+
+struct Type_Info;
+
+struct TI_Struct_Field_Info {
+    Type_Info* type;
+    string ident;
+    s64 offset;
+};
+
+struct TI_Struct_Type_Info {
+    string ident;
+    TI_Struct_Field_Info* fields;
+    smm count;
+};
+
+struct TI_Array_Type_Info {
+    Type_Info* elem_type;
+    smm elem_size;
+    smm fixed_count; // -1 => if value stores the count
+};
+
+struct Type_Info {
+    Type_Kind kind;
+    
+    union {
+        TI_Basic_Type_Info Basic;
+        TI_Struct_Type_Info Struct;
+        TI_Array_Type_Info Array;
+    };
+};
+
+struct Type_Info_Packer {
+    Memory_Arena arena;
+    map(Type*, Type_Info*)* mapper;
+};
+
+Type_Info*
+type_info(Type_Info_Packer* packer, Type* type) {
+    
+    Type_Info* result = map_get(packer->mapper, type);
+    if (!result) {
+        result = arena_push_struct(&packer->arena, Type_Info);
+        result->kind = type->kind;
+        map_put(packer->mapper, type, result);
+        
+        // Serialize structure into memory
+        switch (type->kind) {
+            case TypeKind_Basic: {
+                switch (type->Basic.kind) {
+                    case Basic_bool: result->Basic = TI_Bool; break;
+                    case Basic_s8: result->Basic = TI_S8; break;
+                    case Basic_s16: result->Basic = TI_S8; break;
+                    case Basic_s32: result->Basic = TI_S8; break;
+                    case Basic_s64: result->Basic = TI_S8; break;
+                    case Basic_u8: result->Basic = TI_U8; break;
+                    case Basic_u16: result->Basic = TI_U16; break;
+                    case Basic_u32: result->Basic = TI_U32; break;
+                    case Basic_u64: result->Basic = TI_U64; break;
+                    case Basic_f32: result->Basic = TI_F32; break;
+                    case Basic_f64: result->Basic = TI_F64; break;
+                    case Basic_string: result->Basic = TI_String; break;
+                    case Basic_cstring: result->Basic = TI_CString; break;
+                    default: unimplemented; // TODO(Alexander): maybe should be an error?
+                }
+            } break;
+            
+            case TypeKind_Union:
+            case TypeKind_Struct: {
+                smm count = (smm) array_count(type->Struct_Like.types);
+                result->Struct.ident = vars_load_string(type->ident);
+                result->Struct.fields =
+                    arena_push_array_of_structs(&packer->arena, count, TI_Struct_Field_Info);
+                result->Struct.count = count;
+                
+                for_array_v(type->Struct_Like.types, field_type, field_index) {
+                    TI_Struct_Field_Info* field = result->Struct.fields + field_index;
+                    field->type = type_info(packer, field_type);
+                    field->ident = vars_load_string(type->Struct_Like.idents[field_index]);
+                    field->offset = type->Struct_Like.offsets[field_index];
+                }
+            } break;
+            
+            case TypeKind_Array: {
+                result->Array.elem_type = type_info(packer, type->Array.type);
+                result->Array.elem_size = type->Array.type->size;
+                result->Array.fixed_count = type->Array.is_inplace ? type->Array.capacity : 0;
+            } break;
+            
+            default: {
+                unimplemented;
+            } break;
+        }
+    }
+    
+    return result;
+}
+
 inline Type*
 type_deref(Type* type) {
     assert(type && type->kind == TypeKind_Pointer);

@@ -62,6 +62,10 @@ test_type_rules() {
 
 Type*
 normalize_basic_types(Type* type) {
+    if (!type) {
+        return type;
+    }
+    
     if (type->kind != TypeKind_Basic) {
         if (type->kind == TypeKind_Pointer) {
             type->Pointer = normalize_basic_types(type->Pointer);
@@ -849,10 +853,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             }
             
             
-            if (function_type->Function.ident == Sym___debugbreak) {
-                __debugbreak();
-            }
-            
             if (function_type->kind == TypeKind_Pointer) {
                 function_type = function_type->Pointer;
             }
@@ -866,13 +866,20 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 return 0;
             }
             
+            Type_Function* t_func = &function_type->Function;
+            
+            if (t_func->ident == Sym___debugbreak) {
+                __debugbreak();
+            }
+            
+            
             {
                 smm arg_index = 0;
-                smm formal_arg_count = array_count(function_type->Function.arg_types);
+                smm formal_arg_count = array_count(t_func->arg_types);
                 for_compound(expr->Call_Expr.args, arg) {
                     //pln("% < % = %", f_smm(arg_index), f_smm(formal_arg_count), f_bool(arg_index < formal_arg_count));
                     if (arg_index < formal_arg_count && is_valid_ast(arg->Argument.assign)) {
-                        Type* formal_type = function_type->Function.arg_types[arg_index];
+                        Type* formal_type = t_func->arg_types[arg_index];
                         arg->Argument.assign = auto_type_conversion(tcx, formal_type, arg->Argument.assign);
                         arg->type = arg->Argument.assign->type;
                         arg_index++;
@@ -882,13 +889,13 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             
             
             expr->Call_Expr.function_type = function_type;
-            result = normalize_basic_types(function_type->Function.return_type);
-            function_type->Function.return_type = result;
+            result = normalize_basic_types(t_func->return_type);
+            t_func->return_type = result;
             expr->type = result;
             
             // HACK(Alexander): for now print_format pushes the format type first then the value 
-            if (function_type && function_type->Function.intrinsic) {
-                void* intrinsic = function_type->Function.intrinsic;
+            if (function_type && t_func->intrinsic) {
+                void* intrinsic = t_func->intrinsic;
                 
                 if (intrinsic == &print_format && !expr->Call_Expr.added_format_types) {
                     
@@ -946,6 +953,27 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                             //pln("% (size = %)", f_ast(actual_arg), f_umm(intrinsic_proc(actual_arg->type)));
                             expr->Value =
                                 create_unsigned_int_value(intrinsic_proc(actual_arg->type));
+                        }
+                    }
+                    
+                } else if (intrinsic == &type_info) {
+                    if (t_func->return_type) {
+                        Ast* type_arg = expr->Call_Expr.args;
+                        if (type_arg->kind == Ast_Compound) {
+                            type_arg = type_arg->Compound.node;
+                        }
+                        
+                        Type_Info* info = type_info(&tcx->type_info_packer, type_arg->type);
+                        expr->kind = Ast_Value;
+                        expr->Value = {};
+                        expr->Value.type = Value_pointer;
+                        expr->Value.data.data = info;
+                    } else {
+                        if (report_error) {
+                            type_error(tcx, 
+                                       string_lit("cannot use `type_info` without type introspection"),
+                                       expr->span);
+                            result = 0;
                         }
                     }
                 }
@@ -1393,7 +1421,7 @@ create_type_struct_like_from_ast(Type_Context* tcx,
         Ast* ast_type = argument->Argument.type;
         Type* type = create_type_from_ast(tcx, ast_type, report_error);
         
-        if (!type) {
+        if (!type || type->size == 0) {
             result.has_error = true;
             return result;
         }
@@ -1663,20 +1691,6 @@ save_type_declaration(Type_Context* tcx, string_id ident, Type* type, Span span,
 
 Type*
 save_type_declaration_from_ast(Type_Context* tcx, string_id ident, Ast* ast, bool report_error) {
-    
-    //if (ident == vars_save_cstring("Collision_Detection_Result")) {
-    //__debugbreak();
-    //}
-    
-    if (ast->kind == Ast_Struct_Type || ast->kind == Ast_Union_Type) {
-        // Forward declare structs and unions so they can refer to themselves
-        smm type_index = map_get_index(tcx->global_type_table, ident);
-        if (type_index == -1) {
-            Type* type = arena_push_struct(&tcx->type_arena, Type);
-            type->kind = ast->kind == Ast_Struct_Type ? TypeKind_Struct : TypeKind_Union;
-            map_put(tcx->global_type_table, ident, type);
-        }
-    }
     
     Type* type = create_type_from_ast(tcx, ast, report_error);
     if (type) {
@@ -2987,6 +3001,13 @@ intrin_name->Function.first_default_arg_index++; \
     push_intrinsic(alignof, false, 0, &type_alignof, t_umm);
     push_intrinsic_arg(alignof, T, t_any);
     
+    Type* type_info_struct = load_type_declaration(tcx, vars_save_cstring("Type_Info"), empty_span, false);
+    if (type_info_struct) {
+        type_info_struct = type_wrap_pointer(tcx, type_info_struct);
+    }
+    push_intrinsic(type_info, false, 0, &type_info, type_info_struct);
+    push_intrinsic_arg(type_info, T, t_any);
+    
     // Intrinsic syntax: void*  memory_alloc(umm size)
     push_intrinsic(allocate, false, 0, &allocate, t_void_ptr);
     push_intrinsic_arg(allocate, size, t_umm);
@@ -3014,18 +3035,34 @@ intrin_name->Function.first_default_arg_index++; \
 
 s32
 type_check_ast_file(Type_Context* tcx, Ast_File* ast_file, Interp* interp) {
+    
+    
+    // Forward declare structs to be filled in later
+    for_array(ast_file->units, cu, _a) {
+        Ast* ast = cu->ast;
+        if ((ast->kind == Ast_Struct_Type || ast->kind == Ast_Union_Type) && cu->ident) {
+            // Forward declare structs and unions so they can refer to themselves
+            smm type_index = map_get_index(tcx->global_type_table, cu->ident);
+            if (type_index == -1) {
+                Type* type = arena_push_struct(&tcx->type_arena, Type);
+                type->kind = ast->kind == Ast_Struct_Type ? TypeKind_Struct : TypeKind_Union;
+                map_put(tcx->global_type_table, cu->ident, type);
+            }
+        }
+    }
+    
     DEBUG_setup_intrinsic_types(tcx);
     
     // Push all compilation units to queue
     array(Compilation_Unit*)* queue = 0;
     
-    for_array(ast_file->units, cu, _a) {
+    for_array(ast_file->units, cu, _b) {
         if (is_ast_type(cu->ast)) {
             array_push(queue, cu);
         }
     }
     // Push actual declarations last
-    for_array(ast_file->units, cu, _b) {
+    for_array(ast_file->units, cu, _c) {
         if (is_ast_stmt(cu->ast)) {
             array_push(queue, cu);
         }
@@ -3055,7 +3092,7 @@ type_check_ast_file(Type_Context* tcx, Ast_File* ast_file, Interp* interp) {
     }
     
     // NOTE(Alexander): anything left in the queue we report errors for
-    for_array_v(queue, comp_unit, _) {
+    for_array_v(queue, comp_unit, _d) {
         //if (tcx.error_count > 10) {
         //pln("Found more than 10 errors, exiting...");
         //return tcx.error_count;
@@ -3066,7 +3103,7 @@ type_check_ast_file(Type_Context* tcx, Ast_File* ast_file, Interp* interp) {
     
     if (tcx->error_count == 0) {
         // Run type checking on statements
-        for_array(ast_file->units, cu, _c) {
+        for_array(ast_file->units, cu, _e) {
             if (is_ast_stmt(cu->ast)) {
                 type_check_ast(tcx, cu);
             }

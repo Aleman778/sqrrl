@@ -59,7 +59,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
 #if BUILD_DEBUG
         // TODO(Alexander): temporary files for testing
         //filepath = string_lit("../personal/first.sq");
-        filepath = string_lit("../../platformer/code/win32_platform.cpp");
+        filepath = string_lit("../modules/basic.sq");
+        //filepath = string_lit("../../platformer/code/win32_platform.cpp");
         //filepath = string_lit("../examples/backend_test.sq");
         //filepath = string_lit("../examples/raytracer/first.cpp");
         //filepath = string_lit("../tests/preprocessor.sq");

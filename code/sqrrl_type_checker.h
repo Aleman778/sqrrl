@@ -24,6 +24,8 @@ struct Overloaded_Function_List {
 struct Type_Context {
     Memory_Arena type_arena;
     
+    Type_Info_Packer type_info_packer;
+    
     map(string_id, Type*)* locals;
     map(string_id, Type*)* globals;
     

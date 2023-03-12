@@ -1,0 +1,218 @@
+
+enum Type_Kind {
+    Unresolved,
+    Void,
+    Any,
+    Basic,
+    Array,
+    Struct,
+    Union,
+    Enum,
+    Function,
+    Pointer
+}
+
+enum Basic_Type_Info {
+    Bool,
+    S8,
+    S16,
+    S32,
+    S64,
+    U8,
+    U16,
+    U32,
+    U64,
+    F32,
+    F64,
+    String,
+    CString
+}
+
+struct Type_Info {
+    Type_Kind kind;
+    
+    union {
+        Basic_Type_Info Basic;
+        Struct_Type_Info Struct;
+        Array_Type_Info Array;
+    };
+}
+
+struct Struct_Field_Info {
+    Type_Info* type;
+    string ident;
+    s64 offset;
+}
+
+struct Struct_Type_Info {
+    string ident;
+    []Struct_Field_Info fields;
+}
+
+struct Array_Type_Info {
+    Type_Info* elem_type;
+    smm elem_size;
+    smm fixed_count; // -1 => if value stores the count
+}
+
+void
+print_data_from_type_info(Type_Info* type, void* data) {
+    switch (type.kind) {
+        case Type_Kind.Basic: {
+            switch (type.Basic) {
+                case Basic_Type_Info.Bool: {
+                    if (*((bool*) data)) {
+                        print_format("true")
+                    } else {
+                        print_format("false")
+                    }
+                }
+                
+                case Basic_Type_Info.S8: {
+                    print_format("%", *((s8*) data));
+                }
+                
+                case Basic_Type_Info.S16: {
+                    print_format("%", *((s16*) data));
+                }
+                
+                case Basic_Type_Info.S32: {
+                    print_format("%", *((s32*) data));
+                }
+                
+                case Basic_Type_Info.S64: {
+                    print_format("%", *((s64*) data));
+                }
+                
+                case Basic_Type_Info.U8: {
+                    print_format("%", *((u8*) data));
+                }
+                
+                case Basic_Type_Info.U16: {
+                    print_format("%", *((s16*) data));
+                }
+                
+                case Basic_Type_Info.U32: {
+                    print_format("%", *((u32*) data));
+                }
+                
+                case Basic_Type_Info.U64: {
+                    print_format("%", *((s64*) data));
+                }
+                
+                case Basic_Type_Info.F32: {
+                    print_format("%", *((f32*) data));
+                }
+                
+                case Basic_Type_Info.F64: {
+                    print_format("%", *((f64*) data));
+                }
+                
+                case Basic_Type_Info.String: {
+                    print_format("%", *((string*) data));
+                }
+                
+                case Basic_Type_Info.CString: {
+                    print_format("%", *((cstring*) data));
+                }
+            }
+        }
+        
+        case Type_Kind.Array: {
+            print_format("{ ");
+            
+            smm count = type.Array.fixed_count;
+            if (count < 0) {
+                count = *((smm*) data);
+            }
+            
+            for (int array_index = 0; 
+                 array_index < count && array_index < 10; 
+                 array_index++) {
+                
+                smm offset = type.Array.elem_size*array_index;
+                
+                print_data_from_type_info(type.Array.elem_type, (u8*) data + offset);
+                if (array_index + 1 < count) {
+                    print_format(", ");
+                }
+            }
+            
+            if (count >= 10) {
+                print_format("\n...");
+            }
+            
+            print_format(" }");
+        }
+        
+        case Type_Kind.Union:
+        case Type_Kind.Struct: {
+            print_format("% {", type.Struct.ident);
+            for (int field_index = 0; field_index < type.Struct.fields.count; field_index++) {
+                Struct_Field_Info field = type.Struct.fields[field_index];
+                print_format("\n    %: ", field.ident);
+                print_data_from_type_info(field.type,  (u8*) data + field.offset);
+            }
+            print_format("\n}");
+        }
+    }
+}
+
+
+union v2 {
+    struct {
+        f32 x, y;
+    };
+    struct {
+        f32 u, v;
+    };
+    struct {
+        f32 width, height;
+    };
+    [2]f32 data;
+};
+
+#define PRINT_BYTECODE 1
+
+
+int
+main() {
+    // Example: v2 { f32 x, f32 y } => 
+    // {
+    //   x
+    //   y
+    // }
+    
+    v2 example = { x: 10, y: 20 };
+    
+#if 0
+    Type_Info t_f32 = {};
+    t_f32.kind = Type_Kind.Basic;
+    t_f32.Basic = Basic_Type_Info.F32;
+    
+    Struct_Field_Info t_field_x = {
+        type: &t_f32,
+        ident: "x"
+    };
+    
+    Struct_Field_Info t_field_y = {
+        type: &t_f32,
+        ident: "y",
+        offset: 4
+    };
+    
+    [2]Struct_Field_Info t_v2_fields = {};
+    t_v2_fields[0] = t_field_x;
+    t_v2_fields[1] = t_field_y;
+    
+    Type_Info t_v2 = {};
+    t_v2.kind = Type_Kind.Struct;
+    t_v2.Struct.fields = ([]Struct_Field_Info) t_v2_fields;
+    print_data_from_type_info(&t_v2, &example);
+#else 
+    Type_Info* info = type_info(v2);
+    print_data_from_type_info(info, &example);
+#endif
+    
+    return 0;
+}

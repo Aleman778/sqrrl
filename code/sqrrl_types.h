@@ -391,6 +391,13 @@ struct TI_Struct_Type_Info {
     smm count;
 };
 
+struct TI_Enum_Type_Info {
+    string ident;
+    Type_Info* type;
+    string* names;
+    smm count;
+};
+
 struct TI_Array_Type_Info {
     Type_Info* elem_type;
     smm elem_size;
@@ -403,6 +410,7 @@ struct Type_Info {
     union {
         TI_Basic_Type_Info Basic;
         TI_Struct_Type_Info Struct;
+        TI_Enum_Type_Info Enum;
         TI_Array_Type_Info Array;
     };
 };
@@ -462,6 +470,25 @@ export_type_info(Type_Info_Packer* packer, Type* type) {
                 result->Array.elem_type = export_type_info(packer, type->Array.type);
                 result->Array.elem_size = type->Array.type->size;
                 result->Array.fixed_count = type->Array.is_inplace ? type->Array.capacity : 0;
+            } break;
+            
+            case TypeKind_Enum: {
+                result->Enum.ident = vars_load_string(type->ident);
+                result->Enum.type = export_type_info(packer, type->Enum.type);
+                
+                smm count = map_count(type->Enum.values);
+                string* names = arena_push_array_of_structs(&packer->arena, count, string);
+                result->Enum.names = names;
+                result->Enum.count = count;
+                for_map(type->Enum.values, it) {
+                    s64 value = value_to_s64(it->value);
+                    //pln("% = %", f_var(it->key), f_s64(value));
+                    if (value >= 0 && value < count) {
+                        names[value] = vars_load_string(it->key);
+                    } else {
+                        names[value] = string_lit("?");
+                    }
+                }
             } break;
             
             case TypeKind_Pointer: {

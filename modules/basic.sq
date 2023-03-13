@@ -35,6 +35,7 @@ struct Type_Info {
     union {
         Basic_Type_Info Basic;
         Struct_Type_Info Struct;
+        Enum_Type_Info Enum;
         Array_Type_Info Array;
     };
 }
@@ -48,6 +49,12 @@ struct Struct_Field_Info {
 struct Struct_Type_Info {
     string ident;
     []Struct_Field_Info fields;
+}
+
+struct Enum_Type_Info {
+    string ident;
+    Type_Info* type;
+    []string names;
 }
 
 struct Array_Type_Info {
@@ -69,6 +76,68 @@ print_newline_with_spaces(int count) {
     }
 }
 
+s64
+data_to_s64(Basic_Type_Info info, void* data) {
+    switch (info) {
+        case Basic_Type_Info.S8: {
+            return *((s8*) data);
+        }
+        
+        case Basic_Type_Info.S16: {
+            return *((s16*) data);
+        }
+        
+        case Basic_Type_Info.S32: {
+            return *((s32*) data);
+        }
+        
+        case Basic_Type_Info.S64: {
+            return *((s64*) data);
+        }
+    }
+    
+    return 0;
+}
+
+u64
+data_to_u64(Basic_Type_Info info, void* data) {
+    switch (info) {
+        case Basic_Type_Info.U8: {
+            return *((u8*) data);
+        }
+        
+        case Basic_Type_Info.U16: {
+            return *((u16*) data);
+        }
+        
+        case Basic_Type_Info.U32: {
+            return *((u32*) data);
+        }
+        
+        case Basic_Type_Info.U64: {
+            return *((u64*) data);
+        }
+    }
+    
+    return 0;
+}
+
+
+f64
+data_to_f64(Basic_Type_Info info, void* data) {
+    switch (info) {
+        case Basic_Type_Info.F32: {
+            return *((f32*) data);
+        }
+        
+        case Basic_Type_Info.F64: {
+            return *((f64*) data);
+        }
+    }
+    
+    return 0.0f;
+}
+
 void
 print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
     switch (type.kind) {
@@ -82,44 +151,23 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                     }
                 }
                 
-                case Basic_Type_Info.S8: {
-                    print("%", *((s8*) data));
-                }
-                
-                case Basic_Type_Info.S16: {
-                    print("%", *((s16*) data));
-                }
-                
-                case Basic_Type_Info.S32: {
-                    print("%", *((s32*) data));
-                }
-                
+                case Basic_Type_Info.S8:
+                case Basic_Type_Info.S16:
+                case Basic_Type_Info.S32:
                 case Basic_Type_Info.S64: {
-                    print("%", *((s64*) data));
+                    print("%", data_to_s64(type.Basic, data));
                 }
                 
-                case Basic_Type_Info.U8: {
-                    print("%", *((u8*) data));
-                }
-                
-                case Basic_Type_Info.U16: {
-                    print("%", *((s16*) data));
-                }
-                
-                case Basic_Type_Info.U32: {
-                    print("%", *((u32*) data));
-                }
-                
+                case Basic_Type_Info.U8:
+                case Basic_Type_Info.U16:
+                case Basic_Type_Info.U32:
                 case Basic_Type_Info.U64: {
-                    print("%", *((s64*) data));
+                    print("%", data_to_u64(type.Basic, data));
                 }
                 
-                case Basic_Type_Info.F32: {
-                    print("%", *((f32*) data));
-                }
-                
+                case Basic_Type_Info.F32:
                 case Basic_Type_Info.F64: {
-                    print("%", *((f64*) data));
+                    print("%", data_to_f64(type.Basic, data));
                 }
                 
                 case Basic_Type_Info.String: {
@@ -132,6 +180,32 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
             }
         }
         
+        case Type_Kind.Enum: {
+            s64 value = 0;
+            switch (type.Enum.type.kind) {
+                case Basic_Type_Info.S8:
+                case Basic_Type_Info.S16:
+                case Basic_Type_Info.S32:
+                case Basic_Type_Info.S64: {
+                    value = data_to_s64(type.Enum.type.kind, data);
+                }
+                
+                case Basic_Type_Info.U8:
+                case Basic_Type_Info.U16:
+                case Basic_Type_Info.U32:
+                case Basic_Type_Info.U64: {
+                    value = data_to_u64(type.Enum.type.kind, data);
+                }
+            }
+            
+            print("%.", type.Enum.ident);
+            if (value >= 0 && value < type.Enum.names.count) {
+                print("% (%)", type.Enum.names[value], value);
+            } else {
+                print("%", value);
+            }
+        }
+        
         case Type_Kind.Array: {
             print("{ ");
             
@@ -140,20 +214,28 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                 count = *((smm*) data);
             }
             
+            Type_Info* elem_type = type.Array.elem_type;
+            
+            const int max_elements_to_show = 5;
+            
             for (int array_index = 0; 
-                 array_index < count && array_index < 10; 
+                 array_index < count && array_index < max_elements_to_show; 
                  array_index++) {
+                
+                if (elem_type.kind != Type_Kind.Basic) {
+                    print_newline_with_spaces(indent + 4);
+                }
                 
                 smm offset = type.Array.elem_size*array_index;
                 
-                print_data_from_type_info(type.Array.elem_type, (u8*) data + offset, indent + 4);
+                print_data_from_type_info(elem_type, (u8*) data + offset, indent + 4);
                 if (array_index + 1 < count) {
                     print(", ");
                 }
             }
             
-            if (count >= 10) {
-                print("...");
+            if (count >= max_elements_to_show) {
+                print("...+% more", count - max_elements_to_show);
             }
             
             print(" }");
@@ -161,10 +243,14 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
         
         case Type_Kind.Union:
         case Type_Kind.Struct: {
-            print("{");
+            print("% {", type.Struct.ident);
             indent += 4;
             for (int field_index = 0; field_index < type.Struct.fields.count; field_index++) {
                 Struct_Field_Info field = type.Struct.fields[field_index];
+                if (field.offset == 0 && type.kind == Type_Kind.Union && field_index > 0) {
+                    break;
+                }
+                
                 print_newline_with_spaces(indent);
                 print("%: ", field.ident);
                 print_data_from_type_info(field.type,  (u8*) data + field.offset, indent);

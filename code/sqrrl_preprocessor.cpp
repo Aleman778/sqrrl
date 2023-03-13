@@ -78,7 +78,7 @@ preprocess_parse_define(Preprocessor* preprocessor, Tokenizer* t) {
     Token token = advance_semantical_token(t);
     
     if (token.type != Token_Ident) {
-        preprocess_error(preprocessor, string_format("expected `identifier`, found `%`", f_token(token.type)));
+        preprocess_error(preprocessor, string_print("expected `identifier`, found `%`", f_token(token.type)));
         return;
     }
     
@@ -120,11 +120,11 @@ preprocess_parse_define(Preprocessor* preprocessor, Tokenizer* t) {
                     preprocess_error(preprocessor, string_lit("expects variadic argument to always be the last argument"));
                     return;
                 } else  {
-                    preprocess_error(preprocessor, string_format("expected `)`, found `%`", f_token(token.type)));
+                    preprocess_error(preprocessor, string_print("expected `)`, found `%`", f_token(token.type)));
                     return;
                 }
             } else {
-                preprocess_error(preprocessor, string_format("expected `identifier` or `...`, found `%`", f_token(token.type)));
+                preprocess_error(preprocessor, string_print("expected `identifier` or `...`, found `%`", f_token(token.type)));
                 return;
             }
             token = advance_semantical_token(t);
@@ -134,7 +134,7 @@ preprocess_parse_define(Preprocessor* preprocessor, Tokenizer* t) {
                 token = advance_semantical_token(t);
                 continue;
             } else {
-                preprocess_error(preprocessor, string_format("expected `,` or `)`, found `%`", f_token(token.type)));
+                preprocess_error(preprocessor, string_print("expected `,` or `)`, found `%`", f_token(token.type)));
                 return;
                 
             }
@@ -144,7 +144,7 @@ preprocess_parse_define(Preprocessor* preprocessor, Tokenizer* t) {
     }
     
     if (token.type != Token_Whitespace && token.type != Token_Newline && token.type != Token_Backslash) {
-        preprocess_error(preprocessor, string_format("expected `whitespace`, found `%`", f_token(token.type)));
+        preprocess_error(preprocessor, string_print("expected `whitespace`, found `%`", f_token(token.type)));
         return;
     }
     
@@ -157,7 +157,7 @@ preprocess_parse_define(Preprocessor* preprocessor, Tokenizer* t) {
     if (token.type == Token_Int) {
         Parse_U64_Value_Result parsed_result = parse_u64_value(token);
         if (parsed_result.is_too_large) {
-            preprocess_error(preprocessor, string_format("integer `%` literal is too large", f_string(token.source)));
+            preprocess_error(preprocessor, string_print("integer `%` literal is too large", f_string(token.source)));
         }
         macro.integral = parsed_result.value;
         macro.is_integral = true;
@@ -181,8 +181,8 @@ preprocess_parse_define(Preprocessor* preprocessor, Tokenizer* t) {
             
             // TODO(Alexander): is this error Ok to suppress for system headers?
             if (!preprocessor->is_system_header) {
-                preprocess_error(preprocessor, string_format("cannot redeclare macro with same identifier `%`", 
-                                                             f_string(vars_load_string(ident))));
+                preprocess_error(preprocessor, string_print("cannot redeclare macro with same identifier `%`", 
+                                                            f_string(vars_load_string(ident))));
             }
             return;
         }
@@ -236,7 +236,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                         string_id ident = vars_save_string(token.source);
                         map_remove(preprocessor->macros, ident);
                     } else {
-                        preprocess_error(preprocessor, string_format("expected `identifier`, found `%`", f_token(token.type)));
+                        preprocess_error(preprocessor, string_print("expected `identifier`, found `%`", f_token(token.type)));
                     }
                 }
             } break;
@@ -400,8 +400,8 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                         check_if_curr_branch_is_taken(preprocessor->if_result_stack);
                     
                 } else {
-                    preprocess_error(preprocessor, string_format("expected `identifier`, found `%`", 
-                                                                 f_token(token.type)));
+                    preprocess_error(preprocessor, string_print("expected `identifier`, found `%`", 
+                                                                f_token(token.type)));
                     
                 }
             } break;
@@ -537,8 +537,8 @@ preprocess_parse_actual_arguments(Preprocessor* preprocessor, Tokenizer* t, Prep
         result.success = false;
         
     } else if (result.success && token.type != Token_Close_Paren) {
-        preprocess_error(preprocessor, string_format("argument list ended without `)`, found `%`",
-                                                     f_token(token.type)));
+        preprocess_error(preprocessor, string_print("argument list ended without `)`, found `%`",
+                                                    f_token(token.type)));
         result.success = false;
     }
     
@@ -568,7 +568,7 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
                     
                     token = advance_semantical_token(t);
                     if (token.type != Token_Close_Paren) {
-                        preprocess_error(preprocessor, string_format("expected `)`, found `%`", f_token(token.type)));
+                        preprocess_error(preprocessor, string_print("expected `)`, found `%`", f_token(token.type)));
                         return false;
                     }
                 }
@@ -686,9 +686,9 @@ preprocess_try_expand_ident(Preprocessor* preprocessor,
         if ((actual_arg_count < formal_arg_count) ||
             (actual_arg_count > formal_arg_count && !macro.is_variadic)) {
             
-            preprocess_error(preprocessor, string_format("function-like macro `%` expected % arguments, found % arguments",
-                                                         f_string(vars_load_string(ident)),
-                                                         f_int(formal_arg_count), f_int(actual_arg_count)));
+            preprocess_error(preprocessor, string_print("function-like macro `%` expected % arguments, found % arguments",
+                                                        f_string(vars_load_string(ident)),
+                                                        f_int(formal_arg_count), f_int(actual_arg_count)));
             return false;
         }
         
@@ -729,9 +729,9 @@ preprocess_expand_macro(Preprocessor* preprocessor,
                 if (macro.arg_mapper && map_key_exists(macro.arg_mapper, ident)) {
                     int arg_index = map_get(macro.arg_mapper, ident);
                     if (array_count(args.list) < arg_index) {
-                        preprocess_error(preprocessor, string_format("function-like macro expected % arguments, found % arguments",
-                                                                     f_int(map_count(macro.arg_mapper)),
-                                                                     f_int(array_count(args.list))));
+                        preprocess_error(preprocessor, string_print("function-like macro expected % arguments, found % arguments",
+                                                                    f_int(map_count(macro.arg_mapper)),
+                                                                    f_int(array_count(args.list))));
                         return;
                     }
                     string arg_source = args.list[arg_index];
@@ -991,7 +991,7 @@ preprocess_file(Preprocessor* preprocessor,
     
     
 #if BUILD_DEBUG
-    string_builder_push(sb, string_format("// File: `%`\n", f_string(tokenizer.file)));
+    string_builder_push(sb, string_print("// File: `%`\n", f_string(tokenizer.file)));
 #endif
     
     //if (array_count(preprocessor->if_result_stack) == 0) {

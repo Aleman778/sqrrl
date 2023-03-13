@@ -59,8 +59,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
 #if BUILD_DEBUG
         // TODO(Alexander): temporary files for testing
         //filepath = string_lit("../personal/first.sq");
-        filepath = string_lit("../modules/basic.sq");
-        //filepath = string_lit("../../platformer/code/win32_platform.cpp");
+        //filepath = string_lit("../modules/basic.sq");
+        filepath = string_lit("../../platformer/code/win32_platform.cpp");
         //filepath = string_lit("../examples/backend_test.sq");
         //filepath = string_lit("../examples/raytracer/first.cpp");
         //filepath = string_lit("../tests/preprocessor.sq");
@@ -79,6 +79,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     t_string->align = alignof(string);
     t_cstring->size = sizeof(cstring);
     t_cstring->align = alignof(cstring);
+    t_type->size = sizeof(smm);
+    t_type->align = alignof(smm);
     
     vars_initialize_keywords_and_symbols();
     
@@ -102,7 +104,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     {
         // Create global pln macro
         Preprocessor_Macro pln_macro = {};
-        pln_macro.source = string_lit("print_format(format##\"\\n\", ##__VA_ARGS__)");
+        pln_macro.source = string_lit("print(format##\"\\n\", ##__VA_ARGS__)");
         string_id format_id = Sym_format;
         map_put(pln_macro.arg_mapper, format_id, 0);
         pln_macro.is_functional = true;
@@ -126,7 +128,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         string_id assert_id = Sym_assert;
         map_put(preprocessor.macros, assert_id, assert_macro);
     }
-    
     
     string preprocessed_source = preprocess_file(&preprocessor, 
                                                  file.source, file.abspath, file.extension, file.index);

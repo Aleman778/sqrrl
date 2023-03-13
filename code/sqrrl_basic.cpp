@@ -7,7 +7,7 @@ struct Intermediate_Code;
 void print_intermediate_code(Intermediate_Code* value);
 
 void
-print_format(const char* format...) {
+print(const char* format...) {
     va_list args;
     va_start(args, format);
     
@@ -363,7 +363,7 @@ string_builder_push_format(String_Builder* sb, cstring format...) {
 }
 
 string // NOTE(alexander): this string has to be manually freed at the moment!!!
-string_format(cstring format...) { // TODO(alexander): replace snprintf with custom implementation later...
+string_print(cstring format...) { // TODO(alexander): replace snprintf with custom implementation later...
     va_list args;
     va_start(args, format);
     

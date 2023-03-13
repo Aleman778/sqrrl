@@ -67,18 +67,18 @@ enum {
     BasicFlag_Numeric = BasicFlag_Integer | BasicFlag_Floating,
 };
 
-
 enum Type_Kind {
     TypeKind_Unresolved,
     TypeKind_Void,
     TypeKind_Any,
+    TypeKind_Type,
     TypeKind_Basic,
     TypeKind_Array,
     TypeKind_Struct,
     TypeKind_Union,
     TypeKind_Enum,
     TypeKind_Function,
-    TypeKind_Pointer
+    TypeKind_Pointer,
 };
 
 typedef map(string_id, s32) Ident_Mapper;
@@ -187,6 +187,8 @@ Type basic_type_definitions[] = {
 Type unresolved_type_definition = { TypeKind_Unresolved };
 Type void_type_definition = { TypeKind_Void };
 Type any_type_definition = { TypeKind_Any };
+Type type_definition = { TypeKind_Type };
+
 
 internal Type 
 create_void_ptr_type_definition() {
@@ -201,40 +203,50 @@ global Type* t_unresolve = &unresolved_type_definition;
 global Type* t_void = &void_type_definition;
 global Type* t_void_ptr = &void_ptr_type_definition;
 global Type* t_any = &any_type_definition;
+global Type* t_type = &type_definition;
 #define BASIC(ident, ...) global Type* t_##ident = &basic_type_definitions[Basic_##ident];
 DEF_BASIC_TYPES
 #undef BASIC
 
 Format_Type
 convert_type_to_format_type(Type* type) {
-    if (type->kind == TypeKind_Basic) {
-        switch (type->Basic.kind) {
-            case Basic_bool: return FormatType_bool;
-            case Basic_s8: return FormatType_s8;
-            case Basic_s16: return FormatType_s16;
-            case Basic_s32: return FormatType_s32;
-            case Basic_s64: return FormatType_s64;
-            case Basic_int: return FormatType_int;
-            
-            case Basic_u8: return FormatType_u8;
-            case Basic_u16: return FormatType_u16;
-            case Basic_u32: return FormatType_u32;
-            case Basic_u64: return FormatType_u64;
-            case Basic_uint: return FormatType_uint;
-            
-            case Basic_f32: return FormatType_f32;
-            case Basic_f64: return FormatType_f64;
-            
-            case Basic_string: return FormatType_string;
-            case Basic_cstring: return FormatType_cstring;
-        }
+    switch (type->kind) {
+        case TypeKind_Basic: {
+            switch (type->Basic.kind) {
+                case Basic_bool: return FormatType_bool;
+                case Basic_s8: return FormatType_s8;
+                case Basic_s16: return FormatType_s16;
+                case Basic_s32: return FormatType_s32;
+                case Basic_s64: return FormatType_s64;
+                case Basic_int: return FormatType_int;
+                
+                case Basic_u8: return FormatType_u8;
+                case Basic_u16: return FormatType_u16;
+                case Basic_u32: return FormatType_u32;
+                case Basic_u64: return FormatType_u64;
+                case Basic_uint: return FormatType_uint;
+                
+                case Basic_f32: return FormatType_f32;
+                case Basic_f64: return FormatType_f64;
+                
+                case Basic_string: return FormatType_string;
+                case Basic_cstring: return FormatType_cstring;
+            }
+        } break;
         
-    } else if (type->kind == TypeKind_Pointer) {
-        return FormatType_u64_HEX;
-    } else if (type->kind == TypeKind_Enum) {
-        return convert_type_to_format_type(type->Enum.type);
-    } else {
-        unimplemented;
+        
+        case TypeKind_Type:
+        case TypeKind_Pointer: {
+            return FormatType_u64_HEX;
+        } break;
+        
+        case TypeKind_Enum: {
+            return convert_type_to_format_type(type->Enum.type);
+        } break;
+        
+        default: {
+            unimplemented;
+        } break;
     }
     
     return FormatType_None;
@@ -401,7 +413,7 @@ struct Type_Info_Packer {
 };
 
 Type_Info*
-type_info(Type_Info_Packer* packer, Type* type) {
+export_type_info(Type_Info_Packer* packer, Type* type) {
     
     Type_Info* result = map_get(packer->mapper, type);
     if (!result) {
@@ -415,9 +427,9 @@ type_info(Type_Info_Packer* packer, Type* type) {
                 switch (type->Basic.kind) {
                     case Basic_bool: result->Basic = TI_Bool; break;
                     case Basic_s8: result->Basic = TI_S8; break;
-                    case Basic_s16: result->Basic = TI_S8; break;
-                    case Basic_s32: result->Basic = TI_S8; break;
-                    case Basic_s64: result->Basic = TI_S8; break;
+                    case Basic_s16: result->Basic = TI_S16; break;
+                    case Basic_s32: result->Basic = TI_S32; break;
+                    case Basic_s64: result->Basic = TI_S64; break;
                     case Basic_u8: result->Basic = TI_U8; break;
                     case Basic_u16: result->Basic = TI_U16; break;
                     case Basic_u32: result->Basic = TI_U32; break;
@@ -440,16 +452,21 @@ type_info(Type_Info_Packer* packer, Type* type) {
                 
                 for_array_v(type->Struct_Like.types, field_type, field_index) {
                     TI_Struct_Field_Info* field = result->Struct.fields + field_index;
-                    field->type = type_info(packer, field_type);
+                    field->type = export_type_info(packer, field_type);
                     field->ident = vars_load_string(type->Struct_Like.idents[field_index]);
                     field->offset = type->Struct_Like.offsets[field_index];
                 }
             } break;
             
             case TypeKind_Array: {
-                result->Array.elem_type = type_info(packer, type->Array.type);
+                result->Array.elem_type = export_type_info(packer, type->Array.type);
                 result->Array.elem_size = type->Array.type->size;
                 result->Array.fixed_count = type->Array.is_inplace ? type->Array.capacity : 0;
+            } break;
+            
+            case TypeKind_Pointer: {
+                result->kind = TypeKind_Basic;
+                result->Basic = TI_S64; // TODO(Alexander): temporary
             } break;
             
             default: {
@@ -459,6 +476,11 @@ type_info(Type_Info_Packer* packer, Type* type) {
     }
     
     return result;
+}
+
+inline s64
+type_of(Type* type) {
+    return (s64) type;
 }
 
 inline Type*
@@ -473,7 +495,7 @@ print_type(Type* type) {
     string_builder_alloc(&sb, 20);
     string_builder_push(&sb, type);
     string result = string_builder_to_string_nocopy(&sb);
-    print_format("%", f_string(result));
+    print("%", f_string(result));
     string_builder_free(&sb);
 }
 

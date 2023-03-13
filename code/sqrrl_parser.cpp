@@ -39,8 +39,8 @@ parse_keyword(Parser* parser, Var expected, bool report_error) {
     
     if (report_error) {
         string expect = vars_load_string(expected);
-        parse_error(parser, token, string_format("expected keyword `%`, found `%`", 
-                                                 f_string(expect), f_string(token.source)));
+        parse_error(parser, token, string_print("expected keyword `%`, found `%`", 
+                                                f_string(expect), f_string(token.source)));
     }
     
     return false;
@@ -55,7 +55,7 @@ parse_identifier(Parser* parser, bool report_error) {
         string_id id = vars_save_string(token.source);
         if (is_builtin_keyword(id)) {
             if (report_error) parse_error(parser, token, 
-                                          string_format("expected `identifier` found keyword `%`", f_string(token.source)));
+                                          string_print("expected `identifier` found keyword `%`", f_string(token.source)));
             return 0;
         }
         
@@ -160,10 +160,10 @@ parse_type_from_value_suffix(Parser* parser, Type* default_type, s32 flags) {
         if (result && !is_bitflag_set(flags, result->Basic.flags)) {
             if (is_bitflag_set(flags, BasicFlag_Integer)) {
                 parse_error(parser, token, 
-                            string_format("expected integer literal suffix, found `%`", f_string(suffix)));
+                            string_print("expected integer literal suffix, found `%`", f_string(suffix)));
             } else if (is_bitflag_set(flags, BasicFlag_Floating)) {
                 parse_error(parser, token, 
-                            string_format("expected float literal suffix, found `%`", f_string(suffix)));
+                            string_print("expected float literal suffix, found `%`", f_string(suffix)));
             }
         }
     }
@@ -493,7 +493,7 @@ parse_atom(Parser* parser, bool report_error, u8 min_prec) {
                     
                     default: {
                         if (report_error) {
-                            parse_error(parser, peek, string_format("expected `)` or `,` found `%` ", f_token(peek.type)));
+                            parse_error(parser, peek, string_print("expected `)` or `,` found `%` ", f_token(peek.type)));
                         }
                     } break;
                 }
@@ -516,8 +516,8 @@ parse_atom(Parser* parser, bool report_error, u8 min_prec) {
                         //unimplemented;
                         // TODO(Alexander): improve error message
                         parse_error(parser, first_token, 
-                                    string_format("Failed to parse type cast, please try `cast(%)` instead", 
-                                                  f_string(first_token.source)));
+                                    string_print("Failed to parse type cast, please try `cast(%)` instead", 
+                                                 f_string(first_token.source)));
                     }
                 }
             }
@@ -1668,8 +1668,8 @@ parse_complex_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_M
                 }
                 op_token = next_token(parser);
                 if (overload_operator == Op_None) {
-                    parse_error(parser, op_token, string_format("expected binary operator, found `%`",
-                                                                f_string(op_token.source)));
+                    parse_error(parser, op_token, string_print("expected binary operator, found `%`",
+                                                               f_string(op_token.source)));
                 }
                 
                 if (peek_token_match(parser, Token_Open_Paren, true)) {

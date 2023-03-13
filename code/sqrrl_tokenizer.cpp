@@ -137,10 +137,10 @@ scan_escape_character(Tokenizer* tokenizer, u8 quote) {
                 if (*tokenizer->next == '}') {
                     utf8_advance_character(tokenizer);
                 } else {
-                    tokenization_error(tokenizer, string_format("expected `}`, found `%`", f_char(*tokenizer->next)));
+                    tokenization_error(tokenizer, string_print("expected `}`, found `%`", f_char(*tokenizer->next)));
                 }
             } else {
-                tokenization_error(tokenizer, string_format("expected `{`, found `%`", f_char(*tokenizer->next)));
+                tokenization_error(tokenizer, string_print("expected `{`, found `%`", f_char(*tokenizer->next)));
             }
         } break;
         
@@ -150,7 +150,7 @@ scan_escape_character(Tokenizer* tokenizer, u8 quote) {
         
         default: {
             utf8_advance_character(tokenizer);
-            tokenization_error(tokenizer, string_format("expected escape character, found `%`", f_char(*tokenizer->curr)));
+            tokenization_error(tokenizer, string_print("expected escape character, found `%`", f_char(*tokenizer->curr)));
         } break;
     }
 }
@@ -176,7 +176,7 @@ scan_digits(Tokenizer* tokenizer, int base) {
         
         utf8_advance_character(tokenizer);
         if (d >= base) {
-            tokenization_error(tokenizer, string_format("expected digit with base %, found `%`", f_int(base), f_char(*tokenizer->curr)));
+            tokenization_error(tokenizer, string_print("expected digit with base %, found `%`", f_int(base), f_char(*tokenizer->curr)));
         }
         has_digits = true;
     }
@@ -235,7 +235,7 @@ scan_number(Tokenizer* tokenizer, Token& token) {
         token.type = Token_Float;
         utf8_advance_character(tokenizer);
         if (*tokenizer->curr != '+' && *tokenizer->curr != '-') {
-            tokenization_error(tokenizer, string_format("expected `+` or `-`, found `%`", f_char(*tokenizer->curr)));
+            tokenization_error(tokenizer, string_print("expected `+` or `-`, found `%`", f_char(*tokenizer->curr)));
             return;
         }
         
@@ -322,7 +322,7 @@ scan_raw_string(Tokenizer* tokenizer) {
         if (*tokenizer->curr == '"') {
             utf8_advance_character(tokenizer);
         } else {
-            tokenization_error(tokenizer, string_format("expected `\"`, found `%c`", *tokenizer->next));
+            tokenization_error(tokenizer, string_print("expected `\"`, found `%c`", *tokenizer->next));
         }
     } else {
         utf8_advance_character(tokenizer);
@@ -629,7 +629,7 @@ advance_token(Tokenizer* tokenizer) {
                 u8 buffer[4];
                 umm count = (umm) utf32_convert_to_utf8(tokenizer->curr_utf32_character, buffer);
                 string character = create_string(count, buffer);
-                tokenization_error(tokenizer, string_format("invalid unicode character `%` (U+%)", f_string(character), f_u64_HEX(tokenizer->curr_utf32_character)));
+                tokenization_error(tokenizer, string_print("invalid unicode character `%` (U+%)", f_string(character), f_u64_HEX(tokenizer->curr_utf32_character)));
                 token.type = Token_Error;
             } break;
         }

@@ -686,7 +686,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     void* data = get_interp_value_pointer(cu->interp, ident);
                     if (!data) {
                         Type_Context tcx = {};
-                        type_error(&tcx, string_format("compiler bug: value of `%` is void", f_var(ident)), expr->span);
+                        type_error(&tcx, string_print("compiler bug: value of `%` is void", f_var(ident)), expr->span);
                         //pln();
                         assert(0);
                     }

@@ -47,17 +47,12 @@ commands = {
     .win = "cd build && sqrrl.exe ../personal/first.sq",
     .linux = "build/sqrrl test",
     .mac = "build/sqrrl test", },
-  .graphviz = { .out = "*run*", .footer_panel = false, .save_dirty_files = false,
-    .win = "build_graphs.bat",
-    .linux = "./build_graphs.sh",
-    .mac = "./build_graphs.sh", },
 };
 
 fkey_command = {
   .F1 = "build",
   .F2 = "run",
   .F3 = "build_release",
-  .F4 = "graphviz",
   .F5 = "run_personal",
   .F9 = "run_all_tests",
 };

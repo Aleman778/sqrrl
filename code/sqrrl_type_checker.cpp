@@ -175,8 +175,8 @@ type_check_value(Type_Context* tcx, Type* type, Value value, Span span, bool rep
                     if (value.data.signed_int < type->Basic.limits.min_value ||
                         value.data.signed_int > type->Basic.limits.max_value) {
                         
-                        type_warning(tcx, string_format("expected type `%` cannot fit in value `%`", 
-                                                        f_type(type), f_value(&value)), span);
+                        type_warning(tcx, string_print("expected type `%` cannot fit in value `%`", 
+                                                       f_type(type), f_value(&value)), span);
                     }
                 } break;
                 
@@ -188,13 +188,13 @@ type_check_value(Type_Context* tcx, Type* type, Value value, Span span, bool rep
                 case Basic_u64:
                 case Basic_umm: {
                     if (value.data.signed_int < 0) {
-                        type_warning(tcx, string_format("expected type `%` signed/ unsigned mismatch with `%`", 
-                                                        f_type(type), f_value(&value)), span);
+                        type_warning(tcx, string_print("expected type `%` signed/ unsigned mismatch with `%`", 
+                                                       f_type(type), f_value(&value)), span);
                         
                     } else if (value.data.unsigned_int > type->Basic.limits.max_unsigned_value) {
                         
-                        type_warning(tcx, string_format("expected type `%` cannot fit in value `%`", 
-                                                        f_type(type), f_value(&value)), span);
+                        type_warning(tcx, string_print("expected type `%` cannot fit in value `%`", 
+                                                       f_type(type), f_value(&value)), span);
                     }
                     
                 } break;
@@ -219,8 +219,8 @@ type_check_value(Type_Context* tcx, Type* type, Value value, Span span, bool rep
                 case Basic_u64:
                 case Basic_umm: {
                     if (value.data.unsigned_int > type->Basic.limits.max_unsigned_value) {
-                        type_warning(tcx, string_format("expected type `%` cannot fit in value `%`", 
-                                                        f_type(type), f_value(&value)), span);
+                        type_warning(tcx, string_print("expected type `%` cannot fit in value `%`", 
+                                                       f_type(type), f_value(&value)), span);
                     }
                     
                 } break;
@@ -232,8 +232,8 @@ type_check_value(Type_Context* tcx, Type* type, Value value, Span span, bool rep
                 case Basic_s64:
                 case Basic_smm: {
                     if (value.data.unsigned_int > (u64) type->Basic.limits.max_value) {
-                        type_warning(tcx, string_format("expected type `%` cannot fit in value `%`", 
-                                                        f_type(type), f_value(&value)), span);
+                        type_warning(tcx, string_print("expected type `%` cannot fit in value `%`", 
+                                                       f_type(type), f_value(&value)), span);
                     }
                 } break;
             }
@@ -263,8 +263,8 @@ type_check_value(Type_Context* tcx, Type* type, Value value, Span span, bool rep
     }
     
     if (report_error && !result) {
-        type_error(tcx, string_format("expected type `%` is not compatible with `%`", 
-                                      f_type(type), f_value(&value)), span);
+        type_error(tcx, string_print("expected type `%` is not compatible with `%`", 
+                                     f_type(type), f_value(&value)), span);
     }
     
     return result;
@@ -577,6 +577,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             
             if (type) {
                 result = type;
+                
             } else {
                 type = map_get(tcx->globals, ident);
                 
@@ -584,14 +585,25 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     result = type;
                     
                 } else {
-                    if (tcx->set_undeclared_to_s64) {
-                        result = t_s64;
-                    } else if (report_error) {
-                        // NOTE(Alexander): copypasta
-                        type_error(tcx, 
-                                   string_format("`%` is an undeclared identifier", 
-                                                 f_string(vars_load_string(expr->Ident))),
-                                   expr->span);
+                    
+                    type = load_type_declaration(tcx, ident, expr->span, false);
+                    
+                    if (type) {
+                        result = t_type;
+                        Type_Info* type_info = export_type_info(&tcx->type_info_packer, type);
+                        expr->kind = Ast_Value;
+                        expr->Value = create_signed_int_value((s64) type_info);
+                        
+                    } else {
+                        if (tcx->set_undeclared_to_s64) {
+                            result = t_s64;
+                        } else if (report_error) {
+                            // NOTE(Alexander): copypasta
+                            type_error(tcx, 
+                                       string_print("`%` is an undeclared identifier", 
+                                                    f_string(vars_load_string(expr->Ident))),
+                                       expr->span);
+                        }
                     }
                 }
             }
@@ -616,7 +628,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                             if (report_error) {
                                 //pln("%", f_ast(expr));
                                 type_error(tcx,
-                                           string_format("cannot dereference type `%`", f_type(type)),
+                                           string_print("cannot dereference type `%`", f_type(type)),
                                            expr->span);
                             }
                         }
@@ -833,7 +845,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     if (!function_type) {
                         if (report_error) {
                             // TODO(Alexander): can we improve this e.g. showing closest matched function?
-                            type_error(tcx, string_format("no overloaded function matched `%`", f_var(ident)), expr->span);
+                            type_error(tcx, string_print("no overloaded function matched `%`", f_var(ident)), expr->span);
                         }
                         return 0;
                     }
@@ -860,7 +872,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             if (function_type->kind != TypeKind_Function) {
                 if (report_error) {
                     string_id function_ident = ast_unwrap_ident(expr->Call_Expr.ident);
-                    type_error(tcx, string_format("`%` is not a function", f_var(function_ident)),
+                    type_error(tcx, string_print("`%` is not a function", f_var(function_ident)),
                                expr->span);
                 }
                 return 0;
@@ -897,7 +909,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             if (function_type && t_func->intrinsic) {
                 void* intrinsic = t_func->intrinsic;
                 
-                if (intrinsic == &print_format && !expr->Call_Expr.added_format_types) {
+                if (intrinsic == &print && !expr->Call_Expr.added_format_types) {
                     
                     
                     //pln("%", f_ast(expr));
@@ -956,6 +968,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                         }
                     }
                     
+#if 0
                 } else if (intrinsic == &type_info) {
                     if (t_func->return_type) {
                         Ast* type_arg = expr->Call_Expr.args;
@@ -963,6 +976,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                             type_arg = type_arg->Compound.node;
                         }
                         
+                        Type* actual_type = (Type*) type_arg->Value.data.data;
                         Type_Info* info = type_info(&tcx->type_info_packer, type_arg->type);
                         expr->kind = Ast_Value;
                         expr->Value = {};
@@ -976,6 +990,18 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                             result = 0;
                         }
                     }
+#endif
+                } else if (intrinsic == &type_of) {
+                    Ast* type_arg = expr->Call_Expr.args;
+                    if (type_arg->kind == Ast_Compound) {
+                        type_arg = type_arg->Compound.node;
+                    }
+                    
+                    Type* actual_type = type_arg->type;
+                    pln("typeof(%)", f_type(actual_type));
+                    smm type_value = (smm) export_type_info(&tcx->type_info_packer, actual_type);
+                    expr->kind = Ast_Value;
+                    expr->Value = create_signed_int_value(type_value);
                 }
             }
         } break;
@@ -1117,7 +1143,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             } else {
                 if (report_error) {
                     pln("%", f_ast(expr));
-                    type_error(tcx, string_format("type `%` doesn't have field `%`", f_type(type), f_var(field_ident)), expr->span);
+                    type_error(tcx, string_print("type `%` doesn't have field `%`", f_type(type), f_var(field_ident)), expr->span);
                 }
             }
         } break;
@@ -1149,8 +1175,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 if (parent_type->Array.capacity > 0) {
                     if (parent_type->Array.capacity < count) {
                         if (report_error) {
-                            type_error(tcx, string_format("array literal expects at least `%` values, found `%`",
-                                                          f_smm(parent_type->Array.capacity), f_smm(count)),
+                            type_error(tcx, string_print("array literal expects at least `%` values, found `%`",
+                                                         f_smm(parent_type->Array.capacity), f_smm(count)),
                                        expr->span);
                         }
                         result = 0;
@@ -1165,7 +1191,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                         } else {
                             if (report_error) {
                                 // TODO(Alexander): improve this error message
-                                type_error(tcx, string_format("cannot assign empty array literal to fixed-array of unknown capacity, did you mean to use a dynamic array [..]T?"), 
+                                type_error(tcx, string_print("cannot assign empty array literal to fixed-array of unknown capacity, did you mean to use a dynamic array [..]T?"), 
                                            expr->span);
                             }
                         }
@@ -1238,8 +1264,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     // TODO(Alexander): improve this by finding closest match and point (>= 1) error(s)
                     if (report_error) {
                         type_error(tcx,
-                                   string_format("mismatched fields for union `%`", 
-                                                 f_type(parent_type)), expr->span);
+                                   string_print("mismatched fields for union `%`", 
+                                                f_type(parent_type)), expr->span);
                     }
                     
                 }
@@ -1249,8 +1275,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 if (report_error) {
                     pln("%", f_ast(expr));
                     pln("%", f_type(parent_type));
-                    type_error(tcx, string_format("cannot assign aggregate initializer to non-aggregate type `%`",
-                                                  f_type(parent_type)), 
+                    type_error(tcx, string_print("cannot assign aggregate initializer to non-aggregate type `%`",
+                                                 f_type(parent_type)), 
                                expr->span);
                 }
             }
@@ -1318,10 +1344,10 @@ match_struct_like_args(Type_Context* tcx, Type* formal_type, int first_field, in
             int idx = (int) map_get_index(formal.ident_to_index, ident);
             if (idx == -1) {
                 if (report_error) {
-                    type_error(tcx, string_format("`%` is an undeclared identifier in % `%`",
-                                                  f_string(vars_load_string(ident)),
-                                                  f_cstring(entity_name),
-                                                  f_type(formal_type)),
+                    type_error(tcx, string_print("`%` is an undeclared identifier in % `%`",
+                                                 f_string(vars_load_string(ident)),
+                                                 f_cstring(entity_name),
+                                                 f_type(formal_type)),
                                field->Argument.ident->span);
                 }
                 formal.has_error = true;
@@ -1332,8 +1358,8 @@ match_struct_like_args(Type_Context* tcx, Type* formal_type, int first_field, in
             has_ident = true;
         } else if (has_ident) {
             if (report_error) {
-                type_error(tcx, string_format("cannot combine named and anonymous values in % literal",
-                                              f_cstring(entity_name)), field->span);
+                type_error(tcx, string_print("cannot combine named and anonymous values in % literal",
+                                             f_cstring(entity_name)), field->span);
             }
             formal.has_error = true;
             break;
@@ -1342,9 +1368,9 @@ match_struct_like_args(Type_Context* tcx, Type* formal_type, int first_field, in
         if (field_index < first_field || field_index >= last_field) {
             if (report_error) {
                 string_id field_ident = formal.idents[field_index];
-                type_error(tcx, string_format("cannot use unrelated field `%` in % literal",
-                                              f_var(field_ident), 
-                                              f_cstring(entity_name)), field->span);
+                type_error(tcx, string_print("cannot use unrelated field `%` in % literal",
+                                             f_var(field_ident), 
+                                             f_cstring(entity_name)), field->span);
             }
             formal.has_error = true;
             break;
@@ -1355,9 +1381,9 @@ match_struct_like_args(Type_Context* tcx, Type* formal_type, int first_field, in
             field_type = formal.types[field_index];
         } else {
             if (report_error) {
-                type_error(tcx, string_format("too many fields in `%`, expected only `%`",
-                                              f_type(formal_type),
-                                              f_int(formal_field_count)),
+                type_error(tcx, string_print("too many fields in `%`, expected only `%`",
+                                             f_type(formal_type),
+                                             f_int(formal_field_count)),
                            args->span);
             }
             formal.has_error = true;
@@ -1510,6 +1536,8 @@ load_type_declaration(Type_Context* tcx, string_id ident, Span span, bool report
     if (is_builtin_type_keyword(ident)) {
         if (ident == Kw_void) {
             result = t_void;
+        } else if (ident == Kw_Type) {
+            result = t_type;
         } else if (ident == Kw_auto) {
             unimplemented;
         } else {
@@ -1526,8 +1554,8 @@ load_type_declaration(Type_Context* tcx, string_id ident, Span span, bool report
             if (!result && report_error) {
                 // NOTE(Alexander): copypasta, where?
                 type_error(tcx, 
-                           string_format("`%` is an undeclared identifier", 
-                                         f_string(vars_load_string(ident))),
+                           string_print("`%` is an undeclared identifier", 
+                                        f_string(vars_load_string(ident))),
                            span);
             }
         }
@@ -1574,8 +1602,8 @@ save_operator_overload(Type_Context* tcx, Type* type, Operator op, Span span, bo
         // TODO(Alexander): check ambiguity with previous entries
     } else {
         type_error(tcx,
-                   string_format("expected `1` or `2` paramter to binary operator overload, found `%`", 
-                                 f_int(arg_count)), span);
+                   string_print("expected `1` or `2` paramter to binary operator overload, found `%`", 
+                                f_int(arg_count)), span);
     }
     
     return type;
@@ -1618,8 +1646,8 @@ save_type_declaration(Type_Context* tcx, string_id ident, Type* type, Span span,
                         if (overloaded_fn->Function.unit) {
                             if (type->Function.unit) {
                                 type_error(tcx,
-                                           string_format("cannot redeclare function `%` with the same arguments", 
-                                                         f_var(type->Function.ident)), span);
+                                           string_print("cannot redeclare function `%` with the same arguments", 
+                                                        f_var(type->Function.ident)), span);
                             }
                         } else {
                             // TODO(Alexander): we need to better keep track of where default arguments are stored.
@@ -1645,8 +1673,8 @@ save_type_declaration(Type_Context* tcx, string_id ident, Type* type, Span span,
                     memcpy(old_type, type, sizeof(Type));
                 } else {
                     type_error(tcx,
-                               string_format("cannot redeclare previous declaration `%`",
-                                             f_string(vars_load_string(ident))),
+                               string_print("cannot redeclare previous declaration `%`",
+                                            f_string(vars_load_string(ident))),
                                span);
                 }
                 
@@ -1661,8 +1689,8 @@ save_type_declaration(Type_Context* tcx, string_id ident, Type* type, Span span,
                     memcpy(old_type, type, sizeof(Type));
                 } else {
                     type_error(tcx,
-                               string_format("cannot redeclare previous declaration `%`",
-                                             f_string(vars_load_string(ident))),
+                               string_print("cannot redeclare previous declaration `%`",
+                                            f_string(vars_load_string(ident))),
                                span);
                 }
                 
@@ -1670,8 +1698,8 @@ save_type_declaration(Type_Context* tcx, string_id ident, Type* type, Span span,
             } else {
                 if (old_type->kind && !type_equals(old_type, type)) {
                     type_error(tcx,
-                               string_format("cannot redeclare `%` with different type, previous type was `%`",
-                                             f_var(ident), f_type(old_type)), 
+                               string_print("cannot redeclare `%` with different type, previous type was `%`",
+                                            f_var(ident), f_type(old_type)), 
                                span);
                 }
             }
@@ -1837,8 +1865,8 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                             func->first_default_arg_index++;
                         } else {
                             if (report_error) {
-                                type_error(tcx, string_format("missing default argument for parameter %",
-                                                              f_int(arg_index)), ast_argument->span);
+                                type_error(tcx, string_print("missing default argument for parameter %",
+                                                             f_int(arg_index)), ast_argument->span);
                             }
                         }
                     }
@@ -1883,9 +1911,9 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                                 //pln("% = 0x%", f_cstring(name), f_u64_HEX(func->intrinsic));
                                 if (!func->intrinsic) {
                                     type_error(tcx,
-                                               string_format("procedure `%` is not found in library `%`",
-                                                             f_cstring(name),
-                                                             f_cstring(library)),
+                                               string_print("procedure `%` is not found in library `%`",
+                                                            f_cstring(name),
+                                                            f_cstring(library)),
                                                ast->span);
                                 }
                                 
@@ -2047,7 +2075,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             //result = create_type_from_ast(tcx, ast->Typedef.type, report_error);
             result = save_type_declaration_from_ast(tcx, ident, ast->Typedef.type, report_error);
             //} else {
-            //type_error(tcx, string_format("`%` is already defined", f_var(ident)), ast->span);
+            //type_error(tcx, string_print("`%` is already defined", f_var(ident)), ast->span);
             //}
         } break;
         
@@ -2125,8 +2153,8 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                             result = 0;
                             if (report_error) {
                                 type_error(tcx,
-                                           string_format("cannot redeclare previous declaration `%`",
-                                                         f_string(vars_load_string(ident))),
+                                           string_print("cannot redeclare previous declaration `%`",
+                                                        f_string(vars_load_string(ident))),
                                            stmt->span);
                             }
                         } else {
@@ -2269,8 +2297,8 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                     if (!is_integer(case_cond)) {
                         if (report_error) {
                             if (!type_infer_expression(tcx, it->Switch_Case.cond, 0, true)) {
-                                type_error(tcx, string_format("expected integral case condition, found `%`",
-                                                              f_value(&case_cond)),
+                                type_error(tcx, string_print("expected integral case condition, found `%`",
+                                                             f_value(&case_cond)),
                                            it->Switch_Case.cond->span);
                             }
                         }
@@ -2293,8 +2321,12 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                     result = type_infer_expression(tcx, stmt->Return_Stmt.expr, 
                                                    tcx->return_type, report_error);
                     constant_folding_of_expressions(tcx, stmt->Return_Stmt.expr);
-                    stmt->Return_Stmt.expr = auto_type_conversion(tcx, tcx->return_type, stmt->Return_Stmt.expr);
-                    result = stmt->Return_Stmt.expr->type;
+                    if (stmt->Return_Stmt.expr->type) {
+                        stmt->Return_Stmt.expr = auto_type_conversion(tcx, tcx->return_type, stmt->Return_Stmt.expr);
+                        result = stmt->Return_Stmt.expr->type;
+                    } else {
+                        result = 0;
+                    }
                 } else {
                     result = t_void;
                 }
@@ -2412,8 +2444,8 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool is_rhs_value
             if (lossy) {
                 if (report_error) {
                     type_error(tcx, 
-                               string_format("conversion from `%` to `%`, possible loss of data",
-                                             f_type(rhs), f_type(lhs)),
+                               string_print("conversion from `%` to `%`, possible loss of data",
+                                            f_type(rhs), f_type(lhs)),
                                span);
                 }
                 return false;
@@ -2483,7 +2515,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
 #if 0
             if (!t_func->unit && !t_func->intrinsic) {
                 type_error(tcx, 
-                           string_format("function `%` has no body", f_var(t_func->ident)),
+                           string_print("function `%` has no body", f_var(t_func->ident)),
                            expr->span);
             }
 #endif
@@ -2499,9 +2531,9 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
             
             if (actual_arg_count == 0 && t_func->first_default_arg_index > 0) {
                 type_error(tcx, 
-                           string_format("function `%` expected % argument(s)",
-                                         f_var(t_func->ident),
-                                         f_int(formal_arg_count)),
+                           string_print("function `%` expected % argument(s)",
+                                        f_var(t_func->ident),
+                                        f_int(formal_arg_count)),
                            expr->span);
                 return false;
                 
@@ -2511,10 +2543,10 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                 
                 
                 // NOTE(Alexander): it is allowed to have more arguments only if the function is variadic
-                type_error(tcx, string_format("function `%` did not take % arguments, expected % arguments", 
-                                              f_var(t_func->ident), 
-                                              f_int(actual_arg_count), 
-                                              f_int(t_func->first_default_arg_index)),
+                type_error(tcx, string_print("function `%` did not take % arguments, expected % arguments", 
+                                             f_var(t_func->ident), 
+                                             f_int(actual_arg_count), 
+                                             f_int(t_func->first_default_arg_index)),
                            expr->span);
                 return false;
             }
@@ -2533,8 +2565,8 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                             assert(arg_index < array_count(t_func->arg_types));
                         } else {
                             type_error(tcx, 
-                                       string_format("undeclared parameter with name `%`", 
-                                                     f_var(arg_ident)), 
+                                       string_print("undeclared parameter with name `%`", 
+                                                    f_var(arg_ident)), 
                                        expr->span);
                             result = false;
                             break;
@@ -2582,17 +2614,17 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                     if (second->kind == TypeKind_Basic) {
                         if ((second->Basic.flags & BasicFlag_Integer) == 0) {
                             type_error(tcx, 
-                                       string_format("`% % %` expects integral value on right-hand side", 
-                                                     f_type(first), 
-                                                     f_cstring(operator_strings[op]), 
-                                                     f_type(second)),
+                                       string_print("`% % %` expects integral value on right-hand side", 
+                                                    f_type(first), 
+                                                    f_cstring(operator_strings[op]), 
+                                                    f_type(second)),
                                        expr->span);
                         }
                     } else if (second->kind != TypeKind_Pointer && second->kind != TypeKind_Function) {
                         type_error(tcx, 
-                                   string_format("operator `%` expects integral or pointer on right-hand side, found `%`", 
-                                                 f_cstring(operator_strings[op]),
-                                                 f_type(second)),
+                                   string_print("operator `%` expects integral or pointer on right-hand side, found `%`", 
+                                                f_cstring(operator_strings[op]),
+                                                f_type(second)),
                                    expr->span);
                     }
                 } else if (operator_is_comparator(op)) {
@@ -2602,9 +2634,9 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                             expr->Binary_Expr.second->type = first;
                         } else {
                             type_error(tcx, 
-                                       string_format("operator `%` expects pointer on right-hand side, found `%`", 
-                                                     f_cstring(operator_strings[op]),
-                                                     f_type(second)),
+                                       string_print("operator `%` expects pointer on right-hand side, found `%`", 
+                                                    f_cstring(operator_strings[op]),
+                                                    f_type(second)),
                                        expr->span);
                         }
                     }
@@ -2612,9 +2644,9 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                     result = result && type_check_assignment(tcx, first, second, expr->Binary_Expr.second->kind == Ast_Value, expr->Binary_Expr.second->span);
                 } else {
                     type_error(tcx, 
-                               string_format("operator `%` is not supported for `%` on left-hand side",
-                                             f_cstring(operator_strings[op]),
-                                             f_type(first)),
+                               string_print("operator `%` is not supported for `%` on left-hand side",
+                                            f_cstring(operator_strings[op]),
+                                            f_type(first)),
                                expr->span);
                 }
                 
@@ -2632,8 +2664,8 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                     pln("%", f_ast(expr));
                 }
             } else {
-                type_error(tcx, string_format("unexpected type `%` on left-hand side for operator `%`", 
-                                              f_type(first), f_cstring(operator_strings[op])), 
+                type_error(tcx, string_print("unexpected type `%` on left-hand side for operator `%`", 
+                                             f_type(first), f_cstring(operator_strings[op])), 
                            expr->Binary_Expr.first->span);
                 result = false;
             }
@@ -2657,15 +2689,15 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                 Value index_value = expr->Index_Expr.index->Value;
                 smm index = value_to_smm(index_value);
                 if (index < 0) {
-                    type_error(tcx, string_format("invalid index `%`", f_smm(index)), expr->span);
+                    type_error(tcx, string_print("invalid index `%`", f_smm(index)), expr->span);
                     result = false;
                 }
                 
                 if (type->Array.capacity > 0) {
                     if (index > type->Array.capacity - 1) {
                         type_error(tcx, 
-                                   string_format("array index `%` exceeds capacity `%`",
-                                                 f_smm(index), f_smm(type->Array.capacity)),
+                                   string_print("array index `%` exceeds capacity `%`",
+                                                f_smm(index), f_smm(type->Array.capacity)),
                                    expr->span);
                     }
                 } else {
@@ -2923,8 +2955,8 @@ intrin_name->Function.first_default_arg_index++; \
     
     // Intrinsic syntax: void print_format(string format...)
     // e.g. print_format %, lucky number is %\n", "world", 7);
-    push_intrinsic(print_format, true, &interp_intrinsic_print_format, &print_format, t_void);
-    push_intrinsic_arg(print_format, format, t_cstring);
+    push_intrinsic(print, true, &interp_intrinsic_print, &print, t_void);
+    push_intrinsic_arg(print, format, t_cstring);
     
     // Intrinsic syntax: void debug_break()
     // Inserts a breakpoint (e.g. int3 on x64) to enable debugger
@@ -3001,12 +3033,8 @@ intrin_name->Function.first_default_arg_index++; \
     push_intrinsic(alignof, false, 0, &type_alignof, t_umm);
     push_intrinsic_arg(alignof, T, t_any);
     
-    Type* type_info_struct = load_type_declaration(tcx, vars_save_cstring("Type_Info"), empty_span, false);
-    if (type_info_struct) {
-        type_info_struct = type_wrap_pointer(tcx, type_info_struct);
-    }
-    push_intrinsic(type_info, false, 0, &type_info, type_info_struct);
-    push_intrinsic_arg(type_info, T, t_any);
+    push_intrinsic(type_of, false, 0, &type_of, t_type);
+    push_intrinsic_arg(type_of, T, t_any);
     
     // Intrinsic syntax: void*  memory_alloc(umm size)
     push_intrinsic(allocate, false, 0, &allocate, t_void_ptr);

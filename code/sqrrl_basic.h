@@ -533,11 +533,11 @@ enum Format_Type { // TODO(Alexander): add more types
 #define f_type(x) FormatType_type, (Type*) (x)
 #define f_ic(x) FormatType_intermediate_code, (Intermediate_Code*) (x)
 
-void print_format(cstring format...);
-string string_format(cstring format...);
+void print(cstring format...);
+string string_print(cstring format...);
 
 // NOTE(Alexander): print formatted string with new line
-#define pln(format, ...) print_format(format##"\n", ##__VA_ARGS__)
+#define pln(format, ...) print(format##"\n", ##__VA_ARGS__)
 //#define pln(...)
 
 

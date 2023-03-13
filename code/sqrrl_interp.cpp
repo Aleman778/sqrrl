@@ -19,8 +19,8 @@ interp_expression(Interp* interp, Ast* ast) {
                     result.type = *t_int;
                     
                 } else {
-                    interp_error(interp, string_format("undeclared identifier `%`", 
-                                                       f_string(vars_load_string(ast->Ident))));
+                    interp_error(interp, string_print("undeclared identifier `%`", 
+                                                      f_string(vars_load_string(ast->Ident))));
                 }
             }
         } break;
@@ -350,16 +350,16 @@ interp_function_call(Interp* interp, Ast* args, Type* function_type) {
                 if (arg_index != formal_arg_count && !type->Function.is_variadic) {
                     
                     // NOTE(Alexander): it is allowed to have more arguments only if the function is variadic
-                    interp_error(interp, string_format("function `%` did not take % arguments, expected % arguments", 
-                                                       f_var(function_type->Function.ident), 
-                                                       f_int(arg_index), 
-                                                       f_int(formal_arg_count)));
+                    interp_error(interp, string_print("function `%` did not take % arguments, expected % arguments", 
+                                                      f_var(function_type->Function.ident), 
+                                                      f_int(arg_index), 
+                                                      f_int(formal_arg_count)));
                     return result;
                 }
             } else if (formal_arg_count != 0) {
-                interp_error(interp, string_format("function `%` expected % arguments",
-                                                   f_var(function_type->Function.ident), 
-                                                   f_int(formal_arg_count)));
+                interp_error(interp, string_print("function `%` expected % arguments",
+                                                  f_var(function_type->Function.ident), 
+                                                  f_int(formal_arg_count)));
             }
             
             Ast* block = type->Function.unit->ast;
@@ -375,8 +375,8 @@ interp_function_call(Interp* interp, Ast* args, Type* function_type) {
                     result.value = type->Function.interp_intrinsic(interp, variadic_arguments);
                 } else {
                     interp_error(interp,
-                                 string_format("`%` function has no definition and is no intrinsic",
-                                               f_var(function_type->Function.ident)));
+                                 string_print("`%` function has no definition and is no intrinsic",
+                                              f_var(function_type->Function.ident)));
                 }
             }
             
@@ -390,8 +390,8 @@ interp_function_call(Interp* interp, Ast* args, Type* function_type) {
             interp->base_pointer = *(smm*) ((u8*) interp->stack.base + interp->base_pointer);
             
         } else {
-            interp_error(interp, string_format("`%` is not a function", 
-                                               f_var(function_type->Function.ident)));
+            interp_error(interp, string_print("`%` is not a function", 
+                                              f_var(function_type->Function.ident)));
         }
     } else {
         interp_unresolved_identifier_error(interp, function_type->Function.ident);
@@ -417,8 +417,8 @@ interp_field_expr(Interp* interp, Interp_Value var, string_id ident) {
                 data = (u8*) data + field_offset;
                 result = interp_value_load_from_memory(interp, field_type, data);
             } else {
-                interp_error(interp, string_format("`%` is not a field of type `%`",
-                                                   f_string(vars_load_string(ident)), f_string(vars_load_string(var.type.ident))));
+                interp_error(interp, string_print("`%` is not a field of type `%`",
+                                                  f_string(vars_load_string(ident)), f_string(vars_load_string(var.type.ident))));
             }
         } break;
         
@@ -444,8 +444,8 @@ interp_field_expr(Interp* interp, Interp_Value var, string_id ident) {
         
         
         default: {
-            interp_error(interp, string_format("left of `.%` must be a pointer, struct, union or enum",
-                                               f_string(vars_load_string(ident))));
+            interp_error(interp, string_print("left of `.%` must be a pointer, struct, union or enum",
+                                              f_string(vars_load_string(ident))));
         } break;
     }
     
@@ -595,7 +595,7 @@ interp_block(Interp* interp, Ast* ast) {
 }
 
 Value
-interp_intrinsic_print_format(Interp* interp, array(Interp_Value)* var_args) {
+interp_intrinsic_print(Interp* interp, array(Interp_Value)* var_args) {
     Interp_Value format = get_interp_value(interp, t_cstring, vars_save_cstring("format"));
     
     if (format.value.type == Value_string || 
@@ -637,7 +637,7 @@ interp_intrinsic_print_format(Interp* interp, array(Interp_Value)* var_args) {
                     }
                     
                     if (var_arg_index >= array_count(var_args)) {
-                        interp_error(interp, string_format("not enough arguments passed to function"));
+                        interp_error(interp, string_print("not enough arguments passed to function"));
                         string_builder_free(&sb);
                         return {};
                     }
@@ -683,8 +683,8 @@ interp_intrinsic_print_format(Interp* interp, array(Interp_Value)* var_args) {
             pln("%", f_string(format.value.data.str));
         }
     } else {
-        interp_error(interp, string_format("expected `string` as first argument, found `%`",
-                                           f_type(&format.type)));
+        interp_error(interp, string_print("expected `string` as first argument, found `%`",
+                                          f_type(&format.type)));
     }
     
     return {};
@@ -710,8 +710,8 @@ interp_intrinsic_assert(Interp* interp, array(Interp_Value)* var_args) {
         // TODO(Alexander): add support for file and line number here
         intrinsic_assert((int) expr.value.data.signed_int, "user code", "interp", 0);
     } else {
-        interp_error(interp, string_format("expected `int` as first argument, found `%`",
-                                           f_type(&expr.type)));
+        interp_error(interp, string_print("expected `int` as first argument, found `%`",
+                                          f_type(&expr.type)));
     }
     
     Value result = {};

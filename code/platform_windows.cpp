@@ -264,7 +264,7 @@ DEBUG_get_system_canonicalized_path(cstring filename) {
     }
     
     if (!result.success) {
-        platform_error(string_format("system header file `%` is not found", f_cstring(filename)));
+        platform_error(string_print("system header file `%` is not found", f_cstring(filename)));
     }
     
     //pln("SYS! path: `%`\nname: `%`", f_cstring(result.fullpath), f_cstring(result.file_part));
@@ -286,7 +286,7 @@ read_entire_file_handle(HANDLE file_handle, cstring filename) {
     LARGE_INTEGER file_size;
     if (GetFileSizeEx(file_handle, &file_size)) {
         if (file_size.QuadPart > U32_MAX) {
-            platform_error(string_format("file `%` exeeds maximum file size of 4GB", f_cstring(filename)));
+            platform_error(string_print("file `%` exeeds maximum file size of 4GB", f_cstring(filename)));
             return result;
         }
         
@@ -295,8 +295,8 @@ read_entire_file_handle(HANDLE file_handle, cstring filename) {
         
         if (result.contents) {
             if (!ReadFile(file_handle, result.contents, (u32) result.contents_size, 0, 0)) {
-                platform_error(string_format("failed to read file `%`, win32 error code: `0x%` see\nhttps://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes for more info", 
-                                             f_cstring(filename), f_u64_HEX(GetLastError())));
+                platform_error(string_print("failed to read file `%`, win32 error code: `0x%` see\nhttps://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes for more info", 
+                                            f_cstring(filename), f_u64_HEX(GetLastError())));
                 
                 DEBUG_free_file_memory(result.contents);
                 result.contents_size = 0;
@@ -304,11 +304,11 @@ read_entire_file_handle(HANDLE file_handle, cstring filename) {
             }
             
         } else {
-            platform_error(string_format("out of memory when allocating space for `%`", f_cstring(filename)));
+            platform_error(string_print("out of memory when allocating space for `%`", f_cstring(filename)));
         }
         
     } else {
-        platform_error(string_format("failed to read file `%`", f_cstring(filename)));
+        platform_error(string_print("failed to read file `%`", f_cstring(filename)));
     }
     
     return result;
@@ -324,7 +324,7 @@ DEBUG_read_entire_file(cstring filename) {
         result = read_entire_file_handle(file_handle, filename);
         CloseHandle(file_handle);
     } else {
-        platform_error(string_format("file `%` was not found", f_cstring(filename)));
+        platform_error(string_print("file `%` was not found", f_cstring(filename)));
     }
     
     return result;
@@ -346,7 +346,7 @@ DEBUG_write_entire_file(cstring filename, void* data, u32 size) {
         
         return out_size == size && success;
     } else {
-        platform_error(string_format("file `%` was not found", f_cstring(filename)));
+        platform_error(string_print("file `%` was not found", f_cstring(filename)));
     }
     
     return false;

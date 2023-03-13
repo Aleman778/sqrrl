@@ -75,17 +75,17 @@ parse_error(Parser* parser, Token token, string message) {
 inline void
 parse_error_expected_type(Parser* parser, Token found) {
     parse_error(parser, found,
-                string_format("expected type found `%`", f_string(found.source)));
+                string_print("expected type found `%`", f_string(found.source)));
 }
 
 inline void
 parse_error_unexpected_token(Parser* parser, Token_Type expected, Token found) {
-    parse_error(parser, found, string_format("expected token `%` found `%`", f_token(expected), f_string(found.source)));
+    parse_error(parser, found, string_print("expected token `%` found `%`", f_token(expected), f_string(found.source)));
 }
 
 inline void
 parse_error_unexpected_token(Parser* parser, Token found) {
-    parse_error(parser, found, string_format("unexpected token `%`", f_token(found.type)));
+    parse_error(parser, found, string_print("unexpected token `%`", f_token(found.type)));
 }
 
 struct Parse_U64_Value_Result {

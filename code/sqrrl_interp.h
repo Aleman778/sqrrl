@@ -55,13 +55,13 @@ interp_error(Interp* interp, string message) {
 
 inline void
 interp_unresolved_identifier_error(Interp* interp, string_id ident) {
-    interp_error(interp, string_format("unresolved identifier `%`", f_string(vars_load_string(ident))));
+    interp_error(interp, string_print("unresolved identifier `%`", f_string(vars_load_string(ident))));
 }
 
 inline void
 interp_mismatched_types(Interp* interp, Type* expected, Type* found) {
-    interp_error(interp, string_format("mismatched types, expected `%` found `%`", 
-                                       f_type(expected), f_type(found)));
+    interp_error(interp, string_print("mismatched types, expected `%` found `%`", 
+                                      f_type(expected), f_type(found)));
 }
 
 inline Interp_Value
@@ -127,8 +127,8 @@ push_interp_value(Interp* interp, Type* type, string_id ident, Interp_Value valu
     }
     
     if (ident > 0 && interp_value_exists(interp, ident)) {
-        interp_error(interp, string_format("cannot redeclare previous local variable `%`",
-                                           f_var(ident)));
+        interp_error(interp, string_print("cannot redeclare previous local variable `%`",
+                                          f_var(ident)));
         return 0;
     }
     
@@ -152,6 +152,6 @@ Interp_Value interp_statement(Interp* interp, Ast* ast);
 Interp_Value interp_block(Interp* interp, Ast* ast);
 
 // Interpreter intrinsics
-Value interp_intrinsic_print_format(Interp* interp, array(Interp_Value)* var_args);
+Value interp_intrinsic_print(Interp* interp, array(Interp_Value)* var_args);
 Value interp_intrinsic_debug_break(Interp* interp, array(Interp_Value)* var_args);
 Value interp_intrinsic_assert(Interp* interp, array(Interp_Value)* var_args);

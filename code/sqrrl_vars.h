@@ -33,7 +33,8 @@ VAR(switch)   \
 VAR(true)     \
 VAR(typedef)  \
 VAR(union)    \
-VAR(while)
+VAR(while)    \
+VAR_GROUP(builtin_keywords_end)
 
 #define DEF_TYPE_KEYWORDS \
 VAR_GROUP(builtin_types_begin) \
@@ -56,8 +57,8 @@ VAR(string)   \
 VAR(cstring)  \
 VAR(void)     \
 VAR(auto)     \
-VAR_GROUP(builtin_types_end) \
-VAR_GROUP(builtin_keywords_end)
+VAR(Type)     \
+VAR_GROUP(builtin_types_end)
 
 #define DEF_SYMBOLS \
 VAR(__VA_ARGS__) \

@@ -61,22 +61,22 @@ type_error(Type_Context* tcx, string message, Span span) {
         Loaded_Source_File* file = get_source_file_by_index(span.file_index);
         if (file) {
             Span_Data result = calculate_span_data(file->lines, span);
-            print_format("%:%:%: ", f_string(file->abspath), f_u32(result.begin_line + 1), f_u32(result.begin_column + 1));
+            print("%:%:%: ", f_string(file->abspath), f_u32(result.begin_line + 1), f_u32(result.begin_column + 1));
         }
     }
     
     pln("error: %", f_string(message));
     if (multiline) {
         DEBUG_log_backtrace();
-        print_format("\n");
+        print("\n");
     }
     tcx->error_count++;
 }
 
 inline void
 type_error_mismatch(Type_Context* tcx, Type* expected, Type* found, Span span) {
-    type_error(tcx, string_format("mismatched types expected `%`, found `%`",
-                                  f_type(expected), f_type(found)), span);
+    type_error(tcx, string_print("mismatched types expected `%`, found `%`",
+                                 f_type(expected), f_type(found)), span);
 }
 
 inline void
@@ -113,8 +113,8 @@ push_local(Type_Context* tcx, string_id ident, Type* type, Span span, bool repor
     if (map_get(tcx->locals, ident)) {
         if (report_error) {
             type_error(tcx,
-                       string_format("cannot redeclare previous local variable `%`",
-                                     f_string(vars_load_string(ident))), span);
+                       string_print("cannot redeclare previous local variable `%`",
+                                    f_string(vars_load_string(ident))), span);
         }
         return false;
         
@@ -159,11 +159,6 @@ type_equals(Type* a, Type* b) {
     assert(a && b);
     
     
-    if (a->kind == TypeKind_Any || 
-        b->kind == TypeKind_Any) {
-        return true;
-    }
-    
     if (a->kind == TypeKind_Enum) {
         a = a->Enum.type;
     }
@@ -177,6 +172,8 @@ type_equals(Type* a, Type* b) {
     }
     
     switch (a->kind) {
+        case TypeKind_Any:
+        case TypeKind_Type:
         case TypeKind_Void: {
             return true;
         } break;
@@ -241,7 +238,7 @@ type_equals(Type* a, Type* b) {
         } break;
         
         default: {
-            pln("%", f_string(string_format("%", f_type(a))));
+            pln("%", f_string(string_print("%", f_type(a))));
             assert(0 && "not implemented");
         } break;
     }

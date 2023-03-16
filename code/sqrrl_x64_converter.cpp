@@ -447,18 +447,15 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
                 src0 = convert_expr_to_intermediate_code(cu, first);
             }
         }
+        Intermediate_Code* ic_src0 = cu->ic_last;
         
         {
-            Intermediate_Code* ic_curr = cu->ic_last;
             Ast* second = expr->Binary_Expr.second;
             if (second->kind == Ast_Binary_Expr) { 
                 src1 = convert_binary_expr_to_intermediate_code(cu, second, prev_result);
             } else {
                 src1 = convert_expr_to_intermediate_code(cu, second);
             }
-            
-            //__debugbreak();
-            src0 = ic_clobber_register(cu, ic_curr, second->type, src0, src1);
         }
         
         Type* first_type = expr->Binary_Expr.first->type;
@@ -483,6 +480,8 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
                 src1.raw_type = src0.raw_type;
             }
         } 
+        
+        src0 = ic_clobber_register(cu, ic_src0, expr->Binary_Expr.second->type, src0, src1);
         
         //#if BUILD_DEBUG
         //if (src0.raw_type != 0 && src0.raw_type != src1.raw_type) {
@@ -914,6 +913,16 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
         } break;
         
         case Ast_Unary_Expr: {
+            if (expr->Unary_Expr.overload) {
+                
+                array(Ast*)* args = 0;
+                array_push(args, expr->Unary_Expr.first);
+                
+                return convert_function_call_to_intermediate_code(cu, expr->Unary_Expr.overload, args, 0);
+            }
+            
+            
+            
             Ic_Arg src = convert_expr_to_intermediate_code(cu, expr->Unary_Expr.first);
             Ic_Raw_Type rt = convert_type_to_raw_type(expr->type);
             Operator op = expr->Unary_Expr.op;

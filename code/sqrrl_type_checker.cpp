@@ -617,10 +617,26 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 }
             }
             
+            Operator op = expr->Unary_Expr.op;
             Type* type = type_infer_expression(tcx, expr->Unary_Expr.first, parent_type, report_error);
             
+            
+            if (op == Op_Negate) {
+                Overloaded_Operator_List overloads =
+                    map_get(tcx->overloaded_operators, type);
+                
+                if (overloads.is_valid) {
+                    for_array(overloads.ops, overload, _) {
+                        if (overload->op == op) {
+                            pln("overload: %", f_ast(expr));
+                            expr->Unary_Expr.overload = overload->func;
+                        }
+                    }
+                }
+            }
+            
             if (type) {
-                switch (expr->Unary_Expr.op) {
+                switch (op) {
                     case Op_Dereference: {
                         if (type->kind == TypeKind_Pointer) {
                             result = type->Pointer;
@@ -1578,10 +1594,16 @@ save_operator_overload(Type_Context* tcx, Type* type, Operator op, Span span, bo
         if (arg_count == 2) {
             rhs = type->Function.arg_types[1];
         } else {
-            switch (op) {
-                case Op_Subtract: op = Op_Negate; break;
-                case Op_Multiply: op = Op_Dereference; break;
+            if (op == Op_Subtract) {
+                op = Op_Negate;
+            } else {
+                if (report_error) {
+                    type_error(tcx, string_print("unary operator `%` is not overloadable", 
+                                                 f_cstring(operator_strings[op])), span);
+                }
+                return 0;
             }
+            
         }
         
         Overloaded_Operator_List* overload = &map_get(tcx->overloaded_operators, lhs);
@@ -1602,7 +1624,7 @@ save_operator_overload(Type_Context* tcx, Type* type, Operator op, Span span, bo
         // TODO(Alexander): check ambiguity with previous entries
     } else {
         type_error(tcx,
-                   string_print("expected `1` or `2` paramter to binary operator overload, found `%`", 
+                   string_print("expected `1` or `2` arguments for operator overload found `%`", 
                                 f_int(arg_count)), span);
     }
     
@@ -2588,6 +2610,37 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                 arg_index++;
             }
             
+            
+        } break;
+        
+        case Ast_Unary_Expr: {
+            
+            result = type_check_expression(tcx, expr->Binary_Expr.first);
+            
+            if (expr->Unary_Expr.overload) {
+                break;
+            }
+            
+            Operator op = expr->Unary_Expr.op;
+            Type* first = expr->Unary_Expr.first->type;
+            
+            
+            switch (op) {
+                case Op_Negate: {
+                    
+                    if (first->kind == TypeKind_Pointer || first->kind == TypeKind_Function) {
+                        
+                    } else if (first->kind == TypeKind_Basic && (first->Basic.flags & (BasicFlag_Integer | BasicFlag_Floating))) {
+                    } else {
+                        type_error(tcx, 
+                                   string_print("unary operator `%` expects integral value, found `%`", 
+                                                f_cstring(operator_strings[op]), 
+                                                f_type(first)),
+                                   expr->span);
+                    }
+                    
+                } break;
+            }
             
         } break;
         

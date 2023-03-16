@@ -30,6 +30,7 @@ AST_GROUP(Expr_Begin,  "expression")            \
 AST(Unary_Expr,        "unary", struct {        \
 Ast* first;                                     \
 Operator op;                                    \
+Type* overload;                                 \
 })                                              \
 AST(Binary_Expr,       "binary", struct {       \
 Ast* first;                                     \

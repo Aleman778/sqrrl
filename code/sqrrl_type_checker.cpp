@@ -485,6 +485,11 @@ match_function_args(Type_Context* tcx,
 
 internal Ast*
 auto_type_conversion(Type_Context* tcx, Type* target_type, Ast* node, Operator op=Op_Assign) {
+    if (target_type->kind == TypeKind_Any) {
+        return node;
+    }
+    
+    
     Ast* result = node;
     Type* initial_type = node->type;
     
@@ -495,6 +500,7 @@ auto_type_conversion(Type_Context* tcx, Type* target_type, Ast* node, Operator o
         if (type_equals(initial_type, target_type)) {
             node->type = target_type;
         } else {
+            
             if (node->kind == Ast_Value) {
                 node->type = target_type;
                 node->Value = value_cast(node->Value, 
@@ -628,7 +634,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 if (overloads.is_valid) {
                     for_array(overloads.ops, overload, _) {
                         if (overload->op == op) {
-                            pln("overload: %", f_ast(expr));
                             expr->Unary_Expr.overload = overload->func;
                         }
                     }
@@ -880,7 +885,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 return 0;
             }
             
-            
             if (function_type->kind == TypeKind_Pointer) {
                 function_type = function_type->Pointer;
             }
@@ -1014,7 +1018,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     }
                     
                     Type* actual_type = type_arg->type;
-                    pln("typeof(%)", f_type(actual_type));
                     smm type_value = (smm) export_type_info(&tcx->type_info_packer, actual_type);
                     expr->kind = Ast_Value;
                     expr->Value = create_signed_int_value(type_value);
@@ -2369,6 +2372,10 @@ bool
 type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool is_rhs_value, Span span, Operator op, bool report_error) {
     assert(lhs && rhs);
     
+    //if (lhs->kind == TypeKind_Any || rhs->kind == TypeKind_Any) {
+    //return true;
+    //}
+    
     if (lhs->kind == TypeKind_Enum) {
         //pln("lhs - before: %", f_type(lhs));
         lhs = lhs->Enum.type;
@@ -2399,6 +2406,8 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool is_rhs_value
     }
     
     switch (lhs->kind) {
+        case TypeKind_Void: break;
+        
         case TypeKind_Basic: {
             
             if (operator_is_comparator(op) && 
@@ -2494,7 +2503,8 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool is_rhs_value
             
         } break;
         
-        case TypeKind_Struct: {
+        case TypeKind_Struct:
+        case TypeKind_Union: {
             // TODO(Alexander): this will not work for anonymous structs
             if (lhs != rhs) {
                 if (report_error) {
@@ -2517,6 +2527,25 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool is_rhs_value
                     return false;
                 }
             }
+        } break;
+        
+        case TypeKind_Function: {
+            array(Type*)* lhs_args = lhs->Function.arg_types;
+            array(Type*)* rhs_args = rhs->Function.arg_types;
+            
+            if (array_count(lhs_args) != array_count(rhs_args)) {
+                return false;
+            }
+            
+            for_array_v(lhs->Function.arg_types, la, arg_index) {
+                if (!type_equals(la, rhs_args[arg_index])) {
+                    return false;
+                }
+            }
+        } break;
+        
+        default: {
+            unimplemented;
         } break;
     }
     
@@ -2598,7 +2627,8 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                     if (!type_equals(arg_type, arg->Argument.assign->type)) {
                         //if (!type_check_assignment(tcx, arg_type, 
                         //arg->Argument.assign->type,
-                        //arg->Argument.assign->span)) {
+                        //arg->Argument.assign->span))
+                        //__debugbreak();
                         pln("%", f_ast(expr));
                         type_error_mismatch(tcx, arg_type, 
                                             arg->Argument.assign->type, 

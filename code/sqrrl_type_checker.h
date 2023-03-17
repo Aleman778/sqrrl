@@ -206,7 +206,11 @@ type_equals(Type* a, Type* b) {
                 return false;
             }
             
-            // TODO(Alexander): check that entries in the struct/unions match
+            // TODO(Alexander): we can improve this later, doesn't work for anonymous structs
+            if (a != b) {
+                return false;
+            }
+            
         } break;
         
         case TypeKind_Pointer: {

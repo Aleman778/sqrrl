@@ -235,10 +235,18 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
             }
             
             if (count >= max_elements_to_show) {
+                if (elem_type.kind != Type_Kind.Basic) {
+                    print_newline_with_spaces(indent + 4);
+                }
                 print("...+% more", count - max_elements_to_show);
             }
             
-            print(" }");
+            if (elem_type.kind != Type_Kind.Basic) {
+                print_newline_with_spaces(indent);
+                print("}");
+            } else {
+                print(" }");
+            }
         }
         
         case Type_Kind.Union:

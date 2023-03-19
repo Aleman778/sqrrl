@@ -1510,13 +1510,21 @@ create_type_struct_like_from_ast(Type_Context* tcx,
                     smm next_offset = result.offset;
                     for_array_v(type->Struct_Like.idents, field_ident, field_index) {
                         Type* field_type = type->Struct_Like.types[field_index];
-                        push_type_to_struct_like(&result, field_type, field_ident, pack);
-                        if (result.offset > next_offset) {
-                            next_offset = result.offset;
+                        smm field_offset = type->Struct_Like.offsets[field_index];
+                        
+                        if (field_offset == 0) {
+                            if (result.offset > next_offset) {
+                                next_offset = result.offset;
+                            }
+                            result.offset = prev_offset;
                         }
-                        result.offset = prev_offset;
+                        
+                        push_type_to_struct_like(&result, field_type, field_ident, pack);
                     }
                     
+                    if (result.offset > next_offset) {
+                        next_offset = result.offset;
+                    }
                     result.offset = next_offset;
                     //pln("%", f_ast(ast_type));
                     //unimplemented;

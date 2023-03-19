@@ -230,7 +230,22 @@ convert_function_call_to_intermediate_code(Compilation_Unit* cu,
                 copy.expr = arg;
                 copy.dest = dest;
                 
+                bool precompute_arg = false;
+                
+                
                 if (arg->kind == Ast_Call_Expr) {
+                    precompute_arg = true;
+                }
+                
+                if (arg->kind == Ast_Binary_Expr && arg->Binary_Expr.overload) {
+                    precompute_arg = true;
+                }
+                
+                if (arg->kind == Ast_Unary_Expr && arg->Unary_Expr.overload) {
+                    precompute_arg = true;
+                }
+                
+                if (precompute_arg) {
                     // TODO(Alexander): we can also have call within binary expr etc. e.g. bar(1 + foo())
                     // NOTE(Alexander): unroll inner function calls and evaulate them before the
                     //                  rest of the arguments.

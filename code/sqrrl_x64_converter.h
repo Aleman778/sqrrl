@@ -291,6 +291,11 @@ _ic_mov(Compilation_Unit* cu, Ic_Arg dest, Ic_Arg src, cstring comment=0) {
     //assert(dest.raw_type == src.raw_type);
     Ic_Opcode opcode = (dest.type & IC_FLOAT) ? IC_FMOV : IC_MOV;
     if (opcode == IC_MOV && dest.type & IC_REG && src.type & (IC_T8 | IC_T16)) {
+        if (dest.raw_type & (IC_T8 | IC_T16)) {
+            // NOTE(Alexander): make sure dest is >= 32 bits size
+            dest.raw_type = (dest.raw_type & IC_RT_SIZE_MASK) | IC_T32;
+        }
+        
         if (src.type & IC_DISP) {
             src.raw_type = dest.raw_type;
         } else {
@@ -330,6 +335,8 @@ _ic_lea(Compilation_Unit* cu, Ic_Arg dest, Ic_Arg src, cstring comment=0, u8 tmp
         dest = tmp;
     }
 }
+
+#define X64_OP_SIZE_PREFIX 0x66
 
 #define REX_PATTERN 0x40
 #define REX_FLAG_W bit(3)

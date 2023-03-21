@@ -95,6 +95,7 @@ enum {
     IC_UINT = bit(5),
     IC_SINT = bit(6),
     IC_FLOAT = bit(7),
+    IC_RT_SIZE_MASK = 0x0F,
     IC_RT_MASK = 0xFF,
 };
 

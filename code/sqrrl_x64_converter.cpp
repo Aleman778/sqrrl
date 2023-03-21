@@ -141,22 +141,30 @@ ic_clobber_register(Compilation_Unit* cu, Intermediate_Code* ic_first, Type* pre
         if (clobbered) {
             Ic_Arg clobber = ic_push_local(cu, prev_type); // TODO(Alexander): temp allocation
             
-            Intermediate_Code* mov_clobber = ic_add_orphan(cu, (prev_result.type & IC_FLOAT) ? IC_FMOV : IC_MOV);
-            mov_clobber->src0 = clobber;
-            mov_clobber->src1 = prev_result;
+            //Intermediate_Code* mov_clobber = ic_add_orphan(cu, (prev_result.type & IC_FLOAT) ? IC_FMOV : IC_MOV);
+            //mov_clobber->src0 = clobber;
+            //mov_clobber->src1 = prev_result;
+            //mov_clobber->comment = "clobbered";
             
-            Intermediate_Code* ic_next = ic_first->next;
-            ic_first->next = mov_clobber;
+            Intermediate_Code* ic_last = cu->ic_last;
+            Intermediate_Code* ic_second = ic_first->next;
+            // TODO(Alexander): is there a way to SPEED this up by not storing in_place???
+            convert_assign_to_intermediate_code(cu, prev_type, clobber, prev_result, true);
+            Intermediate_Code* ic_clobber_first = ic_last->next;
+            Intermediate_Code* ic_clobber_second = cu->ic_last;
             
-            if (ic_next) {
-                mov_clobber->next = ic_next;
-            } else {
-                // Second argument hasn't been put in an instruction yet, then mov clobber is the last instruction
-                cu->ic_last = mov_clobber;
-                Ic_Basic_Block* bb = cu->bb_last;
-                if (bb) {
-                    bb->ic_last = mov_clobber;
-                }
+            
+            // Update links
+            ic_first->next = ic_clobber_first;
+            ic_clobber_second->next = ic_second;
+            
+            if (ic_second) {
+                cu->ic_last = ic_last;
+            }
+            
+            Ic_Basic_Block* bb = cu->bb_last;
+            if (bb) {
+                bb->ic_last = cu->ic_last;
             }
             
             return clobber;
@@ -1120,7 +1128,6 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                             ic->src0 = ic_reg(result.raw_type);
                             ic->src1 = src;
                             result = ic->src0;
-                            
                         }
                         
                     } else if (t_dest->Basic.flags & BasicFlag_Floating) {
@@ -1593,7 +1600,7 @@ x64_binary(Intermediate_Code* ic,
                 }
             } else if (t2 & IC_REG) {
                 if (t1 & IC_T16) {
-                    ic_u8(ic, 0x66); // operand prefix
+                    ic_u8(ic, X64_OP_SIZE_PREFIX);
                 }
                 
                 if (t1 & IC_T64) {
@@ -1727,7 +1734,7 @@ x64_mov(Intermediate_Code* ic,
                 }
             } else if (t2 & IC_REG) {
                 if (t1 & IC_T16) {
-                    ic_u8(ic, 0x66); // operand prefix
+                    ic_u8(ic, X64_OP_SIZE_PREFIX);
                 }
                 
                 // 89 /r 	MOV r/m32,r32 	MR
@@ -2200,10 +2207,37 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                 Ic_Type t1 = ic->src0.type, t2 = ic->src1.type;
                 s64 r1 = ic->src0.reg, d1 = ic->src0.disp, r2 = ic->src1.reg, d2 = ic->src1.disp;
                 
-                // REX.W + 63 /r 	MOVSXD r64, r/m32 	RM
-                x64_rex(ic, REX_FLAG_W);
-                ic_u8(ic, 0x63);
+                if (t1 & IC_T16) {
+                    ic_u8(ic, X64_OP_SIZE_PREFIX);
+                }
+                
+                if (t1 & IC_T64) {
+                    x64_rex(ic, REX_FLAG_W);
+                }
+                
+                switch (t2 & IC_RT_SIZE_MASK) {
+                    case IC_T8: {
+                        assert(t1 & (IC_T64 | IC_T32 | IC_T16));
+                        // 0F BE /r 	MOVSX r16, r/m8 	RM
+                        // 0F BE /r 	MOVSX r32, r/m8 	RM
+                        // REX.W + 0F BE /r 	MOVSX r64, r/m8 	RM
+                        ic_u16(ic, 0xBE0F);
+                    } break;
+                    
+                    case IC_T16: {
+                        assert(t1 & (IC_T64 | IC_T32));
+                        // 0F BF /r 	MOVSX r32, r/m16 	RM
+                        ic_u16(ic, 0xBF0F);
+                    } break;
+                    
+                    case IC_T32: {
+                        assert(t1 & IC_T64);
+                        // REX.W + 63 /r 	MOVSXD r64, r/m32 	RM
+                        ic_u8(ic, 0x63);
+                    } break;
+                }
                 x64_modrm(ic, t2, d2, r1, r2);
+                
             } break;
             
             case IC_FMOV: {

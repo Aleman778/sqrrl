@@ -81,6 +81,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     t_cstring->align = alignof(cstring);
     t_type->size = sizeof(smm);
     t_type->align = alignof(smm);
+    t_void_ptr->size = sizeof(smm);
+    t_void_ptr->align = alignof(smm);
     
     vars_initialize_keywords_and_symbols();
     

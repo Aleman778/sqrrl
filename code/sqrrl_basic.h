@@ -789,17 +789,30 @@ arena_grow(Memory_Arena* arena, umm block_size = 0) {
     arena->size = block_size;
 }
 
+enum {
+    ArenaPushFlag_None = 0,
+    ArenaPushFlag_Align_From_Zero = bit(1), // useful for aligning data in file formats
+};
+typedef u32 Arena_Push_Flags;
+
+
+inline umm
+arena_aligned_offset(Memory_Arena* arena, umm size, umm align, Arena_Push_Flags flags) {
+    if (flags & ArenaPushFlag_Align_From_Zero) {
+        return align_forward((umm) arena->curr_used, align);
+    } else {
+        umm current = (umm) arena->base + (umm) arena->curr_used;
+        return align_forward(current, align) - (umm) arena->base;
+    }
+}
 
 void*
-arena_push_size(Memory_Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT, umm flags=0) {
-    umm current = (umm) (arena->base + arena->curr_used);
-    umm offset = align_forward(current, align) - (umm) arena->base;
+arena_push_size(Memory_Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT, Arena_Push_Flags flags=0) {
     
+    umm offset = arena_aligned_offset(arena, size, align, flags);
     if (offset + size > arena->size) {
         arena_grow(arena);
-        
-        current = (umm) arena->base + arena->curr_used;
-        offset = align_forward(current, align) - (umm) arena->base;
+        offset = arena_aligned_offset(arena, size, align, flags);
     }
     
     void* result = arena->base + offset;

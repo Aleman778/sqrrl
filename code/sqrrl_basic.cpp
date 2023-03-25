@@ -90,7 +90,7 @@ print(const char* format...) {
                 } break;
                 
                 case FormatType_u64_HEX: {
-                    printf("%llX", va_arg(args, u64));
+                    printf("0x%llX", va_arg(args, u64));
                 } break;
                 
                 case FormatType_smm: {

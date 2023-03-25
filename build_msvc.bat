@@ -26,6 +26,7 @@ goto :EOF
     echo Compiling sqrrl in debug mode
     set compiler_flags=-Od -DDEBUG=1 -DBUILD_DEBUG=1 -DBUILD_TEST=1 %compiler_flags%
     set compiler_flags=-DBUILD_INTERNAL=1 -DBUILD_MAX_DEBUG=1 %compiler_flags%
+    set compiler_flags=-D_CRT_SECURE_NO_WARNINGS %compiler_flags%
     set linker_flags=dbghelp.lib %linker_flags%
     goto :Compile
 

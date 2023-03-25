@@ -506,7 +506,6 @@ auto_type_conversion(Type_Context* tcx, Type* target_type, Ast* node, Operator o
                 node->Value = value_cast(node->Value, 
                                          target_type->kind == TypeKind_Basic ? 
                                          target_type->Basic.kind : Basic_s64);
-                
                 // HACK(Alexander): auto converting string to cstring
                 if (is_string(node->Value)) {
                     if (target_type && target_type->kind == TypeKind_Basic &&
@@ -904,6 +903,11 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 __debugbreak();
             }
             
+            //if (t_func->ident == vars_save_cstring("vec3")) {
+            //pln("%", f_ast(expr));
+            //__debugbreak();
+            //}
+            
             
             {
                 smm arg_index = 0;
@@ -911,6 +915,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 for_compound(expr->Call_Expr.args, arg) {
                     //pln("% < % = %", f_smm(arg_index), f_smm(formal_arg_count), f_bool(arg_index < formal_arg_count));
                     if (arg_index < formal_arg_count && is_valid_ast(arg->Argument.assign)) {
+                        constant_folding_of_expressions(tcx, arg->Argument.assign);
                         Type* formal_type = t_func->arg_types[arg_index];
                         arg->Argument.assign = auto_type_conversion(tcx, formal_type, arg->Argument.assign);
                         arg->type = arg->Argument.assign->type;

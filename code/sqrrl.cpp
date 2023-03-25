@@ -15,6 +15,7 @@
 #include "sqrrl_type_checker.cpp"
 #include "sqrrl_interp.cpp"
 #include "sqrrl_x64_converter.cpp"
+#include "sqrrl_pe_converter.cpp"
 
 typedef int asm_main(void);
 typedef f32 asm_f32_main(void);
@@ -26,6 +27,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     // TODO(Alexander): temporary use of C runtime RNG
     //srand((uint) time(0));
     //rand();
+    
+    
     
     {
         // Put dummy file as index 0
@@ -60,10 +63,13 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         // TODO(Alexander): temporary files for testing
         //filepath = string_lit("../personal/first.sq");
         //filepath = string_lit("../modules/basic.sq");
-        filepath = string_lit("../../platformer/code/win32_platform.cpp");
+        //filepath = string_lit("../../platformer/code/win32_platform.cpp");
         //filepath = string_lit("../examples/backend_test.sq");
         //filepath = string_lit("../examples/raytracer/first.cpp");
         //filepath = string_lit("../tests/preprocessor.sq");
+        
+        filepath = string_lit("../examples/simple.cpp");
+        //filepath = string_lit("simple.exe");
 #else
         if (argc <= 1) {
             pln("Usage: sqrrl file.sq");
@@ -92,6 +98,28 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     if (!file.is_valid) {
         return -1;
     }
+    
+    // Print DOS stub
+#if 0
+    for (int byte_index = 0; byte_index < file.source.count; byte_index++) {
+        if (byte_index == 0xb0) {
+            return 0;
+        }
+        u8 byte = file.source.data[byte_index];
+        if (byte > 0xF) {
+            printf("0x%hhX, ", byte);
+        } else {
+            printf("0x0%hhX, ", byte);
+        }
+        
+        if (byte_index % 10 == 9) {
+            printf("\n");
+        }
+    }
+    printf("\n\n");
+#endif
+    
+    //pe_dump_executable(file.source);
     
     // TODO(Alexander): this is hackish solution, we should rely on OS service to do this
     working_directory = filepath;
@@ -330,9 +358,22 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     if (type && type->kind == TypeKind_Function) {
         type = type->Function.return_type;
     }
+    u8* asm_buffer_main = (u8*) asm_buffer + main_cu->bb_first->addr;
     
+#if 1
+    // NOTE(Alexander): Build to executable
+    Memory_Arena build_arena = {};
+    convert_x64_machine_code_to_pe_executable(&build_arena,
+                                              (u8*) asm_buffer,
+                                              (u32) rip,
+                                              asm_buffer_main);
+    
+    // TODO(Alexander): handle multi block arena
+    DEBUG_write_entire_file("simple.exe", build_arena.base, (u32) build_arena.curr_used);
+    
+#else
+    // NOTE(Alexander): Run machine code
     asm_make_executable(asm_buffer, rip);
-    void* asm_buffer_main = (u8*) asm_buffer + main_cu->bb_first->addr;
     //DEBUG_add_debug_symbols(&ast_file, (u8*) asm_buffer);
     
     if (working_directory.data) {
@@ -354,6 +395,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         func();
         pln("\nJIT exited with code: 0");
     }
+#endif
     
     return 0;
 }

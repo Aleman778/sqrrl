@@ -171,14 +171,17 @@ convert_x64_machine_code_to_pe_executable(Memory_Arena* arena,
     header->number_of_sections = 1; // .text section for now
     header->time_date_stamp = (u32) timestamp;
     header->size_of_optional_header = sizeof(COFF_PE32_Plus_Header);
+    header->characteristics = COFF_EXECUTABLE_IMAGE | COFF_LARGE_ADDRESS_AWARE;
     
     COFF_PE32_Plus_Header* opt_header = arena_push_struct(arena, COFF_PE32_Plus_Header);
     opt_header->magic = 0x20b;
     opt_header->major_linker_version = 0;
     opt_header->minor_linker_version = 1;
     
+    opt_header->dll_characteristics = 0x8160;
+    
     // TODO(Alexander): not sure about these values, check these later
-    opt_header->size_of_code = 0x200; // TODO: reflect actual size!!!
+    opt_header->size_of_image = 0x2000;
     opt_header->size_of_initialized_data = 0;
     opt_header->base_of_code = 0x1000;
     opt_header->address_of_entry_point = (u32) (opt_header->base_of_code + 
@@ -206,17 +209,17 @@ convert_x64_machine_code_to_pe_executable(Memory_Arena* arena,
     
     COFF_Section_Header* text_section = arena_push_struct(arena, COFF_Section_Header);
     memcpy(text_section->name, ".text\0\0\0", 8);
-    text_section->virtual_size = (u32) align_forward(x64_machine_code_size, 
-                                                     opt_header->file_alignment);
+    text_section->size_of_raw_data = (u32) align_forward(x64_machine_code_size, 
+                                                         opt_header->file_alignment);
     u8* dest = (u8*) arena_push_size(arena,
-                                     text_section->virtual_size,
+                                     text_section->size_of_raw_data,
                                      opt_header->file_alignment,
                                      ArenaPushFlag_Align_From_Zero);
-    text_section->virtual_address = (u32) (dest - arena->base);
-    text_section->size_of_raw_data = x64_machine_code_size;
+    text_section->virtual_address = opt_header->base_of_code;//(u32) (dest - arena->base);
+    text_section->virtual_size = x64_machine_code_size;
     text_section->pointer_to_raw_data = (u32) (dest - arena->base);
     memcpy(dest, x64_machine_code, x64_machine_code_size);
-    text_section->characteristics = COFF_SCN_MEM_READ | COFF_SCN_MEM_EXECUTE;
+    text_section->characteristics = COFF_SCN_MEM_READ | COFF_SCN_MEM_EXECUTE | COFF_SCN_CNT_CODE;
     
     
     pe_dump_executable(create_string(arena->curr_used, arena->base));

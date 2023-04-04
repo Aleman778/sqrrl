@@ -283,7 +283,9 @@ interp_expression(Interp* interp, Ast* ast) {
         
         case Ast_Aggregate_Expr: {
             result.value.type = Value_pointer;
-            result.value.data.data = convert_aggregate_literal_to_memory(ast);
+            void* dest = allocate_zeros(ast->type->size);
+            result.value.data.data = dest;
+            convert_aggregate_literal_to_memory(ast, dest);
         } break;
         
         case Ast_Tuple_Expr: {

@@ -1940,23 +1940,40 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                             if (target && target->kind == Ast_Value &&
                                 target->Value.type == Value_string) {
                                 
-                                cstring library = string_to_cstring(target->Value.data.str);
-                                vars_load_string(result->Function.ident);
-                                //pln("LoadLibraryA(\"%\")", f_cstring(library));
+                                string library_name = target->Value.data.str;
+                                string_id library_id = vars_save_string(library_name);
+                                string_id library_function_id = result->Function.ident;
+                                string library_function_name = vars_load_string(library_function_id);
                                 
-                                cstring name = string_to_cstring(vars_load_string(result->Function.ident));
-                                func->intrinsic = DEBUG_get_external_procedure_address(library, name); 
+                                {
+                                    cstring name = string_to_cstring(library_function_name);
+                                    cstring library = string_to_cstring(library_name);
+                                    
+                                    func->intrinsic = DEBUG_get_external_procedure_address(library, name);
+                                    
+                                    cstring_free(library);
+                                    cstring_free(name);
+                                }
+                                
+                                Library_Imports import = map_get(tcx->import_table.libs, library_id);
+                                import.is_valid = true;
+                                
+                                Library_Function lib_func = {};
+                                lib_func.name = library_function_id;
+                                lib_func.pointer = func->intrinsic;
+                                lib_func.type = result;
+                                array_push(import.functions, lib_func);
+                                map_put(tcx->import_table.libs, library_id, import);
+                                
                                 //pln("% = 0x%", f_cstring(name), f_u64_HEX(func->intrinsic));
                                 if (!func->intrinsic) {
                                     type_error(tcx,
                                                string_print("procedure `%` is not found in library `%`",
-                                                            f_cstring(name),
-                                                            f_cstring(library)),
+                                                            f_string(library_function_name),
+                                                            f_string(library_name)),
                                                ast->span);
                                 }
                                 
-                                cstring_free(library);
-                                cstring_free(name);
                             } else {
                                 error = true;
                             }

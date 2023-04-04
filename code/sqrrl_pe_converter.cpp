@@ -1,4 +1,10 @@
 
+internal u32
+ptr_to_rva(u32 virtual_base, Memory_Arena* arena, void* ptr) {
+    return virtual_base + (u32) ((u8*) ptr - arena->base);
+}
+
+
 void
 pe_dump_executable(string contents) {
     string signature_location_str = string_view(contents.data + 0x3c, contents.data + 0x40);
@@ -104,7 +110,7 @@ pe_dump_executable(string contents) {
     for (int i = 0; i < fixed_array_count(opt_header->data_directories); i++) {
         COFF_Image_Data_Dir* dir = &opt_header->data_directories[i];
         if (dir->size != 0) {
-            pln("  Entry % % %", f_int(i), f_u64_HEX(dir->virtual_address), f_u64_HEX(dir->size));
+            pln("  Entry % % %", f_int(i), f_u64_HEX(dir->rva), f_u64_HEX(dir->size));
         }
     }
     
@@ -157,46 +163,131 @@ push_dos_header_stub(Memory_Arena* arena) {
     memcpy(dest, pe_dos_header_stub, size);
 }
 
+COFF_Section_Header*
+push_coff_section(Memory_Arena* arena, COFF_PE32_Plus_Header* opt_header, cstring name, 
+                  u32 size, u32 characteristics) {
+    
+    COFF_Section_Header* section = arena_push_struct(arena, COFF_Section_Header);
+    memcpy(section->name, name, 8);
+    section->size_of_raw_data = (u32) align_forward(size, opt_header->file_alignment);
+    section->characteristics = characteristics;
+    section->virtual_address =  opt_header->size_of_image;
+    opt_header->size_of_image = (u32) align_forward(opt_header->size_of_image + size,
+                                                    opt_header->section_alignment);
+    section->virtual_size = size;
+    return section;
+}
+
 void
-convert_x64_machine_code_to_pe_executable(Memory_Arena* arena,
-                                          u8* x64_machine_code, u32 x64_machine_code_size,
-                                          u8* entry_point) {
+push_coff_import_directory_table(Memory_Arena* rdata_arena, 
+                                 COFF_PE32_Plus_Header* opt_header,
+                                 Library_Import_Table* import_table, 
+                                 u32 virtual_base) {
+    
+    // Import directory table (IDT)
+    u32 idt_base = (u32) rdata_arena->curr_used;
+    if (map_count(import_table->libs) > 0) {
+        opt_header->import_table.rva = virtual_base + idt_base;
+        opt_header->import_address_table.rva = virtual_base; // NOTE(Alexander): always start at 0
+        opt_header->import_address_table.size += 8; // NOTE(Alexander): null entry
+    }
+    
+    COFF_Import_Directory_Table* idt = 0;
+    for_map(import_table->libs, it) {
+        string_id library_id = it->key;
+        Library_Imports* imports = &it->value;
+        
+        COFF_Import_Directory_Table* entry = arena_push_struct(rdata_arena, COFF_Import_Directory_Table);
+        if (idt == 0) {
+            idt = entry;
+        }
+    }
+    if (idt) {
+        // Push null entry
+        arena_push_struct(rdata_arena, COFF_Import_Directory_Table);
+        opt_header->import_table.size = (u32) rdata_arena->curr_used - idt_base;
+        
+        COFF_Import_Directory_Table* entry = idt;
+        
+        for_map(import_table->libs, it) {
+            string library_name = vars_load_string(it->key);
+            array(Library_Function)* import_names = it->value.functions;
+            
+            // Lookup table
+            u64* lookup_table = 0;
+            u64* address_table = (u64*) rdata_arena->base;
+            for_array(import_names, ident, _) {
+                u64* lookup_entry = arena_push_struct(rdata_arena, u64);
+                if (!lookup_table) {
+                    lookup_table = lookup_entry;
+                }
+            }
+            arena_push_struct(rdata_arena, u64); // null entry
+            
+            entry->lookup_table_rva = ptr_to_rva(virtual_base, rdata_arena, lookup_table);
+            entry->address_table_rva = virtual_base;
+            
+            // Hint
+            u64* lookup_entry = lookup_table;
+            u64* address_entry = address_table;
+            for_array_v(import_names, function, _1) {
+                string function_name = vars_load_string(function.name);
+                smm size = function_name.count + 3; // 3: hint (2 bytes) + null-term
+                u8* hint = (u8*) arena_push_size(rdata_arena, size, 8);
+                memcpy(hint + 2, function_name.data, function_name.count);
+                
+                u64 hint_rva = ptr_to_rva(virtual_base, rdata_arena, hint);
+                *lookup_entry++ = hint_rva;
+                *address_entry++ = hint_rva;
+                opt_header->import_address_table.size += 8;
+            }
+            
+            // Library name
+            void* library_name_dest = arena_push_size(rdata_arena, library_name.count + 1, 8);
+            memcpy(library_name_dest, library_name.data, library_name.count);
+            entry->name_rva = ptr_to_rva(virtual_base, rdata_arena, library_name_dest);
+            
+            entry++;
+        }
+    }
+}
+
+void
+convert_to_pe_executable(Memory_Arena* arena,
+                         u8* machine_code, u32 machine_code_size,
+                         Library_Import_Table* import_table,
+                         Memory_Arena* rdata_arena,
+                         u8* entry_point) {
     time_t timestamp = time(0);
     
     push_dos_header_stub(arena);
     
+    // PE\0\0 signature and mandatory COFF header
     COFF_Header* header = arena_push_struct(arena, COFF_Header);
     header->signature[0] = 'P'; header->signature[1] = 'E';
     header->machine = COFF_MACHINE_AMD64;
-    header->number_of_sections = 1; // .text section for now
     header->time_date_stamp = (u32) timestamp;
     header->size_of_optional_header = sizeof(COFF_PE32_Plus_Header);
     header->characteristics = COFF_EXECUTABLE_IMAGE | COFF_LARGE_ADDRESS_AWARE;
     
+    // Optional headers (mandatory PE32+ for executable)
     COFF_PE32_Plus_Header* opt_header = arena_push_struct(arena, COFF_PE32_Plus_Header);
     opt_header->magic = 0x20b;
     opt_header->major_linker_version = 0;
     opt_header->minor_linker_version = 1;
+    opt_header->number_of_rva_and_sizes = fixed_array_count(opt_header->data_directories);
     
     opt_header->dll_characteristics = 0x8160;
     
     // TODO(Alexander): not sure about these values, check these later
-    opt_header->size_of_image = 0x2000;
-    opt_header->size_of_initialized_data = 0;
-    opt_header->base_of_code = 0x1000;
-    opt_header->address_of_entry_point = (u32) (opt_header->base_of_code + 
-                                                (entry_point - x64_machine_code));
     opt_header->image_base = 0x140000000;
     opt_header->section_alignment = 0x1000;
     opt_header->file_alignment = 0x200;
-    
-    //opt_header->size_of_image = // TODO: 
-    opt_header->size_of_headers = (u32) align_forward(sizeof(pe_dos_header_stub) + 
-                                                      sizeof(COFF_Header) +
-                                                      sizeof(COFF_PE32_Plus_Header) + 
-                                                      sizeof(COFF_Section_Header) *
-                                                      header->number_of_sections,
-                                                      opt_header->file_alignment);
+    opt_header->size_of_initialized_data = 0;
+    opt_header->base_of_code = 0x1000;
+    opt_header->size_of_image = opt_header->base_of_code;
+    opt_header->address_of_entry_point = (u32) (opt_header->base_of_code + 
+                                                (entry_point - machine_code));
     
     opt_header->subsystem = COFF_SUBSYSTEM_WINDOWS_CUI;
     opt_header->major_operating_system_version = 6;
@@ -207,20 +298,52 @@ convert_x64_machine_code_to_pe_executable(Memory_Arena* arena,
     opt_header->size_of_heap_reserve = 0x100000;
     opt_header->size_of_heap_commit = 0x1000;
     
-    COFF_Section_Header* text_section = arena_push_struct(arena, COFF_Section_Header);
-    memcpy(text_section->name, ".text\0\0\0", 8);
-    text_section->size_of_raw_data = (u32) align_forward(x64_machine_code_size, 
-                                                         opt_header->file_alignment);
-    u8* dest = (u8*) arena_push_size(arena,
-                                     text_section->size_of_raw_data,
-                                     opt_header->file_alignment,
-                                     ArenaPushFlag_Align_From_Zero);
-    text_section->virtual_address = opt_header->base_of_code;//(u32) (dest - arena->base);
-    text_section->virtual_size = x64_machine_code_size;
-    text_section->pointer_to_raw_data = (u32) (dest - arena->base);
-    memcpy(dest, x64_machine_code, x64_machine_code_size);
-    text_section->characteristics = COFF_SCN_MEM_READ | COFF_SCN_MEM_EXECUTE | COFF_SCN_CNT_CODE;
+    // Section headers
+    COFF_Section_Header* text_section = 0;
+    COFF_Section_Header* rdata_section = 0;
     
+    // .text section
+    text_section = push_coff_section(arena, opt_header, COFF_TEXT_SECTION, machine_code_size, 
+                                     COFF_SCN_CNT_CODE | COFF_SCN_MEM_EXECUTE | COFF_SCN_MEM_READ);
+    opt_header->size_of_code += text_section->size_of_raw_data;
+    header->number_of_sections++; // added .text
+    
+    // .rdata section
+    push_coff_import_directory_table(rdata_arena, opt_header,
+                                     import_table, opt_header->size_of_image);
+    if (rdata_arena->curr_used > 0) {
+        rdata_section = push_coff_section(arena, opt_header, COFF_RDATA_SECTION, (u32) rdata_arena->curr_used,
+                                          COFF_SCN_CNT_INITIALIZED_DATA | COFF_SCN_MEM_READ);
+        opt_header->size_of_initialized_data += rdata_section->size_of_raw_data;
+        header->number_of_sections++; // added .rdata
+        
+    }
+    
+    // NOTE(Alexander): all headers have been set after this point
+    opt_header->size_of_headers = (u32) arena->curr_used;
+    
+    
+    
+    
+    // Populate the sections with data
+    if (text_section) {
+        u8* dest = (u8*) arena_push_size(arena,
+                                         text_section->size_of_raw_data,
+                                         opt_header->file_alignment,
+                                         ArenaPushFlag_Align_From_Zero);
+        memcpy(dest, machine_code, machine_code_size);
+        text_section->pointer_to_raw_data = (u32) (dest - arena->base);
+    }
+    
+    
+    if (rdata_section) {
+        u8* dest = (u8*) arena_push_size(arena,
+                                         rdata_section->size_of_raw_data,
+                                         opt_header->file_alignment,
+                                         ArenaPushFlag_Align_From_Zero);
+        memcpy(dest, rdata_arena->base, rdata_arena->curr_used);
+        rdata_section->pointer_to_raw_data = (u32) (dest - arena->base);
+    }
     
     pe_dump_executable(create_string(arena->curr_used, arena->base));
 }

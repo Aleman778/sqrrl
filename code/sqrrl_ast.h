@@ -319,12 +319,16 @@ struct Compilation_Unit {
     string_id ident;
     
     Ic_Arg ic_return;
-    Intermediate_Code *ic_first, *ic_last;
-    Ic_Basic_Block *bb_first, *bb_last;
-    Ic_Basic_Block *bb_return;
-    Ic_Basic_Block *bb_data;
+    Intermediate_Code* ic_first;
+    Intermediate_Code* ic_last;
+    Ic_Basic_Block* bb_first;
+    Ic_Basic_Block* bb_last;
+    Ic_Basic_Block* bb_return;
+    Ic_Basic_Block* bb_data;
     Ic_Arg_Map* locals;
+    Memory_Arena* rdata_arena;
     
+    s64 external_address = 0;
     s64 stk_args = 0;
     s64 stk_locals = 0;
     s64 stk_caller_args = 0;

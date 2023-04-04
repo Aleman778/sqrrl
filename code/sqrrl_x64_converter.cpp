@@ -664,20 +664,27 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             } else if (is_floating(expr->Value)) {
                 Type* type = expr->type;
                 Ic_Raw_Type raw_type = convert_type_to_raw_type(expr->type);
-                void* data = malloc(type->size);
+                void* data = arena_push_size(cu->rdata_arena, type->size, type->size);
                 value_store_in_memory(type, data, expr->Value.data);
-                result = ic_rip_disp32(raw_type, data);
+                result = ic_rip_disp32(raw_type, (u8*) data - cu->rdata_arena->base);
                 
             } else if (is_string(expr->Value)) {
                 Ic_Raw_Type raw_type = IC_T64;
-                string* str = (string*) malloc(sizeof(string));
-                *str = expr->Value.data.str;
-                result = ic_rip_disp32(raw_type, str);
+                
+                smm str_count  = expr->Value.data.str.count;
+                string* str = arena_push_struct(cu->rdata_arena, string);
+                str->data = (u8*) arena_push_size(cu->rdata_arena, str_count, 1);
+                str->count = str_count;
+                memcpy(str->data, expr->Value.data.str.data, str_count);
+                
+                result = ic_rip_disp32(raw_type, (u8*) str - cu->rdata_arena->base);
                 
             } else if (is_cstring(expr->Value)) {
-                cstring cstr = expr->Value.data.cstr;
+                smm str_count = cstring_count(expr->Value.data.cstr);
+                cstring cstr = (cstring) arena_push_size(cu->rdata_arena, str_count + 1, 1);
+                memcpy((void*) cstr, (void*) expr->Value.data.cstr, str_count + 1);
                 if (cstr) {
-                    result = ic_rip_disp32(IC_T64, (void*) cstr);
+                    result = ic_rip_disp32(IC_T64, (u8*) cstr - cu->rdata_arena->base);
                 } else {
                     result = ic_imm(IC_S64, 0);
                 }
@@ -712,7 +719,11 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                         //pln();
                         assert(0);
                     }
-                    result = ic_rip_disp32(raw_type, data);
+                    
+                    void* dest = arena_push_size(cu->rdata_arena, type->size, type->align);
+                    memcpy(dest, data, type->size);
+                    
+                    result = ic_rip_disp32(raw_type, (u8*) dest - cu->rdata_arena->base);
                 }
             }
         } break;
@@ -723,10 +734,17 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
         
         case Ast_Aggregate_Expr: {
             Type* type = expr->type;
-            void* data = convert_aggregate_literal_to_memory(expr);
+            
+            
+            void* data = 0;
+            if (is_valid_ast(expr->Aggregate_Expr.elements->Compound.node)) {
+                data = arena_push_size(cu->rdata_arena, type->size, type->align);
+                convert_aggregate_literal_to_memory(expr, data);
+            }
+            
             
             if (data) {
-                result = ic_rip_disp32(IC_T64, data);
+                result = ic_rip_disp32(IC_T64, (u8*) data - cu->rdata_arena->base);
                 
                 // Write to non-constant fields
                 Ic_Arg result_dest = {};
@@ -956,7 +974,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     
                     if (src.type & IC_FLOAT) {
                         Type* type = expr->type;
-                        void* data = malloc(type->size);
+                        void* data = arena_push_size(cu->rdata_arena, type->size, type->align);
                         if (type == t_f64) {
                             u64* values = (u64*) data;
                             for (int i = 0; i < 2; i++) *values++ = 0x8000000000000000ull;
@@ -968,7 +986,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                         Intermediate_Code* ic = ic_add(cu, IC_FXOR);
                         ic->dest = ic_reg(rt);
                         ic->src0 = src;
-                        ic->src1 = ic_rip_disp32(rt, data);
+                        ic->src1 = ic_rip_disp32(rt, (u8*) data - cu->rdata_arena->base);
                         result = ic->dest;
                         
                     } else {
@@ -1480,6 +1498,7 @@ x64_rip_relative(Intermediate_Code* ic, s64 r, s64 data, s64 rip) {
     ic_u8(ic, ((u8) (r&7)<<3) | (u8) X64_RBP);
     
     s64 disp = (s64) data - (rip + ic->count + 4);
+    //s64 disp = data;
     ic_u32(ic, (u32) disp);
 }
 
@@ -1985,7 +2004,7 @@ x64_lea(Intermediate_Code* ic, s64 r1, s64 r2, s64 d2, s64 rip) {
     
     if (r2 == X64_RIP) {
         ic_u8(ic, (u8) (r1&7)<<3 | (u8) X64_RBP);
-        ic_u32(ic, (u32) (d2 - rip - ic->count - 4));
+        ic_u32(ic, (u32) (d2 - (rip + ic->count + 4)));
     } else {
         x64_modrm(ic, IC_STK, d2, r1&7, r2);
     }
@@ -2073,6 +2092,7 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
     // The rsp_adjust subtracts the arguments stack usage so they will
     // come first then followed by the local variables.
     s64 rsp_adjust = 0;
+    s64 biff = 0;
     
     while (ic) {
         ic->count = 0;
@@ -2081,70 +2101,70 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
             case IC_NOOP: break;
             
             case IC_PRLG: {
-                x64_binary(ic, IC_REG + IC_S64, X64_RSP, 0, IC_DISP + IC_S32, 0, stk_usage, 5, 28, (s64) buf + rip);
+                x64_binary(ic, IC_REG + IC_S64, X64_RSP, 0, IC_DISP + IC_S32, 0, stk_usage, 5, 28, (s64) biff + rip);
             } break;
             
             case IC_EPLG: {
-                x64_binary(ic, IC_REG + IC_S64, X64_RSP, 0, IC_DISP + IC_S32, 0, stk_usage, 0, 0, (s64) buf + rip);
+                x64_binary(ic, IC_REG + IC_S64, X64_RSP, 0, IC_DISP + IC_S32, 0, stk_usage, 0, 0, (s64) biff + rip);
                 ic_u8(ic, 0xC3);
             } break;
             
             case IC_NEG: {
-                x64_unary(ic, ic->src0.type, ic->src0.reg, ic->src0.disp, 0xF7, 3, (s64) buf + rip);
+                x64_unary(ic, ic->src0.type, ic->src0.reg, ic->src0.disp, 0xF7, 3, (s64) biff + rip);
             } break;
             
             case IC_NOT: {
-                x64_unary(ic, ic->src0.type, ic->src0.reg, ic->src0.disp, 0xF7, 2, (s64) buf + rip);
+                x64_unary(ic, ic->src0.type, ic->src0.reg, ic->src0.disp, 0xF7, 2, (s64) biff + rip);
             } break;
             
             case IC_INC: {
-                x64_unary(ic, ic->src0.type, ic->src0.reg, ic->src0.disp, 0xFF, 0, (s64) buf + rip);
+                x64_unary(ic, ic->src0.type, ic->src0.reg, ic->src0.disp, 0xFF, 0, (s64) biff + rip);
             } break;
             
             case IC_DEC: {
-                x64_unary(ic, ic->src0.type, ic->src0.reg, ic->src0.disp, 0xFF, 1, (s64) buf + rip);
+                x64_unary(ic, ic->src0.type, ic->src0.reg, ic->src0.disp, 0xFF, 1, (s64) biff + rip);
             } break;
             
             case IC_ADD: {
                 x64_add(ic, 
                         ic->dest.type, ic->dest.reg, ic->dest.disp,
                         ic->src0.type, ic->src0.reg, ic->src0.disp,
-                        ic->src1.type, ic->src1.reg, ic->src1.disp, 0, 0, (s64) buf + rip);
+                        ic->src1.type, ic->src1.reg, ic->src1.disp, 0, 0, (s64) biff + rip);
             } break;
             
             case IC_SUB: {
                 x64_add(ic, 
                         ic->dest.type, ic->dest.reg, ic->dest.disp,
                         ic->src0.type, ic->src0.reg, ic->src0.disp,
-                        ic->src1.type, ic->src1.reg, ic->src1.disp, 5, 0x28, (s64) buf + rip);
+                        ic->src1.type, ic->src1.reg, ic->src1.disp, 5, 0x28, (s64) biff + rip);
             } break;
             
             case IC_AND: {
                 x64_add(ic, 
                         ic->dest.type, ic->dest.reg, ic->dest.disp,
                         ic->src0.type, ic->src0.reg, ic->src0.disp,
-                        ic->src1.type, ic->src1.reg, ic->src1.disp, 4, 0x20, (s64) buf + rip);
+                        ic->src1.type, ic->src1.reg, ic->src1.disp, 4, 0x20, (s64) biff + rip);
             } break;
             
             case IC_OR: {
                 x64_add(ic, 
                         ic->dest.type, ic->dest.reg, ic->dest.disp,
                         ic->src0.type, ic->src0.reg, ic->src0.disp,
-                        ic->src1.type, ic->src1.reg, ic->src1.disp, 1, 0x8, (s64) buf + rip);
+                        ic->src1.type, ic->src1.reg, ic->src1.disp, 1, 0x8, (s64) biff + rip);
             } break;
             
             case IC_XOR: {
                 x64_add(ic, 
                         ic->dest.type, ic->dest.reg, ic->dest.disp,
                         ic->src0.type, ic->src0.reg, ic->src0.disp,
-                        ic->src1.type, ic->src1.reg, ic->src1.disp, 6, 0x30, (s64) buf + rip);
+                        ic->src1.type, ic->src1.reg, ic->src1.disp, 6, 0x30, (s64) biff + rip);
             } break;
             
             case IC_SHL: {
                 x64_shr(ic, 
                         ic->dest.type, ic->dest.reg, ic->dest.disp,
                         ic->src0.type, ic->src0.reg, ic->src0.disp,
-                        ic->src1.type, ic->src1.reg, ic->src1.disp, 4, 4, (s64) buf + rip);
+                        ic->src1.type, ic->src1.reg, ic->src1.disp, 4, 4, (s64) biff + rip);
                 
             } break;
             
@@ -2152,25 +2172,25 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                 x64_shr(ic, 
                         ic->dest.type, ic->dest.reg, ic->dest.disp,
                         ic->src0.type, ic->src0.reg, ic->src0.disp,
-                        ic->src1.type, ic->src1.reg, ic->src1.disp, 7, 5, (s64) buf + rip);
+                        ic->src1.type, ic->src1.reg, ic->src1.disp, 7, 5, (s64) biff + rip);
             } break;
             
             case IC_MUL: {
-                x64_mul(ic, (s64) buf + rip);
+                x64_mul(ic, (s64) biff + rip);
             } break;
             
             case IC_DIV: {
-                x64_div(ic, false, (s64) buf + rip);
+                x64_div(ic, false, (s64) biff + rip);
             } break;
             
             case IC_MOD: {
-                x64_div(ic, true, (s64) buf + rip);
+                x64_div(ic, true, (s64) biff + rip);
             } break;
             
             case IC_MOV: {
                 x64_mov(ic,
                         ic->src0.type, ic->src0.reg, ic->src0.disp,
-                        ic->src1.type, ic->src1.reg, ic->src1.disp, (s64) buf + rip);
+                        ic->src1.type, ic->src1.reg, ic->src1.disp, (s64) biff + rip);
             } break;
             
             case IC_MOVZX: {
@@ -2181,14 +2201,14 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                         x64_rex(ic, REX_FLAG_R);
                     }
                     ic_u16(ic, 0xB60F);
-                    x64_modrm(ic, ic->src1.type, ic->src1.disp, ic->src0.reg, ic->src1.reg, (s64) buf + rip);
+                    x64_modrm(ic, ic->src1.type, ic->src1.disp, ic->src0.reg, ic->src1.reg, (s64) biff + rip);
                     
                 } else if (ic->src1.type & IC_T16) {
                     if (ic->src0.reg & 8) {
                         x64_rex(ic, REX_FLAG_R);
                     }
                     ic_u16(ic, 0xB70F);
-                    x64_modrm(ic, ic->src1.type, ic->src1.disp, ic->src0.reg, ic->src1.reg, (s64) buf + rip);
+                    x64_modrm(ic, ic->src1.type, ic->src1.disp, ic->src0.reg, ic->src1.reg, (s64) biff + rip);
                     
                 } else {
                     assert(ic->src0.type & IC_T64 && ic->src1.type & IC_T32);
@@ -2199,7 +2219,7 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                     
                     x64_mov(ic,
                             t1, ic->src0.reg, ic->src0.disp,
-                            ic->src1.type, ic->src1.reg, ic->src1.disp, (s64) buf + rip);
+                            ic->src1.type, ic->src1.reg, ic->src1.disp, (s64) biff + rip);
                 }
             } break;
             
@@ -2244,7 +2264,7 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                 x64_fmov(ic,
                          ic->src0.type, ic->src0.reg, ic->src0.disp,
                          ic->src1.type, ic->src1.reg, ic->src1.disp,
-                         (s64) buf + rip);
+                         (s64) biff + rip);
                 
             } break;
             
@@ -2270,37 +2290,37 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
             } break;
             
             case IC_CAST_F2S: {
-                x64_convert_float_to_int_type(ic, (s64) buf + rip);
+                x64_convert_float_to_int_type(ic, (s64) biff + rip);
             } break;
             
             case IC_CAST_S2F: {
-                x64_convert_int_to_float_type(ic, (s64) buf + rip);
+                x64_convert_int_to_float_type(ic, (s64) biff + rip);
             } break;
             
             case IC_CAST_F2F: {
-                x64_convert_float_type(ic, (s64) buf + rip);
+                x64_convert_float_type(ic, (s64) biff + rip);
             } break;
             
             case IC_MEMCPY: {
                 x64_string_op(ic, 
                               ic->dest.type, ic->dest.reg, ic->dest.disp, 
                               ic->src0.type, ic->src0.reg, ic->src0.disp,
-                              ic->src1.disp, 0xA4F3, (s64) buf + rip, X64_RSI);
+                              ic->src1.disp, 0xA4F3, (s64) biff + rip, X64_RSI);
             } break;
             
             case IC_MEMSET: {
                 x64_string_op(ic, 
                               ic->dest.type, ic->dest.reg, ic->dest.disp,
                               ic->src0.type, ic->src0.reg, ic->src0.disp,
-                              ic->src1.disp, 0xAAF3, (s64) buf + rip);
+                              ic->src1.disp, 0xAAF3, (s64) biff + rip);
             } break;
             
             case IC_LEA: {
                 assert(ic->src0.type & IC_REG);
                 if (ic->src1.type & IC_RIP_DISP32) {
-                    x64_lea(ic, ic->src0.reg, X64_RIP, ic->src1.disp, (s64) buf + rip);
+                    x64_lea(ic, ic->src0.reg, X64_RIP, ic->src1.disp, (s64) biff + rip);
                 } else {
-                    x64_lea(ic, ic->src0.reg, ic->src1.reg, ic->src1.disp, (s64) buf + rip);
+                    x64_lea(ic, ic->src0.reg, ic->src1.reg, ic->src1.disp, (s64) biff + rip);
                 }
             } break;
             
@@ -2311,7 +2331,7 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                     x64_rex(ic, REX_FLAG_W);
                     ic_u8(ic, 0x8D);
                     //ic_u8(ic, 0x8B); //mov
-                    x64_rip_relative(ic, X64_RAX, (s64) buf + target->bb_first->addr, (s64) buf + rip);
+                    x64_rip_relative(ic, X64_RAX, (s64) biff + target->bb_first->addr, (s64) biff + rip);
                 } else {
                     x64_mov_rax_u64(ic, (u64) target->bb_first);
                 }
@@ -2323,13 +2343,13 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                 if (t1 & IC_DISP) {
                     Ic_Type tmpt = IC_REG + (ic->src0.type & IC_RT_MASK);
                     s64 tmpr = (t2 & IC_REG) ? X64_RCX : X64_RAX, tmpd = 0;
-                    x64_mov(ic, tmpt, tmpr, tmpd, ic->src0.type, ic->src0.reg, ic->src0.disp, (s64) buf + rip);
+                    x64_mov(ic, tmpt, tmpr, tmpd, ic->src0.type, ic->src0.reg, ic->src0.disp, (s64) biff + rip);
                     t1 = tmpt;
                     r1 = tmpr;
                     d1 = tmpd;
                 }
                 x64_binary(ic, t1, r1, d1,
-                           ic->src1.type, ic->src1.reg, ic->src1.disp, 7, 0x38, (s64) buf + rip);
+                           ic->src1.type, ic->src1.reg, ic->src1.disp, 7, 0x38, (s64) biff + rip);
             } break;
             
             case IC_TEST: {
@@ -2339,32 +2359,32 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                 if (ic->src0.type & IC_T8) {
                     // 84 /r 	TEST r/m8, r8 	MR
                     ic_u8(ic, 0x84);
-                    x64_modrm(ic, ic->src0.type, ic->src0.disp, ic->src1.reg, ic->src0.reg, (s64) buf + rip);
+                    x64_modrm(ic, ic->src0.type, ic->src0.disp, ic->src1.reg, ic->src0.reg, (s64) biff + rip);
                 } else {
                     // 85 /r 	TEST r/m32, r32 	MR
                     ic_u8(ic, 0x85);
-                    x64_modrm(ic, ic->src0.type, ic->src0.disp, ic->src1.reg, ic->src0.reg, (s64) buf + rip);
+                    x64_modrm(ic, ic->src0.type, ic->src0.disp, ic->src1.reg, ic->src0.reg, (s64) biff + rip);
                 }
             } break;
             
             case IC_FADD: {
-                x64_float_binary(ic, 0x58, (s64) buf + rip);
+                x64_float_binary(ic, 0x58, (s64) biff + rip);
             } break;
             
             case IC_FSUB: {
-                x64_float_binary(ic, 0x5C, (s64) buf + rip);
+                x64_float_binary(ic, 0x5C, (s64) biff + rip);
             } break;
             
             case IC_FMUL: {
-                x64_float_binary(ic, 0x59, (s64) buf + rip);
+                x64_float_binary(ic, 0x59, (s64) biff + rip);
             } break;
             
             case IC_FDIV: {
-                x64_float_binary(ic, 0x5E, (s64) buf + rip);
+                x64_float_binary(ic, 0x5E, (s64) biff + rip);
             } break;
             
             case IC_FXOR: {
-                x64_float_binary(ic, 0x57, (s64) buf + rip, ic->dest.type & IC_T64 ? 0x66 : -2);
+                x64_float_binary(ic, 0x57, (s64) biff + rip, ic->dest.type & IC_T64 ? 0x66 : -2);
             } break;
             
             case IC_FCMP: {
@@ -2376,7 +2396,7 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                     Ic_Type tmpt = IC_REG + (ic->src0.type & IC_RT_MASK);
                     x64_fmov(ic, tmpt, X64_XMM5, 0,
                              ic->src0.type, ic->src0.reg, ic->src0.disp, 
-                             (s64) buf + rip);
+                             (s64) biff + rip);
                     t1 = tmpt;
                     r1 = X64_XMM5;
                 }
@@ -2385,7 +2405,7 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                     Ic_Type tmpt = IC_REG + (ic->src1.type & IC_RT_MASK);
                     x64_fmov(ic, tmpt, X64_XMM2, 0,
                              ic->src1.type, ic->src1.reg, ic->src1.disp, 
-                             (s64) buf + rip);
+                             (s64) biff + rip);
                     t2 = tmpt;
                     r2 = X64_XMM2;
                 }
@@ -2396,7 +2416,7 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                     ic_u8(ic, 0x66);
                 }
                 ic_u16(ic, 0x2F0F);
-                x64_modrm(ic, t2, d2, r1, r2, (s64) buf + rip);
+                x64_modrm(ic, t2, d2, r1, r2, (s64) biff + rip);
             } break;
             
             case IC_SETA: 
@@ -2428,9 +2448,15 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
             } break;
             
             case IC_JMP: {
-                // TODO(Alexander): short jumps (and indirect jump?)
-                ic_u8(ic, 0xE9);
-                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
+                // TODO(Alexander): short jumps
+                
+                if (ic->data) {
+                    ic_u8(ic, 0xE9);
+                    x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
+                } else {
+                    ic_u8(ic, 0xFF);
+                    x64_modrm(ic, ic->src0.type, ic->src0.disp, 4, ic->src0.reg, (s64) biff + rip);
+                }
             } break;
             
             case IC_CALL: {

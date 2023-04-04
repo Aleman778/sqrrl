@@ -296,7 +296,7 @@ struct COFF_Header {
 #pragma pack(pop)
 
 struct COFF_Image_Data_Dir {
-    u32 virtual_address;
+    u32 rva;
     u32 size;
 };
 
@@ -346,7 +346,7 @@ struct COFF_PE32_Plus_Header {
             COFF_Image_Data_Dir tls_table;
             COFF_Image_Data_Dir load_config_table;
             COFF_Image_Data_Dir bound_import_table;
-            COFF_Image_Data_Dir iat;
+            COFF_Image_Data_Dir import_address_table;
             COFF_Image_Data_Dir delay_import_descriptor;
             COFF_Image_Data_Dir clr_runtime_header;
             COFF_Image_Data_Dir reserved;
@@ -354,6 +354,14 @@ struct COFF_PE32_Plus_Header {
     };
 };
 #pragma pack(pop)
+
+struct COFF_Import_Directory_Table {
+    u32 lookup_table_rva;
+    u32 time_date_stamp;
+    u32 forwarder_chain;
+    u32 name_rva;
+    u32 address_table_rva;
+};
 
 // TODO(Alexander): add COFF_Section_Flags enum
 
@@ -369,6 +377,9 @@ struct COFF_Section_Header {
     u16 number_of_line_numbers; // deprecated
     COFF_Section_Flags characteristics;
 };
+
+#define COFF_TEXT_SECTION ".text\0\0\0"
+#define COFF_RDATA_SECTION ".rdata\0\0"
 
 inline u32
 read_u32_bytes(string s) {

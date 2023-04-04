@@ -1,3 +1,4 @@
+#define PRINT_BYTECODE 1
 
 typedef void* HANDLE;
 #ifdef __cplusplus
@@ -37,22 +38,29 @@ extern
 int
 main() {
 #ifdef __cplusplus
-    
     const char* message = "Hello Fadi!";
+#else
+    cstring message = "Hello Fadi!";
+#endif
     DWORD message_count = 11;
     DWORD message_count_written = 0;
     HANDLE stdout = GetStdHandle(STD_OUTPUT_HANDLE);
-    WriteConsoleA(stdout, message, message_count, &message_count_written, 0);
-#else 
-    string message = "Hello Fadi!";
-    
-    DWORD message_count_written = 0;
-    HANDLE stdout = GetStdHandle(STD_OUTPUT_HANDLE);
-    WriteConsoleA(stdout, message.data, (DWORD) message.count, &message_count_written, 0);
-#endif
+    WriteConsoleA(stdout, (LPVOID) message, message_count, &message_count_written, 0);
     
     return 0;
 }
+
+
+
+
+
+
+
+
+
+
+
+
 
 #ifdef __cplusplus
 int

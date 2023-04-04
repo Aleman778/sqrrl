@@ -20,6 +20,20 @@ struct Overloaded_Function_List {
     bool is_valid;
 };
 
+struct Library_Function {
+    string_id name;
+    void* pointer;
+    Type* type;
+};
+
+struct Library_Imports {
+    array(Library_Function)* functions;
+    bool is_valid;
+};
+
+struct Library_Import_Table {
+    map(string_id, Library_Imports)* libs;
+};
 
 struct Type_Context {
     Memory_Arena type_arena;
@@ -36,6 +50,8 @@ struct Type_Context {
     
     map(Type*, Overloaded_Operator_List)* overloaded_operators;
     map(string_id, Overloaded_Function_List)* overloaded_functions;
+    
+    Library_Import_Table import_table;
     
     array(Type_Scope)* scopes;
     Type_Scope* active_scope;

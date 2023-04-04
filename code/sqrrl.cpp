@@ -249,8 +249,31 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         return 0;
     }
     
-    Compilation_Unit* main_cu = 0;
+    Memory_Arena rdata_arena = {};
+    
+    // TODO(Alexander): maybe compilation units can be sectioned to avoid unecessary iterations
     for_array(ast_file.units, cu, _) {
+        if (cu->ast->kind == Ast_Decl_Stmt && !cu->ast->Decl_Stmt.stmt) {
+            Ic_Basic_Block* bb_begin = ic_basic_block();
+            ic_add(cu, IC_LABEL, bb_begin);
+            
+            // Library function pointer is replaced by the loader
+            void* fn_ptr = arena_push_size(&rdata_arena, 8, 8);
+            Intermediate_Code* ic_jump = ic_add(cu, IC_JMP);
+            pln("-> %", f_var(cu->ident));
+            
+            s64 address = (u8*) fn_ptr - rdata_arena.base;
+            ic_jump->src0 = ic_rip_disp32(IC_U64, address);
+            
+            cu->external_address = address;
+        }
+    }
+    arena_push_size(&rdata_arena, 8, 8); // null entry
+    
+    
+    Compilation_Unit* main_cu = 0;
+    for_array(ast_file.units, cu, _2) {
+        cu->rdata_arena = &rdata_arena;
         if (cu->ast->kind == Ast_Decl_Stmt) {
             Type* type = cu->ast->type;
             if (type->kind == TypeKind_Function) {
@@ -279,6 +302,17 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 ic->src1.disp = compute_stk_displacement(cu, ic->src1);
             }
             
+            // TODO(Alexander): hardcoded offset 1000 (need to reflect .text size)
+            if (ic->dest.type & IC_RIP_DISP32) {
+                ic->dest.disp += 0x1000;
+            }
+            if (ic->src0.type & IC_RIP_DISP32) {
+                ic->src0.disp += 0x1000;
+            }
+            if (ic->src1.type & IC_RIP_DISP32) {
+                ic->src1.disp += 0x1000;
+            }
+            
             ic = ic->next;
         }
     }
@@ -286,7 +320,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     if (flag_print_bc) {
         pln("\nIntermediate code:");
         String_Builder sb = {};
-        for_array(ast_file.units, cu, _2) {
+        for_array(ast_file.units, cu, _4) {
             if (cu->ast->kind != Ast_Decl_Stmt) continue;
             
             if (cu->ast->type->kind == TypeKind_Function) {
@@ -321,9 +355,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     for_array(ast_file.units, cu, _4) {
         rip = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage, 0, 0, rip);
     }
-    
     global_asm_buffer = (s64) asm_buffer;
-    
     s64 rip2 = 0;
     for_array(ast_file.units, cu, _5) {
         rip2 = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage,
@@ -363,13 +395,15 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
 #if 1
     // NOTE(Alexander): Build to executable
     Memory_Arena build_arena = {};
-    convert_x64_machine_code_to_pe_executable(&build_arena,
-                                              (u8*) asm_buffer,
-                                              (u32) rip,
-                                              asm_buffer_main);
+    convert_to_pe_executable(&build_arena,
+                             (u8*) asm_buffer, (u32) rip,
+                             &tcx.import_table,
+                             &rdata_arena,
+                             asm_buffer_main);
     
     // TODO(Alexander): handle multi block arena
     DEBUG_write_entire_file("simple.exe", build_arena.base, (u32) build_arena.curr_used);
+    pln("\nWrote executable: simple.exe");
     
 #else
     // NOTE(Alexander): Run machine code

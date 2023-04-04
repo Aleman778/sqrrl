@@ -56,11 +56,10 @@ value_store_in_memory(Type* type, void* dest, Value_Data src) {
     }
 }
 
-void*
-convert_aggregate_literal_to_memory(Ast* expr) {
+void
+convert_aggregate_literal_to_memory(Ast* expr, void* dest) {
     assert(expr->kind == Ast_Aggregate_Expr);
     
-    u8* result = 0;
     Type* type = expr->type;
     
     if (type->kind == TypeKind_Array) {
@@ -71,9 +70,8 @@ convert_aggregate_literal_to_memory(Ast* expr) {
         
         // TODO(Alexander): temporary use Memory_Arena
         smm size = capacity*type->size;
-        result = (u8*) allocate_zeros(size);
         
-        u8* curr = (u8*) result;
+        u8* curr = (u8*) dest;
         for_compound(expr->Aggregate_Expr.elements, e) {
             assert(e->kind == Ast_Argument);
             e = e->Argument.assign;
@@ -85,20 +83,12 @@ convert_aggregate_literal_to_memory(Ast* expr) {
         
     } else if (type->kind == TypeKind_Struct || type->kind == TypeKind_Union) {
         // TODO(Alexander): temporary use Memory_Arena
-        result = (u8*) allocate_zeros(type->size);
-        
         int field_index = (int) expr->Aggregate_Expr.first_index;
         for_compound(expr->Aggregate_Expr.elements, field) {
             assert(field->kind == Ast_Argument);
             
             string_id ident = try_unwrap_ident(field->Argument.ident);
             Ast* assign = field->Argument.assign;
-            // TODO(Alexander): make it possible to store dynamic things
-            if (assign->kind == Ast_Aggregate_Expr) {
-                assign->Value.data.data = convert_aggregate_literal_to_memory(assign);
-            } else if (assign->kind != Ast_Value) {
-                continue;
-            }
             
             Struct_Field_Info info = {};
             if (ident) {
@@ -107,15 +97,17 @@ convert_aggregate_literal_to_memory(Ast* expr) {
                 info = get_field_info_by_index(&type->Struct_Like, field_index);
             }
             
-            value_store_in_memory(info.type, result + info.offset, assign->Value.data);
+            if (assign->kind == Ast_Aggregate_Expr) {
+                convert_aggregate_literal_to_memory(assign, (u8*) dest + info.offset);
+            } else if (assign->kind != Ast_Value) {
+                value_store_in_memory(info.type, (u8*) dest + info.offset, assign->Value.data);
+            }
             
             field_index++;
         }
     } else {
         unimplemented;
     }
-    
-    return result;
 }
 
 Value_Type 

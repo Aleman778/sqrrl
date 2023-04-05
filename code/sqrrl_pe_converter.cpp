@@ -1,7 +1,7 @@
 
 internal u32
 ptr_to_rva(u32 virtual_base, Memory_Arena* arena, void* ptr) {
-    return virtual_base + (u32) ((u8*) ptr - arena->base);
+    return virtual_base + (u32) arena_relative_pointer(arena, ptr);
 }
 
 
@@ -114,9 +114,6 @@ pe_dump_executable(string contents) {
         }
     }
     
-    
-    Memory_Arena machine_code = {};
-    
     pln("\nSection Table:");
     for (int i = 0; i < coff->number_of_sections; i++) {
         COFF_Section_Header* section = (COFF_Section_Header*) curr;
@@ -134,26 +131,26 @@ pe_dump_executable(string contents) {
         
         //__debugbreak();
         if (string_equals(section_name, create_string(8, (u8*) ".text\0\0\0"))) {
-            void* dest = arena_push_size(&machine_code, section->size_of_raw_data, 1);
-            memcpy(dest, contents.data + section->pointer_to_raw_data, section->size_of_raw_data);
+            pln("\nX64 Machine Code (% bytes):", f_umm(section->size_of_raw_data));
+            u8* machine_code = contents.data + section->pointer_to_raw_data;
+            u32 size = section->size_of_raw_data;
+            for (u32 byte_index = 0; byte_index < size; byte_index++) {
+                u8 byte = machine_code[byte_index];
+                if (byte > 0xF) {
+                    printf("%hhX ", byte);
+                } else {
+                    printf("0%hhX ", byte);
+                }
+                
+                if (byte_index % 20 == 19) {
+                    printf("\n");
+                }
+            }
+            printf("\n\n");
         }
     }
     
     
-    pln("\nX64 Machine Code (% bytes):", f_umm(machine_code.curr_used));
-    for (int byte_index = 0; byte_index < machine_code.curr_used; byte_index++) {
-        u8 byte = machine_code.base[byte_index];
-        if (byte > 0xF) {
-            printf("%hhX ", byte);
-        } else {
-            printf("0%hhX ", byte);
-        }
-        
-        if (byte_index % 20 == 19) {
-            printf("\n");
-        }
-    }
-    printf("\n\n");
 }
 
 void
@@ -185,7 +182,7 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
                                  u32 virtual_base) {
     
     // Import directory table (IDT)
-    u32 idt_base = (u32) rdata_arena->curr_used;
+    u32 idt_base = (u32) arena_total_used(rdata_arena);
     if (map_count(import_table->libs) > 0) {
         opt_header->import_table.rva = virtual_base + idt_base;
         opt_header->import_address_table.rva = virtual_base; // NOTE(Alexander): always start at 0
@@ -205,7 +202,7 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
     if (idt) {
         // Push null entry
         arena_push_struct(rdata_arena, COFF_Import_Directory_Table);
-        opt_header->import_table.size = (u32) rdata_arena->curr_used - idt_base;
+        opt_header->import_table.size = (u32) arena_total_used(rdata_arena) - idt_base;
         
         COFF_Import_Directory_Table* entry = idt;
         
@@ -215,7 +212,13 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
             
             // Lookup table
             u64* lookup_table = 0;
-            u64* address_table = (u64*) rdata_arena->base;
+            u64* address_table = 0;
+            Memory_Block* block = rdata_arena->current_block;
+            while (block) {
+                address_table = (u64*) block->base;
+                block = block->prev_block;
+            }
+            
             for_array(import_names, ident, _) {
                 u64* lookup_entry = arena_push_struct(rdata_arena, u64);
                 if (!lookup_table) {
@@ -254,6 +257,7 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
 
 void
 convert_to_pe_executable(Memory_Arena* arena,
+                         File_Handle output_file,
                          u8* machine_code, u32 machine_code_size,
                          Library_Import_Table* import_table,
                          Memory_Arena* rdata_arena,
@@ -311,39 +315,37 @@ convert_to_pe_executable(Memory_Arena* arena,
     // .rdata section
     push_coff_import_directory_table(rdata_arena, opt_header,
                                      import_table, opt_header->size_of_image);
-    if (rdata_arena->curr_used > 0) {
-        rdata_section = push_coff_section(arena, opt_header, COFF_RDATA_SECTION, (u32) rdata_arena->curr_used,
+    u32 rdata_size = (u32) arena_total_used(rdata_arena);
+    if (rdata_size > 0) {
+        rdata_section = push_coff_section(arena, opt_header, COFF_RDATA_SECTION, rdata_size,
                                           COFF_SCN_CNT_INITIALIZED_DATA | COFF_SCN_MEM_READ);
         opt_header->size_of_initialized_data += rdata_section->size_of_raw_data;
         header->number_of_sections++; // added .rdata
         
     }
     
+    opt_header->size_of_headers = (u32) arena_total_used(arena);
+    
+    // Layout sections
+    u32 output_size = opt_header->size_of_headers;
+    if (text_section) {
+        text_section->pointer_to_raw_data = output_size;
+        output_size += text_section->size_of_raw_data;
+    }
+    
+    if (rdata_section) {
+        rdata_section->pointer_to_raw_data = output_size;
+        output_size += rdata_section->size_of_raw_data;
+    }
+    
     // NOTE(Alexander): all headers have been set after this point
-    opt_header->size_of_headers = (u32) arena->curr_used;
-    
-    
-    
+    write_memory_block_to_file(arena->current_block, output_file);
     
     // Populate the sections with data
     if (text_section) {
-        u8* dest = (u8*) arena_push_size(arena,
-                                         text_section->size_of_raw_data,
-                                         opt_header->file_alignment,
-                                         ArenaPushFlag_Align_From_Zero);
-        memcpy(dest, machine_code, machine_code_size);
-        text_section->pointer_to_raw_data = (u32) (dest - arena->base);
+        DEBUG_write(output_file, machine_code, machine_code_size);
     }
-    
-    
     if (rdata_section) {
-        u8* dest = (u8*) arena_push_size(arena,
-                                         rdata_section->size_of_raw_data,
-                                         opt_header->file_alignment,
-                                         ArenaPushFlag_Align_From_Zero);
-        memcpy(dest, rdata_arena->base, rdata_arena->curr_used);
-        rdata_section->pointer_to_raw_data = (u32) (dest - arena->base);
+        write_memory_block_to_file(rdata_arena->current_block, output_file);
     }
-    
-    pe_dump_executable(create_string(arena->curr_used, arena->base));
 }

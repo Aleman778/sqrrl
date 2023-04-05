@@ -133,11 +133,11 @@ ic_imm(Ic_Raw_Type t, s64 d) {
 }
 
 inline Ic_Arg
-ic_rip_disp32(Ic_Raw_Type t, s64 rel) {
+ic_rip_disp32(Ic_Raw_Type t, Memory_Arena* arena, void* data) {
     Ic_Arg result = {};
     result.type = t + IC_RIP_DISP32;
     result.reg = X64_RIP;
-    result.disp = rel;
+    result.disp = arena_relative_pointer(arena, data);
     return result;
 }
 

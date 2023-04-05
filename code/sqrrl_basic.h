@@ -722,56 +722,40 @@ align_forward(umm address, umm align) {
     return address;
 }
 
+struct Memory_Block {
+    u8* base;
+    umm size;
+    umm used;
+    Memory_Block* prev_block;
+};
+
+inline Memory_Block*
+allocate_memory_block(umm block_size) {
+    Memory_Block* block = (Memory_Block*) calloc(1, block_size);
+    block->base = (u8*) (block + 1);
+    block->size = block_size - sizeof(Memory_Block);
+    return block;
+}
+
+inline void
+free_memory_blocks(Memory_Block* block) {
+    if (!block) return;
+    
+    if (block->prev_block) {
+        free_memory_blocks(block->prev_block);
+    }
+    free(block);
+}
+
+
 // NOTE(Alexander): memory arena
 struct Memory_Arena {
-    u8* base; // TODO(Alexander): we need to keep track of allocated blocks!
-    umm size;
-    umm curr_used;
+    Memory_Block* current_block;
     umm prev_used;
+    
+    umm total_used_minus_current; // including all memory blocks
     umm min_block_size;
 };
-
-struct Temporary_Memory {
-    Memory_Arena* arena;
-    // TODO(Alexander): we need to keep track of allocated blocks!
-    umm curr_used;
-    umm prev_used;
-};
-
-inline void
-arena_initialize(Memory_Arena* arena, void* base, umm size) {
-    arena->base = (u8*) base;
-    arena->size = size;
-    arena->curr_used = 0;
-    arena->prev_used = 0;
-    arena->min_block_size = 0;
-}
-
-inline void
-arena_initialize(Memory_Arena* arena, umm min_block_size) {
-    arena->base = 0;
-    arena->size = 0;
-    arena->curr_used = 0;
-    arena->prev_used = 0;
-    arena->min_block_size = min_block_size;
-}
-
-inline Temporary_Memory
-begin_temporary_memory(Memory_Arena* arena) {
-    Temporary_Memory result = {};
-    result.arena = arena;
-    result.curr_used = arena->curr_used;
-    result.prev_used = arena->prev_used;
-    return result;
-}
-
-inline void
-end_temporary_memory(Temporary_Memory* temp_memory) {
-    Memory_Arena* arena = temp_memory->arena;
-    arena->curr_used = temp_memory->curr_used;
-    arena->prev_used = temp_memory->prev_used;
-}
-
 
 inline void
 arena_grow(Memory_Arena* arena, umm block_size = 0) {
@@ -783,10 +767,13 @@ arena_grow(Memory_Arena* arena, umm block_size = 0) {
         block_size = arena->min_block_size;
     }
     
-    arena->base = (u8*) calloc(1, arena->min_block_size);
-    arena->curr_used = 0;
+    if (arena->current_block) {
+        arena->total_used_minus_current += arena->current_block->used;
+    }
+    
+    Memory_Block* block = allocate_memory_block(block_size);
+    arena->current_block = block;
     arena->prev_used = 0;
-    arena->size = block_size;
 }
 
 enum {
@@ -797,27 +784,54 @@ typedef u32 Arena_Push_Flags;
 
 
 inline umm
-arena_aligned_offset(Memory_Arena* arena, umm size, umm align, Arena_Push_Flags flags) {
+arena_aligned_offset(Memory_Block* memory_block, umm size, umm align, Arena_Push_Flags flags) {
     if (flags & ArenaPushFlag_Align_From_Zero) {
-        return align_forward((umm) arena->curr_used, align);
+        return align_forward((umm) memory_block->used, align);
     } else {
-        umm current = (umm) arena->base + (umm) arena->curr_used;
-        return align_forward(current, align) - (umm) arena->base;
+        umm current = (umm) memory_block->base + (umm) memory_block->used;
+        return align_forward(current, align) - (umm) memory_block->base;
     }
 }
+
+inline umm
+arena_relative_pointer(Memory_Arena* arena, void* absolute_ptr) {
+    if (!arena->current_block) return 0;
+    
+    umm offset = (u8*) absolute_ptr - arena->current_block->base;
+    return offset + arena->total_used_minus_current;
+}
+
+inline umm
+arena_curr_used(Memory_Arena* arena) {
+    if (!arena->current_block) return 0;
+    return arena->current_block->used;
+}
+
+inline umm
+arena_total_used(Memory_Arena* arena) {
+    if (!arena->current_block) return 0;
+    return arena->current_block->used + arena->total_used_minus_current;
+}
+
 
 void*
 arena_push_size(Memory_Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT, Arena_Push_Flags flags=0) {
     
-    umm offset = arena_aligned_offset(arena, size, align, flags);
-    if (offset + size > arena->size) {
-        arena_grow(arena);
-        offset = arena_aligned_offset(arena, size, align, flags);
+    umm offset = 0;
+    umm arena_size = 0;
+    if (arena->current_block) {
+        offset = arena_aligned_offset(arena->current_block, size, align, flags);
+        arena_size = arena->current_block->size;
     }
     
-    void* result = arena->base + offset;
-    arena->prev_used = arena->curr_used;
-    arena->curr_used = offset + size;
+    if (offset + size > arena_size) {
+        arena_grow(arena);
+        offset = arena_aligned_offset(arena->current_block, size, align, flags);
+    }
+    
+    void* result = arena->current_block->base + offset;
+    arena->prev_used = arena->current_block->used;
+    arena->current_block->used = offset + size;
     
     memset(result, 0, size);
     
@@ -837,9 +851,11 @@ arena_can_fit_size(arena, sizeof(type), alignof(type))
 
 inline bool
 arena_can_fit_size(Memory_Arena* arena, umm size, umm align) {
-    umm current = (umm) (arena->base + arena->curr_used);
-    umm offset = align_forward(current, align) - (umm) arena->base;
-    return offset + size <= arena->size;
+    if (!arena->current_block) return false;
+    
+    umm current = (umm) (arena->current_block->base + arena->current_block->used);
+    umm offset = align_forward(current, align) - (umm) arena->current_block->base;
+    return offset + size <= arena->current_block->size;
 }
 
 
@@ -858,11 +874,24 @@ arena_can_fit_size(Memory_Arena* arena, umm size, umm align) {
 
 inline void
 arena_rewind(Memory_Arena* arena) {
-    arena->curr_used = arena->prev_used;
+    if (!arena->current_block) return;
+    arena->current_block->used = arena->prev_used;
 }
 
 inline void
 arena_clear(Memory_Arena* arena) {
-    arena->curr_used = 0;
-    arena->prev_used = 0;
+    if (!arena->current_block) return;
+    Memory_Block* current_block = arena->current_block;
+    
+    *arena = {};
+    arena->current_block = current_block;
+    
+    Memory_Block* prev_block = arena->current_block->prev_block;
+    free_memory_blocks(prev_block);
+}
+
+inline void
+free_arena(Memory_Arena* arena) {
+    free_memory_blocks(arena->current_block);
+    *arena = {};
 }

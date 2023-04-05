@@ -343,7 +343,7 @@ interp_function_call(Interp* interp, Ast* args, Type* function_type) {
             // Store the old base pointer on the stack and set the base pointer
             // to point at the top of the stack, then push the new scope
             smm* old_base = (smm*) arena_push_size(&interp->stack, sizeof(smm));
-            smm new_base = interp->stack.curr_used - sizeof(smm);
+            smm new_base = arena_curr_used(&interp->stack) - sizeof(smm);
             *old_base = interp->base_pointer;
             interp->base_pointer = new_base;
             
@@ -388,8 +388,9 @@ interp_function_call(Interp* interp, Ast* args, Type* function_type) {
             interp->curr_scope = interp->curr_scope->prev_scope;
             
             // Pop the stack by restoring the old base pointer
-            interp->stack.curr_used = interp->base_pointer;
-            interp->base_pointer = *(smm*) ((u8*) interp->stack.base + interp->base_pointer);
+            // TODO(Alexander): HACK we should restore a temporary arena instead
+            interp->stack.current_block->used = interp->base_pointer;
+            interp->base_pointer = *(smm*) ((u8*) interp->stack.current_block->base + interp->base_pointer);
             
         } else {
             interp_error(interp, string_print("`%` is not a function", 

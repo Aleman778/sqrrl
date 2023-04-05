@@ -2971,8 +2971,6 @@ type_infer_ast(Type_Context* tcx, Interp* interp, Compilation_Unit* cu,
         return result;
     }
     
-    Temporary_Memory temp_memory = begin_temporary_memory(&tcx->type_arena);
-    
     if (is_ast_type(ast)) {
         string_id ident = cu->ident;
         Type* type = save_type_declaration_from_ast(tcx, ident, ast, report_error);
@@ -2985,10 +2983,6 @@ type_infer_ast(Type_Context* tcx, Interp* interp, Compilation_Unit* cu,
         result = type;
     } else {
         assert(0 && "illegal type: expected X_Stmt or any X_Type node");
-    }
-    
-    if (!result) {
-        //end_temporary_memory(&temp_memory);
     }
     
     while (tcx->active_scope) {

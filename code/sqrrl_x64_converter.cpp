@@ -596,7 +596,7 @@ convert_binary_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr, Ic_Arg
             src1 = result;
             
 #if BUILD_DEBUG
-            if (src0.raw_type != src1.raw_type) {
+            if (!(src0.raw_type == src1.raw_type || src1.raw_type == 0)) {
                 pln("AST:\n%", f_ast(expr));
                 assert(0);
             }
@@ -666,7 +666,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 Ic_Raw_Type raw_type = convert_type_to_raw_type(expr->type);
                 void* data = arena_push_size(cu->rdata_arena, type->size, type->size);
                 value_store_in_memory(type, data, expr->Value.data);
-                result = ic_rip_disp32(raw_type, (u8*) data - cu->rdata_arena->base);
+                result = ic_rip_disp32(raw_type, cu->rdata_arena, data);
                 
             } else if (is_string(expr->Value)) {
                 Ic_Raw_Type raw_type = IC_T64;
@@ -677,14 +677,14 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 str->count = str_count;
                 memcpy(str->data, expr->Value.data.str.data, str_count);
                 
-                result = ic_rip_disp32(raw_type, (u8*) str - cu->rdata_arena->base);
+                result = ic_rip_disp32(raw_type, cu->rdata_arena, str);
                 
             } else if (is_cstring(expr->Value)) {
-                smm str_count = cstring_count(expr->Value.data.cstr);
-                cstring cstr = (cstring) arena_push_size(cu->rdata_arena, str_count + 1, 1);
-                memcpy((void*) cstr, (void*) expr->Value.data.cstr, str_count + 1);
-                if (cstr) {
-                    result = ic_rip_disp32(IC_T64, (u8*) cstr - cu->rdata_arena->base);
+                if (expr->Value.data.cstr) {
+                    smm str_count = cstring_count(expr->Value.data.cstr);
+                    cstring cstr = (cstring) arena_push_size(cu->rdata_arena, str_count + 1, 1);
+                    memcpy((void*) cstr, (void*) expr->Value.data.cstr, str_count + 1);
+                    result = ic_rip_disp32(IC_T64, cu->rdata_arena, (void*) cstr);
                 } else {
                     result = ic_imm(IC_S64, 0);
                 }
@@ -723,7 +723,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     void* dest = arena_push_size(cu->rdata_arena, type->size, type->align);
                     memcpy(dest, data, type->size);
                     
-                    result = ic_rip_disp32(raw_type, (u8*) dest - cu->rdata_arena->base);
+                    result = ic_rip_disp32(raw_type, cu->rdata_arena, dest);
                 }
             }
         } break;
@@ -744,7 +744,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             
             
             if (data) {
-                result = ic_rip_disp32(IC_T64, (u8*) data - cu->rdata_arena->base);
+                result = ic_rip_disp32(IC_T64, cu->rdata_arena, data);
                 
                 // Write to non-constant fields
                 Ic_Arg result_dest = {};
@@ -986,7 +986,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                         Intermediate_Code* ic = ic_add(cu, IC_FXOR);
                         ic->dest = ic_reg(rt);
                         ic->src0 = src;
-                        ic->src1 = ic_rip_disp32(rt, (u8*) data - cu->rdata_arena->base);
+                        ic->src1 = ic_rip_disp32(rt, cu->rdata_arena, data);
                         result = ic->dest;
                         
                     } else {

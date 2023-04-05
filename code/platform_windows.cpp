@@ -334,22 +334,40 @@ DEBUG_read_entire_file(cstring filename) {
 bool
 DEBUG_write_entire_file(cstring filename, void* data, u32 size) {
     Read_File_Result result = {};
+    
+    File_Handle file_handle = DEBUG_open_file_for_writing(filename);
+    if (!file_handle) {
+        return false;
+    }
+    
+    bool success = DEBUG_write(file_handle, data, size);
+    DEBUG_close_file(file_handle);
+    return success;
+}
+
+File_Handle
+DEBUG_open_file_for_writing(cstring filename) {
     DeleteFileA(filename);
     HANDLE file_handle = CreateFileA(filename, GENERIC_WRITE, FILE_SHARE_WRITE, 0, OPEN_ALWAYS, 0, 0);
     
-    if (file_handle != INVALID_HANDLE_VALUE) {
-        
-        DWORD out_size = 0;
-        bool success = WriteFile(file_handle, data, size, &out_size, 0);
-        
-        CloseHandle(file_handle);
-        
-        return out_size == size && success;
-    } else {
+    if (file_handle == INVALID_HANDLE_VALUE) {
         platform_error(string_print("file `%` was not found", f_cstring(filename)));
+        return 0;
     }
     
-    return false;
+    return (File_Handle) file_handle;
+}
+
+bool
+DEBUG_write(File_Handle file_handle, void* data, u32 size) {
+    DWORD out_size = 0;
+    bool success = WriteFile((HANDLE) file_handle, data, size, &out_size, 0);
+    return out_size == size && success;
+}
+
+bool
+DEBUG_close_file(File_Handle file_handle) {
+    return CloseHandle((HANDLE) file_handle);
 }
 
 void

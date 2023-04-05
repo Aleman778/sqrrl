@@ -63,12 +63,12 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         // TODO(Alexander): temporary files for testing
         //filepath = string_lit("../personal/first.sq");
         //filepath = string_lit("../modules/basic.sq");
-        //filepath = string_lit("../../platformer/code/win32_platform.cpp");
+        filepath = string_lit("../../platformer/code/win32_platform.cpp");
         //filepath = string_lit("../examples/backend_test.sq");
         //filepath = string_lit("../examples/raytracer/first.cpp");
         //filepath = string_lit("../tests/preprocessor.sq");
         
-        filepath = string_lit("../examples/simple.cpp");
+        //filepath = string_lit("../examples/simple.cpp");
         //filepath = string_lit("simple.exe");
 #else
         if (argc <= 1) {
@@ -261,11 +261,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             void* fn_ptr = arena_push_size(&rdata_arena, 8, 8);
             Intermediate_Code* ic_jump = ic_add(cu, IC_JMP);
             pln("-> %", f_var(cu->ident));
-            
-            s64 address = (u8*) fn_ptr - rdata_arena.base;
-            ic_jump->src0 = ic_rip_disp32(IC_U64, address);
-            
-            cu->external_address = address;
+            ic_jump->src0 = ic_rip_disp32(IC_U64, &rdata_arena, fn_ptr);
+            cu->external_address = ic_jump->src0.disp;
         }
     }
     arena_push_size(&rdata_arena, 8, 8); // null entry
@@ -395,15 +392,18 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
 #if 1
     // NOTE(Alexander): Build to executable
     Memory_Arena build_arena = {};
+    File_Handle exe_file = DEBUG_open_file_for_writing("simple.exe");
     convert_to_pe_executable(&build_arena,
+                             exe_file,
                              (u8*) asm_buffer, (u32) rip,
                              &tcx.import_table,
                              &rdata_arena,
                              asm_buffer_main);
-    
-    // TODO(Alexander): handle multi block arena
-    DEBUG_write_entire_file("simple.exe", build_arena.base, (u32) build_arena.curr_used);
+    DEBUG_close_file(exe_file);
     pln("\nWrote executable: simple.exe");
+    
+    Read_File_Result exe_data = DEBUG_read_entire_file("simple.exe");
+    pe_dump_executable(create_string(exe_data.contents_size, (u8*) exe_data.contents));
     
 #else
     // NOTE(Alexander): Run machine code

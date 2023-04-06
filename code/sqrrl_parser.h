@@ -120,6 +120,7 @@ Ast* parse_actual_statement(Parser* parser);
 Ast* parse_actual_type(Parser* parser);
 Ast* parse_actual_identifier(Parser* parser);
 Ast* parse_switch_case(Parser* parser);
+Ast* parse_declaration_attribute(Parser* parser);
 
 Ast* parse_compound(Parser* parser, 
                     Token_Type begin, Token_Type end, Token_Type separator,

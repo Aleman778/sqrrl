@@ -1921,73 +1921,62 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             result->size = sizeof(smm);
             result->align = alignof(smm);
             
-            for_compound(ast->Function_Type.attributes, attr) {
-                string_id ident = ast_unwrap_ident(attr->Attribute.ident);
-                if (ident == Sym_link) {
+            Parsed_Attribute attr = parse_attribute(ast->Function_Type.attributes);
+            while (attr.is_valid) {
+                if (attr.ident == Sym_link) {
+                    //parse_attribute(Attribute_Function, Value_string);
                     bool error = false;
+                    
                     if (!result->Function.ident) {
                         error = true;
                     }
                     
-                    // TODO(Alexander): we need a better way to read attributes
-                    Ast* link = attr->Attribute.expr;
-                    if (link && link->kind == Ast_Call_Expr) {
-                        
-                        Ast* first_arg = link->Call_Expr.args ? link->Call_Expr.args->Compound.node : 0;
-                        if (first_arg && first_arg->kind == Ast_Argument) {
-                            
-                            Ast* target = first_arg->Argument.assign;
-                            if (target && target->kind == Ast_Value &&
-                                target->Value.type == Value_string) {
-                                
-                                string library_name = target->Value.data.str;
-                                string_id library_id = vars_save_string(library_name);
-                                string_id library_function_id = result->Function.ident;
-                                string library_function_name = vars_load_string(library_function_id);
-                                
-                                {
-                                    cstring name = string_to_cstring(library_function_name);
-                                    cstring library = string_to_cstring(library_name);
-                                    
-                                    func->intrinsic = DEBUG_get_external_procedure_address(library, name);
-                                    
-                                    cstring_free(library);
-                                    cstring_free(name);
-                                }
-                                
-                                Library_Imports import = map_get(tcx->import_table.libs, library_id);
-                                import.is_valid = true;
-                                
-                                Library_Function lib_func = {};
-                                lib_func.name = library_function_id;
-                                lib_func.pointer = func->intrinsic;
-                                lib_func.type = result;
-                                array_push(import.functions, lib_func);
-                                map_put(tcx->import_table.libs, library_id, import);
-                                
-                                //pln("% = 0x%", f_cstring(name), f_u64_HEX(func->intrinsic));
-                                if (!func->intrinsic) {
-                                    type_error(tcx,
-                                               string_print("procedure `%` is not found in library `%`",
-                                                            f_string(library_function_name),
-                                                            f_string(library_name)),
-                                               ast->span);
-                                }
-                                
-                            } else {
-                                error = true;
-                            }
-                        } else {
-                            error = true;
-                        }
-                    } else {
+                    if (attr.values[0].type != Value_string) {
                         error = true;
+                    } 
+                    
+                    if (!error) {
+                        string library_name = attr.values[0].data.str;
+                        string_id library_id = vars_save_string(library_name);
+                        string_id library_function_id = result->Function.ident;
+                        string library_function_name = vars_load_string(library_function_id);
+                        
+                        {
+                            cstring name = string_to_cstring(library_function_name);
+                            cstring library = string_to_cstring(library_name);
+                            
+                            func->intrinsic = DEBUG_get_external_procedure_address(library, name);
+                            
+                            cstring_free(library);
+                            cstring_free(name);
+                        }
+                        
+                        Library_Imports import = map_get(tcx->import_table.libs, library_id);
+                        import.is_valid = true;
+                        
+                        Library_Function lib_func = {};
+                        lib_func.name = library_function_id;
+                        lib_func.pointer = func->intrinsic;
+                        lib_func.type = result;
+                        array_push(import.functions, lib_func);
+                        map_put(tcx->import_table.libs, library_id, import);
+                        
+                        //pln("% = 0x%", f_cstring(name), f_u64_HEX(func->intrinsic));
+                        if (!func->intrinsic) {
+                            type_error(tcx,
+                                       string_print("procedure `%` is not found in library `%`",
+                                                    f_string(library_function_name),
+                                                    f_string(library_name)),
+                                       ast->span);
+                        }
                     }
                     
                     if (error) {
                         type_error(tcx, string_lit("@link attribute is malformed"), ast->span);
                     }
                 }
+                
+                attr = parse_attribute(attr.next);
             }
         } break;
         
@@ -3135,17 +3124,6 @@ intrin_name->Function.first_default_arg_index++; \
     // Intrinsic syntax: f32 random_f32()
     push_intrinsic(random_f32, false, 0, &random_f32, t_f32);
     
-    // Intrinsic syntax: umm sizeof(T)
-    push_intrinsic(sizeof, false, 0, &type_sizeof, t_umm);
-    push_intrinsic_arg(sizeof, T, t_any);
-    
-    // Intrinsic syntax: umm alignof(T)
-    push_intrinsic(alignof, false, 0, &type_alignof, t_umm);
-    push_intrinsic_arg(alignof, T, t_any);
-    
-    push_intrinsic(type_of, false, 0, &type_of, t_type);
-    push_intrinsic_arg(type_of, T, t_any);
-    
     // Intrinsic syntax: void*  memory_alloc(umm size)
     push_intrinsic(allocate, false, 0, &allocate, t_void_ptr);
     push_intrinsic_arg(allocate, size, t_umm);
@@ -3163,6 +3141,19 @@ intrin_name->Function.first_default_arg_index++; \
     // Intrinsic syntax: void flush_stdout()
     push_intrinsic(flush_stdout, false, 0, &flush_stdout, t_void);
 #endif
+    
+    
+    // Intrinsic syntax: umm sizeof(T)
+    push_intrinsic(sizeof, false, 0, &type_sizeof, t_umm);
+    push_intrinsic_arg(sizeof, T, t_any);
+    
+    // Intrinsic syntax: umm alignof(T)
+    push_intrinsic(alignof, false, 0, &type_alignof, t_umm);
+    push_intrinsic_arg(alignof, T, t_any);
+    
+    push_intrinsic(type_of, false, 0, &type_of, t_type);
+    push_intrinsic_arg(type_of, T, t_any);
+    
     
     /******************************************************
     /* X64 architecture specific intrinsics

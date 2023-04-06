@@ -766,6 +766,13 @@ parse_statement(Parser* parser, bool report_error) {
     Token token = peek_token(parser);
     Ast* result = 0;
     
+    Ast* attributes = 0;
+    if (token.type == Token_Attribute) {
+        attributes = parse_prefixed_compound(parser, Token_Attribute, 
+                                             &parse_declaration_attribute);
+        token = peek_token(parser);
+    }
+    
     if (token.type == Token_Ident) {
         Var keyword = (Var) vars_save_string(token.source);
         switch (keyword) {
@@ -868,6 +875,11 @@ parse_statement(Parser* parser, bool report_error) {
                         } break;
                         
                         case Ast_Function_Type: {
+                            if (attributes) {
+                                assert(!type->Function_Type.attributes && "overwrite");
+                                type->Function_Type.attributes = attributes;
+                            }
+                            
                             result = push_ast_node(parser, &token);
                             result->kind = Ast_Decl_Stmt;
                             result->Decl_Stmt.ident = type->Function_Type.ident;

@@ -1,4 +1,61 @@
 
+// TODO(Alexander): we only have windows support atm. later on we import the correct header
+#include "ucrtwindows.h"
+
+
+f32 cos(f32 num) {
+    return _f32_cos(num);
+}
+
+f32 acos(f32 num) {
+    return _f32_acos(num);
+}
+
+f32 sin(f32 num) {
+    return _f32_sin(num);
+}
+
+f32 asin(f32 num) {
+    return _f32_asin(num);
+}
+
+f32 tan(f32 num) {
+    return _f32_tan(num);
+}
+
+f32 atan(f32 num) {
+    return _f32_atan(num);
+}
+
+f32 sqrt(f32 num) {
+    return _f32_sqrt(num);
+}
+
+f32 round(f32 num) {
+    return _f32_round(num);
+}
+
+f32 floor(f32 num) {
+    return _f32_floor(num);
+}
+
+f32 ceil(f32 num) {
+    return _f32_ceil(num);
+}
+
+f32 abs(f32 num) {
+    return _f32_abs(num);
+}
+
+s32 abs(s32 num) {
+    // TODO(Alexander): we can perhaps optimize this?
+    return num < 0 ? -num : num;
+}
+
+f32 random_f32() {
+    return (f32) _s32_rand() / (RAND_MAX + 1.0f);
+}
+
 enum Type_Kind {
     Unresolved,
     Void,
@@ -66,6 +123,156 @@ struct Array_Type_Info {
 inline Type_Info*
 type_info(Type type) {
     return (Type_Info*) type;
+}
+
+void
+print(cstring format, ...) {
+    va_list args;
+    va_start(args, format);
+    
+    //printf("\n\ntest: %s\n\n", format);
+    
+    const char* format_at_prev_percent = format;
+    int count_until_percent = 0;
+    while (*format != '\0') {
+        // TODO(Alexander): can we improve escaping % or change the template marker altogether
+        //if (*format == '\\' && *(format + 1) == '%') {
+        //printf("%%");
+        //format += 2;
+        //format_at_prev_percent = format;
+        //continue;
+        //}
+        
+        if (*format == '%') {
+            if (*(format + 1) == '%') {
+                printf("%%");
+                format += 2;
+                format_at_prev_percent = format;
+                continue;
+            }
+            
+            if (count_until_percent > 0) {
+                printf("%.*s", count_until_percent, format_at_prev_percent);
+                count_until_percent = 0;
+            }
+            
+            format_at_prev_percent = format + 1;
+            
+            Format_Type type = (Format_Type) va_arg(args, int);
+            switch (type) {
+                case FormatType_bool: {
+                    printf("%s", va_arg(args, bool) ? "true" : "false");
+                } break;
+                
+                case FormatType_char: {
+                    printf("%c", va_arg(args, char));
+                } break;
+                
+                case FormatType_s8: {
+                    printf("%ld", (s32) va_arg(args, s8));
+                } break;
+                
+                case FormatType_s16: {
+                    printf("%ld", (s32) va_arg(args, s16));
+                } break;
+                
+                case FormatType_int: {
+                    printf("%d", va_arg(args, int));
+                } break;
+                
+                case FormatType_s32: {
+                    printf("%ld", va_arg(args, s32));
+                } break;
+                
+                case FormatType_uint: {
+                    printf("%u", va_arg(args, uint));
+                } break;
+                
+                case FormatType_s64: {
+                    printf("%lld", va_arg(args, s64));
+                } break;
+                
+                case FormatType_u8: {
+                    printf("%c", (char) va_arg(args, u8));
+                } break;
+                
+                case FormatType_u16: {
+                    printf("%lu", (u32) va_arg(args, u16));
+                } break;
+                
+                case FormatType_u32: {
+                    printf("%lu", va_arg(args, u32));
+                } break;
+                
+                case FormatType_u64: {
+                    printf("%llu", va_arg(args, u64));
+                } break;
+                
+                case FormatType_u64_HEX: {
+                    printf("0x%llX", va_arg(args, u64));
+                } break;
+                
+                case FormatType_smm: {
+                    printf("%zd", va_arg(args, smm));
+                } break;
+                
+                case FormatType_umm: {
+                    printf("%zu", va_arg(args, umm));
+                } break;
+                
+                case FormatType_f32: {
+                    printf("%f", va_arg(args, f32));
+                } break;
+                
+                case FormatType_f64: {
+                    printf("%f", va_arg(args, f64));
+                } break;
+                
+                case FormatType_string: {
+                    string str = va_arg(args, string);
+                    printf("%.*s", (int) str.count, (char*) str.data);
+                } break;
+                
+                case FormatType_memory_string: {
+                    Memory_String str = va_arg(args, Memory_String);
+                    printf("%.*s", (int) memory_string_count(str), (char*) str);
+                } break;
+                
+                case FormatType_cstring: {
+                    printf("%s", va_arg(args, char*));
+                } break;
+                
+                case FormatType_ast: {
+                    print_ast(va_arg(args, Ast*), 0);
+                } break;
+                
+                case FormatType_type: {
+                    print_type(va_arg(args, Type*));
+                } break;
+                
+                case FormatType_value: {
+                    print_value(va_arg(args, Value*));
+                } break;
+                
+                case FormatType_intermediate_code: {
+                    print_intermediate_code(va_arg(args, Intermediate_Code*));
+                } break;
+                
+                default: {
+                    assert(0 && "unimplemented format type");
+                } break;
+            }
+        } else {
+            count_until_percent++;
+        }
+        
+        format++;
+    }
+    
+    if (count_until_percent > 0) {
+        printf("%.*s", count_until_percent, format_at_prev_percent);
+    }
+}
 }
 
 void

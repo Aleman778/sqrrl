@@ -405,6 +405,63 @@ is_ast_compound(Ast* ast) {
     return ast && ast->kind == Ast_Compound;
 }
 
+
+struct Attribute_Parser {
+    Ast* curr;
+    string_id next_ident;
+};
+
+struct Parsed_Attribute {
+    Ast* next;
+    
+    string_id ident;
+    Value values[9];
+    s32 value_count;
+    
+    b32 is_valid;
+};
+
+Parsed_Attribute
+parse_attribute(Ast* node) {
+    Parsed_Attribute result = {};
+    if (!node) {
+        return result;
+    }
+    
+    assert(node->kind == Ast_Compound);
+    Ast* attr = node->Compound.node;
+    result.next = node->Compound.next;
+    result.ident = try_unwrap_ident(attr->Attribute.ident);
+    
+    // Parse out values
+    Ast* expr = attr->Attribute.expr;
+    if (!expr) {
+        return result;
+    }
+    
+    switch (expr->kind) {
+        case Ast_Call_Expr: {
+            for_compound(expr->Call_Expr.args, arg) {
+                assert(arg->kind == Ast_Argument);
+                Ast* target = arg->Argument.assign;
+                
+                if (target && target->kind == Ast_Value &&
+                    result.value_count < fixed_array_count(result.values)) {
+                    result.values[result.value_count++] = target->Value;
+                } else {
+                    unimplemented;
+                }
+            }
+        } break;
+        
+        default: {
+            unimplemented;
+        } break;
+    }
+    
+    return result;
+}
+
 void
 string_builder_push(String_Builder* sb, Ast_Decl_Modifier mods) {
     if (mods > 0) {

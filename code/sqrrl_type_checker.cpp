@@ -3060,10 +3060,12 @@ intrin_name->Function.first_default_arg_index++; \
     // the ability to create these functions yet, need FFI!
     // We will still have intrinsics but these intrinsics are just for debugging
     
+#if 0
     // Intrinsic syntax: void print_format(string format...)
     // e.g. print_format %, lucky number is %\n", "world", 7);
     push_intrinsic(print, true, &interp_intrinsic_print, &print, t_void);
     push_intrinsic_arg(print, format, t_cstring);
+#endif
     
     // Intrinsic syntax: void debug_break()
     // Inserts a breakpoint (e.g. int3 on x64) to enable debugger
@@ -3081,6 +3083,7 @@ intrin_name->Function.first_default_arg_index++; \
     push_intrinsic_arg(__assert, file, t_cstring);
     push_intrinsic_arg(__assert, line, t_smm);
     
+#if 0
     // Intrinsic syntax: f32 cos(f32 num)
     push_intrinsic(cos, false, 0, &cosf, t_f32);
     push_intrinsic_arg(cos, num, t_f32);
@@ -3159,6 +3162,7 @@ intrin_name->Function.first_default_arg_index++; \
     
     // Intrinsic syntax: void flush_stdout()
     push_intrinsic(flush_stdout, false, 0, &flush_stdout, t_void);
+#endif
     
     /******************************************************
     /* X64 architecture specific intrinsics

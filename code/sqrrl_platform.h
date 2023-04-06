@@ -43,12 +43,20 @@ void* DEBUG_get_external_procedure_address(cstring library, cstring procedure_na
 void DEBUG_set_current_directory(cstring path);
 
 void
-write_memory_block_to_file(Memory_Block* block, File_Handle file_handle) {
+write_memory_block_to_file(File_Handle file_handle, Memory_Block* block) {
     if (!block) return;
-    write_memory_block_to_file(block->prev_block, file_handle);
+    write_memory_block_to_file(file_handle, block->prev_block);
     DEBUG_write(file_handle, block->base, (u32) block->used);
 }
 
+void
+write_padding_to_file(File_Handle file_handle, umm size, umm aligned_size) {
+    umm padding_size = aligned_size - size;
+    if (padding_size) {
+        void* padding = allocate_zeros(padding_size);
+        DEBUG_write(file_handle, padding, (u32) padding_size);
+    }
+}
 
 // NOTE(Alexander): forward declare
 struct Ast_File;

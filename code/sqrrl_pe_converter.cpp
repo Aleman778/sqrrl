@@ -181,28 +181,31 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
                                  Library_Import_Table* import_table, 
                                  u32 virtual_base) {
     
-    // Import directory table (IDT)
-    u32 idt_base = (u32) arena_total_used(rdata_arena);
-    if (map_count(import_table->libs) > 0) {
-        opt_header->import_table.rva = virtual_base + idt_base;
-        opt_header->import_address_table.rva = virtual_base; // NOTE(Alexander): always start at 0
-        opt_header->import_address_table.size += 8; // NOTE(Alexander): null entry
-    }
+    u32 idt_base = 0;
     
     COFF_Import_Directory_Table* idt = 0;
     for_map(import_table->libs, it) {
         string_id library_id = it->key;
         Library_Imports* imports = &it->value;
         
-        COFF_Import_Directory_Table* entry = arena_push_struct(rdata_arena, COFF_Import_Directory_Table);
+        COFF_Import_Directory_Table* entry = arena_push_struct(rdata_arena, COFF_Import_Directory_Table,
+                                                               ArenaPushFlag_Align_From_Zero);
+        
         if (idt == 0) {
             idt = entry;
+            idt_base = (u32) arena_relative_pointer(rdata_arena, idt);
+            if (map_count(import_table->libs) > 0) {
+                opt_header->import_table.rva = virtual_base + idt_base;
+                opt_header->import_address_table.rva = virtual_base; // NOTE(Alexander): always start at 0
+                opt_header->import_address_table.size += 8; // NOTE(Alexander): null entry
+            }
         }
     }
     if (idt) {
         // Push null entry
-        arena_push_struct(rdata_arena, COFF_Import_Directory_Table);
+        arena_push_struct(rdata_arena, COFF_Import_Directory_Table, ArenaPushFlag_Align_From_Zero);
         opt_header->import_table.size = (u32) arena_total_used(rdata_arena) - idt_base;
+        pln("SIZE: %", f_u32(opt_header->import_table.size));
         
         COFF_Import_Directory_Table* entry = idt;
         
@@ -210,13 +213,27 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
             string library_name = vars_load_string(it->key);
             array(Library_Function)* import_names = it->value.functions;
             
+            pln("SETUP IMPORT -> %", f_u64_HEX(entry));
+            
             // Lookup table
             u64* lookup_table = 0;
             u64* address_table = 0;
-            Memory_Block* block = rdata_arena->current_block;
-            while (block) {
-                address_table = (u64*) block->base;
-                block = block->prev_block;
+            
+            entry->address_table_rva = virtual_base;
+            if (array_count(import_names) > 0) {
+                // TODO(Alexander): HACK to get the address table entry
+                Compilation_Unit* cu = import_names[0].type->Function.unit;
+                address_table = (u64*) cu->external_address;
+                entry->address_table_rva += (u32) cu->external_address;
+                
+                Memory_Block* block = rdata_arena->current_block;
+                while (block) {
+                    address_table = (u64*) (cu->external_address + block->base);
+                    block = block->prev_block;
+                }
+                
+                pln("address_table = %, external_address = %", f_u64_HEX(address_table),
+                    f_u64_HEX(cu->external_address));
             }
             
             for_array(import_names, ident, _) {
@@ -228,7 +245,6 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
             arena_push_struct(rdata_arena, u64); // null entry
             
             entry->lookup_table_rva = ptr_to_rva(virtual_base, rdata_arena, lookup_table);
-            entry->address_table_rva = virtual_base;
             
             // Hint
             u64* lookup_entry = lookup_table;
@@ -243,12 +259,15 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
                 *lookup_entry++ = hint_rva;
                 *address_entry++ = hint_rva;
                 opt_header->import_address_table.size += 8;
+                
+                // TODO(Alexander): to be more correct we should mask out the last bit
             }
             
             // Library name
             void* library_name_dest = arena_push_size(rdata_arena, library_name.count + 1, 8);
             memcpy(library_name_dest, library_name.data, library_name.count);
             entry->name_rva = ptr_to_rva(virtual_base, rdata_arena, library_name_dest);
+            pln("LIB: %", f_string(library_name));
             
             entry++;
         }
@@ -316,6 +335,7 @@ convert_to_pe_executable(Memory_Arena* arena,
     push_coff_import_directory_table(rdata_arena, opt_header,
                                      import_table, opt_header->size_of_image);
     u32 rdata_size = (u32) arena_total_used(rdata_arena);
+    pln("%", f_u32(rdata_size));
     if (rdata_size > 0) {
         rdata_section = push_coff_section(arena, opt_header, COFF_RDATA_SECTION, rdata_size,
                                           COFF_SCN_CNT_INITIALIZED_DATA | COFF_SCN_MEM_READ);
@@ -324,7 +344,9 @@ convert_to_pe_executable(Memory_Arena* arena,
         
     }
     
-    opt_header->size_of_headers = (u32) arena_total_used(arena);
+    umm actual_header_size = arena_total_used(arena);
+    opt_header->size_of_headers = (u32) align_forward(actual_header_size,
+                                                      opt_header->file_alignment);
     
     // Layout sections
     u32 output_size = opt_header->size_of_headers;
@@ -339,13 +361,18 @@ convert_to_pe_executable(Memory_Arena* arena,
     }
     
     // NOTE(Alexander): all headers have been set after this point
-    write_memory_block_to_file(arena->current_block, output_file);
+    write_memory_block_to_file(output_file, arena->current_block);
+    write_padding_to_file(output_file, actual_header_size, opt_header->size_of_headers);
+    
     
     // Populate the sections with data
     if (text_section) {
         DEBUG_write(output_file, machine_code, machine_code_size);
+        write_padding_to_file(output_file, machine_code_size, text_section->size_of_raw_data);
+        
     }
     if (rdata_section) {
-        write_memory_block_to_file(rdata_arena->current_block, output_file);
+        write_memory_block_to_file(output_file, rdata_arena->current_block);
+        write_padding_to_file(output_file, rdata_size, rdata_section->size_of_raw_data);
     }
 }

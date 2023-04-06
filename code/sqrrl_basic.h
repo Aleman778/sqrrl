@@ -784,16 +784,6 @@ typedef u32 Arena_Push_Flags;
 
 
 inline umm
-arena_aligned_offset(Memory_Block* memory_block, umm size, umm align, Arena_Push_Flags flags) {
-    if (flags & ArenaPushFlag_Align_From_Zero) {
-        return align_forward((umm) memory_block->used, align);
-    } else {
-        umm current = (umm) memory_block->base + (umm) memory_block->used;
-        return align_forward(current, align) - (umm) memory_block->base;
-    }
-}
-
-inline umm
 arena_relative_pointer(Memory_Arena* arena, void* absolute_ptr) {
     if (!arena->current_block) return 0;
     
@@ -813,6 +803,17 @@ arena_total_used(Memory_Arena* arena) {
     return arena->current_block->used + arena->total_used_minus_current;
 }
 
+inline umm
+arena_aligned_offset(Memory_Arena* arena, umm size, umm align, Arena_Push_Flags flags) {
+    if (flags & ArenaPushFlag_Align_From_Zero) {
+        umm used = arena_total_used(arena);
+        return align_forward(used, align) - arena->total_used_minus_current;
+    } else {
+        Memory_Block* memory_block = arena->current_block;
+        umm current = (umm) memory_block->base + (umm) memory_block->used;
+        return align_forward(current, align) - (umm) memory_block->base;
+    }
+}
 
 void*
 arena_push_size(Memory_Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT, Arena_Push_Flags flags=0) {
@@ -820,13 +821,13 @@ arena_push_size(Memory_Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT, Aren
     umm offset = 0;
     umm arena_size = 0;
     if (arena->current_block) {
-        offset = arena_aligned_offset(arena->current_block, size, align, flags);
+        offset = arena_aligned_offset(arena, size, align, flags);
         arena_size = arena->current_block->size;
     }
     
     if (offset + size > arena_size) {
         arena_grow(arena);
-        offset = arena_aligned_offset(arena->current_block, size, align, flags);
+        offset = arena_aligned_offset(arena, size, align, flags);
     }
     
     void* result = arena->current_block->base + offset;

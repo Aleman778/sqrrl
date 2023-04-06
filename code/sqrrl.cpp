@@ -63,9 +63,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         // TODO(Alexander): temporary files for testing
         //filepath = string_lit("../personal/first.sq");
         //filepath = string_lit("../modules/basic.sq");
-        filepath = string_lit("../../platformer/code/win32_platform.cpp");
+        //filepath = string_lit("../../platformer/code/win32_platform.cpp");
         //filepath = string_lit("../examples/backend_test.sq");
-        //filepath = string_lit("../examples/raytracer/first.cpp");
+        filepath = string_lit("../examples/raytracer/first.cpp");
         //filepath = string_lit("../tests/preprocessor.sq");
         
         //filepath = string_lit("../examples/simple.cpp");
@@ -251,22 +251,29 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     Memory_Arena rdata_arena = {};
     
-    // TODO(Alexander): maybe compilation units can be sectioned to avoid unecessary iterations
-    for_array(ast_file.units, cu, _) {
-        if (cu->ast->kind == Ast_Decl_Stmt && !cu->ast->Decl_Stmt.stmt) {
-            Ic_Basic_Block* bb_begin = ic_basic_block();
-            ic_add(cu, IC_LABEL, bb_begin);
-            
-            // Library function pointer is replaced by the loader
-            void* fn_ptr = arena_push_size(&rdata_arena, 8, 8);
-            Intermediate_Code* ic_jump = ic_add(cu, IC_JMP);
-            pln("-> %", f_var(cu->ident));
-            ic_jump->src0 = ic_rip_disp32(IC_U64, &rdata_arena, fn_ptr);
-            cu->external_address = ic_jump->src0.disp;
+    // Start by pushing address lookup table for external libs
+    for_map(tcx.import_table.libs, it) {
+        for_array(it->value.functions, function, function_index) {
+            if (function->type) {
+                assert(function->type->kind == TypeKind_Function && 
+                       function->type->Function.unit);
+                
+                Compilation_Unit* cu = function->type->Function.unit;
+                
+                Ic_Basic_Block* bb_begin = ic_basic_block();
+                ic_add(cu, IC_LABEL, bb_begin);
+                
+                // Library function pointer is replaced by the loader
+                void* fn_ptr = arena_push_size(&rdata_arena, 8, 8);
+                Intermediate_Code* ic_jump = ic_add(cu, IC_JMP);
+                pln("-> %", f_var(cu->ident));
+                ic_jump->src0 = ic_rip_disp32(IC_U64, &rdata_arena, fn_ptr);
+                cu->external_address = ic_jump->src0.disp;
+            }
         }
+        
+        arena_push_size(&rdata_arena, 8, 8); // null entry
     }
-    arena_push_size(&rdata_arena, 8, 8); // null entry
-    
     
     Compilation_Unit* main_cu = 0;
     for_array(ast_file.units, cu, _2) {
@@ -301,13 +308,13 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             
             // TODO(Alexander): hardcoded offset 1000 (need to reflect .text size)
             if (ic->dest.type & IC_RIP_DISP32) {
-                ic->dest.disp += 0x1000;
+                ic->dest.disp += 0x4000;
             }
             if (ic->src0.type & IC_RIP_DISP32) {
-                ic->src0.disp += 0x1000;
+                ic->src0.disp += 0x4000;
             }
             if (ic->src1.type & IC_RIP_DISP32) {
-                ic->src1.disp += 0x1000;
+                ic->src1.disp += 0x4000;
             }
             
             ic = ic->next;

@@ -9,6 +9,7 @@ AST(Ident_Data,        "identifier", struct {   \
 string_id ident;                                \
 string contents;                                \
 })                                              \
+AST(Var_Args,          "variable arguments", void*) \
 AST(Argument,          "argument", struct {     \
 Ast* type;                                      \
 Ast* ident;                                     \
@@ -424,11 +425,12 @@ struct Parsed_Attribute {
 Parsed_Attribute
 parse_attribute(Ast* node) {
     Parsed_Attribute result = {};
-    if (!node) {
+    if (!(node && node->kind == Ast_Compound)) {
         return result;
     }
     
-    assert(node->kind == Ast_Compound);
+    result.is_valid = true;
+    
     Ast* attr = node->Compound.node;
     result.next = node->Compound.next;
     result.ident = try_unwrap_ident(attr->Attribute.ident);

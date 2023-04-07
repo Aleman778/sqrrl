@@ -1,0 +1,8 @@
+//#include <basic.sq>
+
+#include <basic_windows.sq>
+
+int
+main() {
+    _put_string("Hello Fadi!\n");
+}

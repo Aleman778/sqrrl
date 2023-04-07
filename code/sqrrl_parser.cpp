@@ -1086,6 +1086,13 @@ Ast*
 parse_formal_function_argument(Parser* parser) {
     Ast* result = push_ast_node(parser);
     result->kind = Ast_Argument;
+    
+    if (next_token_if_matched(parser, Token_Ellipsis, false)) {
+        result->Argument.type = push_ast_node(parser);
+        result->Argument.type->kind = Ast_Var_Args;
+        return result;
+    }
+    
     result->Argument.type = parse_type(parser);
     result->Argument.ident = parse_identifier(parser, false);
     

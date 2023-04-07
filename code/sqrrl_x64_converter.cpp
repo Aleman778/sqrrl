@@ -671,13 +671,20 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             } else if (is_string(expr->Value)) {
                 Ic_Raw_Type raw_type = IC_T64;
                 
-                smm str_count  = expr->Value.data.str.count;
-                string* str = arena_push_struct(cu->rdata_arena, string);
-                str->data = (u8*) arena_push_size(cu->rdata_arena, str_count, 1);
-                str->count = str_count;
-                memcpy(str->data, expr->Value.data.str.data, str_count);
+                smm string_count = expr->Value.data.str.count;
+                void* string_data = arena_push_size(cu->rdata_arena, string_count, 1);
+                memcpy(string_data, expr->Value.data.str.data, string_count);
                 
-                result = ic_rip_disp32(raw_type, cu->rdata_arena, str);
+                result = ic_push_local(cu, t_string);
+                
+                Ic_Arg data = ic_rip_disp32(IC_T64, cu->rdata_arena, string_data);
+                Ic_Arg count_dest = result;
+                count_dest.disp += 8; // TODO(Alexander): hardcoded offset for string.count
+                count_dest.raw_type = IC_S64;
+                
+                ic_lea(cu, result, data);
+                ic_mov(cu, count_dest, ic_imm(IC_S64, string_count));
+                
                 
             } else if (is_cstring(expr->Value)) {
                 if (expr->Value.data.cstr) {

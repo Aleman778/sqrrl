@@ -4,47 +4,47 @@
 
 
 f32 cos(f32 num) {
-    return _f32_cos(num);
+    return _cos_f32(num);
 }
 
 f32 acos(f32 num) {
-    return _f32_acos(num);
+    return _acos_f32(num);
 }
 
 f32 sin(f32 num) {
-    return _f32_sin(num);
+    return _sin_f32(num);
 }
 
 f32 asin(f32 num) {
-    return _f32_asin(num);
+    return _asin_f32(num);
 }
 
 f32 tan(f32 num) {
-    return _f32_tan(num);
+    return _tan_f32(num);
 }
 
 f32 atan(f32 num) {
-    return _f32_atan(num);
+    return _atan_f32(num);
 }
 
 f32 sqrt(f32 num) {
-    return _f32_sqrt(num);
+    return _sqrt_f32(num);
 }
 
 f32 round(f32 num) {
-    return _f32_round(num);
+    return _round_f32(num);
 }
 
 f32 floor(f32 num) {
-    return _f32_floor(num);
+    return _floor_f32(num);
 }
 
 f32 ceil(f32 num) {
-    return _f32_ceil(num);
+    return _ceil_f32(num);
 }
 
 f32 abs(f32 num) {
-    return _f32_abs(num);
+    return _abs_f32(num);
 }
 
 s32 abs(s32 num) {
@@ -53,7 +53,7 @@ s32 abs(s32 num) {
 }
 
 f32 random_f32() {
-    return (f32) _s32_rand() / (RAND_MAX + 1.0f);
+    return (f32) _random_s32() / (RAND_MAX + 1.0f);
 }
 
 enum Type_Kind {
@@ -125,8 +125,9 @@ type_info(Type type) {
     return (Type_Info*) type;
 }
 
+#if 0
 void
-print(cstring format, ...) {
+print_old(cstring format, ...) {
     va_list args;
     va_start(args, format);
     
@@ -273,7 +274,7 @@ print(cstring format, ...) {
         printf("%.*s", count_until_percent, format_at_prev_percent);
     }
 }
-}
+#endif
 
 void
 print_newline_with_spaces(int count) {
@@ -345,6 +346,21 @@ data_to_f64(Basic_Type_Info info, void* data) {
     return 0.0f;
 }
 
+struct Var_Args {
+    []Type_Info type_info;
+    u8* data;
+}
+
+void
+print(string format, ...) {
+    //Var_Args args = print.var_args;
+    
+    for (smm chr_index; chr_index < format.count; chr_index++) {
+        u8 chr = format.data[chr_index];
+        
+    }
+}
+
 void
 print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
     switch (type.kind) {
@@ -352,9 +368,9 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
             switch (type.Basic) {
                 case Basic_Type_Info.Bool: {
                     if (*((bool*) data)) {
-                        print("true")
+                        printf("true")
                     } else {
-                        print("false")
+                        printf("false")
                     }
                 }
                 
@@ -362,27 +378,30 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                 case Basic_Type_Info.S16:
                 case Basic_Type_Info.S32:
                 case Basic_Type_Info.S64: {
-                    print("%", data_to_s64(type.Basic, data));
+                    printf("%lld", data_to_s64(type.Basic, data));
+                    
+                    
                 }
                 
                 case Basic_Type_Info.U8:
                 case Basic_Type_Info.U16:
                 case Basic_Type_Info.U32:
                 case Basic_Type_Info.U64: {
-                    print("%", data_to_u64(type.Basic, data));
+                    printf("%llu", data_to_u64(type.Basic, data));
                 }
                 
                 case Basic_Type_Info.F32:
                 case Basic_Type_Info.F64: {
-                    print("%", data_to_f64(type.Basic, data));
+                    printf("%f", data_to_f64(type.Basic, data));
                 }
                 
                 case Basic_Type_Info.String: {
-                    print("%", *((string*) data));
+                    string* s = (string*) data;
+                    printf("%.*s", (int) s.count, s.data);
                 }
                 
                 case Basic_Type_Info.CString: {
-                    print("%", *((cstring*) data));
+                    printf("%", *((cstring*) data));
                 }
             }
         }

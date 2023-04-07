@@ -1,0 +1,14 @@
+#include <tinywindows.h>
+
+
+//global void* stdout = 0;
+
+inline void
+_put_string(string s) {
+    // TODO(Alexander): maybe this should be moved to initializer that runs before main?
+    //if (!stdout) {
+    HANDLE stdout = GetStdHandle(STD_OUTPUT_HANDLE);
+    //}
+    DWORD chars_written = 0;
+    WriteConsoleA((HANDLE) stdout, (LPVOID) s.data, (u32) s.count, &chars_written, 0);
+}

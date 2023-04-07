@@ -199,7 +199,7 @@ DEBUG_get_canonicalized_path(cstring filename, cstring working_dir, cstring curr
     HANDLE file_handle = CreateFileA(result.fullpath, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
     if (file_handle != INVALID_HANDLE_VALUE) {
         CloseHandle(file_handle);
-    } else {
+    } else if (curr_file_dir) {
         // TODO(Alexander): this is a hack to work around windows headers uses 
         // shared as working dir, we need to support multiple contexts for this.
         //bool poppack = string_equals(string_lit(filename), string_lit("poppack.h"));

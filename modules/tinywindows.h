@@ -35,6 +35,7 @@ typedef WORD* LPWORD;
 typedef long* LPLONG;
 typedef DWORD* PDWORD;
 typedef DWORD* LPDWORD;
+typedef void VOID;
 typedef void* PVOID;
 typedef void* LPVOID;
 typedef const void* LPCVOID;
@@ -1974,3 +1975,19 @@ typedef struct _XINPUT_KEYSTROKE
     BYTE    UserIndex;
     BYTE    HidCode;
 } XINPUT_KEYSTROKE;//, *PXINPUT_KEYSTROKE;
+
+/* 
+* Console API
+*/
+#define STD_OUTPUT_HANDLE (cast(DWORD) -11)
+
+@link("kernel32.dll")
+extern {
+    HANDLE GetStdHandle(DWORD nStdHandle);
+    
+    BOOL WriteConsoleA(HANDLE  hConsoleOutput,
+                       const VOID    *lpBuffer,
+                       DWORD   nNumberOfCharsToWrite,
+                       LPDWORD lpNumberOfCharsWritten,
+                       LPVOID  lpReserved);
+}

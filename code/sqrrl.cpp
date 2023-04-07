@@ -65,10 +65,11 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         //filepath = string_lit("../modules/basic.sq");
         //filepath = string_lit("../../platformer/code/win32_platform.cpp");
         //filepath = string_lit("../examples/backend_test.sq");
-        filepath = string_lit("../examples/raytracer/first.cpp");
+        //filepath = string_lit("../examples/raytracer/first.cpp");
         //filepath = string_lit("../tests/preprocessor.sq");
         
         //filepath = string_lit("../examples/simple.cpp");
+        filepath = string_lit("../examples/even_simpler.sq");
         //filepath = string_lit("simple.exe");
 #else
         if (argc <= 1) {
@@ -306,17 +307,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 ic->src1.disp = compute_stk_displacement(cu, ic->src1);
             }
             
-            // TODO(Alexander): hardcoded offset 1000 (need to reflect .text size)
-            if (ic->dest.type & IC_RIP_DISP32) {
-                ic->dest.disp += 0x4000;
-            }
-            if (ic->src0.type & IC_RIP_DISP32) {
-                ic->src0.disp += 0x4000;
-            }
-            if (ic->src1.type & IC_RIP_DISP32) {
-                ic->src1.disp += 0x4000;
-            }
-            
             ic = ic->next;
         }
     }
@@ -359,9 +349,31 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     for_array(ast_file.units, cu, _4) {
         rip = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage, 0, 0, rip);
     }
+    
+    // TODO(Alexander): the PE section_alignment is hardcoded as 0x1000
+    s64 data_offset = align_forward(rip, 0x1000);
+    
+    for_array(ast_file.units, cu, _5) {
+        Intermediate_Code* ic = cu->ic_first;
+        
+        while (ic) {
+            if (ic->dest.type & IC_RIP_DISP32) {
+                ic->dest.disp += data_offset;
+            }
+            if (ic->src0.type & IC_RIP_DISP32) {
+                ic->src0.disp += data_offset;
+            }
+            if (ic->src1.type & IC_RIP_DISP32) {
+                ic->src1.disp += data_offset;
+            }
+            
+            ic = ic->next;
+        }
+    }
+    
     global_asm_buffer = (s64) asm_buffer;
     s64 rip2 = 0;
-    for_array(ast_file.units, cu, _5) {
+    for_array(ast_file.units, cu, _6) {
         rip2 = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage,
                                            (u8*) asm_buffer, (s64) asm_size, rip2);
     }

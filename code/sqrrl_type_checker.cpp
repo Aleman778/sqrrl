@@ -500,8 +500,17 @@ auto_type_conversion(Type_Context* tcx, Type* target_type, Ast* node, Operator o
         if (type_equals(initial_type, target_type)) {
             node->type = target_type;
         } else {
+            bool can_be_converted_by_value = node->kind == Ast_Value;
             
-            if (node->kind == Ast_Value) {
+            // TODO(Alexander): make sure we don't convert string value to a number
+            if (node->Value.type == Value_string || node->Value.type == Value_cstring) {
+                if (!(target_type->kind == TypeKind_Basic &&
+                      target_type->Basic.flags == BasicFlag_String)) {
+                    can_be_converted_by_value = false;
+                }
+            }
+            
+            if (can_be_converted_by_value) {
                 node->type = target_type;
                 node->Value = value_cast(node->Value, 
                                          target_type->kind == TypeKind_Basic ? 
@@ -1885,7 +1894,22 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     break;
                 }
                 
-                Type* type = create_type_from_ast(tcx, ast_argument->Argument.type, report_error);
+                if (result->Function.is_variadic) {
+                    if (report_error) {
+                        type_error(tcx,
+                                   string_lit("variable arguments `...` has to be the last argument"), 
+                                   ast_argument->span);
+                    }
+                    return 0;
+                }
+                
+                Ast* ast_argument_type = ast_argument->Argument.type;
+                if (ast_argument_type->kind == Ast_Var_Args) {
+                    result->Function.is_variadic = true;
+                    continue;
+                }
+                
+                Type* type = create_type_from_ast(tcx, ast_argument_type, report_error);
                 if (type) {
                     string_id ident = ast_argument->Argument.ident->Ident;
                     s32 arg_index = (s32) array_count(func->arg_idents);
@@ -1933,13 +1957,15 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     
                     if (attr.values[0].type != Value_string) {
                         error = true;
-                    } 
+                    }
                     
                     if (!error) {
                         string library_name = attr.values[0].data.str;
                         string_id library_id = vars_save_string(library_name);
                         string_id library_function_id = result->Function.ident;
                         string library_function_name = vars_load_string(library_function_id);
+                        
+                        pln("LIB: %, FUNC: %", f_string(library_name), f_string(library_function_name));
                         
                         {
                             cstring name = string_to_cstring(library_function_name);

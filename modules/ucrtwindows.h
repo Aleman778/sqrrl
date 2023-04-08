@@ -16,14 +16,10 @@ extern {
     @extern_name("roundf") f32 _round_f32(f32 num);
     @extern_name("floorf") f32 _floor_f32(f32 num);
     @extern_name("ceilf")  f32 _ceil_f32(f32 num);
-    @extern_name("absf")   f32 _abs_f32(f32 num);
 }
 
 @link("ucrtbase.dll")
 extern {
     @extern_name("rand")  s32  _random_s32();
     @extern_name("srand") void _seed_random_s32(u32 seed);
-    
-    
-    int fflush(void* ostream);
 }

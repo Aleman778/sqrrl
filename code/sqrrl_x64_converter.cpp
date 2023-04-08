@@ -997,7 +997,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                         Intermediate_Code* ic = ic_add(cu, IC_FXOR);
                         ic->dest = ic_reg(rt);
                         ic->src0 = src;
-                        ic->src1 = ic_rip_disp32(rt, cu->rdata_arena, data);
+                        ic->src1 = ic_rip_disp32(rt, IcDataArea_Read_Only, cu->rdata_arena, data);
                         result = ic->dest;
                         
                     } else {

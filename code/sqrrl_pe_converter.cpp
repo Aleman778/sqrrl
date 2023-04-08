@@ -274,20 +274,41 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
     }
 }
 
-void
+struct PE_Executable {
+    COFF_Header* main_header;
+    COFF_PE32_Plus_Header* opt_header;
+    
+    COFF_Section_Header* text_section;
+    COFF_Section_Header* rdata_section;
+    COFF_Section_Header* data_section; // TODO: might break Type_Info data into separate one
+    COFF_Section_Header* reloc_section;
+    
+    u8* text_data;
+    u32 text_data_size;
+    
+    Memory_Arena header_arena;
+    Memory_Arena rdata_arena;
+    Memory_Arena data_arena;
+    Memory_Arena reloc_arena;
+};
+
+PE_Executable
 convert_to_pe_executable(Memory_Arena* arena,
-                         File_Handle output_file,
                          u8* machine_code, u32 machine_code_size,
                          Library_Import_Table* import_table,
                          Type_Info_Packer* type_info_packer,
                          Memory_Arena* rdata_arena,
                          u8* entry_point) {
+    
+    PE_Executable result = {};
+    
     time_t timestamp = time(0);
     
     push_dos_header_stub(arena);
     
     // PE\0\0 signature and mandatory COFF header
     COFF_Header* header = arena_push_struct(arena, COFF_Header);
+    result.main_header = header;
     header->signature[0] = 'P'; header->signature[1] = 'E';
     header->machine = COFF_MACHINE_AMD64;
     header->time_date_stamp = (u32) timestamp;
@@ -296,6 +317,7 @@ convert_to_pe_executable(Memory_Arena* arena,
     
     // Optional headers (mandatory PE32+ for executable)
     COFF_PE32_Plus_Header* opt_header = arena_push_struct(arena, COFF_PE32_Plus_Header);
+    result.opt_header = opt_header;
     opt_header->magic = 0x20b;
     opt_header->major_linker_version = 0;
     opt_header->minor_linker_version = 1;
@@ -326,12 +348,15 @@ convert_to_pe_executable(Memory_Arena* arena,
     COFF_Section_Header* text_section = 0;
     COFF_Section_Header* rdata_section = 0;
     COFF_Section_Header* data_section = 0;
+    COFF_Section_Header* reloc_section = 0;
     
     // .text section
     text_section = push_coff_section(arena, opt_header, COFF_TEXT_SECTION, machine_code_size, 
                                      COFF_SCN_CNT_CODE | COFF_SCN_MEM_EXECUTE | COFF_SCN_MEM_READ);
+    result.text_section = text_section;
     opt_header->size_of_code += text_section->size_of_raw_data;
     header->number_of_sections++; // added .text
+    result.header_arena = *arena;
     
     // .rdata section
     push_coff_import_directory_table(rdata_arena, opt_header,
@@ -341,41 +366,42 @@ convert_to_pe_executable(Memory_Arena* arena,
     if (rdata_size > 0) {
         rdata_section = push_coff_section(arena, opt_header, COFF_RDATA_SECTION, rdata_size,
                                           COFF_SCN_CNT_INITIALIZED_DATA | COFF_SCN_MEM_READ);
+        result.rdata_section = rdata_section;
         opt_header->size_of_initialized_data += rdata_section->size_of_raw_data;
         header->number_of_sections++; // added .rdata
     }
     
     // .data section
-    u32 data_size = arena_total_used(type_info_packer->arena);
+    u32 data_size = (u32) arena_total_used(&type_info_packer->arena);
     if (data_size > 0) {
-        data_section = push_coff_section(arena, opt_header, COFF_DATA_SECTION, rdata_size,
-                                         COFF_SCN_CNT_INITIALIZED_DATA | COFF_SCN_MEM_READ);
-        opt_header->size_of_initialized_data += rdata_section->size_of_raw_data;
+        data_section = push_coff_section(arena, opt_header, COFF_DATA_SECTION, data_size,
+                                         (u32) COFF_SCN_CNT_INITIALIZED_DATA | COFF_SCN_MEM_READ | COFF_SCN_MEM_WRITE);
+        result.data_section = data_section;
+        opt_header->size_of_initialized_data += data_section->size_of_raw_data;
         header->number_of_sections++; // added .data
     }
     
-    umm actual_header_size = arena_total_used(arena);
-    opt_header->size_of_headers = (u32) align_forward(actual_header_size,
-                                                      opt_header->file_alignment);
-    
-    
     // Create base relocation table (for Type_Info_Packer)
     Memory_Arena reloc_arena = {};
-    COFF_Base_Relocation_Table* reloc_table = arena_push_struct(reloc_arena, COFF_Base_Relocation_Table);
+    COFF_Base_Relocation_Table* reloc_table = arena_push_struct(&reloc_arena, COFF_Base_Relocation_Table);
     reloc_table->page_rva = data_section->virtual_address;
-    
-    for_array(type_info_packer->relocation, reloc, reloc_index) {
+    for_array(type_info_packer->relocations, reloc, reloc_index) {
+        u32* reloc_entry = arena_push_struct(&reloc_arena, u32);
+        *reloc_entry = 0xA000 + reloc->from;
         
-        0xA000 + 
-            reloc->from_ptr = 
+        *((u64*) reloc->from_ptr) = (u64) (opt_header->image_base + 
+                                           data_section->virtual_address + 
+                                           reloc->to);
     }
+    reloc_table->block_size = (u32) arena_total_used(&reloc_arena);
     
     // .reloc section
-    u32 reloc_size = arena_total_used(reloc_arena);
+    u32 reloc_size = (u32) arena_total_used(&reloc_arena);
     if (reloc_size > 0) {
-        reloc_section = push_coff_section(arena, opt_header, COFF_RELOC_SECTION, rdata_size,
-                                          COFF_SCN_CNT_INITIALIZED_DATA | COFF_SCN_MEM_READ);
-        opt_header->size_of_initialized_data += rdata_section->size_of_raw_data;
+        reloc_section = push_coff_section(arena, opt_header, COFF_RELOC_SECTION, reloc_size,
+                                          COFF_SCN_CNT_INITIALIZED_DATA | COFF_SCN_MEM_READ | COFF_SCN_MEM_DISCARDABLE);
+        result.reloc_section = reloc_section;
+        opt_header->size_of_initialized_data += reloc_section->size_of_raw_data;
         header->number_of_sections++; // added .data
     }
     
@@ -389,26 +415,65 @@ convert_to_pe_executable(Memory_Arena* arena,
     if (text_section) {
         text_section->pointer_to_raw_data = output_size;
         output_size += text_section->size_of_raw_data;
+        
+        result.text_data = machine_code;
+        result.text_data_size = machine_code_size;
+        
     }
     
     if (rdata_section) {
         rdata_section->pointer_to_raw_data = output_size;
         output_size += rdata_section->size_of_raw_data;
+        
+        result.rdata_arena = *rdata_arena;
     }
+    
+    if (data_section) {
+        data_section->pointer_to_raw_data = output_size;
+        output_size += data_section->size_of_raw_data;
+        
+        result.data_arena = type_info_packer->arena;
+    }
+    
+    if (reloc_section) {
+        reloc_section->pointer_to_raw_data = output_size;
+        output_size += reloc_section->size_of_raw_data;
+        
+        result.reloc_arena = reloc_arena;
+    }
+    
+    return result;
+}
+
+void
+write_pe_executable_to_file(File_Handle output_file, PE_Executable* pe) {
     
     // NOTE(Alexander): all headers have been set after this point
-    write_memory_block_to_file(output_file, arena->current_block);
-    write_padding_to_file(output_file, actual_header_size, opt_header->size_of_headers);
+    umm actual_header_size = arena_total_used(&pe->header_arena);
+    write_memory_block_to_file(output_file, pe->header_arena.current_block);
+    write_padding_to_file(output_file, actual_header_size, pe->opt_header->size_of_headers);
     
-    
-    // Populate the sections with data
-    if (text_section) {
-        DEBUG_write(output_file, machine_code, machine_code_size);
-        write_padding_to_file(output_file, machine_code_size, text_section->size_of_raw_data);
+    if (pe->text_section) {
+        DEBUG_write(output_file, pe->text_data, pe->text_data_size);
+        write_padding_to_file(output_file, pe->text_data_size, pe->text_section->size_of_raw_data);
         
     }
-    if (rdata_section) {
-        write_memory_block_to_file(output_file, rdata_arena->current_block);
-        write_padding_to_file(output_file, rdata_size, rdata_section->size_of_raw_data);
+    
+    if (pe->rdata_section) {
+        umm rdata_size = arena_total_used(&pe->rdata_arena);
+        write_memory_block_to_file(output_file, pe->rdata_arena.current_block);
+        write_padding_to_file(output_file, rdata_size, pe->rdata_section->size_of_raw_data);
+    }
+    
+    if (pe->data_section) {
+        umm data_size = arena_total_used(&pe->data_arena);
+        write_memory_block_to_file(output_file, pe->data_arena.current_block);
+        write_padding_to_file(output_file, data_size, pe->data_section->size_of_raw_data);
+    }
+    
+    if (pe->reloc_section) {
+        umm reloc_size = arena_total_used(&pe->reloc_arena);
+        write_memory_block_to_file(output_file, pe->reloc_arena.current_block);
+        write_padding_to_file(output_file, reloc_size, pe->reloc_section->size_of_raw_data);
     }
 }

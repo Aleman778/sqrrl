@@ -5,56 +5,70 @@
 
 #define PRINT_BYTECODE 1 
 
-f32 cos(f32 num) {
+f32
+cos(f32 num) {
     return _cos_f32(num);
 }
 
-f32 acos(f32 num) {
+f32
+acos(f32 num) {
     return _acos_f32(num);
 }
 
-f32 sin(f32 num) {
+f32
+sin(f32 num) {
     return _sin_f32(num);
 }
 
-f32 asin(f32 num) {
+f32
+asin(f32 num) {
     return _asin_f32(num);
 }
 
-f32 tan(f32 num) {
+f32
+tan(f32 num) {
     return _tan_f32(num);
 }
 
-f32 atan(f32 num) {
+f32
+atan(f32 num) {
     return _atan_f32(num);
 }
 
-f32 sqrt(f32 num) {
+f32
+sqrt(f32 num) {
     return _sqrt_f32(num);
 }
 
-f32 round(f32 num) {
+f32
+round(f32 num) {
     return _round_f32(num);
 }
 
-f32 floor(f32 num) {
+f32
+floor(f32 num) {
     return _floor_f32(num);
 }
 
-f32 ceil(f32 num) {
+f32
+ceil(f32 num) {
     return _ceil_f32(num);
 }
 
-f32 abs(f32 num) {
-    return _abs_f32(num);
+f32
+abs(f32 num) {
+    // TODO(Alexander): we can perhaps optimize this?
+    return num < 0.0f ? -num : num;
 }
 
-s32 abs(s32 num) {
+s32
+abs(s32 num) {
     // TODO(Alexander): we can perhaps optimize this?
     return num < 0 ? -num : num;
 }
 
-f32 random_f32() {
+f32
+random_f32() {
     return (f32) _random_s32() / (RAND_MAX + 1.0f);
 }
 
@@ -363,7 +377,7 @@ struct Var_Args {
 void
 print(string format, ...) {
     
-    Var_Args var_args = print.var_args; // just reads the first argument
+    //Var_Args var_args = print.var_args; // just reads the first argument
     
     int var_args_index = 0;
     
@@ -381,7 +395,7 @@ print(string format, ...) {
             substring.count = 0;
             
             
-            print_data_from_type_info(var_args.type_info, void* data);
+            //print_data_from_type_info(var_args.type_info, void* data);
             var_args_index++;
             
         } else {

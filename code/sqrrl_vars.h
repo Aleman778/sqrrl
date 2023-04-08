@@ -119,8 +119,9 @@ VAR(count)    \
 VAR(capacity) \
 VAR(pln)      \
 VAR(format)   \
-VAR(expr)   \
-VAR(link)
+VAR(expr)     \
+VAR(link)     \
+VAR(extern_name)
 
 typedef u32 string_id;
 

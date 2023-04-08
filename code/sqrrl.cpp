@@ -8,6 +8,7 @@
 #include "sqrrl_basic.cpp"
 
 #include "sqrrl_value.cpp"
+#include "sqrrl_types.cpp"
 #include "sqrrl_test.cpp"
 #include "sqrrl_tokenizer.cpp"
 #include "sqrrl_preprocessor.cpp"
@@ -268,8 +269,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 void* fn_ptr = arena_push_size(&rdata_arena, 8, 8);
                 Intermediate_Code* ic_jump = ic_add(cu, IC_JMP);
                 //pln("-> %", f_var(cu->ident));
-                ic_jump->src0 = ic_rip_disp32(IC_U64, &rdata_arena, fn_ptr);
-                cu->external_address = ic_jump->src0.disp;
+                ic_jump->src0 = ic_rip_disp32(IC_U64, IcDataArea_Read_Only, &rdata_arena, fn_ptr);
+                cu->external_address = ic_jump->src0.data.disp;
             }
         }
         
@@ -371,6 +372,23 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         }
     }
     
+    Type* type = main_cu->ast->type;
+    if (type && type->kind == TypeKind_Function) {
+        type = type->Function.return_type;
+    }
+    u8* asm_buffer_main = (u8*) asm_buffer + main_cu->bb_first->addr;
+    
+    // NOTE(Alexander): Build initial PE executable
+    Memory_Arena build_arena = {};
+    PE_Executable pe_executable = convert_to_pe_executable(&build_arena,
+                                                           (u8*) asm_buffer, (u32) rip,
+                                                           &tcx.import_table,
+                                                           &tcx.type_info_packer,
+                                                           &rdata_arena,
+                                                           asm_buffer_main);
+    
+    
+    
     global_asm_buffer = (s64) asm_buffer;
     s64 rip2 = 0;
     for_array(ast_file.units, cu, _6) {
@@ -402,31 +420,16 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     //int jit_exit_code = (int) func();
     //pln("JIT exited with code: %", f_int(jit_exit_code));
     
-    Type* type = main_cu->ast->type;
-    if (type && type->kind == TypeKind_Function) {
-        type = type->Function.return_type;
-    }
-    u8* asm_buffer_main = (u8*) asm_buffer + main_cu->bb_first->addr;
-    
-#if 1
-    // NOTE(Alexander): Build to executable
-    Memory_Arena build_arena = {};
+    // NOTE(Alexander): write the PE executable to file
     File_Handle exe_file = DEBUG_open_file_for_writing("simple.exe");
-    convert_to_pe_executable(&build_arena,
-                             exe_file,
-                             (u8*) asm_buffer, (u32) rip,
-                             &tcx.import_table,
-                             &tcx.type_info_packer,
-                             &rdata_arena,
-                             asm_buffer_main);
+    write_pe_executable_to_file(exe_file, &pe_executable);
     DEBUG_close_file(exe_file);
+    pln("\nWrote executable: simple.exe");
     
     //Read_File_Result exe_data = DEBUG_read_entire_file("simple.exe");
     //pe_dump_executable(create_string(exe_data.contents_size, (u8*) exe_data.contents));
     
-    pln("\nWrote executable: simple.exe");
-    
-#else
+#if 0
     // NOTE(Alexander): Run machine code
     asm_make_executable(asm_buffer, rip);
     //DEBUG_add_debug_symbols(&ast_file, (u8*) asm_buffer);

@@ -55,6 +55,7 @@ write_padding_to_file(File_Handle file_handle, umm size, umm aligned_size) {
     if (padding_size) {
         void* padding = allocate_zeros(padding_size);
         DEBUG_write(file_handle, padding, (u32) padding_size);
+        free(padding);
     }
 }
 

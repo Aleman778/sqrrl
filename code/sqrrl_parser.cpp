@@ -875,10 +875,7 @@ parse_statement(Parser* parser, bool report_error) {
                         } break;
                         
                         case Ast_Function_Type: {
-                            if (attributes) {
-                                assert(!type->Function_Type.attributes && "overwrite");
-                                type->Function_Type.attributes = attributes;
-                            }
+                            type->Function_Type.attributes = attributes;
                             
                             result = push_ast_node(parser, &token);
                             result->kind = Ast_Decl_Stmt;
@@ -1801,9 +1798,16 @@ register_top_level_declaration(Parser* parser, Ast_File* ast_file,
                         case Ast_Function_Type: {
                             type_ast->Function_Type.mods |= mods;
                             
+                            //if (attributes) {
+                            //pln("fn: %", f_ast(type_ast));
+                            //assert(type_ast->Function_Type.attributes == 0 && "overwrite");
+                            //}
                             Ast* last_attr = type_ast->Function_Type.attributes;
+                            
                             if (last_attr) {
-                                while (last_attr->Compound.next) last_attr = last_attr->Compound.next;
+                                while (is_valid_ast(last_attr->Compound.next)) {
+                                    last_attr = last_attr->Compound.next;
+                                }
                                 last_attr->Compound.next = attributes;
                             } else {
                                 type_ast->Function_Type.attributes = attributes;

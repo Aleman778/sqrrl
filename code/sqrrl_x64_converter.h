@@ -145,7 +145,7 @@ ic_rip_disp32(Ic_Raw_Type t, Ic_Data_Area data_area, u32 disp) {
 inline Ic_Arg
 ic_rip_disp32(Ic_Raw_Type t, Ic_Data_Area data_area, Memory_Arena* arena, void* data) {
     u32 disp = (s32) arena_relative_pointer(arena, data);
-    ic_rip_disp32(t, data_area, disp);
+    return ic_rip_disp32(t, data_area, disp);
 }
 
 inline bool

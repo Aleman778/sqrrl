@@ -183,6 +183,14 @@ enum Ic_Stk_Area {
     IcStkArea_Locals,
 };
 
+enum Ic_Data_Area {
+    IcDataArea_None,
+    IcDataArea_Read_Only,
+    IcDataArea_Globals,
+    IcDataArea_Type_Info,
+};
+
+
 struct Ic_Stk_Entry {
     s64 disp;
     Ic_Stk_Area area;
@@ -207,6 +215,12 @@ struct Ic_Arg {
             s32 disp;
             s32 area; // Ic_Stk_Area
         } stk;
+        
+        // unresolved data disp
+        struct {
+            u32 disp;
+            u32 area; // Ic_Data_Area
+        } data;
     };
 };
 

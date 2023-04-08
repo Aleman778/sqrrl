@@ -79,6 +79,7 @@ enum Type_Kind {
     TypeKind_Enum,
     TypeKind_Function,
     TypeKind_Pointer,
+    TypeKind_Var_Args, // TODO(Alexander): there is no type definition for this only used for Type_Info
 };
 
 typedef map(string_id, s32) Ident_Mapper;
@@ -404,6 +405,11 @@ struct TI_Array_Type_Info {
     smm fixed_count; // -1 => if value stores the count
 };
 
+struct TI_Var_Args_Info {
+    Type_Info** args;
+    smm arg_count;
+};
+
 struct Type_Info {
     Type_Kind kind;
     
@@ -412,98 +418,31 @@ struct Type_Info {
         TI_Struct_Type_Info Struct;
         TI_Enum_Type_Info Enum;
         TI_Array_Type_Info Array;
+        TI_Var_Args_Info Var_Args;
     };
+};
+
+struct Relocation {
+    void* from_ptr;
+    u32 from;
+    u32 to;
+};
+
+struct Exported_Type {
+    Type_Info* type_info;
+    u32 relative_ptr;
 };
 
 struct Type_Info_Packer {
     Memory_Arena arena;
-    map(Type*, Type_Info*)* mapper;
+    map(Type*, Exported_Type)* mapper;
+    array(Relocation)* relocations;
 };
 
-Type_Info*
-export_type_info(Type_Info_Packer* packer, Type* type) {
-    
-    Type_Info* result = map_get(packer->mapper, type);
-    if (!result) {
-        result = arena_push_struct(&packer->arena, Type_Info);
-        result->kind = type->kind;
-        map_put(packer->mapper, type, result);
-        
-        // Serialize structure into memory
-        switch (type->kind) {
-            case TypeKind_Basic: {
-                switch (type->Basic.kind) {
-                    case Basic_bool: result->Basic = TI_Bool; break;
-                    case Basic_s8: result->Basic = TI_S8; break;
-                    case Basic_s16: result->Basic = TI_S16; break;
-                    case Basic_s32: result->Basic = TI_S32; break;
-                    case Basic_s64: result->Basic = TI_S64; break;
-                    case Basic_u8: result->Basic = TI_U8; break;
-                    case Basic_u16: result->Basic = TI_U16; break;
-                    case Basic_u32: result->Basic = TI_U32; break;
-                    case Basic_u64: result->Basic = TI_U64; break;
-                    case Basic_f32: result->Basic = TI_F32; break;
-                    case Basic_f64: result->Basic = TI_F64; break;
-                    case Basic_string: result->Basic = TI_String; break;
-                    case Basic_cstring: result->Basic = TI_CString; break;
-                    default: unimplemented; // TODO(Alexander): maybe should be an error?
-                }
-            } break;
-            
-            case TypeKind_Union:
-            case TypeKind_Struct: {
-                smm count = (smm) array_count(type->Struct_Like.types);
-                result->Struct.ident = vars_load_string(type->ident);
-                result->Struct.fields =
-                    arena_push_array_of_structs(&packer->arena, count, TI_Struct_Field_Info);
-                result->Struct.count = count;
-                
-                for_array_v(type->Struct_Like.types, field_type, field_index) {
-                    TI_Struct_Field_Info* field = result->Struct.fields + field_index;
-                    field->type = export_type_info(packer, field_type);
-                    field->ident = vars_load_string(type->Struct_Like.idents[field_index]);
-                    field->offset = type->Struct_Like.offsets[field_index];
-                }
-            } break;
-            
-            case TypeKind_Array: {
-                result->Array.elem_type = export_type_info(packer, type->Array.type);
-                result->Array.elem_size = type->Array.type->size;
-                result->Array.fixed_count = type->Array.is_inplace ? type->Array.capacity : 0;
-            } break;
-            
-            case TypeKind_Enum: {
-                result->Enum.ident = vars_load_string(type->ident);
-                result->Enum.type = export_type_info(packer, type->Enum.type);
-                
-                smm count = map_count(type->Enum.values);
-                string* names = arena_push_array_of_structs(&packer->arena, count, string);
-                result->Enum.names = names;
-                result->Enum.count = count;
-                for_map(type->Enum.values, it) {
-                    s64 value = value_to_s64(it->value);
-                    //pln("% = %", f_var(it->key), f_s64(value));
-                    if (value >= 0 && value < count) {
-                        names[value] = vars_load_string(it->key);
-                    } else {
-                        names[value] = string_lit("?");
-                    }
-                }
-            } break;
-            
-            case TypeKind_Pointer: {
-                result->kind = TypeKind_Basic;
-                result->Basic = TI_S64; // TODO(Alexander): temporary
-            } break;
-            
-            default: {
-                unimplemented;
-            } break;
-        }
-    }
-    
-    return result;
-}
+Exported_Type export_var_args_info(Type_Info_Packer* packer, int var_arg_start, Ast* actual_arguments);
+
+Exported_Type export_type_info(Type_Info_Packer* packer, Type* type);
+
 
 inline s64
 type_of(Type* type) {
@@ -516,13 +455,4 @@ type_deref(Type* type) {
     return type->Pointer;
 }
 
-void
-print_type(Type* type) {
-    String_Builder sb = {};
-    string_builder_alloc(&sb, 20);
-    string_builder_push(&sb, type);
-    string result = string_builder_to_string_nocopy(&sb);
-    print("%", f_string(result));
-    string_builder_free(&sb);
-}
-
+void print_type(Type* type);

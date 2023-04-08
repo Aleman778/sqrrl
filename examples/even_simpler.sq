@@ -1,8 +1,9 @@
-//#include <basic.sq>
+#include <basic.sq>
 
-#include <basic_windows.sq>
+
+//#define pln(format, ...) print(format##\"\\n\", __VA_ARGS__)
 
 int
 main() {
-    _put_string("Hello Fadi!\n");
+    pln("Hello % world", "my beautiful");
 }

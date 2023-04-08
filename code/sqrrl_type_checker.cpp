@@ -604,9 +604,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     
                     if (type) {
                         result = t_type;
-                        Type_Info* type_info = export_type_info(&tcx->type_info_packer, type);
-                        expr->kind = Ast_Value;
-                        expr->Value = create_signed_int_value((s64) type_info);
+                        expr->kind = Ast_Exported_Type;
+                        expr->Exported_Type = export_type_info(&tcx->type_info_packer, type);
                         
                     } else {
                         if (tcx->set_undeclared_to_s64) {
@@ -1032,9 +1031,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     }
                     
                     Type* actual_type = type_arg->type;
-                    smm type_value = (smm) export_type_info(&tcx->type_info_packer, actual_type);
-                    expr->kind = Ast_Value;
-                    expr->Value = create_signed_int_value(type_value);
+                    expr->kind = Ast_Exported_Type;
+                    expr->Exported_Type = export_type_info(&tcx->type_info_packer, actual_type);
                 }
             }
         } break;
@@ -1904,7 +1902,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 }
                 
                 Ast* ast_argument_type = ast_argument->Argument.type;
-                if (ast_argument_type->kind == Ast_Var_Args) {
+                if (ast_argument_type->kind == Ast_Ellipsis) {
                     result->Function.is_variadic = true;
                     continue;
                 }
@@ -1965,7 +1963,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                         string_id library_function_id = result->Function.ident;
                         string library_function_name = vars_load_string(library_function_id);
                         
-                        pln("LIB: %, FUNC: %", f_string(library_name), f_string(library_function_name));
+                        //pln("LIB: %, FUNC: %", f_string(library_name), f_string(library_function_name));
                         
                         {
                             cstring name = string_to_cstring(library_function_name);
@@ -2686,6 +2684,14 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
             }
             
             
+            if (t_func->is_variadic) {
+                // TODO(Alexander): hack put ast nodes in other place
+                Ast* var_args = arena_push_struct(&tcx->type_arena, Ast);
+                var_args->kind = Ast_Exported_Type;
+                var_args->Exported_Type = export_var_args_info(&tcx->type_info_packer,
+                                                               formal_arg_count,
+                                                               expr->Call_Expr.args);
+            }
         } break;
         
         case Ast_Unary_Expr: {

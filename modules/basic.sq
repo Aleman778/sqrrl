@@ -1,7 +1,9 @@
 
 // TODO(Alexander): we only have windows support atm. later on we import the correct header
 #include "ucrtwindows.h"
+#include "basic_windows.sq"
 
+#define PRINT_BYTECODE 1 
 
 f32 cos(f32 num) {
     return _cos_f32(num);
@@ -346,19 +348,48 @@ data_to_f64(Basic_Type_Info info, void* data) {
     return 0.0f;
 }
 
+void
+print_integer(string s) {
+    
+    
+}
+
 struct Var_Args {
-    []Type_Info type_info;
+    []Type_Info args;
     u8* data;
 }
 
+
 void
 print(string format, ...) {
-    //Var_Args args = print.var_args;
+    
+    Var_Args var_args = print.var_args; // just reads the first argument
+    
+    int var_args_index = 0;
+    
+    string substring;
+    substring.data = format.data;
+    substring.count = 0;//format.count;
+    
     
     for (smm chr_index; chr_index < format.count; chr_index++) {
         u8 chr = format.data[chr_index];
-        
+        if (chr == '%') {
+            _put_string(substring);
+            
+            substring.data = format.data + chr_index + 1;
+            substring.count = 0;
+            
+            
+            print_data_from_type_info(var_args.type_info, void* data);
+            var_args_index++;
+            
+        } else {
+            substring.count++;
+        }
     }
+    
+    _put_string(substring);
 }
 
 void
@@ -368,9 +399,9 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
             switch (type.Basic) {
                 case Basic_Type_Info.Bool: {
                     if (*((bool*) data)) {
-                        printf("true")
+                        print("true")
                     } else {
-                        printf("false")
+                        print("false")
                     }
                 }
                 
@@ -378,7 +409,7 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                 case Basic_Type_Info.S16:
                 case Basic_Type_Info.S32:
                 case Basic_Type_Info.S64: {
-                    printf("%lld", data_to_s64(type.Basic, data));
+                    print("%lld", data_to_s64(type.Basic, data));
                     
                     
                 }
@@ -387,21 +418,21 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                 case Basic_Type_Info.U16:
                 case Basic_Type_Info.U32:
                 case Basic_Type_Info.U64: {
-                    printf("%llu", data_to_u64(type.Basic, data));
+                    print("%llu", data_to_u64(type.Basic, data));
                 }
                 
                 case Basic_Type_Info.F32:
                 case Basic_Type_Info.F64: {
-                    printf("%f", data_to_f64(type.Basic, data));
+                    print("%f", data_to_f64(type.Basic, data));
                 }
                 
                 case Basic_Type_Info.String: {
                     string* s = (string*) data;
-                    printf("%.*s", (int) s.count, s.data);
+                    print("%.*s", (int) s.count, s.data);
                 }
                 
                 case Basic_Type_Info.CString: {
-                    printf("%", *((cstring*) data));
+                    print("%", *((cstring*) data));
                 }
             }
         }

@@ -135,7 +135,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     {
         // Create global pln macro
         Preprocessor_Macro pln_macro = {};
-        pln_macro.source = string_lit("print(format##\"\\n\", ##__VA_ARGS__)");
+        pln_macro.source = string_lit("print(format##\"\\n\", __VA_ARGS__)");
         string_id format_id = Sym_format;
         map_put(pln_macro.arg_mapper, format_id, 0);
         pln_macro.is_functional = true;
@@ -267,7 +267,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 // Library function pointer is replaced by the loader
                 void* fn_ptr = arena_push_size(&rdata_arena, 8, 8);
                 Intermediate_Code* ic_jump = ic_add(cu, IC_JMP);
-                pln("-> %", f_var(cu->ident));
+                //pln("-> %", f_var(cu->ident));
                 ic_jump->src0 = ic_rip_disp32(IC_U64, &rdata_arena, fn_ptr);
                 cu->external_address = ic_jump->src0.disp;
             }
@@ -416,13 +416,15 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                              exe_file,
                              (u8*) asm_buffer, (u32) rip,
                              &tcx.import_table,
+                             &tcx.type_info_packer,
                              &rdata_arena,
                              asm_buffer_main);
     DEBUG_close_file(exe_file);
-    pln("\nWrote executable: simple.exe");
     
-    Read_File_Result exe_data = DEBUG_read_entire_file("simple.exe");
-    pe_dump_executable(create_string(exe_data.contents_size, (u8*) exe_data.contents));
+    //Read_File_Result exe_data = DEBUG_read_entire_file("simple.exe");
+    //pe_dump_executable(create_string(exe_data.contents_size, (u8*) exe_data.contents));
+    
+    pln("\nWrote executable: simple.exe");
     
 #else
     // NOTE(Alexander): Run machine code

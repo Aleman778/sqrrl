@@ -355,14 +355,6 @@ struct COFF_PE32_Plus_Header {
 };
 #pragma pack(pop)
 
-struct COFF_Import_Directory_Table {
-    u32 lookup_table_rva;
-    u32 time_date_stamp;
-    u32 forwarder_chain;
-    u32 name_rva;
-    u32 address_table_rva;
-};
-
 // TODO(Alexander): add COFF_Section_Flags enum
 
 struct COFF_Section_Header {
@@ -380,6 +372,24 @@ struct COFF_Section_Header {
 
 #define COFF_TEXT_SECTION ".text\0\0\0"
 #define COFF_RDATA_SECTION ".rdata\0\0"
+#define COFF_DATA_SECTION ".data\0\0\0"
+#define COFF_RELOC_SECTION ".reloc\0\0"
+
+
+struct COFF_Import_Directory_Table {
+    u32 lookup_table_rva;
+    u32 time_date_stamp;
+    u32 forwarder_chain;
+    u32 name_rva;
+    u32 address_table_rva;
+};
+
+
+struct COFF_Base_Relocation_Table {
+    u32 page_rva;
+    u32 block_size;
+};
+
 
 inline u32
 read_u32_bytes(string s) {

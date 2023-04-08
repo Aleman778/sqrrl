@@ -23,9 +23,7 @@ extern {
 extern {
     @extern_name("rand")  s32  _random_s32();
     @extern_name("srand") void _seed_random_s32(u32 seed);
-}
-
-@link("kernel32.dll")
-extern {
-    void printf(cstring num, ...);
+    
+    
+    int fflush(void* ostream);
 }

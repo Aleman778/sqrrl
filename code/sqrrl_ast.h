@@ -4,12 +4,13 @@
 AST_GROUP(None,        "none")                  \
 AST(Abi,               "abi", string)           \
 AST(Value,             "value", Value)          \
+AST(Exported_Type,     "type info", Exported_Type) \
 AST(Ident,             "identifier", string_id) \
 AST(Ident_Data,        "identifier", struct {   \
 string_id ident;                                \
 string contents;                                \
 })                                              \
-AST(Var_Args,          "variable arguments", void*) \
+AST(Ellipsis,          "ellipsis", void*)       \
 AST(Argument,          "argument", struct {     \
 Ast* type;                                      \
 Ast* ident;                                     \
@@ -48,6 +49,7 @@ AST(Call_Expr,         "call", struct {         \
 Ast* ident;                                     \
 Ast* args;                                      \
 Type* function_type;                            \
+Ast* var_args;                             \
 bool added_format_types;                        \
 })                                              \
 AST(Field_Expr,        "field", struct {        \

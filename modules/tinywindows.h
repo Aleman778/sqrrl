@@ -1304,6 +1304,8 @@ extern {
                           DWORD nNumberOfBytesToWrite,
                           LPDWORD lpNumberOfBytesWritten,
                           LPOVERLAPPED lpOverlapped);
+    
+    BOOL WINAPI FlushFileBuffers(HANDLE hFile);
 }
 
 /*
@@ -1980,14 +1982,21 @@ typedef struct _XINPUT_KEYSTROKE
 * Console API
 */
 #define STD_OUTPUT_HANDLE (cast(DWORD) -11)
+#define STD_INPUT_HANDLE (cast(DWORD) -10)
 
 @link("kernel32.dll")
 extern {
-    HANDLE GetStdHandle(DWORD nStdHandle);
+    HANDLE WINAPI GetStdHandle(DWORD nStdHandle);
     
-    BOOL WriteConsoleA(HANDLE  hConsoleOutput,
-                       const VOID    *lpBuffer,
-                       DWORD   nNumberOfCharsToWrite,
-                       LPDWORD lpNumberOfCharsWritten,
-                       LPVOID  lpReserved);
+    BOOL WINAPI WriteConsoleA(HANDLE  hConsoleOutput,
+                              const VOID    *lpBuffer,
+                              DWORD   nNumberOfCharsToWrite,
+                              LPDWORD lpNumberOfCharsWritten,
+                              LPVOID  lpReserved);
+    
+    
+    BOOL WINAPI FlushConsoleInputBuffer(HANDLE hConsoleInput);
+    
+    BOOL WINAPI SetConsoleMode(HANDLE hConsoleHandle,
+                               DWORD  dwMode);
 }

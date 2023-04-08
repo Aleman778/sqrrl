@@ -279,6 +279,7 @@ convert_to_pe_executable(Memory_Arena* arena,
                          File_Handle output_file,
                          u8* machine_code, u32 machine_code_size,
                          Library_Import_Table* import_table,
+                         Type_Info_Packer* type_info_packer,
                          Memory_Arena* rdata_arena,
                          u8* entry_point) {
     time_t timestamp = time(0);
@@ -324,6 +325,7 @@ convert_to_pe_executable(Memory_Arena* arena,
     // Section headers
     COFF_Section_Header* text_section = 0;
     COFF_Section_Header* rdata_section = 0;
+    COFF_Section_Header* data_section = 0;
     
     // .text section
     text_section = push_coff_section(arena, opt_header, COFF_TEXT_SECTION, machine_code_size, 
@@ -341,12 +343,46 @@ convert_to_pe_executable(Memory_Arena* arena,
                                           COFF_SCN_CNT_INITIALIZED_DATA | COFF_SCN_MEM_READ);
         opt_header->size_of_initialized_data += rdata_section->size_of_raw_data;
         header->number_of_sections++; // added .rdata
-        
+    }
+    
+    // .data section
+    u32 data_size = arena_total_used(type_info_packer->arena);
+    if (data_size > 0) {
+        data_section = push_coff_section(arena, opt_header, COFF_DATA_SECTION, rdata_size,
+                                         COFF_SCN_CNT_INITIALIZED_DATA | COFF_SCN_MEM_READ);
+        opt_header->size_of_initialized_data += rdata_section->size_of_raw_data;
+        header->number_of_sections++; // added .data
     }
     
     umm actual_header_size = arena_total_used(arena);
     opt_header->size_of_headers = (u32) align_forward(actual_header_size,
                                                       opt_header->file_alignment);
+    
+    
+    // Create base relocation table (for Type_Info_Packer)
+    Memory_Arena reloc_arena = {};
+    COFF_Base_Relocation_Table* reloc_table = arena_push_struct(reloc_arena, COFF_Base_Relocation_Table);
+    reloc_table->page_rva = data_section->virtual_address;
+    
+    for_array(type_info_packer->relocation, reloc, reloc_index) {
+        
+        0xA000 + 
+            reloc->from_ptr = 
+    }
+    
+    // .reloc section
+    u32 reloc_size = arena_total_used(reloc_arena);
+    if (reloc_size > 0) {
+        reloc_section = push_coff_section(arena, opt_header, COFF_RELOC_SECTION, rdata_size,
+                                          COFF_SCN_CNT_INITIALIZED_DATA | COFF_SCN_MEM_READ);
+        opt_header->size_of_initialized_data += rdata_section->size_of_raw_data;
+        header->number_of_sections++; // added .data
+    }
+    
+    umm actual_header_size = arena_total_used(arena);
+    opt_header->size_of_headers = (u32) align_forward(actual_header_size,
+                                                      opt_header->file_alignment);
+    
     
     // Layout sections
     u32 output_size = opt_header->size_of_headers;

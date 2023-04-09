@@ -79,7 +79,6 @@ enum Type_Kind {
     TypeKind_Enum,
     TypeKind_Function,
     TypeKind_Pointer,
-    TypeKind_Var_Args, // TODO(Alexander): there is no type definition for this only used for Type_Info
 };
 
 typedef map(string_id, s32) Ident_Mapper;
@@ -405,9 +404,10 @@ struct TI_Array_Type_Info {
     smm fixed_count; // -1 => if value stores the count
 };
 
-struct TI_Var_Args_Info {
-    Type_Info** args;
-    smm arg_count;
+struct Var_Args {
+    u8* data;
+    Type_Info** types;
+    smm count;
 };
 
 struct Type_Info {
@@ -418,7 +418,6 @@ struct Type_Info {
         TI_Struct_Type_Info Struct;
         TI_Enum_Type_Info Enum;
         TI_Array_Type_Info Array;
-        TI_Var_Args_Info Var_Args;
     };
 };
 
@@ -429,7 +428,10 @@ struct Relocation {
 };
 
 struct Exported_Type {
-    Type_Info* type_info;
+    union {
+        Type_Info* type_info;
+        Var_Args* var_args;
+    };
     u32 relative_ptr;
 };
 
@@ -443,11 +445,7 @@ Exported_Type export_var_args_info(Type_Info_Packer* packer, int var_arg_start, 
 
 Exported_Type export_type_info(Type_Info_Packer* packer, Type* type);
 
-
-inline s64
-type_of(Type* type) {
-    return (s64) type;
-}
+void print_type(Type* type);
 
 inline Type*
 type_deref(Type* type) {
@@ -455,4 +453,8 @@ type_deref(Type* type) {
     return type->Pointer;
 }
 
-void print_type(Type* type);
+// TODO(Alexander): dummy functions
+inline s64
+type_of(Type* type) {
+    return (s64) type;
+}

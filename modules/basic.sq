@@ -1,9 +1,28 @@
 
-// TODO(Alexander): we only have windows support atm. later on we import the correct header
-#include "ucrtwindows.h"
-#include "basic_windows.sq"
+// Assert
+//#if BUILD_DEBUG
+bool
+__assert(cstring expression, string file, smm line) {
+    // TODO(Alexander): improve assertion printing.
+    print("%:%: Assertion failed: %\n", file, line, expression);
+    //DEBUG_log_backtrace();
+    
+    // Flush the standard streams make sure we get all debug data
+    //fflush(stdout);
+    //fflush(stderr);
+    
+    *(int *)0 = 0; // NOTE(Alexander): purposefully trap the program
+    return true;
+}
+#define assert(expr, ...) (void) ((expr) || __assert(#expr " - " __VA_ARGS__, __FILE__, __LINE__))
+//#else
+//#define assert(expression)
+//#endif
 
-#define PRINT_BYTECODE 1 
+
+// TODO(Alexander): we only have windows support atm. later on we import the correct header
+#include "basic_windows.sq"
+#include "ucrtwindows.h"
 
 f32
 cos(f32 num) {
@@ -72,6 +91,19 @@ random_f32() {
     return (f32) _random_s32() / (RAND_MAX + 1.0f);
 }
 
+
+inline umm
+cstring_count(cstring str) {
+    umm count = 0;
+    u8* curr = (u8*) str;
+    while (curr) {
+        count++;
+        curr++;
+    }
+    return count;
+}
+
+
 enum Type_Kind {
     Unresolved,
     Void,
@@ -136,161 +168,15 @@ struct Array_Type_Info {
     smm fixed_count; // -1 => if value stores the count
 }
 
+struct Var_Args {
+    u8* data;
+    []Type_Info* types;
+}
+
 inline Type_Info*
 type_info(Type type) {
     return (Type_Info*) type;
 }
-
-#if 0
-void
-print_old(cstring format, ...) {
-    va_list args;
-    va_start(args, format);
-    
-    //printf("\n\ntest: %s\n\n", format);
-    
-    const char* format_at_prev_percent = format;
-    int count_until_percent = 0;
-    while (*format != '\0') {
-        // TODO(Alexander): can we improve escaping % or change the template marker altogether
-        //if (*format == '\\' && *(format + 1) == '%') {
-        //printf("%%");
-        //format += 2;
-        //format_at_prev_percent = format;
-        //continue;
-        //}
-        
-        if (*format == '%') {
-            if (*(format + 1) == '%') {
-                printf("%%");
-                format += 2;
-                format_at_prev_percent = format;
-                continue;
-            }
-            
-            if (count_until_percent > 0) {
-                printf("%.*s", count_until_percent, format_at_prev_percent);
-                count_until_percent = 0;
-            }
-            
-            format_at_prev_percent = format + 1;
-            
-            Format_Type type = (Format_Type) va_arg(args, int);
-            switch (type) {
-                case FormatType_bool: {
-                    printf("%s", va_arg(args, bool) ? "true" : "false");
-                } break;
-                
-                case FormatType_char: {
-                    printf("%c", va_arg(args, char));
-                } break;
-                
-                case FormatType_s8: {
-                    printf("%ld", (s32) va_arg(args, s8));
-                } break;
-                
-                case FormatType_s16: {
-                    printf("%ld", (s32) va_arg(args, s16));
-                } break;
-                
-                case FormatType_int: {
-                    printf("%d", va_arg(args, int));
-                } break;
-                
-                case FormatType_s32: {
-                    printf("%ld", va_arg(args, s32));
-                } break;
-                
-                case FormatType_uint: {
-                    printf("%u", va_arg(args, uint));
-                } break;
-                
-                case FormatType_s64: {
-                    printf("%lld", va_arg(args, s64));
-                } break;
-                
-                case FormatType_u8: {
-                    printf("%c", (char) va_arg(args, u8));
-                } break;
-                
-                case FormatType_u16: {
-                    printf("%lu", (u32) va_arg(args, u16));
-                } break;
-                
-                case FormatType_u32: {
-                    printf("%lu", va_arg(args, u32));
-                } break;
-                
-                case FormatType_u64: {
-                    printf("%llu", va_arg(args, u64));
-                } break;
-                
-                case FormatType_u64_HEX: {
-                    printf("0x%llX", va_arg(args, u64));
-                } break;
-                
-                case FormatType_smm: {
-                    printf("%zd", va_arg(args, smm));
-                } break;
-                
-                case FormatType_umm: {
-                    printf("%zu", va_arg(args, umm));
-                } break;
-                
-                case FormatType_f32: {
-                    printf("%f", va_arg(args, f32));
-                } break;
-                
-                case FormatType_f64: {
-                    printf("%f", va_arg(args, f64));
-                } break;
-                
-                case FormatType_string: {
-                    string str = va_arg(args, string);
-                    printf("%.*s", (int) str.count, (char*) str.data);
-                } break;
-                
-                case FormatType_memory_string: {
-                    Memory_String str = va_arg(args, Memory_String);
-                    printf("%.*s", (int) memory_string_count(str), (char*) str);
-                } break;
-                
-                case FormatType_cstring: {
-                    printf("%s", va_arg(args, char*));
-                } break;
-                
-                case FormatType_ast: {
-                    print_ast(va_arg(args, Ast*), 0);
-                } break;
-                
-                case FormatType_type: {
-                    print_type(va_arg(args, Type*));
-                } break;
-                
-                case FormatType_value: {
-                    print_value(va_arg(args, Value*));
-                } break;
-                
-                case FormatType_intermediate_code: {
-                    print_intermediate_code(va_arg(args, Intermediate_Code*));
-                } break;
-                
-                default: {
-                    assert(0 && "unimplemented format type");
-                } break;
-            }
-        } else {
-            count_until_percent++;
-        }
-        
-        format++;
-    }
-    
-    if (count_until_percent > 0) {
-        printf("%.*s", count_until_percent, format_at_prev_percent);
-    }
-}
-#endif
 
 void
 print_newline_with_spaces(int count) {
@@ -363,41 +249,64 @@ data_to_f64(Basic_Type_Info info, void* data) {
 }
 
 void
-print_integer(string s) {
+print_signed_integer(s64 integer) {
+    [20]u8 result;
+    int ptr = result.count;
     
+    bool sign = false;
+    if (integer < 0) {
+        integer = -integer;
+        sign = true;
+    }
     
+    while (integer > 0) {
+        u8 digit = (u8) (integer % 10);
+        //debug_break();
+        result[--ptr] = '0' + digit;
+        
+        integer /= 10;
+    }
+    
+    if (sign) {
+        result[--ptr] = '-';
+    }
+    
+    string s;
+    s.data = &result[ptr];
+    s.count = result.count - ptr;
+    
+    _put_string(s);
 }
 
-struct Var_Args {
-    []Type_Info args;
-    u8* data;
-}
-
+#define pln(format, ...) print(format##"\n", __VA_ARGS__)
 
 void
-print(string format, ...) {
-    
-    //Var_Args var_args = print.var_args; // just reads the first argument
-    
+print(string format, ...var_args) {
     int var_args_index = 0;
+    u8* var_arg_data = var_args.data;
     
     string substring;
     substring.data = format.data;
     substring.count = 0;//format.count;
     
-    
     for (smm chr_index; chr_index < format.count; chr_index++) {
         u8 chr = format.data[chr_index];
         if (chr == '%') {
-            _put_string(substring);
+            pln("cmp % < %", var_args_index, var_args.types.count);
             
-            substring.data = format.data + chr_index + 1;
-            substring.count = 0;
-            
-            
-            //print_data_from_type_info(var_args.type_info, void* data);
-            var_args_index++;
-            
+            if (var_args_index < var_args.types.count) {
+                _put_string(substring);
+                
+                substring.data = format.data + chr_index + 1;
+                substring.count = 0;
+                
+                Type_Info* type_info = var_args.types[var_args_index];
+                print_data_from_type_info(type_info, var_arg_data);
+                var_args_index++;
+                var_arg_data += 8;
+            } else {
+                substring.count++;
+            }
         } else {
             substring.count++;
         }
@@ -413,9 +322,9 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
             switch (type.Basic) {
                 case Basic_Type_Info.Bool: {
                     if (*((bool*) data)) {
-                        print("true")
+                        print("true");
                     } else {
-                        print("false")
+                        print("false");
                     }
                 }
                 
@@ -423,9 +332,8 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                 case Basic_Type_Info.S16:
                 case Basic_Type_Info.S32:
                 case Basic_Type_Info.S64: {
-                    print("%lld", data_to_s64(type.Basic, data));
-                    
-                    
+                    s64 num = data_to_s64(type.Basic, data);
+                    print_signed_integer(num);
                 }
                 
                 case Basic_Type_Info.U8:
@@ -441,12 +349,16 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                 }
                 
                 case Basic_Type_Info.String: {
-                    string* s = (string*) data;
-                    print("%.*s", (int) s.count, s.data);
+                    string* sp = (string*) data;
+                    string s = *sp;
+                    //assert(0, "testing 1 2 3");
                 }
                 
                 case Basic_Type_Info.CString: {
-                    print("%", *((cstring*) data));
+                    string s;
+                    s.data = (u8*) data;
+                    s.count = cstring_count((cstring) data);
+                    _put_string(s);
                 }
             }
         }

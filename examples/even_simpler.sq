@@ -1,9 +1,22 @@
 #include <basic.sq>
 
+void
+foo(...args) {
+    
+    u8* d = args.data;
+    string* sp = (string*) d;
+    string s = *sp;
+    _put_string(s);
+    
+}
 
-//#define pln(format, ...) print(format##\"\\n\", __VA_ARGS__)
 
 int
 main() {
-    pln("Hello % world", "my beautiful");
+    //debug_break();
+    //pln("Hello % world \n\n\nxoxoxo", "my beautiful");
+    
+    pln("Test % % % ");//, 10, -20, 333421523);
+    
+    //pln("Hello %!", "Fadi");
 }

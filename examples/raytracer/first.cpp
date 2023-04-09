@@ -38,7 +38,6 @@ random_f32() {
 
 #else
 
-#include <tinywindows.h>
 #include <basic.sq>
 
 #endif

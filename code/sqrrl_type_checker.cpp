@@ -1902,12 +1902,20 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 }
                 
                 Ast* ast_argument_type = ast_argument->Argument.type;
+                
+                Type* type = 0;
                 if (ast_argument_type->kind == Ast_Ellipsis) {
                     result->Function.is_variadic = true;
-                    continue;
+                    type = load_type_declaration(tcx, vars_save_cstring("Var_Args"), 
+                                                 ast_argument_type->span, false);
+                    if (!type) {
+                        type = t_type;
+                    }
+                    
+                } else {
+                    type = create_type_from_ast(tcx, ast_argument_type, report_error);
                 }
                 
-                Type* type = create_type_from_ast(tcx, ast_argument_type, report_error);
                 if (type) {
                     string_id ident = ast_argument->Argument.ident->Ident;
                     s32 arg_index = (s32) array_count(func->arg_idents);
@@ -1920,7 +1928,8 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                         type_infer_expression(tcx, default_arg, type, true);
                         constant_folding_of_expressions(tcx, default_arg);
                         array_push(func->default_args, default_arg);
-                    } else {
+                        
+                    } else if (!result->Function.is_variadic) {
                         if (func->first_default_arg_index == arg_index) {
                             func->first_default_arg_index++;
                         } else {
@@ -2675,6 +2684,11 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                 type_check_expression(tcx, arg->Argument.assign);
                 
                 if (arg_index < formal_arg_count) {
+                    if (t_func->is_variadic && arg_index == formal_arg_count - 1) {
+                        continue;
+                    }
+                    
+                    
                     if (arg->Argument.ident && arg->Argument.ident->kind == Ast_Ident) {
                         string_id arg_ident = ast_unwrap_ident(arg->Argument.ident);
                         smm index = map_get_index(t_func->ident_to_index, arg_ident);
@@ -2700,6 +2714,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                         type_error_mismatch(tcx, arg_type, 
                                             arg->Argument.assign->type, 
                                             arg->Argument.assign->span);
+                        
                         break;
                     }
                 }
@@ -2713,8 +2728,9 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                 Ast* var_args = arena_push_struct(&tcx->type_arena, Ast);
                 var_args->kind = Ast_Exported_Type;
                 var_args->Exported_Type = export_var_args_info(&tcx->type_info_packer,
-                                                               formal_arg_count,
+                                                               formal_arg_count - 1,
                                                                expr->Call_Expr.args);
+                expr->Call_Expr.var_args = var_args;
             }
         } break;
         
@@ -3100,7 +3116,6 @@ intrin_name->Function.first_default_arg_index++; \
 }
 #define push_intrinsic_arg(name, arg_name, arg_type) _push_intrinsic_arg(intrin_##name, arg_name, arg_type)
     
-    
     // TODO(Alexander): these are kind of temporary, since we don't really have
     // the ability to create these functions yet, need FFI!
     // We will still have intrinsics but these intrinsics are just for debugging
@@ -3120,6 +3135,7 @@ intrin_name->Function.first_default_arg_index++; \
     // Inserts a breakpoint (e.g. int3 on x64) to enable debugger
     push_intrinsic(__debug_break, false, &interp_intrinsic_debug_break, &interp_intrinsic_debug_break, t_void);
     
+#if 0
     // Intrinsic syntax: void __assert(int test, cstring msg cstring file, smm line)
     // Assets that expr is true, used as test case
     push_intrinsic(__assert, false, &interp_intrinsic_assert, &intrinsic_assert, t_bool);
@@ -3127,77 +3143,7 @@ intrin_name->Function.first_default_arg_index++; \
     push_intrinsic_arg(__assert, msg, t_cstring);
     push_intrinsic_arg(__assert, file, t_cstring);
     push_intrinsic_arg(__assert, line, t_smm);
-    
-#if 0
-    // Intrinsic syntax: f32 cos(f32 num)
-    push_intrinsic(cos, false, 0, &cosf, t_f32);
-    push_intrinsic_arg(cos, num, t_f32);
-    
-    // Intrinsic syntax: f32 acos(f32 num)
-    push_intrinsic(acos, false, 0, &acosf, t_f32);
-    push_intrinsic_arg(acos, num, t_f32);
-    
-    // Intrinsic syntax: f32 sin(f32 num)
-    push_intrinsic(sin, false, 0, &sinf, t_f32);
-    push_intrinsic_arg(sin, num, t_f32);
-    
-    // Intrinsic syntax: f32 asin(f32 num)
-    push_intrinsic(asin, false, 0, &asinf, t_f32);
-    push_intrinsic_arg(asin, num, t_f32);
-    
-    // Intrinsic syntax: f32 tan(f32 num)
-    push_intrinsic(tan, false, 0, &tanf, t_f32);
-    push_intrinsic_arg(tan, num, t_f32);
-    
-    // Intrinsic syntax: f32 atan(f32 num)
-    push_intrinsic(atan, false, 0, &atanf, t_f32);
-    push_intrinsic_arg(atan, num, t_f32);
-    
-    // Intrinsic syntax: f32 sqrt(f32 num)
-    push_intrinsic(sqrt, false, 0, &sqrtf, t_f32);
-    push_intrinsic_arg(sqrt, num, t_f32);
-    
-    // Intrinsic syntax:  f32 round(f32 num)
-    push_intrinsic(round, false, 0, &roundf, t_f32);
-    push_intrinsic_arg(round, num, t_f32);
-    
-    // Intrinsic syntax:  f32 floor(f32 num)
-    push_intrinsic(floor, false, 0, &floorf, t_f32);
-    push_intrinsic_arg(floor, num, t_f32);
-    
-    // Intrinsic syntax:  f32 ceil(f32 num)
-    push_intrinsic(ceil, false, 0, &ceilf, t_f32);
-    push_intrinsic_arg(ceil, num, t_f32);
-    
-    // Intrinsic syntax:  s32 abs(s32 num)
-    push_intrinsic(abs, false, 0, &abs_s32, t_s32);
-    push_intrinsic_arg(abs, num, t_s32);
-    
-    // Intrinsic syntax:  f32 abs(f32 num)
-    _push_intrinsic(intrin_abs2, abs, false, 0, &fabsf, t_f32);
-    _push_intrinsic_arg(intrin_abs2, num, t_f32);
-    
-    // Intrinsic syntax: f32 random_f32()
-    push_intrinsic(random_f32, false, 0, &random_f32, t_f32);
-    
-    // Intrinsic syntax: void*  memory_alloc(umm size)
-    push_intrinsic(allocate, false, 0, &allocate, t_void_ptr);
-    push_intrinsic_arg(allocate, size, t_umm);
-    
-    // Intrinsic syntax: void*  memory_alloc_zeros(umm size)
-    push_intrinsic(allocate_zeros, false, 0, &allocate_zeros, t_void_ptr);
-    push_intrinsic_arg(allocate_zeros, size, t_umm);
-    
-    // Intrinsic syntax: void*  set_memory(void* dest, int val, umm size)
-    push_intrinsic(set_memory, false, 0, &memset, t_void_ptr);
-    push_intrinsic_arg(set_memory, dest, t_void_ptr);
-    push_intrinsic_arg(set_memory, val, t_int);
-    push_intrinsic_arg(set_memory, size, t_umm);
-    
-    // Intrinsic syntax: void flush_stdout()
-    push_intrinsic(flush_stdout, false, 0, &flush_stdout, t_void);
 #endif
-    
     
     // Intrinsic syntax: umm sizeof(T)
     push_intrinsic(sizeof, false, 0, &type_sizeof, t_umm);
@@ -3209,7 +3155,6 @@ intrin_name->Function.first_default_arg_index++; \
     
     push_intrinsic(type_of, false, 0, &type_of, t_type);
     push_intrinsic_arg(type_of, T, t_any);
-    
     
     /******************************************************
     /* X64 architecture specific intrinsics

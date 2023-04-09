@@ -330,6 +330,7 @@ struct Compilation_Unit {
     Ic_Basic_Block* bb_data;
     Ic_Arg_Map* locals;
     Memory_Arena* rdata_arena;
+    Memory_Arena* data_arena;
     
     s64 external_address = 0;
     s64 stk_args = 0;

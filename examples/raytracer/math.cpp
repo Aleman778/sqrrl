@@ -186,6 +186,6 @@ print_vec3(v3 v) {
 #ifdef __cplusplus
     printf("vec3(%f, %f, %f)\n",v.x,v.y,v.z);
 #else
-    print_format("vec3(%, %, %)\n",v.x,v.y,v.z);
+    pln("vec3(%, %, %)\n", v.x,v.y,v.z);
 #endif
 }

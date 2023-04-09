@@ -66,11 +66,11 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         //filepath = string_lit("../modules/basic.sq");
         //filepath = string_lit("../../platformer/code/win32_platform.cpp");
         //filepath = string_lit("../examples/backend_test.sq");
-        //filepath = string_lit("../examples/raytracer/first.cpp");
+        filepath = string_lit("../examples/raytracer/first.cpp");
         //filepath = string_lit("../tests/preprocessor.sq");
         
         //filepath = string_lit("../examples/simple.cpp");
-        filepath = string_lit("../examples/even_simpler.sq");
+        //filepath = string_lit("../examples/even_simpler.sq");
         //filepath = string_lit("simple.exe");
 #else
         if (argc <= 1) {
@@ -133,6 +133,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
     Preprocessor preprocessor = {};
+    
+#if 0
     {
         // Create global pln macro
         Preprocessor_Macro pln_macro = {};
@@ -160,6 +162,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         string_id assert_id = Sym_assert;
         map_put(preprocessor.macros, assert_id, assert_macro);
     }
+#endif
     
     string preprocessed_source = preprocess_file(&preprocessor, 
                                                  file.source, file.abspath, file.extension, file.index);
@@ -252,6 +255,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
     Memory_Arena rdata_arena = {};
+    Memory_Arena data_arena = {};
     
     // Start by pushing address lookup table for external libs
     for_map(tcx.import_table.libs, it) {
@@ -280,6 +284,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     Compilation_Unit* main_cu = 0;
     for_array(ast_file.units, cu, _2) {
         cu->rdata_arena = &rdata_arena;
+        cu->data_arena = &data_arena;
         if (cu->ast->kind == Ast_Decl_Stmt) {
             Type* type = cu->ast->type;
             if (type->kind == TypeKind_Function) {
@@ -351,27 +356,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         rip = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage, 0, 0, rip);
     }
     
-    // TODO(Alexander): the PE section_alignment is hardcoded as 0x1000
-    s64 data_offset = align_forward(rip, 0x1000);
-    
-    for_array(ast_file.units, cu, _5) {
-        Intermediate_Code* ic = cu->ic_first;
-        
-        while (ic) {
-            if (ic->dest.type & IC_RIP_DISP32) {
-                ic->dest.disp += data_offset;
-            }
-            if (ic->src0.type & IC_RIP_DISP32) {
-                ic->src0.disp += data_offset;
-            }
-            if (ic->src1.type & IC_RIP_DISP32) {
-                ic->src1.disp += data_offset;
-            }
-            
-            ic = ic->next;
-        }
-    }
-    
     Type* type = main_cu->ast->type;
     if (type && type->kind == TypeKind_Function) {
         type = type->Function.return_type;
@@ -385,9 +369,20 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                                                            &tcx.import_table,
                                                            &tcx.type_info_packer,
                                                            &rdata_arena,
+                                                           &data_arena,
                                                            asm_buffer_main);
     
-    
+    // TODO(Alexander): the PE section_alignment is hardcoded as 0x1000
+    for_array(ast_file.units, cu, _5) {
+        Intermediate_Code* ic = cu->ic_first;
+        
+        while (ic) {
+            ic->dest = patch_rip_relative_address(&pe_executable, ic->dest);
+            ic->src0 = patch_rip_relative_address(&pe_executable, ic->src0);
+            ic->src1 = patch_rip_relative_address(&pe_executable, ic->src1);
+            ic = ic->next;
+        }
+    }
     
     global_asm_buffer = (s64) asm_buffer;
     s64 rip2 = 0;

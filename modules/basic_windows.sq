@@ -5,6 +5,8 @@
 
 inline void
 _put_string(string s) {
+    
+    
     if (s.count == 0) {
         return;
     }
@@ -15,5 +17,8 @@ _put_string(string s) {
     //}
     
     DWORD chars_written = 0;
-    WriteConsoleA((HANDLE) stdout, (LPVOID) s.data, (u32) s.count, &chars_written, 0);
+    WriteFile((HANDLE) stdout, (LPVOID) s.data, (u32) s.count, &chars_written, 0);
+    
+    //cstring foo = "foo"; 
+    //WriteFile((HANDLE) stdout, (LPVOID) foo, (u32) 3, &chars_written, 0);
 }

@@ -3,28 +3,26 @@ Exported_Type
 export_var_args_info(Type_Info_Packer* packer, int var_arg_start, Ast* actual_arguments) {
     Exported_Type result = {};
     
-    Type_Info* type_info = arena_push_struct(&packer->arena, Type_Info);
-    type_info->kind = TypeKind_Var_Args;
-    result.type_info = type_info;
-    result.relative_ptr = (u32) arena_relative_pointer(&packer->arena, type_info);
-    
+    Var_Args* var_args = arena_push_struct(&packer->arena, Var_Args);
+    result.var_args = var_args;
+    result.relative_ptr = (u32) arena_relative_pointer(&packer->arena, var_args);
     
     int var_arg_count = -var_arg_start;
     for_compound(actual_arguments, _) var_arg_count++;
     
-    Type_Info** var_args = arena_push_array_of_structs(&packer->arena, var_arg_count, Type_Info*);
-    u32 curr_var_arg_relative_ptr = (u32) arena_relative_pointer(&packer->arena, var_args);
-    type_info->Var_Args.args = var_args;
+    Type_Info** types = arena_push_array_of_structs(&packer->arena, var_arg_count, Type_Info*);
+    var_args->types = types;
+    u32 curr_type_relative_ptr = (u32) arena_relative_pointer(&packer->arena, types);
     
     {
         Relocation relocation = {};
-        relocation.from_ptr = &type_info->Var_Args.args;
-        relocation.from = result.relative_ptr;
-        relocation.to = curr_var_arg_relative_ptr;
+        relocation.from_ptr = &var_args->types;
+        relocation.from = result.relative_ptr + 8;
+        relocation.to = curr_type_relative_ptr;
         array_push(packer->relocations, relocation);
     }
     
-    Type_Info* curr_var_arg = *var_args;
+    Type_Info** curr_type = types;
     int arg_index = 0;
     for_compound(actual_arguments, argument) {
         if (arg_index >= var_arg_start) {
@@ -32,13 +30,14 @@ export_var_args_info(Type_Info_Packer* packer, int var_arg_start, Ast* actual_ar
             Exported_Type exported = export_type_info(packer, argument->type);
             
             Relocation relocation = {};
-            relocation.from_ptr = &curr_var_arg;
-            relocation.from = result.relative_ptr;
+            relocation.from_ptr = curr_type;
+            relocation.from = curr_type_relative_ptr;
             relocation.to = exported.relative_ptr;
             array_push(packer->relocations, relocation);
             
-            curr_var_arg++;
-            curr_var_arg_relative_ptr += sizeof(Type_Info*);
+            var_args->count++;
+            curr_type++;
+            curr_type_relative_ptr += sizeof(Type_Info*);
         }
         
         arg_index++;

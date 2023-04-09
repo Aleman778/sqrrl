@@ -285,9 +285,11 @@ struct PE_Executable {
     
     u8* text_data;
     u32 text_data_size;
+    u32 global_data_offset;
     
     Memory_Arena header_arena;
     Memory_Arena rdata_arena;
+    Memory_Arena type_info_arena;
     Memory_Arena data_arena;
     Memory_Arena reloc_arena;
 };
@@ -298,6 +300,7 @@ convert_to_pe_executable(Memory_Arena* arena,
                          Library_Import_Table* import_table,
                          Type_Info_Packer* type_info_packer,
                          Memory_Arena* rdata_arena,
+                         Memory_Arena* data_arena,
                          u8* entry_point) {
     
     PE_Executable result = {};
@@ -373,6 +376,8 @@ convert_to_pe_executable(Memory_Arena* arena,
     
     // .data section
     u32 data_size = (u32) arena_total_used(&type_info_packer->arena);
+    result.global_data_offset = data_size;
+    data_size += (u32) arena_total_used(data_arena);
     if (data_size > 0) {
         data_section = push_coff_section(arena, opt_header, COFF_DATA_SECTION, data_size,
                                          (u32) COFF_SCN_CNT_INITIALIZED_DATA | COFF_SCN_MEM_READ | COFF_SCN_MEM_WRITE);
@@ -381,19 +386,29 @@ convert_to_pe_executable(Memory_Arena* arena,
         header->number_of_sections++; // added .data
     }
     
-    // Create base relocation table (for Type_Info_Packer)
+    // Create base relocation table (for Type_Info_Packer
     Memory_Arena reloc_arena = {};
-    COFF_Base_Relocation_Table* reloc_table = arena_push_struct(&reloc_arena, COFF_Base_Relocation_Table);
-    reloc_table->page_rva = data_section->virtual_address;
-    for_array(type_info_packer->relocations, reloc, reloc_index) {
-        u32* reloc_entry = arena_push_struct(&reloc_arena, u32);
-        *reloc_entry = 0xA000 + reloc->from;
-        
-        *((u64*) reloc->from_ptr) = (u64) (opt_header->image_base + 
-                                           data_section->virtual_address + 
-                                           reloc->to);
+    if (array_count(type_info_packer->relocations) > 0) {
+        COFF_Base_Relocation_Table* reloc_table = arena_push_struct(&reloc_arena, COFF_Base_Relocation_Table);
+        reloc_table->page_rva = data_section->virtual_address;
+        for_array(type_info_packer->relocations, reloc, reloc_index) {
+            
+            assert(reloc->from < U16_MAX);
+            u16* reloc_entry = arena_push_struct(&reloc_arena, u16);
+            *reloc_entry = 0xA000 + (u16) reloc->from;
+            
+            *((u64*) reloc->from_ptr) = (u64) (opt_header->image_base + 
+                                               data_section->virtual_address + 
+                                               reloc->to);
+            
+            pln("\nRelocation: \n  from_ptr = % (%)\n  from = %\n  to = %", f_u64_HEX(reloc->from_ptr),
+                f_u64_HEX(*((u64*) reloc->from_ptr)), f_u64_HEX(reloc->from), f_u64_HEX(reloc->to));
+            
+        }
+        reloc_table->block_size = (u32) arena_total_used(&reloc_arena);
+        opt_header->base_relocation_table.rva = opt_header->size_of_image;
+        opt_header->base_relocation_table.size = reloc_table->block_size;
     }
-    reloc_table->block_size = (u32) arena_total_used(&reloc_arena);
     
     // .reloc section
     u32 reloc_size = (u32) arena_total_used(&reloc_arena);
@@ -432,7 +447,8 @@ convert_to_pe_executable(Memory_Arena* arena,
         data_section->pointer_to_raw_data = output_size;
         output_size += data_section->size_of_raw_data;
         
-        result.data_arena = type_info_packer->arena;
+        result.type_info_arena = type_info_packer->arena;
+        result.data_arena = *data_arena;
     }
     
     if (reloc_section) {
@@ -443,6 +459,30 @@ convert_to_pe_executable(Memory_Arena* arena,
     }
     
     return result;
+}
+
+inline Ic_Arg
+patch_rip_relative_address(PE_Executable* pe, Ic_Arg arg) {
+    if (arg.type & IC_RIP_DISP32) {
+        u32 base_address = pe->text_section->virtual_address;
+        switch (arg.data.area) {
+            case IcDataArea_Read_Only: {
+                arg.data.disp += pe->rdata_section->virtual_address - base_address;
+            } break;
+            
+            case IcDataArea_Type_Info: {
+                arg.data.disp += pe->data_section->virtual_address - base_address;
+            } break;
+            
+            // TODO(Alexander): add support for globals!
+            case IcDataArea_Globals: {
+                arg.data.disp += (pe->data_section->virtual_address - base_address + 
+                                  pe->global_data_offset);
+            } break;
+        }
+    }
+    
+    return arg;
 }
 
 void
@@ -466,7 +506,8 @@ write_pe_executable_to_file(File_Handle output_file, PE_Executable* pe) {
     }
     
     if (pe->data_section) {
-        umm data_size = arena_total_used(&pe->data_arena);
+        umm data_size = arena_total_used(&pe->data_arena) + pe->global_data_offset;
+        write_memory_block_to_file(output_file, pe->type_info_arena.current_block);
         write_memory_block_to_file(output_file, pe->data_arena.current_block);
         write_padding_to_file(output_file, data_size, pe->data_section->size_of_raw_data);
     }

@@ -178,21 +178,21 @@ Ic_Arg
 convert_function_call_to_intermediate_code(Compilation_Unit* cu, 
                                            Type* function_type,
                                            array(Ast*)* args,
-                                           Ast* call_ident) {
+                                           Ast* call_ident,
+                                           Ast* var_args=0) {
     
     
     Ic_Arg result = {};
     
     assert(function_type && function_type->kind == TypeKind_Function);
+    Type_Function* t_func = &function_type->Function;
     
-    Type_Function* proc = &function_type->Function;
-    
-    if (proc->intrinsic) {
+    if (t_func->intrinsic) {
         
-        if (proc->intrinsic == &interp_intrinsic_debug_break) {
+        if (t_func->intrinsic == &interp_intrinsic_debug_break) {
             ic_add(cu, IC_DEBUG_BREAK);
             return result;
-        } else if (proc->intrinsic == &x64_intrin_rdtsc) {
+        } else if (t_func->intrinsic == &x64_intrin_rdtsc) {
             ic_add(cu, x64_intrin_rdtsc);
             return ic_reg(IC_U64, X64_RAX);
         }
@@ -202,8 +202,8 @@ convert_function_call_to_intermediate_code(Compilation_Unit* cu,
     array(X64_Arg_Copy)* copy_args = 0;
     
     // Setup return type
-    if (proc->return_type) {
-        Type* type = proc->return_type;
+    if (t_func->return_type) {
+        Type* type = t_func->return_type;
         Ic_Raw_Type rt = convert_type_to_raw_type(type);
         
         if (type->size > 8) {
@@ -215,7 +215,7 @@ convert_function_call_to_intermediate_code(Compilation_Unit* cu,
             //Ic_Arg src = ic_stk(rt, disp, IcStkArea_Args);
             
             X64_Arg_Copy copy = {};
-            copy.type = proc->return_type;
+            copy.type = t_func->return_type;
             array_push(copy_args, copy);
         } else {
             result = ic_reg(rt, X64_RAX); // NOTE: RAX == 0 && XMM0 == 0
@@ -227,6 +227,32 @@ convert_function_call_to_intermediate_code(Compilation_Unit* cu,
         int arg_index = 0;
         {
             for_array_v(args, arg, _) {
+                
+                // Var args
+                if (var_args && t_func->is_variadic && arg_index == array_count(t_func->arg_types) - 1) {
+                    Type* var_args_type = t_func->arg_types[array_count(t_func->arg_types) - 1];
+                    
+                    // Move var args store to the next argument
+                    Ic_Raw_Type rt = convert_type_to_raw_type(var_args_type);
+                    s64 disp = stk_args;
+                    stk_args += 8;
+                    Ic_Arg dest = ic_stk(rt, disp, IcStkArea_Args);
+                    
+                    // Store var_args.data pointer 
+                    Ic_Arg var_arg_data = ic_stk(rt, disp + 8, IcStkArea_Args);
+                    Ic_Arg var_arg_storage = convert_expr_to_intermediate_code(cu, var_args);
+                    ic_lea(cu, var_arg_storage, var_arg_data);
+                    
+                    X64_Arg_Copy copy = {};
+                    copy.type = var_args_type;
+                    copy.dest = dest;
+                    copy.src = var_arg_storage;
+                    
+                    array_push(copy_args, copy);
+                    arg_index++;
+                }
+                
+                
                 
                 Ic_Raw_Type rt = convert_type_to_raw_type(arg->type);
                 s64 disp = stk_args;
@@ -268,10 +294,10 @@ convert_function_call_to_intermediate_code(Compilation_Unit* cu,
             }
         }
         
-        if (arg_index < array_count(proc->arg_types)) {
-            for_array_v(proc->default_args, arg, index) {
-                int default_arg_index = proc->first_default_arg_index + index;
-                if (default_arg_index >= arg_index) {
+        if (arg_index < array_count(t_func->arg_types)) {
+            for_array_v(t_func->default_args, arg, index) {
+                int default_arg_index = t_func->first_default_arg_index + index;
+                if (arg_index < default_arg_index) {
                     
                     Type* type = arg->type;
                     Ic_Raw_Type rt = convert_type_to_raw_type(arg->type);
@@ -322,29 +348,19 @@ convert_function_call_to_intermediate_code(Compilation_Unit* cu,
             dest = arg->dest;
         }
         
-#if 0
-        if (src.type & IC_FLOAT) {
-            Intermediate_Code* ic = ic_add(cu, IC_FMOV);
-            ic->src0 = dest;
-            ic->src1 = src;
-        } else if ((src.type & (IC_SINT | IC_UINT | IC_DISP)) ||
-                   (arg->type->kind == TypeKind_Basic && 
-                    arg->type->Basic.kind == Basic_cstring && 
-                    src.type & (IC_STK | IC_REG)) ||
-                   arg->type->kind == TypeKind_Pointer ||
-                   arg->type->kind == TypeKind_Function) {
-            ic_mov(cu, dest, src);
-        } else {
-            ic_lea(cu, dest, src);
-        }
-#endif
-        
         convert_assign_to_intermediate_code(cu, arg->type, dest, src, false);
         
-        if (proc->is_variadic && arg_index < 4 && src.type & IC_FLOAT) {
-            Intermediate_Code* ic = ic_add(cu, IC_REINTERP_F2S);
-            ic->src0 = ic_reg(IC_S64, int_arg_registers_ccall_windows[arg_index]);
-            ic->src1 = dest;
+        if (t_func->is_variadic && arg_index < 4) {
+            
+            if (src.type & IC_FLOAT) {
+                Intermediate_Code* ic = ic_add(cu, IC_REINTERP_F2S);
+                ic->src0 = ic_reg(IC_S64, int_arg_registers_ccall_windows[arg_index]);
+                ic->src1 = dest;
+            }
+            
+            if (arg_index >= array_count(t_func->arg_types)) {
+                ic_mov(cu, arg->dest, dest);
+            }
         }
     }
     
@@ -356,16 +372,16 @@ convert_function_call_to_intermediate_code(Compilation_Unit* cu,
     // even if they aren't used!
     cu->stk_args = max(cu->stk_args, 4*8);
     
-    if (!proc->unit && !proc->intrinsic && call_ident) {
+    if (!t_func->unit && !t_func->intrinsic && call_ident) {
         Ic_Arg addr = convert_expr_to_intermediate_code(cu, call_ident);
         if (addr.type & IC_DISP_STK_RIP) {
             ic_mov(cu, ic_reg(addr.raw_type, X64_RAX), addr);
         }
     }
     
-    Intermediate_Code* ic = ic_add(cu, IC_CALL, proc->unit);
-    if (proc->intrinsic) {
-        ic->dest = ic_imm(IC_S64, (s64) proc->intrinsic);
+    Intermediate_Code* ic = ic_add(cu, IC_CALL, t_func->unit);
+    if (t_func->intrinsic) {
+        ic->dest = ic_imm(IC_S64, (s64) t_func->intrinsic);
     }
     
     return result;
@@ -722,6 +738,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     result = ic->dest;
                     
                 } else {
+                    // Global variable
                     Ic_Raw_Type raw_type = convert_type_to_raw_type(type);
                     void* data = get_interp_value_pointer(cu->interp, ident);
                     if (!data) {
@@ -734,7 +751,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     void* dest = arena_push_size(cu->rdata_arena, type->size, type->align);
                     memcpy(dest, data, type->size);
                     
-                    result = ic_rip_disp32(raw_type, IcDataArea_Read_Only, cu->rdata_arena, dest);
+                    result = ic_rip_disp32(raw_type, IcDataArea_Globals, cu->data_arena, dest);
                 }
             }
         } break;
@@ -985,11 +1002,14 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     
                     if (src.type & IC_FLOAT) {
                         Type* type = expr->type;
-                        void* data = arena_push_size(cu->rdata_arena, type->size, type->align);
+                        void* data;
+                        
                         if (type == t_f64) {
+                            data = arena_push_size(cu->rdata_arena, type->size*2, type->align*2);
                             u64* values = (u64*) data;
                             for (int i = 0; i < 2; i++) *values++ = 0x8000000000000000ull;
                         } else {
+                            data = arena_push_size(cu->rdata_arena, type->size*4, type->align*4);
                             u32* values = (u32*) data;
                             for (int i = 0; i < 4; i++) *values++ = 0x80000000;
                         }
@@ -1057,12 +1077,20 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 
                 case Op_Dereference: {
                     if (src.type & IC_REG) {
-                        result = ic_stk(rt, 0, IcStkArea_None, src.reg);
+                        Intermediate_Code* ic = ic_add(cu, IC_MOV);
+                        ic->src0 = ic_reg(rt, cu->data_reg);
+                        ic->src1 = src;
+                        result = ic->src0;
                     } else {
                         Intermediate_Code* ic = ic_add(cu, IC_MOV);
                         ic->src0 = ic_reg(IC_T64, cu->data_reg);
                         ic->src1 = src;
-                        result = ic_stk(rt, 0, IcStkArea_None, ic->src0.reg);
+                        src = ic_stk(rt, 0, IcStkArea_None, ic->src0.reg);
+                        
+                        ic = ic_add(cu, IC_MOV);
+                        ic->src0 = ic_reg(rt, cu->data_reg);
+                        ic->src1 = src;
+                        result = ic->src0;
                     }
                 } break;
                 
@@ -1123,7 +1151,8 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             
             Type* function_type = expr->Call_Expr.function_type;
             result = convert_function_call_to_intermediate_code(cu, function_type, args, 
-                                                                expr->Call_Expr.ident);
+                                                                expr->Call_Expr.ident,
+                                                                expr->Call_Expr.var_args);
         } break;
         
         case Ast_Cast_Expr: {
@@ -1165,8 +1194,9 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                         ic->src1 = src;
                         result = ic->src0;
                     } else {
-                        assert(0 && "invalid type cast");
+                        assert((t_dest->Basic.flags & BasicFlag_String) > 0 && "invalid type cast");
                     }
+                    
                 } else if (t_src->Basic.flags & BasicFlag_Floating) {
                     if (t_dest->Basic.flags & BasicFlag_Integer) {
                         Intermediate_Code* ic = ic_add(cu, IC_CAST_F2S);

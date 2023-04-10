@@ -328,7 +328,10 @@ struct Compilation_Unit {
     Ic_Basic_Block* bb_last;
     Ic_Basic_Block* bb_return;
     Ic_Basic_Block* bb_data;
+    
+    // TODO(Alexander): move these to different place!
     Ic_Arg_Map* locals;
+    Ic_Arg_Map* globals;
     Memory_Arena* rdata_arena;
     Memory_Arena* data_arena;
     
@@ -489,7 +492,7 @@ string_builder_push(String_Builder* sb, Ast_Decl_Modifier mods) {
 
 void
 string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spacing=0) {
-    if (!node) {
+    if (!node || node->kind == Ast_Exported_Type) {
         return;
     }
     

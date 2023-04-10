@@ -276,6 +276,7 @@ constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
     assert(is_ast_expr(ast) || 
            ast->kind == Ast_Value || 
            ast->kind == Ast_Ident || 
+           ast->kind == Ast_Exported_Type ||
            ast->kind == Ast_None);
     Value result = {};
     
@@ -435,23 +436,24 @@ constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
     return result;
 }
 
-internal bool
+internal int
 match_function_args(Type_Context* tcx,
                     Type* function_type,
                     array(Type*)* actual_args,
                     array(bool)* actual_args_is_value,
-                    bool report_error) {
+                    bool report_error,
+                    bool strict_match=false) {
     Type_Function* t_func = &function_type->Function;
     array(Type*)* formal_args = t_func->arg_types;
     smm actual_arg_count = array_count(actual_args);
     smm formal_arg_count = array_count(formal_args);
     
+    int match_score = 0;
+    
     if (actual_arg_count < t_func->first_default_arg_index ||
         (actual_arg_count > formal_arg_count && !t_func->is_variadic)) {
         return false;
     }
-    
-    bool result = true;
     
     // TODO(Alexander): nice to have: support for keyworded args, default args
     for_array_v(actual_args, actual_type, arg_index) {
@@ -467,20 +469,36 @@ match_function_args(Type_Context* tcx,
         
         
         if (actual_type) {
-            if (formal_type && !type_check_assignment(tcx, formal_type, actual_type, arg_is_value,
-                                                      empty_span, Op_Assign, report_error)) {
-                result = false;
-                break;
+            bool exact_match = formal_type && type_equals(formal_type, actual_type);
+            if (exact_match) {
+                match_score++;
+            }
+            
+            if (strict_match) {
+                if (!exact_match) {
+                    if (report_error) {
+                        type_error_mismatch(tcx, formal_type, actual_type, empty_span);
+                    }
+                    match_score = 0;
+                    break;
+                }
+            } else {
+                if (formal_type && !type_check_assignment(tcx, formal_type, actual_type, arg_is_value,
+                                                          empty_span, Op_Assign, report_error)) {
+                    match_score = 0;
+                    break;
+                }
             }
         } else {
-            result = false;
+            match_score = 0;
             break;
         }
         
+        match_score++;
         arg_index++;
     }
     
-    return result;
+    return match_score;
 }
 
 internal Ast*
@@ -856,16 +874,21 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             }
             
             if (ident) {
+                int highest_score = 0;
+                
                 Overloaded_Function_List* overload = &map_get(tcx->overloaded_functions, ident);
                 if (overload && overload->is_valid) {
                     for_array_v(overload->functions, overload_func, _) {
-                        if (match_function_args(tcx, 
-                                                overload_func,
-                                                actual_arg_types,
-                                                actual_arg_is_value,
-                                                false)) {
+                        int score = match_function_args(tcx, 
+                                                        overload_func,
+                                                        actual_arg_types,
+                                                        actual_arg_is_value,
+                                                        false);
+                        
+                        if (score > highest_score) {
+                            highest_score = score;
+                            //pln("highest score = %", f_int(highest_score));
                             function_type = overload_func;
-                            break;
                         }
                     }
                     
@@ -1685,15 +1708,17 @@ save_type_declaration(Type_Context* tcx, string_id ident, Type* type, Span span,
                     if (match_function_args(tcx, overloaded_fn, 
                                             type->Function.arg_types,
                                             0,
-                                            report_error)) {
+                                            report_error, true)) {
                         
                         // TODO(Alexander): we might not have stored the unit yet so this error isn't going to do anything
                         if (overloaded_fn->Function.unit) {
-                            if (type->Function.unit) {
+                            //if (type->Function.unit) {
+                            if (report_error) {
                                 type_error(tcx,
                                            string_print("cannot redeclare function `%` with the same arguments", 
                                                         f_var(type->Function.ident)), span);
                             }
+                            return 0;
                         } else {
                             // TODO(Alexander): we need to better keep track of where default arguments are stored.
                             overloaded_fn->Function.unit = type->Function.unit;
@@ -1705,8 +1730,8 @@ save_type_declaration(Type_Context* tcx, string_id ident, Type* type, Span span,
                     }
                 }
                 
-                //pln("Added overload `%`", f_type(type));
                 array_push(overload->functions, type);
+                pln("Added overload `%`", f_type(type));
                 
             } else if (type->kind == TypeKind_Struct &&
                        old_type->kind == TypeKind_Struct) {

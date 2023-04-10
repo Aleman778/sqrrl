@@ -12,9 +12,10 @@ _convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg de
         (type->kind == TypeKind_Basic && type->Basic.kind == Basic_string)) {
         
         if (type->size > 8) {
-            assert(!store_inplace || (dest.type & IC_STK_RIP));
             
             if (store_inplace) {
+                assert(dest.type & IC_STK_RIP);
+                
                 if (src.type) {
                     Intermediate_Code* ic = _ic_add(cu, IC_MEMCPY, comment);
                     ic->dest = dest;
@@ -33,6 +34,8 @@ _convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg de
                     }
                 }
             } else {
+                assert(dest.type != 0);
+                
                 _ic_lea(cu, dest, src, comment);
             }
         } else {
@@ -727,7 +730,6 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             
             string_id ident = ast_unwrap_ident(expr);
             if (map_key_exists(cu->locals, ident)) {
-                Ic_Raw_Type raw_type = convert_type_to_raw_type(type);
                 result = map_get(cu->locals, ident);
                 
             } else {
@@ -739,19 +741,25 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     
                 } else {
                     // Global variable
-                    Ic_Raw_Type raw_type = convert_type_to_raw_type(type);
-                    void* data = get_interp_value_pointer(cu->interp, ident);
-                    if (!data) {
-                        Type_Context tcx = {};
-                        type_error(&tcx, string_print("compiler bug: value of `%` is void", f_var(ident)), expr->span);
-                        //pln();
-                        assert(0);
+                    if (map_key_exists(cu->globals, ident)) {
+                        result = map_get(cu->globals, ident);
+                        
+                    } else {
+                        
+                        Ic_Raw_Type raw_type = convert_type_to_raw_type(type);
+                        void* data = get_interp_value_pointer(cu->interp, ident);
+                        if (!data) {
+                            Type_Context tcx = {};
+                            type_error(&tcx, string_print("compiler bug: value of `%` is void", f_var(ident)), expr->span);
+                            assert(0);
+                        }
+                        
+                        void* dest = arena_push_size(cu->data_arena, type->size, type->align);
+                        memcpy(dest, data, type->size);
+                        
+                        result = ic_rip_disp32(raw_type, IcDataArea_Globals, cu->data_arena, dest);
+                        map_put(cu->globals, ident, result);
                     }
-                    
-                    void* dest = arena_push_size(cu->rdata_arena, type->size, type->align);
-                    memcpy(dest, data, type->size);
-                    
-                    result = ic_rip_disp32(raw_type, IcDataArea_Globals, cu->data_arena, dest);
                 }
             }
         } break;
@@ -906,79 +914,6 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             add_ic->src1 = index;
             
             result = ic_stk(convert_type_to_raw_type(type), 0, IcStkArea_None, arr.reg);
-            
-#if 0
-            Type* type = expr->type;
-            Type* array_type = expr->Index_Expr.array->type;
-            
-            
-            Ic_Raw_Type rt = convert_type_to_raw_type(type);
-            Ic_Arg arr = convert_expr_to_intermediate_code(cu, expr->Index_Expr.array);
-            Intermediate_Code* ic_curr = cu->ic_last;
-            
-            Ic_Arg index = convert_expr_to_intermediate_code(cu, expr->Index_Expr.index);
-            arr = ic_clobber_register(cu, ic_curr, array_type, arr, index);
-            
-            if (array_type->kind == TypeKind_Pointer ||
-                (array_type->kind == TypeKind_Array &&
-                 (array_type->Array.capacity == 0 || array_type->Array.is_dynamic))) {
-                
-                // Array is stored as pointer or "wide" pointer
-                Ic_Arg tmp = ic_reg(arr.raw_type, cu->data_reg);
-                ic_mov(cu, tmp, arr);
-                arr = ic_stk(tmp.raw_type, 0, IcStkArea_None, tmp.reg);
-            }
-            // else if (array_type->kind == TypeKind_Pointer) {
-            // Ic_Arg tmp = ic_reg(arr.raw_type, cu->data_reg);
-            // ic_mov(cu, tmp, arr);
-            // arr = ic_stk(tmp.raw_type, 0, IcStkArea_None, tmp.reg);
-            // }
-            
-            // Array is stored in place
-            result = arr;
-            result.raw_type = rt;
-            if (result.type & IC_STK) {
-                if (index.type & IC_DISP) {
-                    result.disp += type->size * index.disp;
-                } else {
-                    if (index.type & IC_STK) {
-                        Ic_Arg tmp = ic_reg(index.raw_type);
-                        ic_mov(cu, tmp, index);
-                        index = tmp;
-                    }
-                    
-                    // TODO(Alexander): add support for SIB
-                    //if (x64_is_scalar_type(type->size)) {
-                    //SIB: RSP + RBP * scale
-                    //result.scale = (u8) intrin_index_of_first_set_bit(type->size);
-                    //result.index = index.reg;
-                    //}
-                    
-                    if (type->size > 1) {
-                        Intermediate_Code* mul_ic = ic_add(cu, IC_MUL);
-                        mul_ic->dest = ic_reg(IC_S64);
-                        mul_ic->src0 = index;
-                        mul_ic->src1 = ic_imm(IC_S64, type->size);
-                        index = mul_ic->dest;
-                    }
-                    index.raw_type = arr.raw_type;
-                    
-                    Intermediate_Code* add_ic = ic_add(cu, IC_ADD);
-                    add_ic->dest = index;
-                    add_ic->src0 = index;
-                    add_ic->src1 = ic_reg(IC_S64, arr.reg);
-                    
-                    result.reg = add_ic->dest.reg;
-                }
-            } else {
-                if (index.type & IC_DISP) {
-                    result.disp += type->size * index.disp;
-                } else {
-                    unimplemented;
-                }
-            }
-            
-#endif
         } break;
         
         case Ast_Unary_Expr: {
@@ -989,8 +924,6 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 
                 return convert_function_call_to_intermediate_code(cu, expr->Unary_Expr.overload, args, 0);
             }
-            
-            
             
             Ic_Arg src = convert_expr_to_intermediate_code(cu, expr->Unary_Expr.first);
             Ic_Raw_Type rt = convert_type_to_raw_type(expr->type);
@@ -1077,20 +1010,21 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 
                 case Op_Dereference: {
                     if (src.type & IC_REG) {
-                        Intermediate_Code* ic = ic_add(cu, IC_MOV);
-                        ic->src0 = ic_reg(rt, cu->data_reg);
-                        ic->src1 = src;
-                        result = ic->src0;
+                        result = ic_stk(rt, 0, IcStkArea_None, src.reg);
+                        //Intermediate_Code* ic = ic_add(cu, IC_MOV);
+                        //ic->src0 = ic_reg(rt, cu->data_reg);
+                        //ic->src1 = src;
+                        //result = ic->src0;
                     } else {
                         Intermediate_Code* ic = ic_add(cu, IC_MOV);
                         ic->src0 = ic_reg(IC_T64, cu->data_reg);
                         ic->src1 = src;
-                        src = ic_stk(rt, 0, IcStkArea_None, ic->src0.reg);
+                        result= ic_stk(rt, 0, IcStkArea_None, ic->src0.reg);
                         
-                        ic = ic_add(cu, IC_MOV);
-                        ic->src0 = ic_reg(rt, cu->data_reg);
-                        ic->src1 = src;
-                        result = ic->src0;
+                        //ic = ic_add(cu, IC_MOV);
+                        //ic->src0 = ic_reg(rt, cu->data_reg);
+                        //ic->src1 = src;
+                        //result = ic->src0;
                     }
                 } break;
                 
@@ -1214,6 +1148,9 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                         assert(0 && "invalid type cast");
                     }
                 } else if (t_src->Basic.kind == Basic_cstring) {
+                } else if (t_src->Basic.kind == Basic_string) {
+                    result = ic_reg(result.raw_type);
+                    ic_mov(cu, result, src);
                 } else {
                     unimplemented;
                 }
@@ -2235,7 +2172,7 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
             } break;
             
             case IC_MOVZX: {
-                assert(ic->src1.type & (IC_STK | IC_REG));
+                assert(ic->src1.type & IC_STK_RIP_REG);
                 
                 if (ic->src1.type & IC_T8) {
                     if (ic->src0.reg & 8) {

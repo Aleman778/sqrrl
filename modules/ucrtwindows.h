@@ -16,6 +16,10 @@ extern {
     @extern_name("roundf") f32 _round_f32(f32 num);
     @extern_name("floorf") f32 _floor_f32(f32 num);
     @extern_name("ceilf")  f32 _ceil_f32(f32 num);
+    
+    void* calloc(umm num, umm size);
+    void memcpy(void* dest, void* src, umm size);
+    void memset(void* dest, int byte, umm size);
 }
 
 @link("ucrtbase.dll")

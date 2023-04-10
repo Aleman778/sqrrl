@@ -170,6 +170,7 @@ enum {
 typedef u8 Ic_Type_Flags;
 
 #define IC_STK_RIP (IC_STK | IC_RIP_DISP32)
+#define IC_STK_RIP_REG (IC_STK | IC_RIP_DISP32 | IC_REG)
 #define IC_DISP_STK_RIP (IC_DISP | IC_STK | IC_RIP_DISP32)
 
 #define IC_TF_MASK 0xFF00

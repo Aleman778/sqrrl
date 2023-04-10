@@ -64,9 +64,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         // TODO(Alexander): temporary files for testing
         //filepath = string_lit("../personal/first.sq");
         //filepath = string_lit("../modules/basic.sq");
-        //filepath = string_lit("../../platformer/code/win32_platform.cpp");
+        filepath = string_lit("../../platformer/code/win32_platform.cpp");
         //filepath = string_lit("../examples/backend_test.sq");
-        filepath = string_lit("../examples/raytracer/first.cpp");
+        //filepath = string_lit("../examples/raytracer/first.cpp");
         //filepath = string_lit("../tests/preprocessor.sq");
         
         //filepath = string_lit("../examples/simple.cpp");
@@ -281,10 +281,13 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         arena_push_size(&rdata_arena, 8, 8); // null entry
     }
     
+    Ic_Arg_Map* x64_globals = 0;
+    
     Compilation_Unit* main_cu = 0;
     for_array(ast_file.units, cu, _2) {
         cu->rdata_arena = &rdata_arena;
         cu->data_arena = &data_arena;
+        cu->globals = x64_globals;
         if (cu->ast->kind == Ast_Decl_Stmt) {
             Type* type = cu->ast->type;
             if (type->kind == TypeKind_Function) {
@@ -296,6 +299,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 }
             }
         }
+        
+        x64_globals = cu->globals;
     }
     assert(main_cu);
     

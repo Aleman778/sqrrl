@@ -271,9 +271,9 @@ main() {
         int buffer_memory_size = (texture.width*texture.height)*4*4;
         texture.data = (f32*) VirtualAlloc(0, buffer_memory_size, MEM_COMMIT, PAGE_READWRITE);
         
+        //debug_break();//pln("is_running = %", is_running);
         int i = 0;
         while (is_running) {
-            
             {
                 Game_Controller new_controller = {};
                 new_controller.move_up.ended_down = controller.move_up.ended_down;

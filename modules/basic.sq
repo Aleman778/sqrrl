@@ -21,8 +21,8 @@ __assert(cstring expression, string file, smm line) {
 
 
 // TODO(Alexander): we only have windows support atm. later on we import the correct header
-#include "basic_windows.sq"
-#include "ucrtwindows.h"
+#include <basic_windows.sq>
+#include <ucrtwindows.h>
 
 f32
 cos(f32 num) {

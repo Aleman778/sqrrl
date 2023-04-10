@@ -39,6 +39,10 @@ commands = {
     .win = "cd build && sqrrl.exe",
     .linux = "build/sqrrl",
     .mac = "build/sqrrl", },
+  .run_build = { .out = "*run*", .footer_panel = false, .save_dirty_files = false,
+    .win = "cd build && sqrrl.exe && simple.exe",
+    .linux = "build/sqrrl",
+    .mac = "build/sqrrl", },
   .run_all_tests = { .out = "*run*", .footer_panel = false, .save_dirty_files = false,
     .win = "cd build && sqrrl.exe test",
     .linux = "build/sqrrl test",
@@ -53,6 +57,7 @@ fkey_command = {
   .F1 = "build",
   .F2 = "run",
   .F3 = "build_release",
+  .F4 = "run_build",
   .F5 = "run_personal",
   .F9 = "run_all_tests",
 };

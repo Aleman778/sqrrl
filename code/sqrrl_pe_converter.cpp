@@ -386,7 +386,7 @@ convert_to_pe_executable(Memory_Arena* arena,
         header->number_of_sections++; // added .data
     }
     
-    // Create base relocation table (for Type_Info_Packer
+    // Create base relocation table (for Type_Info_Packer)
     Memory_Arena reloc_arena = {};
     if (array_count(type_info_packer->relocations) > 0) {
         COFF_Base_Relocation_Table* reloc_table = arena_push_struct(&reloc_arena, COFF_Base_Relocation_Table);

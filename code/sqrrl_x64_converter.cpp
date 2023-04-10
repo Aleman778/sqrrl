@@ -230,6 +230,45 @@ convert_function_call_to_intermediate_code(Compilation_Unit* cu,
         int arg_index = 0;
         {
             for_array_v(args, arg, _) {
+                {
+                    Ic_Raw_Type rt = convert_type_to_raw_type(arg->type);
+                    s64 disp = stk_args;
+                    stk_args += 8;
+                    Ic_Arg dest = ic_stk(rt, disp, IcStkArea_Args);
+                    
+                    X64_Arg_Copy copy = {};
+                    copy.type = arg->type;
+                    copy.expr = arg;
+                    copy.dest = dest;
+                    
+                    bool precompute_arg = false;
+                    
+                    
+                    if (arg->kind == Ast_Call_Expr) {
+                        precompute_arg = true;
+                    }
+                    
+                    if (arg->kind == Ast_Binary_Expr && arg->Binary_Expr.overload) {
+                        precompute_arg = true;
+                    }
+                    
+                    if (arg->kind == Ast_Unary_Expr && arg->Unary_Expr.overload) {
+                        precompute_arg = true;
+                    }
+                    
+                    if (precompute_arg) {
+                        // TODO(Alexander): we can also have call within binary expr etc. e.g. bar(1 + foo())
+                        // NOTE(Alexander): unroll inner function calls and evaulate them before the
+                        //                  rest of the arguments.
+                        Ic_Arg src = convert_expr_to_intermediate_code(cu, arg);
+                        Ic_Arg src_dest = ic_push_local(cu, arg->type);
+                        convert_assign_to_intermediate_code(cu, arg->type, src_dest, src, true);
+                        copy.src = src_dest;
+                    }
+                    
+                    array_push(copy_args, copy);
+                    arg_index++;
+                }
                 
                 // Var args
                 if (var_args && t_func->is_variadic && arg_index == array_count(t_func->arg_types) - 1) {
@@ -254,53 +293,13 @@ convert_function_call_to_intermediate_code(Compilation_Unit* cu,
                     array_push(copy_args, copy);
                     arg_index++;
                 }
-                
-                
-                
-                Ic_Raw_Type rt = convert_type_to_raw_type(arg->type);
-                s64 disp = stk_args;
-                stk_args += 8;
-                Ic_Arg dest = ic_stk(rt, disp, IcStkArea_Args);
-                
-                X64_Arg_Copy copy = {};
-                copy.type = arg->type;
-                copy.expr = arg;
-                copy.dest = dest;
-                
-                bool precompute_arg = false;
-                
-                
-                if (arg->kind == Ast_Call_Expr) {
-                    precompute_arg = true;
-                }
-                
-                if (arg->kind == Ast_Binary_Expr && arg->Binary_Expr.overload) {
-                    precompute_arg = true;
-                }
-                
-                if (arg->kind == Ast_Unary_Expr && arg->Unary_Expr.overload) {
-                    precompute_arg = true;
-                }
-                
-                if (precompute_arg) {
-                    // TODO(Alexander): we can also have call within binary expr etc. e.g. bar(1 + foo())
-                    // NOTE(Alexander): unroll inner function calls and evaulate them before the
-                    //                  rest of the arguments.
-                    Ic_Arg src = convert_expr_to_intermediate_code(cu, arg);
-                    Ic_Arg src_dest = ic_push_local(cu, arg->type);
-                    convert_assign_to_intermediate_code(cu, arg->type, src_dest, src, true);
-                    copy.src = src_dest;
-                }
-                
-                array_push(copy_args, copy);
-                arg_index++;
             }
         }
         
         if (arg_index < array_count(t_func->arg_types)) {
             for_array_v(t_func->default_args, arg, index) {
                 int default_arg_index = t_func->first_default_arg_index + index;
-                if (arg_index < default_arg_index) {
+                if (default_arg_index >= arg_index) {
                     
                     Type* type = arg->type;
                     Ic_Raw_Type rt = convert_type_to_raw_type(arg->type);
@@ -771,16 +770,19 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
         case Ast_Aggregate_Expr: {
             Type* type = expr->type;
             
+            // TODO(Alexander): OPTIMIZATION - we should store this in read only data!!!
+            // The non-constant fields shouldn't be set here!!!
             
             void* data = 0;
             if (is_valid_ast(expr->Aggregate_Expr.elements->Compound.node)) {
-                data = arena_push_size(cu->rdata_arena, type->size, type->align);
+                data = arena_push_size(cu->data_arena, type->size, type->align);
+                //__debugbreak();
                 convert_aggregate_literal_to_memory(expr, data);
             }
             
             
             if (data) {
-                result = ic_rip_disp32(IC_T64, IcDataArea_Read_Only, cu->rdata_arena, data);
+                result = ic_rip_disp32(IC_T64, IcDataArea_Globals, cu->data_arena, data);
                 
                 // Write to non-constant fields
                 Ic_Arg result_dest = {};

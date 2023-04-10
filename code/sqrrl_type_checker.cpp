@@ -1731,7 +1731,7 @@ save_type_declaration(Type_Context* tcx, string_id ident, Type* type, Span span,
                 }
                 
                 array_push(overload->functions, type);
-                pln("Added overload `%`", f_type(type));
+                //pln("Added overload `%`", f_type(type));
                 
             } else if (type->kind == TypeKind_Struct &&
                        old_type->kind == TypeKind_Struct) {

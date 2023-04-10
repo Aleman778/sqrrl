@@ -17,6 +17,7 @@
 #include "sqrrl_interp.cpp"
 #include "sqrrl_x64_converter.cpp"
 #include "sqrrl_pe_converter.cpp"
+#include "sqrrl_pdb_converter.cpp"
 
 typedef int asm_main(void);
 typedef f32 asm_f32_main(void);
@@ -29,6 +30,11 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     //srand((uint) time(0));
     //rand();
     
+#if 0
+    // TODO(Alexander): dumb example to print PDBs (turns out they suck, unspecified + no docs)
+    dump_pdb();
+    return 0;
+#else
     
     
     {
@@ -456,4 +462,5 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
 #endif
     
     return 0;
+#endif
 }

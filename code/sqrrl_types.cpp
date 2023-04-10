@@ -43,7 +43,6 @@ export_var_args_info(Type_Info_Packer* packer, int var_arg_start, Ast* actual_ar
         arg_index++;
     }
     
-    
     return result;
 }
 

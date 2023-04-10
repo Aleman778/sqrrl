@@ -205,15 +205,12 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
         // Push null entry
         arena_push_struct(rdata_arena, COFF_Import_Directory_Table, ArenaPushFlag_Align_From_Zero);
         opt_header->import_table.size = (u32) arena_total_used(rdata_arena) - idt_base;
-        pln("SIZE: %", f_u32(opt_header->import_table.size));
         
         COFF_Import_Directory_Table* entry = idt;
         
         for_map(import_table->libs, it) {
             string library_name = vars_load_string(it->key);
             array(Library_Function)* import_names = it->value.functions;
-            
-            pln("SETUP IMPORT -> %", f_u64_HEX(entry));
             
             // Lookup table
             u64* lookup_table = 0;
@@ -232,8 +229,8 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
                     block = block->prev_block;
                 }
                 
-                pln("address_table = %, external_address = %", f_u64_HEX(address_table),
-                    f_u64_HEX(cu->external_address));
+                //pln("address_table = %, external_address = %", f_u64_HEX(address_table),
+                //f_u64_HEX(cu->external_address));
             }
             
             for_array(import_names, ident, _) {
@@ -267,7 +264,7 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
             void* library_name_dest = arena_push_size(rdata_arena, library_name.count + 1, 8);
             memcpy(library_name_dest, library_name.data, library_name.count);
             entry->name_rva = ptr_to_rva(virtual_base, rdata_arena, library_name_dest);
-            pln("LIB: %", f_string(library_name));
+            //pln("LIB: %", f_string(library_name));
             
             entry++;
         }
@@ -365,7 +362,6 @@ convert_to_pe_executable(Memory_Arena* arena,
     push_coff_import_directory_table(rdata_arena, opt_header,
                                      import_table, opt_header->size_of_image);
     u32 rdata_size = (u32) arena_total_used(rdata_arena);
-    pln("%", f_u32(rdata_size));
     if (rdata_size > 0) {
         rdata_section = push_coff_section(arena, opt_header, COFF_RDATA_SECTION, rdata_size,
                                           COFF_SCN_CNT_INITIALIZED_DATA | COFF_SCN_MEM_READ);
@@ -401,8 +397,8 @@ convert_to_pe_executable(Memory_Arena* arena,
                                                data_section->virtual_address + 
                                                reloc->to);
             
-            pln("\nRelocation: \n  from_ptr = % (%)\n  from = %\n  to = %", f_u64_HEX(reloc->from_ptr),
-                f_u64_HEX(*((u64*) reloc->from_ptr)), f_u64_HEX(reloc->from), f_u64_HEX(reloc->to));
+            //pln("\nRelocation: \n  from_ptr = % (%)\n  from = %\n  to = %", f_u64_HEX(reloc->from_ptr),
+            //f_u64_HEX(*((u64*) reloc->from_ptr)), f_u64_HEX(reloc->from), f_u64_HEX(reloc->to));
             
         }
         reloc_table->block_size = (u32) arena_total_used(&reloc_arena);

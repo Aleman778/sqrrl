@@ -5,6 +5,7 @@ bool
 __assert(cstring expression, string file, smm line) {
     // TODO(Alexander): improve assertion printing.
     print("%:%: Assertion failed: %\n", file, line, expression);
+    //_put_string("Assertion failed!");
     //DEBUG_log_backtrace();
     
     // Flush the standard streams make sure we get all debug data
@@ -250,6 +251,11 @@ data_to_f64(Basic_Type_Info info, void* data) {
 
 void
 print_signed_integer(s64 integer) {
+    if (integer == 0) {
+        _put_string("0");
+        return;
+    }
+    
     [20]u8 result;
     int ptr = result.count;
     
@@ -287,16 +293,15 @@ print(string format, ...var_args) {
     
     string substring;
     substring.data = format.data;
-    substring.count = 0;//format.count;
+    substring.count = 0;
     
     for (smm chr_index; chr_index < format.count; chr_index++) {
         u8 chr = format.data[chr_index];
+        
         if (chr == '%') {
-            pln("cmp % < %", var_args_index, var_args.types.count);
-            
-            if (var_args_index < var_args.types.count) {
+            smm cnt = var_args.types.count;
+            if (var_args_index < cnt) {
                 _put_string(substring);
-                
                 substring.data = format.data + chr_index + 1;
                 substring.count = 0;
                 
@@ -340,18 +345,21 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                 case Basic_Type_Info.U16:
                 case Basic_Type_Info.U32:
                 case Basic_Type_Info.U64: {
-                    print("%llu", data_to_u64(type.Basic, data));
+                    //print("%llu", data_to_u64(type.Basic, data));
                 }
                 
                 case Basic_Type_Info.F32:
                 case Basic_Type_Info.F64: {
-                    print("%f", data_to_f64(type.Basic, data));
+                    //print("%f", data_to_f64(type.Basic, data));
                 }
                 
                 case Basic_Type_Info.String: {
-                    string* sp = (string*) data;
-                    string s = *sp;
-                    //assert(0, "testing 1 2 3");
+                    string** spp = (string**) data;
+                    string* sp = *spp;
+                    string s;
+                    s.data = sp.data;
+                    s.count = sp.count;
+                    _put_string(s);
                 }
                 
                 case Basic_Type_Info.CString: {
@@ -361,6 +369,9 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                     _put_string(s);
                 }
             }
+        }
+        
+        case Type_Kind.Pointer: {
         }
         
         case Type_Kind.Enum: {

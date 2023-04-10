@@ -99,7 +99,7 @@ convert_aggregate_literal_to_memory(Ast* expr, void* dest) {
             
             if (assign->kind == Ast_Aggregate_Expr) {
                 convert_aggregate_literal_to_memory(assign, (u8*) dest + info.offset);
-            } else if (assign->kind != Ast_Value) {
+            } else if (assign->kind == Ast_Value) {
                 value_store_in_memory(info.type, (u8*) dest + info.offset, assign->Value.data);
             }
             

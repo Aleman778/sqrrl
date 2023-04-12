@@ -18,7 +18,7 @@ VAR(false)    \
 VAR(for)      \
 VAR(global)   \
 VAR(extern)   \
-VAR(intern)   \
+VAR(internal) \
 VAR(if)       \
 VAR(in)       \
 VAR(inline)   \

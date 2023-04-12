@@ -6,6 +6,48 @@ void
 _convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg dest, Ic_Arg src,
                                      bool store_inplace, cstring comment=0) {
     
+    
+    if (type->size > 8) {
+        if (store_inplace) {
+            assert(dest.type & IC_STK_RIP);
+            
+            if (src.type) {
+                Intermediate_Code* ic = _ic_add(cu, IC_MEMCPY, comment);
+                ic->dest = dest;
+                ic->src0 = src;
+                ic->src1 = ic_imm(0, type->size);
+                
+            } else {
+                Intermediate_Code* ic = _ic_add(cu, IC_MEMSET, comment);
+                ic->dest = dest;
+                ic->src0 = ic_imm(IC_U8, 0);
+                ic->src1 = ic_imm(0, type->size);
+            }
+        } else {
+            assert(dest.type != 0);
+            _ic_lea(cu, dest, src, comment);
+        }
+    } else {
+        if (src.type) {
+            if (type->kind == TypeKind_Basic && type->Basic.kind == Basic_cstring && src.type & IC_RIP_DISP32) {
+                ic_lea(cu, dest, src);
+                
+            } else {
+                _ic_mov(cu, dest, src, comment);
+            }
+        } else {
+            if (dest.type & IC_FLOAT) {
+                Intermediate_Code* ic = _ic_add(cu, IC_FXOR, comment);
+                ic->dest = dest;
+                ic->src0 = ic_reg(dest.raw_type, X64_XMM0);
+                ic->src1 = ic_reg(dest.raw_type, X64_XMM0);
+            } else {
+                _ic_mov(cu, dest, ic_imm(dest.raw_type, 0), comment);
+            }
+        }
+    }
+    
+#if 0
     if (type->kind == TypeKind_Array || 
         type->kind == TypeKind_Struct || 
         type->kind == TypeKind_Union || 
@@ -40,7 +82,12 @@ _convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg de
             }
         } else {
             if (src.type) {
-                _ic_mov(cu, dest, src, comment);
+                if (type->kind == TypeKind_Basic && type->Basic.kind == Basic_cstring && src.type & IC_RIP_DISP32) {
+                    ic_lea(cu, dest, src);
+                    
+                } else {
+                    _ic_mov(cu, dest, src, comment);
+                }
             } else {
                 if (dest.type & IC_FLOAT) {
                     Intermediate_Code* ic = _ic_add(cu, IC_FXOR, comment);
@@ -65,6 +112,7 @@ _convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg de
             _ic_mov(cu, dest, src, comment);
         }
     }
+#endif;
 }
 
 internal Ic_Arg
@@ -1865,9 +1913,15 @@ x64_div(Intermediate_Code* ic, bool remainder, s64 rip) {
     
     x64_mov(ic, ic->src0.raw_type + IC_REG, X64_RAX, 0, ic->src0.type, ic->src0.reg, ic->src0.disp, rip);
     x64_mov(ic, ic->src1.raw_type + IC_REG, X64_RCX, 0, ic->src1.type, ic->src1.reg, ic->src1.disp, rip);
+    if (ic->src0.type & IC_T64) {
+        x64_rex(ic, REX_FLAG_64_BIT);
+    }
     ic_u8(ic, 0x99); // CDQ
     
     // F7 /6 	DIV r/m32 	M
+    if (ic->src0.type & IC_T64) {
+        x64_rex(ic, REX_FLAG_64_BIT);
+    }
     ic_u8(ic, 0xF7);
     ic_u8(ic, ((ic->src0.type & IC_UINT) ? 0xF0 : 0xF8) | (u8) X64_RCX);
     
@@ -1883,7 +1937,7 @@ x64_float_binary(Intermediate_Code* ic, u8 opcode, s64 rip, s64 prefix_opcode=-1
     s64 d1 = ic->src0.disp, d2 = ic->src1.disp;
     assert(t1 & IC_FLOAT);
     // NOTE(Alexander): assumes destination to be a register
-    assert(ic->dest.type & IC_REG);
+    //assert(ic->dest.type & IC_REG);
     
     // Make sure first argument is a register
     if (t1 & IC_DISP_STK_RIP) {
@@ -1918,7 +1972,8 @@ x64_float_binary(Intermediate_Code* ic, u8 opcode, s64 rip, s64 prefix_opcode=-1
     x64_modrm(ic, t2, d2, r1, r2, rip);
     
     if (!(ic->dest.type == t1 && ic->dest.reg == r1)) {
-        x64_fmov(ic, ic->dest.type, ic->dest.reg, 0, t1, r1, d1, rip);
+        // TODO(Alexander): check displacement too, if both are STK
+        x64_fmov(ic, ic->dest.type, ic->dest.reg, ic->dest.disp, t1, r1, d1, rip);
     }
     
 }

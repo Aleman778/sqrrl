@@ -1949,7 +1949,7 @@ parse_top_level_declaration(Parser* parser, Ast_File* ast_file) {
             } continue;
             
             // TODO(alexander): we might want to change this to annotation syntax
-            case Kw_intern: {
+            case Kw_internal: {
                 next_token(parser);
                 // TODO(alexander): check if we already have internal bit set
                 mods |= AstDeclModifier_Internal;

@@ -2000,3 +2000,11 @@ extern {
     BOOL WINAPI SetConsoleMode(HANDLE hConsoleHandle,
                                DWORD  dwMode);
 }
+
+/**
+* Processthreadsapi.h
+*/
+@link("kernel32.dll")
+extern {
+    void ExitProcess(UINT uExitCode);
+}

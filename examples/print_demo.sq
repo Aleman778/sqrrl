@@ -1,0 +1,32 @@
+
+#include <basic.sq>
+
+
+int
+main() {
+    
+    pln("Booleans: %, %", false, true);
+    
+    u8 uint8 = 123;
+    u16 uint16 = 2345;
+    u32 uint32 = 1_234_567_892;
+    u64 uint64 = 1_234_567_892_130;
+    pln("Unsigned integers:  %,  %,  %,  %", uint8, uint16, uint32, uint64);
+    
+    s8 sint8 = -123;
+    s16 sint16 = -2345;
+    s32 sint32 = -1_234_567_892;
+    s64 sint64 = -1_234_567_892_130;
+    pln("Signed integers:   %, %, %, %", sint8, sint16, sint32, sint64);
+    
+    f32 float32 = 1425.031302f;
+    f64 float64 = 1425.031302;
+    pln("Floating-point: %, %", float32, float64);
+    
+    // TODO(Alexander): broken!
+    //cstring cstr = "I love C programming language";
+    //pln("CString: %", cstr);
+    
+    string str = "I love Sqrrl programming language";
+    pln("String: %", str);
+}

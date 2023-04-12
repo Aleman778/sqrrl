@@ -179,7 +179,7 @@ type_info(Type type) {
     return (Type_Info*) type;
 }
 
-void
+internal void
 print_newline_with_spaces(int count) {
     print("\n");
     for (int i = 0; i < count; i++) {
@@ -187,7 +187,7 @@ print_newline_with_spaces(int count) {
     }
 }
 
-s64
+internal s64
 data_to_s64(Basic_Type_Info info, void* data) {
     switch (info) {
         case Basic_Type_Info.S8: {
@@ -210,7 +210,7 @@ data_to_s64(Basic_Type_Info info, void* data) {
     return 0;
 }
 
-u64
+internal u64
 data_to_u64(Basic_Type_Info info, void* data) {
     switch (info) {
         case Basic_Type_Info.U8: {
@@ -233,8 +233,7 @@ data_to_u64(Basic_Type_Info info, void* data) {
     return 0;
 }
 
-
-f64
+internal f64
 data_to_f64(Basic_Type_Info info, void* data) {
     switch (info) {
         case Basic_Type_Info.F32: {
@@ -249,8 +248,9 @@ data_to_f64(Basic_Type_Info info, void* data) {
     return 0.0f;
 }
 
-void
-print_signed_integer(s64 integer) {
+internal void
+print_unsigned_integer(u64 integer) {
+    //debug_break();
     if (integer == 0) {
         _put_string("0");
         return;
@@ -259,29 +259,51 @@ print_signed_integer(s64 integer) {
     [20]u8 result;
     int ptr = result.count;
     
-    bool sign = false;
-    if (integer < 0) {
-        integer = -integer;
-        sign = true;
-    }
-    
     while (integer > 0) {
         u8 digit = (u8) (integer % 10);
-        //debug_break();
         result[--ptr] = '0' + digit;
-        
         integer /= 10;
-    }
-    
-    if (sign) {
-        result[--ptr] = '-';
     }
     
     string s;
     s.data = &result[ptr];
     s.count = result.count - ptr;
-    
     _put_string(s);
+}
+
+internal void
+print_signed_integer(s64 integer) {
+    if (integer < 0) {
+        integer = -integer;
+        _put_string("-");
+    }
+    
+    u64 unsigned_integer = (u64) integer;
+    print_unsigned_integer(unsigned_integer);
+}
+
+internal void
+print_floating_point(f64 floating_point) {
+    // TODO(Alexander): this is not the best implementation, improve this later
+    s64 whole_part = (s64) floating_point;
+    print_signed_integer(whole_part);
+    _put_string(".");
+    
+    f64 fractional_part = floating_point - (f64) whole_part;
+    
+    [6]u8 fractional_digits;
+    
+    for (int i = 0; i < fractional_digits.count; i++) {
+        fractional_part *= 10.0f;
+        u8 digit = (u8) fractional_part;
+        fractional_digits[i] = '0' + digit;
+        fractional_part -= (f64) digit;
+    }
+    
+    string test;
+    test.data = fractional_digits.data;
+    test.count = fractional_digits.count;
+    _put_string(test);
 }
 
 #define pln(format, ...) print(format##"\n", __VA_ARGS__)
@@ -295,7 +317,7 @@ print(string format, ...var_args) {
     substring.data = format.data;
     substring.count = 0;
     
-    for (smm chr_index; chr_index < format.count; chr_index++) {
+    for (smm chr_index = 0; chr_index < format.count; chr_index++) {
         u8 chr = format.data[chr_index];
         
         if (chr == '%') {
@@ -345,15 +367,18 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                 case Basic_Type_Info.U16:
                 case Basic_Type_Info.U32:
                 case Basic_Type_Info.U64: {
-                    //print("%llu", data_to_u64(type.Basic, data));
+                    u64 num = data_to_u64(type.Basic, data);
+                    print_unsigned_integer(num);
                 }
                 
                 case Basic_Type_Info.F32:
                 case Basic_Type_Info.F64: {
-                    //print("%f", data_to_f64(type.Basic, data));
+                    f64 num = data_to_f64(type.Basic, data);
+                    print_floating_point(num);
                 }
                 
                 case Basic_Type_Info.String: {
+                    //debug_break();
                     string** spp = (string**) data;
                     string* sp = *spp;
                     string s;
@@ -392,16 +417,16 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                 }
             }
             
-            print("%.", type.Enum.ident);
+            //print("%.", type.Enum.ident);
             if (value >= 0 && value < type.Enum.names.count) {
-                print("% (%)", type.Enum.names[value], value);
+                //print("% (%)", type.Enum.names[value], value);
             } else {
-                print("%", value);
+                //print("%", value);
             }
         }
         
         case Type_Kind.Array: {
-            print("{ ");
+            //print("{ ");
             
             smm count = type.Array.fixed_count;
             if (count < 0) {
@@ -424,7 +449,7 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                 
                 print_data_from_type_info(elem_type, (u8*) data + offset, indent + 4);
                 if (array_index + 1 < count) {
-                    print(", ");
+                    //print(", ");
                 }
             }
             
@@ -432,20 +457,24 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                 if (elem_type.kind != Type_Kind.Basic) {
                     print_newline_with_spaces(indent + 4);
                 }
-                print("...+% more", count - max_elements_to_show);
+                //print("...+% more", count - max_elements_to_show);
             }
             
             if (elem_type.kind != Type_Kind.Basic) {
                 print_newline_with_spaces(indent);
-                print("}");
+                //print("}");
             } else {
-                print(" }");
+                //print(" }");
+            }
+            
+            if (indent == 0) {
+                print("\n");
             }
         }
         
         case Type_Kind.Union:
         case Type_Kind.Struct: {
-            print("% {", type.Struct.ident);
+            //print("% {", type.Struct.ident);
             indent += 4;
             for (int field_index = 0; field_index < type.Struct.fields.count; field_index++) {
                 Struct_Field_Info field = type.Struct.fields[field_index];
@@ -454,21 +483,21 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                 }
                 
                 print_newline_with_spaces(indent);
-                print("%: ", field.ident);
+                //print("%: ", field.ident);
                 print_data_from_type_info(field.type,  (u8*) data + field.offset, indent);
                 
                 if (field_index + 1 < type.Struct.fields.count) {
-                    print(", ");
+                    //print(", ");
                 }
             }
             indent -= 4;
             print_newline_with_spaces(indent);
-            print("}");
+            //print("}");
+            
+            if (indent == 0) {
+                print("\n");
+            }
         }
-    }
-    
-    if (indent == 0) {
-        print("\n");
     }
 }
 

@@ -2,6 +2,21 @@
 #include <basic.sq>
 
 
+enum Weekday {
+    Monday,
+    Tuesday,
+    Wednesday,
+    Thursday,
+    Friday,
+    Sunday,
+    Saturday,
+}
+
+int
+print_int_array([]int arr) {
+    pln("Array (unknown size): %", arr);
+}
+
 int
 main() {
     
@@ -23,10 +38,17 @@ main() {
     f64 float64 = 1425.031302;
     pln("Floating-point: %, %", float32, float64);
     
-    // TODO(Alexander): broken!
-    //cstring cstr = "I love C programming language";
-    //pln("CString: %", cstr);
+    cstring cstr = "I love C programming language";
+    pln("CString: %", cstr);
     
     string str = "I love Sqrrl programming language";
     pln("String: %", str);
+    
+    Weekday day = Weekday.Thursday;
+    pln("Enum: %", day);
+    
+    []int fib = { 1, 1, 2, 3, 5, 8, 13, 21};
+    pln("Array (known size):   %", fib);
+    
+    print_int_array(([]int) fib);
 }

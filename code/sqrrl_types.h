@@ -435,10 +435,18 @@ struct Exported_Type {
     u32 relative_ptr;
 };
 
+struct Exported_String {
+    string str;
+    u32 relative_ptr;
+    b32 is_valid;
+};
+
 struct Type_Info_Packer {
     Memory_Arena arena;
     map(Type*, Exported_Type)* mapper;
     array(Relocation)* relocations;
+    
+    map(string_id, Exported_String)* exported_strings;
 };
 
 Exported_Type export_var_args_info(Type_Info_Packer* packer, int var_arg_start, Ast* actual_arguments);

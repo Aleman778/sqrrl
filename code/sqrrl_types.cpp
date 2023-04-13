@@ -1,4 +1,39 @@
 
+internal inline Relocation
+push_relocation(Type_Info_Packer* packer, void* from_ptr, u32 relative_from, u32 relative_to) {
+    Relocation relocation = {};
+    relocation.from_ptr = from_ptr;
+    relocation.from = relative_from;
+    relocation.to = relative_to;
+    array_push(packer->relocations, relocation);
+    return relocation;
+}
+
+internal inline string
+export_string(Type_Info_Packer* packer, string_id ident, string* from_ptr, u32 relative_from) {
+    Exported_String result = map_get(packer->exported_strings, ident);
+    if (!result.is_valid) {
+        string str = vars_load_string(ident);
+        void* data = arena_push_size(&packer->arena, str.count, 1);
+        u32 relative_data = (u32) arena_relative_pointer(&packer->arena, data);
+        memcpy(data, str.data, str.count);
+        
+        result.str.data = (u8*) data;
+        result.str.count = str.count;
+        result.relative_ptr = relative_data;
+        result.is_valid = true;
+        
+        map_put(packer->exported_strings, ident, result);
+    }
+    
+    //pln("export \"%\", rel: %, from: %", f_string(result.str), f_u32(result.relative_ptr),
+    //f_u32(relative_from));
+    push_relocation(packer, from_ptr, relative_from, result.relative_ptr);
+    *from_ptr = result.str;
+    
+    return result.str;
+}
+
 Exported_Type
 export_var_args_info(Type_Info_Packer* packer, int var_arg_start, Ast* actual_arguments) {
     Exported_Type result = {};
@@ -13,14 +48,7 @@ export_var_args_info(Type_Info_Packer* packer, int var_arg_start, Ast* actual_ar
     Type_Info** types = arena_push_array_of_structs(&packer->arena, var_arg_count, Type_Info*);
     var_args->types = types;
     u32 curr_type_relative_ptr = (u32) arena_relative_pointer(&packer->arena, types);
-    
-    {
-        Relocation relocation = {};
-        relocation.from_ptr = &var_args->types;
-        relocation.from = result.relative_ptr + 8;
-        relocation.to = curr_type_relative_ptr;
-        array_push(packer->relocations, relocation);
-    }
+    push_relocation(packer, &var_args->types, result.relative_ptr + 8, curr_type_relative_ptr);
     
     Type_Info** curr_type = types;
     int arg_index = 0;
@@ -28,12 +56,7 @@ export_var_args_info(Type_Info_Packer* packer, int var_arg_start, Ast* actual_ar
         if (arg_index >= var_arg_start) {
             
             Exported_Type exported = export_type_info(packer, argument->type);
-            
-            Relocation relocation = {};
-            relocation.from_ptr = curr_type;
-            relocation.from = curr_type_relative_ptr;
-            relocation.to = exported.relative_ptr;
-            array_push(packer->relocations, relocation);
+            push_relocation(packer, curr_type, curr_type_relative_ptr, exported.relative_ptr);
             
             var_args->count++;
             curr_type++;
@@ -86,6 +109,8 @@ export_type_info(Type_Info_Packer* packer, Type* type) {
                     arena_push_array_of_structs(&packer->arena, count, TI_Struct_Field_Info);
                 type_info->Struct.count = count;
                 
+                //push_relocation(packer, &type_info->Struct.fields, result.relative_ptr, exported.relative_ptr);
+                
                 for_array_v(type->Struct_Like.types, field_type, field_index) {
                     Exported_Type exported = export_type_info(packer, field_type);
                     TI_Struct_Field_Info* field = type_info->Struct.fields + field_index;
@@ -93,49 +118,50 @@ export_type_info(Type_Info_Packer* packer, Type* type) {
                     field->ident = vars_load_string(type->Struct_Like.idents[field_index]);
                     field->offset = type->Struct_Like.offsets[field_index];
                     
-                    Relocation relocation = {};
-                    relocation.from_ptr = &field->type;
-                    relocation.from = result.relative_ptr;
-                    relocation.to = exported.relative_ptr;
-                    array_push(packer->relocations, relocation);
+                    push_relocation(packer, &field->type, result.relative_ptr, exported.relative_ptr);
                 }
             } break;
             
             case TypeKind_Array: {
                 Exported_Type exported = export_type_info(packer, type->Array.type);
                 type_info->Array.elem_type = exported.type_info;
-                type_info->Array.elem_size = type->Array.type->size;
-                type_info->Array.fixed_count = type->Array.is_inplace ? type->Array.capacity : 0;
+                u32 offset = (u32) ((u8*) &type_info->Array.elem_type - (u8*) result.type_info);
+                push_relocation(packer, &type_info->Array.elem_type, result.relative_ptr + offset,
+                                exported.relative_ptr);
                 
-                Relocation relocation = {};
-                relocation.from_ptr = &type_info->Array.elem_type;
-                relocation.from = result.relative_ptr;
-                relocation.to = exported.relative_ptr;
-                array_push(packer->relocations, relocation);
+                type_info->Array.elem_size = type->Array.type->size;
+                type_info->Array.fixed_count = type->Array.is_inplace ? type->Array.capacity : -1;
             } break;
             
             case TypeKind_Enum: {
-                Exported_Type exported = export_type_info(packer, type->Enum.type);
-                type_info->Enum.ident = vars_load_string(type->ident);
-                type_info->Enum.type = exported.type_info;
+                u32 offset = (u32) ((u8*) &type_info->Enum.ident - (u8*) result.type_info);
+                export_string(packer, type->ident, 
+                              &type_info->Enum.ident, result.relative_ptr + offset);
                 
-                Relocation relocation = {};
-                relocation.from_ptr = &type_info->Enum.type;
-                relocation.from = result.relative_ptr;
-                relocation.to = exported.relative_ptr;
-                array_push(packer->relocations, relocation);
+                Exported_Type exported = export_type_info(packer, type->Enum.type);
+                type_info->Enum.type = exported.type_info;
+                offset = (u32) ((u8*) &type_info->Enum.type - (u8*) result.type_info);
+                push_relocation(packer, &type_info->Enum.type, 
+                                result.relative_ptr + offset,
+                                exported.relative_ptr);
                 
                 smm count = map_count(type->Enum.values);
                 string* names = arena_push_array_of_structs(&packer->arena, count, string);
+                u32 relative_names = (u32) arena_relative_pointer(&packer->arena, names);
+                offset = (u32) ((u8*) &type_info->Enum.names - (u8*) result.type_info);
+                push_relocation(packer, &type_info->Enum.names, result.relative_ptr + offset, relative_names);
                 type_info->Enum.names = names;
                 type_info->Enum.count = count;
+                
                 for_map(type->Enum.values, it) {
                     s64 value = value_to_s64(it->value);
                     //pln("% = %", f_var(it->key), f_s64(value));
+                    
+                    // TODO(Alexander): find a way to store all the enum names
                     if (value >= 0 && value < count) {
-                        names[value] = vars_load_string(it->key);
-                    } else {
-                        names[value] = string_lit("?");
+                        offset = (u32) value*sizeof(string);
+                        export_string(packer, it->key, &names[value], 
+                                      relative_names + offset);
                     }
                 }
             } break;

@@ -97,13 +97,23 @@ inline umm
 cstring_count(cstring str) {
     umm count = 0;
     u8* curr = (u8*) str;
-    while (curr) {
+    while (*curr) {
         count++;
         curr++;
     }
     return count;
 }
 
+struct Fixed_Array {
+    void* data;
+    smm count;
+};
+
+struct Dynamic_Array {
+    void* data;
+    smm count;
+    smm capacity;
+};
 
 enum Type_Kind {
     Unresolved,
@@ -330,6 +340,7 @@ print(string format, ...var_args) {
                 Type_Info* type_info = var_args.types[var_args_index];
                 print_data_from_type_info(type_info, var_arg_data);
                 var_args_index++;
+                // NOTE(Alexander): if data doesn't fit in 8 bytes, store a pointer instead
                 var_arg_data += 8;
             } else {
                 substring.count++;
@@ -378,28 +389,24 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                 }
                 
                 case Basic_Type_Info.String: {
-                    //debug_break();
-                    string** spp = (string**) data;
-                    string* sp = *spp;
-                    string s;
-                    s.data = sp.data;
-                    s.count = sp.count;
+                    // TODO(Alexander): denormalize var args
+                    string s = **((string**) data);
                     _put_string(s);
                 }
                 
                 case Basic_Type_Info.CString: {
+                    cstring cstr = *((cstring*) data);
                     string s;
-                    s.data = (u8*) data;
-                    s.count = cstring_count((cstring) data);
+                    s.data = (u8*) cstr;
+                    s.count = cstring_count(cstr);
                     _put_string(s);
                 }
             }
         }
         
-        case Type_Kind.Pointer: {
-        }
-        
         case Type_Kind.Enum: {
+            //debug_break();
+            
             s64 value = 0;
             switch (type.Enum.type.kind) {
                 case Basic_Type_Info.S8:
@@ -417,20 +424,25 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                 }
             }
             
-            //print("%.", type.Enum.ident);
+            print("%.", type.Enum.ident);
             if (value >= 0 && value < type.Enum.names.count) {
-                //print("% (%)", type.Enum.names[value], value);
+                //debug_break();
+                print("% (%)", type.Enum.names[value], value);
             } else {
-                //print("%", value);
+                print("%", value);
             }
         }
         
         case Type_Kind.Array: {
-            //print("{ ");
+            print("{ ");
             
-            smm count = type.Array.fixed_count;
-            if (count < 0) {
-                count = *((smm*) data);
+            // TODO(Alexander): find a better way to deserialize arrays
+            Fixed_Array arr;
+            if (type.Array.fixed_count >= 0) {
+                arr.data = *(void**) data;
+                arr.count = type.Array.fixed_count;
+            } else {
+                arr = **(Fixed_Array**) data;
             }
             
             Type_Info* elem_type = type.Array.elem_type;
@@ -438,7 +450,7 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
             const int max_elements_to_show = 5;
             
             for (int array_index = 0; 
-                 array_index < count && array_index < max_elements_to_show; 
+                 array_index < arr.count && array_index < max_elements_to_show; 
                  array_index++) {
                 
                 if (elem_type.kind != Type_Kind.Basic) {
@@ -447,28 +459,24 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                 
                 smm offset = type.Array.elem_size*array_index;
                 
-                print_data_from_type_info(elem_type, (u8*) data + offset, indent + 4);
-                if (array_index + 1 < count) {
-                    //print(", ");
+                print_data_from_type_info(elem_type, (u8*) arr.data + offset, indent + 4);
+                if (array_index + 1 < arr.count) {
+                    print(", ");
                 }
             }
             
-            if (count >= max_elements_to_show) {
+            if (arr.count >= max_elements_to_show) {
                 if (elem_type.kind != Type_Kind.Basic) {
                     print_newline_with_spaces(indent + 4);
                 }
-                //print("...+% more", count - max_elements_to_show);
+                print("...+% more", arr.count - max_elements_to_show);
             }
             
             if (elem_type.kind != Type_Kind.Basic) {
                 print_newline_with_spaces(indent);
-                //print("}");
+                print("}");
             } else {
-                //print(" }");
-            }
-            
-            if (indent == 0) {
-                print("\n");
+                print(" }");
             }
         }
         

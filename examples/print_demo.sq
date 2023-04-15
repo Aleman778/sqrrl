@@ -1,4 +1,3 @@
-
 #include <basic.sq>
 
 
@@ -10,6 +9,10 @@ enum Weekday {
     Friday,
     Sunday,
     Saturday,
+}
+
+struct v3 {
+    f32 x, y, z;
 }
 
 int
@@ -26,7 +29,7 @@ main() {
     u16 uint16 = 2345;
     u32 uint32 = 1_234_567_892;
     u64 uint64 = 1_234_567_892_130;
-    pln("Unsigned integers:  %,  %,  %,  %", uint8, uint16, uint32, uint64);
+    pln("\nUnsigned integers:  %,  %,  %,  %", uint8, uint16, uint32, uint64);
     
     s8 sint8 = -123;
     s16 sint16 = -2345;
@@ -34,21 +37,32 @@ main() {
     s64 sint64 = -1_234_567_892_130;
     pln("Signed integers:   %, %, %, %", sint8, sint16, sint32, sint64);
     
+    int val = 43;
+    int* val_ptr = &val;
+    pln("Pointer: % (*Pointer: %)", val_ptr, *val_ptr);
+    
     f32 float32 = 1425.031302f;
     f64 float64 = 1425.031302;
-    pln("Floating-point: %, %", float32, float64);
+    pln("\nFloating-point: %, %", float32, float64);
     
     cstring cstr = "I love C programming language";
-    pln("CString: %", cstr);
+    pln("\nCString: %", cstr);
     
     string str = "I love Sqrrl programming language";
     pln("String: %", str);
     
     Weekday day = Weekday.Thursday;
-    pln("Enum: %", day);
+    pln("\nEnum: %", day);
     
     []int fib = { 1, 1, 2, 3, 5, 8, 13, 21};
-    pln("Array (known size):   %", fib);
-    
+    pln("\nArray (known size):   %", fib);
     print_int_array(([]int) fib);
+    
+    []string strings = { "hello", "world", "foo", "bar" };
+    pln("Array (strings):   %", strings);
+    
+    v3 vector = { 10.42f, 32.0f, 100.3f };
+    pln("\nStruct: %", vector);
+    
+    return 0;
 }

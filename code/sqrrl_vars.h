@@ -127,7 +127,7 @@ typedef u32 string_id;
 
 struct String_Interner {
     string_map(string_id)* str_to_id = 0;
-    string* id_to_str = 0;
+    array(string)* id_to_str = 0;
     u32 id_counter = 0;
 };
 

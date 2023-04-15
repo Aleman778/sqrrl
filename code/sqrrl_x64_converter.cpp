@@ -756,14 +756,17 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             
             void* data = 0;
             if (is_valid_ast(expr->Aggregate_Expr.elements->Compound.node)) {
-                data = arena_push_size(cu->data_arena, type->size, type->align);
+                // TODO(Alexander): Merge the type info with data arena
+                data = arena_push_size(&cu->type_info_packer->arena, type->size, type->align);
+                //data = arena_push_size(cu->data_arena, type->size, type->align);
                 //__debugbreak();
                 convert_aggregate_literal_to_memory(expr, data);
             }
             
             
             if (data) {
-                result = ic_rip_disp32(IC_T64, IcDataArea_Globals, cu->data_arena, data);
+                result = ic_rip_disp32(IC_T64, IcDataArea_Type_Info, 
+                                       &cu->type_info_packer->arena, data);
                 
                 // Write to non-constant fields
                 Ic_Arg result_dest = {};
@@ -773,22 +776,43 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     
                     string_id ident = try_unwrap_ident(field->Argument.ident);
                     Ast* assign = field->Argument.assign;
-                    // TODO(Alexander): make it possible to store dynamic things
-                    if (assign->kind != Ast_Value && 
-                        assign->kind != Ast_Aggregate_Expr) {
-                        
-                        Struct_Field_Info info = {};
+                    
+                    Struct_Field_Info info = {};
+                    if (type->kind == TypeKind_Struct || type->kind == TypeKind_Union)  {
                         if (ident) {
                             info = get_field_info(&type->Struct_Like, ident);
                         } else {
                             info = get_field_info_by_index(&type->Struct_Like, field_index);
                         }
+                    } else if (type->kind == TypeKind_Array) {
+                        info.type = type->Array.type;
+                        info.offset = field_index * info.type->size;
+                    } else {
+                        compiler_bug("unexpected aggregate type");
+                    }
+                    
+                    // TODO(Alexander): make it possible to store dynamic things
+                    
+                    if (assign->kind == Ast_Value && assign->Value.type == Value_string) {
+                        // TODO(Alexander): we should probably find a way to store this in
+                        // rdata_section but we don't support relocations there yet (if that
+                        // is even a  thing you do on Windows PE-format?
+                        string_id str_id = vars_save_string(assign->Value.data.str);
+                        export_string(cu->type_info_packer, str_id, 
+                                      (string*) ((u8*) data + info.offset),
+                                      result.data.disp + (u32) info.offset);
+                        pln("export: % (%)", f_string(assign->Value.data.str), f_u32(result.data.disp + (u32) info.offset));
+                    }
+                    
+                    
+                    if (assign->kind != Ast_Value && 
+                        assign->kind != Ast_Aggregate_Expr) {
                         //pln("Adding non-constant field: %", f_ast(assign));
                         
                         Ic_Arg src = convert_expr_to_intermediate_code(cu, assign);
                         Ic_Arg dest = result;
                         dest.raw_type = src.raw_type;
-                        dest.disp += info.offset;
+                        dest.data.disp += (u32) info.offset;
                         ic_mov(cu, dest, src);
                     }
                     

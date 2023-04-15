@@ -179,9 +179,14 @@ struct Array_Type_Info {
     smm fixed_count; // -1 => if value stores the count
 }
 
+struct Var_Arg {
+    Type_Info* type;
+    smm data_size;
+}
+
 struct Var_Args {
     u8* data;
-    []Type_Info* types;
+    []Var_Arg types;
 }
 
 inline Type_Info*
@@ -260,7 +265,6 @@ data_to_f64(Basic_Type_Info info, void* data) {
 
 internal void
 print_unsigned_integer(u64 integer) {
-    //debug_break();
     if (integer == 0) {
         _put_string("0");
         return;
@@ -273,6 +277,31 @@ print_unsigned_integer(u64 integer) {
         u8 digit = (u8) (integer % 10);
         result[--ptr] = '0' + digit;
         integer /= 10;
+    }
+    
+    string s;
+    s.data = &result[ptr];
+    s.count = result.count - ptr;
+    _put_string(s);
+}
+
+internal void
+print_unsigned_hex_integer(u64 integer) {
+    if (integer == 0) {
+        _put_string("0");
+        return;
+    }
+    [16]u8 result;
+    int ptr = result.count;
+    
+    while (integer > 0) {
+        u8 digit = (u8) (integer % 16);
+        if (digit > 9) {
+            result[--ptr] = 'A' + (digit - 10);
+        } else {
+            result[--ptr] = '0' + digit;
+        }
+        integer /= 16;
     }
     
     string s;
@@ -337,8 +366,17 @@ print(string format, ...var_args) {
                 substring.data = format.data + chr_index + 1;
                 substring.count = 0;
                 
-                Type_Info* type_info = var_args.types[var_args_index];
-                print_data_from_type_info(type_info, var_arg_data);
+                Var_Arg arg = var_args.types[var_args_index];
+                // TODO(Alexander): this is a bit of a hack becuase
+                // data sizes > 8 are passed as pointer, as specified by callign convention.
+                if (arg.data_size > 8) {
+                    //pln("data_size = %\n", arg.data_size);
+                    print_data_from_type_info(arg.type, *((void**) var_arg_data));
+                } else {
+                    //pln("data_size = %\n", arg.data_size);
+                    print_data_from_type_info(arg.type, var_arg_data);
+                }
+                
                 var_args_index++;
                 // NOTE(Alexander): if data doesn't fit in 8 bytes, store a pointer instead
                 var_arg_data += 8;
@@ -389,9 +427,7 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                 }
                 
                 case Basic_Type_Info.String: {
-                    // TODO(Alexander): denormalize var args
-                    string s = **((string**) data);
-                    _put_string(s);
+                    _put_string(*((string*) data));
                 }
                 
                 case Basic_Type_Info.CString: {
@@ -404,9 +440,13 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
             }
         }
         
+        case Type_Kind.Pointer: {
+            u64 num = (u64) data_to_u64(Basic_Type_Info.U64, data);
+            _put_string("0x");
+            print_unsigned_hex_integer(num);
+        }
+        
         case Type_Kind.Enum: {
-            //debug_break();
-            
             s64 value = 0;
             switch (type.Enum.type.kind) {
                 case Basic_Type_Info.S8:
@@ -426,7 +466,6 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
             
             print("%.", type.Enum.ident);
             if (value >= 0 && value < type.Enum.names.count) {
-                //debug_break();
                 print("% (%)", type.Enum.names[value], value);
             } else {
                 print("%", value);
@@ -439,10 +478,10 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
             // TODO(Alexander): find a better way to deserialize arrays
             Fixed_Array arr;
             if (type.Array.fixed_count >= 0) {
-                arr.data = *(void**) data;
+                arr.data = data;
                 arr.count = type.Array.fixed_count;
             } else {
-                arr = **(Fixed_Array**) data;
+                arr = *((Fixed_Array*) data);
             }
             
             Type_Info* elem_type = type.Array.elem_type;
@@ -459,7 +498,16 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                 
                 smm offset = type.Array.elem_size*array_index;
                 
+                bool doubleQuoted = (elem_type.kind == Type_Kind.Basic &&
+                                     elem_type.Basic == Basic_Type_Info.String);
+                if (doubleQuoted) {
+                    print("\"");
+                }
                 print_data_from_type_info(elem_type, (u8*) arr.data + offset, indent + 4);
+                if (doubleQuoted) {
+                    print("\"");
+                }
+                
                 if (array_index + 1 < arr.count) {
                     print(", ");
                 }
@@ -482,8 +530,9 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
         
         case Type_Kind.Union:
         case Type_Kind.Struct: {
-            //print("% {", type.Struct.ident);
+            print("% {", type.Struct.ident);
             indent += 4;
+            
             for (int field_index = 0; field_index < type.Struct.fields.count; field_index++) {
                 Struct_Field_Info field = type.Struct.fields[field_index];
                 if (field.offset == 0 && type.kind == Type_Kind.Union && field_index > 0) {
@@ -491,16 +540,16 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                 }
                 
                 print_newline_with_spaces(indent);
-                //print("%: ", field.ident);
-                print_data_from_type_info(field.type,  (u8*) data + field.offset, indent);
+                print("%: ", field.ident);
+                print_data_from_type_info(field.type, (u8*) data + field.offset, indent);
                 
                 if (field_index + 1 < type.Struct.fields.count) {
-                    //print(", ");
+                    print(", ");
                 }
             }
             indent -= 4;
             print_newline_with_spaces(indent);
-            //print("}");
+            print("}");
             
             if (indent == 0) {
                 print("\n");

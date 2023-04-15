@@ -330,6 +330,7 @@ struct Compilation_Unit {
     Ic_Basic_Block* bb_data;
     
     // TODO(Alexander): move these to different place!
+    Type_Info_Packer* type_info_packer;
     Ic_Arg_Map* locals;
     Ic_Arg_Map* globals;
     Memory_Arena* rdata_arena;

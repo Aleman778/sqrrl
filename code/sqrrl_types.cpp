@@ -38,29 +38,35 @@ Exported_Type
 export_var_args_info(Type_Info_Packer* packer, int var_arg_start, Ast* actual_arguments) {
     Exported_Type result = {};
     
+    int var_arg_count = -var_arg_start;
+    for_compound(actual_arguments, _) var_arg_count++;
+    
+    if (var_arg_count <= 0) {
+        return result;
+    }
+    
     Var_Args* var_args = arena_push_struct(&packer->arena, Var_Args);
     result.var_args = var_args;
     result.relative_ptr = (u32) arena_relative_pointer(&packer->arena, var_args);
     
-    int var_arg_count = -var_arg_start;
-    for_compound(actual_arguments, _) var_arg_count++;
-    
-    Type_Info** types = arena_push_array_of_structs(&packer->arena, var_arg_count, Type_Info*);
+    Var_Arg* types = arena_push_array_of_structs(&packer->arena, var_arg_count, Var_Arg);
     var_args->types = types;
+    var_args->count = var_arg_count;
     u32 curr_type_relative_ptr = (u32) arena_relative_pointer(&packer->arena, types);
     push_relocation(packer, &var_args->types, result.relative_ptr + 8, curr_type_relative_ptr);
     
-    Type_Info** curr_type = types;
+    Var_Arg* curr_type = types;
     int arg_index = 0;
     for_compound(actual_arguments, argument) {
         if (arg_index >= var_arg_start) {
             
             Exported_Type exported = export_type_info(packer, argument->type);
             push_relocation(packer, curr_type, curr_type_relative_ptr, exported.relative_ptr);
+            curr_type->data_size = argument->type->size;
             
             var_args->count++;
             curr_type++;
-            curr_type_relative_ptr += sizeof(Type_Info*);
+            curr_type_relative_ptr += sizeof(Var_Arg);
         }
         
         arg_index++;
@@ -104,21 +110,36 @@ export_type_info(Type_Info_Packer* packer, Type* type) {
             case TypeKind_Union:
             case TypeKind_Struct: {
                 smm count = (smm) array_count(type->Struct_Like.types);
-                type_info->Struct.ident = vars_load_string(type->ident);
+                u32 offset = (u32) ((u8*) &type_info->Struct.ident - (u8*) result.type_info);
+                export_string(packer, type->ident, 
+                              &type_info->Struct.ident, result.relative_ptr + offset);
+                
                 type_info->Struct.fields =
                     arena_push_array_of_structs(&packer->arena, count, TI_Struct_Field_Info);
                 type_info->Struct.count = count;
+                u32 relative_fields = (u32) arena_relative_pointer(&packer->arena, 
+                                                                   type_info->Struct.fields);
                 
-                //push_relocation(packer, &type_info->Struct.fields, result.relative_ptr, exported.relative_ptr);
                 
+                offset = (u32) ((u8*) &type_info->Struct.fields - (u8*) result.type_info);
+                push_relocation(packer, &type_info->Struct.fields, result.relative_ptr + offset, relative_fields);
+                
+                TI_Struct_Field_Info* curr_field = type_info->Struct.fields;
                 for_array_v(type->Struct_Like.types, field_type, field_index) {
-                    Exported_Type exported = export_type_info(packer, field_type);
-                    TI_Struct_Field_Info* field = type_info->Struct.fields + field_index;
-                    field->type = exported.type_info;
-                    field->ident = vars_load_string(type->Struct_Like.idents[field_index]);
-                    field->offset = type->Struct_Like.offsets[field_index];
+                    string_id field_ident = type->Struct_Like.idents[field_index];
                     
-                    push_relocation(packer, &field->type, result.relative_ptr, exported.relative_ptr);
+                    Exported_Type exported = export_type_info(packer, field_type);
+                    curr_field->type = exported.type_info;
+                    offset = (u32) ((u8*) &curr_field->type - (u8*) curr_field);
+                    push_relocation(packer, &curr_field->type, relative_fields + offset, exported.relative_ptr);
+                    
+                    offset = (u32) ((u8*) &curr_field->ident - (u8*) curr_field);
+                    export_string(packer, field_ident, &curr_field->ident, relative_fields + offset);
+                    
+                    curr_field->offset = type->Struct_Like.offsets[field_index];
+                    
+                    curr_field++;
+                    relative_fields += sizeof(TI_Struct_Field_Info);
                 }
             } break;
             
@@ -167,8 +188,7 @@ export_type_info(Type_Info_Packer* packer, Type* type) {
             } break;
             
             case TypeKind_Pointer: {
-                type_info->kind = TypeKind_Basic;
-                type_info->Basic = TI_S64; // TODO(Alexander): temporary
+                type_info->kind = TypeKind_Pointer;
             } break;
             
             default: {

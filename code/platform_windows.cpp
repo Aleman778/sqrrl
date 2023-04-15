@@ -351,7 +351,7 @@ DEBUG_open_file_for_writing(cstring filename) {
     HANDLE file_handle = CreateFileA(filename, GENERIC_WRITE, FILE_SHARE_WRITE, 0, OPEN_ALWAYS, 0, 0);
     
     if (file_handle == INVALID_HANDLE_VALUE) {
-        platform_error(string_print("file `%` was not found", f_cstring(filename)));
+        platform_error(string_print("file `%` is not possible to write to", f_cstring(filename)));
         return 0;
     }
     

@@ -291,6 +291,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     Compilation_Unit* main_cu = 0;
     for_array(ast_file.units, cu, _2) {
+        cu->type_info_packer = &tcx.type_info_packer;
         cu->rdata_arena = &rdata_arena;
         cu->data_arena = &data_arena;
         cu->globals = x64_globals;

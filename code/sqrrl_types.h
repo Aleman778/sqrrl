@@ -404,9 +404,14 @@ struct TI_Array_Type_Info {
     smm fixed_count; // -1 => if value stores the count
 };
 
+struct Var_Arg {
+    Type_Info* type;
+    smm data_size;
+};
+
 struct Var_Args {
     u8* data;
-    Type_Info** types;
+    Var_Arg* types;
     smm count;
 };
 

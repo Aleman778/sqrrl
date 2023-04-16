@@ -1156,8 +1156,14 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     }
                 } else if (t_src->Basic.kind == Basic_cstring) {
                 } else if (t_src->Basic.kind == Basic_string) {
+                    Ic_Arg tmp = ic_reg(IC_U64);
+                    ic_mov(cu, tmp, src);
+                    Intermediate_Code* ic_test = ic_add(cu, IC_TEST);
+                    ic_test->src0 = tmp;
+                    ic_test->src1 = tmp;
+                    ic_add(cu, IC_SETNE);
                     result = ic_reg(result.raw_type);
-                    ic_mov(cu, result, src);
+                    
                 } else {
                     unimplemented;
                 }
@@ -2353,6 +2359,9 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                     ic_u8(ic, 0x84);
                     x64_modrm(ic, ic->src0.type, ic->src0.disp, ic->src1.reg, ic->src0.reg, (s64) biff + rip);
                 } else {
+                    if (ic->src0.type & IC_T64) {
+                        x64_rex(ic, REX_FLAG_64_BIT);
+                    }
                     // 85 /r 	TEST r/m32, r32 	MR
                     ic_u8(ic, 0x85);
                     x64_modrm(ic, ic->src0.type, ic->src0.disp, ic->src1.reg, ic->src0.reg, (s64) biff + rip);

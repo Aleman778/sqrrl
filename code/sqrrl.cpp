@@ -66,7 +66,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         filepath = string_lit(argv[1]);
         
     } else {
-#if BUILD_DEBUG
+#if 1 // BUILD_DEBUG
         // TODO(Alexander): temporary files for testing
         //filepath = string_lit("../personal/first.sq");
         //filepath = string_lit("../modules/basic.sq");

@@ -272,10 +272,11 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                 if (preprocessor->curr_branch_taken) {
                     token = advance_semantical_token(t);
                     
+                    string filename = {};
                     Loaded_Source_File included_file = {};
                     if (token.type == Token_Lt) {
                         token = advance_semantical_token(t);
-                        string filename = token.source;
+                        filename = token.source;
                         filename.count = 0;
                         
                         while (token.type != Token_Gt) {
@@ -293,7 +294,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                     } else if (token.type == Token_String) {
                         Loaded_Source_File* curr_file =
                             get_source_file_by_index(preprocessor->curr_file_index);
-                        string filename = string_unquote_nocopy(token.source);
+                        filename = string_unquote_nocopy(token.source);
                         included_file = read_entire_source_file(filename, curr_file);
                         preprocessor->is_system_header = string_ends_with(included_file.filename, string_lit(".h"));
                     }
@@ -314,7 +315,8 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                         preprocessor->abort_curr_file = false; // if #pragma once hit then restore it
                         preprocessor->curr_file_index = curr_file_index;
                     } else {
-                        pln("imported by: %:%:%\n\n", f_string(t->file), f_umm(t->line_number), f_umm(t->column_number));
+                        pln("%:%:%: could not locate file `%` \n\n", f_string(t->file), 
+                            f_umm(t->line_number), f_umm(t->column_number), f_string(filename));
                         preprocessor->error_count++;
                     }
                 }

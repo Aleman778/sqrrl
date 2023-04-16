@@ -82,7 +82,7 @@ parse_escape_character(Parser* parser, u8*& curr, u8* end, bool byte) {
     u8 c = *curr++;
     switch (c) {
         case 'x': {
-            assert(curr + 2 < end && "string out of bounds");
+            verify(curr + 2 < end && "string out of bounds");
             s32 d1 = hex_digit_to_s32(*curr++);
             s32 d2 = hex_digit_to_s32(*curr++);
             return (u32) (d1 << 4 | d2);
@@ -94,7 +94,7 @@ parse_escape_character(Parser* parser, u8*& curr, u8* end, bool byte) {
                             string_lit("unicode escape characters cannot be used as bytes or in byte string"));
             }
             u32 value = 0;
-            assert(*curr++ == '{');
+            verify(*curr++ == '{');
             while ((c = *curr++) != '}' && curr < end) {
                 value = value * 16 + hex_digit_to_s32(c);
                 if (value > 0x10FFFF) {
@@ -179,7 +179,7 @@ parse_char(Parser* parser) {
     string str = parser->current_token.source;
     u8* curr = str.data;
     u8* end = str.data + str.count;
-    assert(*curr++ == '\'');
+    verify(*curr++ == '\'');
     
     u32 character = 0;
     if (*curr == '\\') {
@@ -196,6 +196,7 @@ parse_char(Parser* parser) {
     }
     
     if (*curr++ != '\'' && curr < end) {
+        __debugbreak();
         parse_error(parser, parser->current_token, string_lit("character literal may only contain one codepoint"));
     }
     
@@ -215,7 +216,7 @@ parse_string(Parser* parser) {
     String_Builder sb = {};
     string_builder_alloc(&sb, str.count + 10);
     
-    assert(*curr++ == '"');
+    verify(*curr++ == '"');
     u8* last_push = curr;
     while (curr < end) {
         char c = *curr;

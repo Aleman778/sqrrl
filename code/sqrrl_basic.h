@@ -114,6 +114,19 @@ __assert(cstring expression, cstring file, smm line) {
 #define assert(expression)
 #endif
 
+// NOTE(Alexander): verify is like assert but included in release builds
+void
+__verify(cstring expression, cstring file, smm line) {
+    fprintf(stderr, "%s:%zd: Compiler bug: %s\n", file, line, expression);
+    
+    // Flush the standard streams make sure we get all debug data
+    fflush(stdout);
+    fflush(stderr);
+    
+    *(int *)0 = 0; // NOTE(Alexander): purposefully trap the program
+}
+#define verify(expression) (void)((expression) || (__verify(#expression, __FILE__, __LINE__), 0))
+
 #if !BUILD_TEST
 extern "C" bool
 intrinsic_assert(int test, cstring msg, cstring file, smm line) {

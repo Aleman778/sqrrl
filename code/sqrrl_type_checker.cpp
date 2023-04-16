@@ -1802,7 +1802,8 @@ save_type_declaration_from_ast(Type_Context* tcx, string_id ident, Ast* ast, boo
         } else {
             
             if (type->kind == TypeKind_Struct && type->ident == 0) {
-                pln("%: %", f_type(type), f_ast(ast));
+                // TODO: investigate why this is triggered, potentially a forward struct declaration
+                //pln("%: %", f_type(type), f_ast(ast));
             }
             
             type = save_type_declaration(tcx, ident, type, ast->span, report_error);

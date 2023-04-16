@@ -93,7 +93,6 @@ read_entire_source_file(string filename, Loaded_Source_File* current_file = 0) {
     }
     
     if (!canonicalized_path.success) {
-        pln("%", f_string(filename));
         return *get_source_file_by_index(0);
     }
     
@@ -120,6 +119,10 @@ read_entire_system_header_file(string filename) {
     cstring cfilename = string_to_cstring(filename);
     Canonicalized_Path canonicalized_path = DEBUG_get_system_canonicalized_path(cfilename);
     cstring_free(cfilename);
+    
+    if (!canonicalized_path.success) {
+        return *get_source_file_by_index(0);
+    }
     
     Loaded_Source_File* prev_loaded_file = get_source_file_by_path(canonicalized_path.fullpath);
     if (prev_loaded_file && prev_loaded_file->is_valid) {

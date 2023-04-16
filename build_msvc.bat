@@ -34,6 +34,7 @@ goto :EOF
     echo Compiling sqrrl in release mode
     set compiler_flags=-DBUILD_DEBUG=0 -DBUILD_TEST=1 %compiler_flags%
     set compiler_flags=-DBUILD_INTERNAL=0 -DBUILD_MAX_DEBUG=0 %compiler_flags%
+    set compiler_flags=-D_CRT_SECURE_NO_WARNINGS %compiler_flags%
     set compiler_flags=-O2 -DNDEBUG=1 %compiler_flags%
     goto :Compile
 

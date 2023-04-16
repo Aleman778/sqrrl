@@ -462,8 +462,19 @@ main(int argc, char* argv[]) {
     
     {
         // Setup compiler module path
-        Canonicalized_Path path = canonicalize_path("../modules/");
-        array_push(windows_system_header_dirs, path.fullpath);
+        char compiler_path[PATH_MAX]; // TODO(Alexander): should this maybe be allocated on heap?
+        if (GetModuleFileNameA(0, (LPSTR) &compiler_path, PATH_MAX)) {
+            Canonicalized_Path exe_path = canonicalize_path(compiler_path);
+            s64 directory_count = (u8*) exe_path.file_part - (u8*) exe_path.fullpath;
+            string cd_back_module = string_lit("..\\modules\\");
+            cstring module_rel_path = cstring_concat(exe_path.fullpath, directory_count,
+                                                     (cstring) cd_back_module.data, cd_back_module.count);
+            
+            Canonicalized_Path module_path = canonicalize_path(module_rel_path);
+            DEBUG_free_canonicalized_path(exe_path);
+            cstring_free(module_rel_path);
+            array_push(windows_system_header_dirs, module_path.fullpath);
+        }
     }
     
     cstring windows_system_headers_root_dir = find_windows_kits_include_dir();

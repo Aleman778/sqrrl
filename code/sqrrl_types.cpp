@@ -88,6 +88,8 @@ export_type_info(Type_Info_Packer* packer, Type* type) {
         
         // Serialize structure into memory
         switch (type->kind) {
+            case TypeKind_Void: break;
+            
             case TypeKind_Basic: {
                 switch (type->Basic.kind) {
                     case Basic_bool: type_info->Basic = TI_Bool; break;
@@ -209,4 +211,3 @@ print_type(Type* type) {
     print("%", f_string(result));
     string_builder_free(&sb);
 }
-

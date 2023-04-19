@@ -921,7 +921,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             
             if (function_type->kind != TypeKind_Function) {
                 if (report_error) {
-                    string_id function_ident = ast_unwrap_ident(expr->Call_Expr.ident);
+                    string_id function_ident = try_unwrap_ident(expr->Call_Expr.ident);
                     type_error(tcx, string_print("`%` is not a function", f_var(function_ident)),
                                expr->span);
                 }

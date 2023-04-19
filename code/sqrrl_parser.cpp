@@ -455,6 +455,8 @@ parse_atom(Parser* parser, bool report_error, u8 min_prec) {
         } break;
         
         case Token_Open_Paren: {
+            
+            //__debugbreak();
             // TODO(Alexander): this is a hack, parenthesized and cast expressions are sightly ambiguous 
             next_token(parser);
             Tokenizer_State begin_tokenizer = save_tokenizer(parser->tokenizer);
@@ -509,7 +511,7 @@ parse_atom(Parser* parser, bool report_error, u8 min_prec) {
                     result->Cast_Expr.type = inner;
                     result->Cast_Expr.expr = expr;
                 } else {
-                    if (inner->kind == Ast_Named_Type && !is_builtin_keyword(try_unwrap_ident(inner->Named_Type))) {
+                    if (inner->kind == Ast_Named_Type && !is_builtin_type_keyword(try_unwrap_ident(inner->Named_Type))) {
                         // NOTE(Alexander): not an actualy type cast instead just (identifier)
                         result->kind = Ast_Paren_Expr;
                         result->Paren_Expr.expr = inner->Named_Type;
@@ -1997,10 +1999,10 @@ parse_file(Parser* parser) {
         parse_top_level_declaration(parser, &result);
         token = peek_token(parser);
         
-        if (parser->error_count > 10) {
-            pln("Found more than 10 parsing errors, exiting parsing...");
-            break;
-        }
+        //if (parser->error_count > 10) {
+        //pln("Found more than 10 parsing errors, exiting parsing...");
+        //break;
+        //}
     }
     
     result.error_count = parser->error_count;

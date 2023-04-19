@@ -2393,7 +2393,7 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buf, s64 b
                 s64 r1 = ic->src0.reg, r2 = ic->src1.reg;
                 s64 d2 = ic->src1.disp;
                 
-                if (t1 & IC_STK) {
+                if (t1 & IC_STK_RIP) {
                     Ic_Type tmpt = IC_REG + (ic->src0.type & IC_RT_MASK);
                     x64_fmov(ic, tmpt, X64_XMM5, 0,
                              ic->src0.type, ic->src0.reg, ic->src0.disp, 

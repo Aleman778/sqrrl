@@ -118,7 +118,10 @@ ic_clobber_register(Compilation_Unit* cu, Intermediate_Code* ic_first, Type* pre
                               ic_curr->opcode == IC_LEA ||
                               ic_curr->opcode == IC_FMOV ||
                               ic_curr->opcode == IC_MOVZX ||
-                              ic_curr->opcode == IC_MOVSX) ? ic_curr->src0 : ic_curr->dest;
+                              ic_curr->opcode == IC_MOVSX ||
+                              ic_curr->opcode == IC_CAST_F2S ||
+                              ic_curr->opcode == IC_CAST_S2F ||
+                              ic_curr->opcode == IC_CAST_F2F) ? ic_curr->src0 : ic_curr->dest;
             }
         }
         
@@ -1130,6 +1133,16 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                         }
                         
                     } else if (t_dest->Basic.flags & BasicFlag_Floating) {
+                        if (t_src->size < 4) {
+                            Intermediate_Code* ic_ext = ic_add(cu, 
+                                                               t_src->Basic.flags & BasicFlag_Unsigned ? 
+                                                               IC_MOVZX : IC_MOVSX);
+                            ic_ext->src0 = ic_reg(t_src->Basic.flags & BasicFlag_Unsigned ? 
+                                                  IC_U32 : IC_S32);
+                            ic_ext->src1 = src;
+                            src = ic_ext->src0;
+                        }
+                        
                         Intermediate_Code* ic = ic_add(cu, IC_CAST_S2F);
                         ic->src0 = ic_reg(result.raw_type);
                         ic->src1 = src;
@@ -1874,8 +1887,8 @@ x64_mul(Intermediate_Code* ic, s64 rip) {
 inline void
 x64_div(Intermediate_Code* ic, bool remainder, s64 rip) {
     
-    x64_mov(ic, ic->src0.raw_type + IC_REG, X64_RAX, 0, ic->src0.type, ic->src0.reg, ic->src0.disp, rip);
     x64_mov(ic, ic->src1.raw_type + IC_REG, X64_RCX, 0, ic->src1.type, ic->src1.reg, ic->src1.disp, rip);
+    x64_mov(ic, ic->src0.raw_type + IC_REG, X64_RAX, 0, ic->src0.type, ic->src0.reg, ic->src0.disp, rip);
     if (ic->src0.type & IC_T64) {
         x64_rex(ic, REX_FLAG_64_BIT);
     }
@@ -1983,13 +1996,13 @@ x64_convert_float_to_int_type(Intermediate_Code* ic, s64 rip) {
     assert(t1 & IC_REG);
     assert(t2 & (IC_REG | IC_STK | IC_RIP_DISP32));
     
-    // F3 0F 2D /r CVTSS2SI r32, xmm1/m32
-    // F2 0F 2D /r CVTSD2SI r32, xmm1/m64
+    // F3 0F 2C /r CVTTSS2SI r32, xmm1/m32
+    // F2 0F 2C /r CVTTSD2SI r32, xmm1/m64
     ic_u8(ic, t2 & IC_T64 ? 0xF2 : 0xF3);
     if (t1 & IC_T64) {
         x64_rex(ic, REX_FLAG_64_BIT);
     }
-    ic_u16(ic, 0x2D0F);
+    ic_u16(ic, 0x2C0F);
     x64_modrm(ic, t2, d2, r1, r2, rip);
 }
 

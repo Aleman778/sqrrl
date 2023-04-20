@@ -324,6 +324,13 @@ print_signed_integer(s64 integer) {
 internal void
 print_floating_point(f64 floating_point) {
     // TODO(Alexander): this is not the best implementation, improve this later
+    // TODO(Alexander): we might have to make a separate print for f32 to get more accurate results
+    
+    if (floating_point < 0.0f) {
+        _put_string("-");
+        floating_point = -floating_point;
+    }
+    
     s64 whole_part = (s64) floating_point;
     print_signed_integer(whole_part);
     _put_string(".");
@@ -335,7 +342,7 @@ print_floating_point(f64 floating_point) {
     for (int i = 0; i < fractional_digits.count; i++) {
         fractional_part *= 10.0f;
         u8 digit = (u8) fractional_part;
-        fractional_digits[i] = '0' + digit;
+        fractional_digits[i] = '0' + (u8) digit;
         fractional_part -= (f64) digit;
     }
     

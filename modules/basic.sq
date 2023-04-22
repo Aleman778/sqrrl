@@ -331,8 +331,8 @@ print_floating_point(f64 floating_point) {
         floating_point = -floating_point;
     }
     
-    s64 whole_part = (s64) floating_point;
-    print_signed_integer(whole_part);
+    u64 whole_part = (u64) floating_point;
+    print_unsigned_integer(whole_part);
     _put_string(".");
     
     f64 fractional_part = floating_point - (f64) whole_part;

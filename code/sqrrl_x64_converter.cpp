@@ -232,7 +232,8 @@ convert_function_call_to_intermediate_code(Compilation_Unit* cu,
                         precompute_arg = true;
                     }
                     
-                    if (arg->kind == Ast_Binary_Expr && arg->Binary_Expr.overload) {
+                    if (arg->kind == Ast_Binary_Expr && (arg->Binary_Expr.overload || 
+                                                         arg->Binary_Expr.op == Op_Divide)) {
                         precompute_arg = true;
                     }
                     
@@ -1122,7 +1123,19 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             
             if (t_dest->kind == TypeKind_Basic && t_src->kind == TypeKind_Basic) {
                 if (t_src->Basic.flags & BasicFlag_Integer) {
-                    if (t_dest->Basic.flags & BasicFlag_Integer) {
+                    if (t_dest->Basic.flags & BasicFlag_Boolean) {
+                        result = ic_reg(IC_U8);
+                        
+                        Ic_Basic_Block* bb_else = ic_basic_block();
+                        Ic_Basic_Block* bb_exit = ic_basic_block();
+                        convert_ic_to_conditional_jump(cu, cu->ic_last, src, bb_else);
+                        ic_mov(cu, result, ic_imm(IC_U8, 1));
+                        ic_add(cu, IC_JMP, bb_exit);
+                        ic_add(cu, IC_LABEL, bb_else);
+                        ic_mov(cu, result, ic_imm(IC_U8, 0));
+                        ic_add(cu, IC_LABEL, bb_exit);
+                        
+                    } else if (t_dest->Basic.flags & BasicFlag_Integer) {
                         if (t_dest->size > t_src->size) {
                             Intermediate_Code* ic = ic_add(cu, 
                                                            t_src->Basic.flags & BasicFlag_Unsigned ? 
@@ -1864,7 +1877,7 @@ x64_mul(Intermediate_Code* ic, s64 rip) {
         s64 r2 = ic->src1.reg;
         s64 d2 = ic->src1.disp;
         
-        if (t1 & IC_STK) {
+        if (t1 & IC_STK_RIP) {
             // NOTE(Alexander): swap the order of mul
             if (t2 & IC_STK || r2 != ic->dest.reg) {
                 x64_mov(ic, ic->dest.type, ic->dest.reg, ic->dest.disp, t2, r2, d2, rip);
@@ -1892,7 +1905,12 @@ x64_div(Intermediate_Code* ic, bool remainder, s64 rip) {
     if (ic->src0.type & IC_T64) {
         x64_rex(ic, REX_FLAG_64_BIT);
     }
-    ic_u8(ic, 0x99); // CDQ
+    
+    if (ic->src0.type & IC_SINT) {
+        ic_u8(ic, 0x99); // CDQ
+    } else {
+        x64_zero(ic, X64_RDX);
+    }
     
     // F7 /6 	DIV r/m32 	M
     if (ic->src0.type & IC_T64) {

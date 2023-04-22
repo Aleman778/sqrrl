@@ -385,7 +385,7 @@ constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
             if (!is_void(value)) {
                 Type* type = ast->type;
                 if (!type && is_valid_ast(ast->Cast_Expr.type)) {
-                    type = create_type_from_ast(tcx, ast->Cast_Expr.type, false);
+                    type = create_type_from_ast(tcx, ast->Cast_Expr.type, false).type;
                 }
                 if (type && type->kind == TypeKind_Basic) {
                     value = value_cast(value, type->Basic.kind);
@@ -860,7 +860,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     
                 } else if (is_valid_ast(actual_arg->Argument.type)) {
                     
-                    actual_type = create_type_from_ast(tcx, actual_arg->Argument.type, report_error);
+                    actual_type = create_type_from_ast(tcx, actual_arg->Argument.type, report_error).type;
                 }
                 
                 if (!actual_type) {
@@ -1063,7 +1063,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         case Ast_Cast_Expr: {
             Type* type = expr->type;
             if (!type) {
-                type = create_type_from_ast(tcx, expr->Cast_Expr.type, report_error);
+                type = create_type_from_ast(tcx, expr->Cast_Expr.type, report_error).type;
             }
             
             if (type) {
@@ -1499,7 +1499,7 @@ create_type_struct_like_from_ast(Type_Context* tcx,
         }
         
         Ast* ast_type = argument->Argument.type;
-        Type* type = create_type_from_ast(tcx, ast_type, report_error);
+        Type* type = create_type_from_ast(tcx, ast_type, report_error).type;
         
         if (!type || type->size == 0) {
             result.has_error = true;
@@ -1790,7 +1790,7 @@ save_type_declaration(Type_Context* tcx, string_id ident, Type* type, Span span,
 Type*
 save_type_declaration_from_ast(Type_Context* tcx, string_id ident, Ast* ast, bool report_error) {
     
-    Type* type = create_type_from_ast(tcx, ast, report_error);
+    Type* type = create_type_from_ast(tcx, ast, report_error).type;
     if (type) {
         
         
@@ -1817,16 +1817,16 @@ save_type_declaration_from_ast(Type_Context* tcx, string_id ident, Ast* ast, boo
     return type;
 }
 
-Type*
+Create_Type_From_Ast_Result
 create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
     assert(is_ast_type(ast));
     
-    Type* result = 0;
+    Create_Type_From_Ast_Result result = {};
     switch (ast->kind) {
         case Ast_Named_Type: {
             string_id ident = ast->Named_Type->Ident;
-            result = load_type_declaration(tcx, ident, ast->span, report_error);
-            ast->type = result;
+            result.type = load_type_declaration(tcx, ident, ast->span, report_error);
+            ast->type = result.type;
         } break;
         
         case Ast_Array_Type: {
@@ -1846,30 +1846,30 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 }
             }
             
-            Type* elem_type = create_type_from_ast(tcx, ast->Array_Type.elem_type, report_error);
+            Type* elem_type = create_type_from_ast(tcx, ast->Array_Type.elem_type, report_error).type;
             if (elem_type) {
-                result = arena_push_struct(&tcx->type_arena, Type);
-                result->kind = TypeKind_Array;
-                result->Array.type = elem_type;
-                result->Array.capacity = capacity;
-                result->Array.is_dynamic = ast->Array_Type.is_dynamic;
+                result.type = arena_push_struct(&tcx->type_arena, Type);
+                result.type->kind = TypeKind_Array;
+                result.type->Array.type = elem_type;
+                result.type->Array.capacity = capacity;
+                result.type->Array.is_dynamic = ast->Array_Type.is_dynamic;
                 
-                if (!result->Array.is_dynamic && result->Array.capacity > 0) {
+                if (!result.type->Array.is_dynamic && result.type->Array.capacity > 0) {
                     // NOTE(Alexander): fixed size arrays with known size should be allocated directly
                     // TODO(Alexander): arch dep
-                    result->size = (s32) (elem_type->size*result->Array.capacity);
-                    result->align = elem_type->align;
-                    result->Array.is_inplace = true;
-                    //result->size = elem_type->size * (s32) result->Array.capacity;
-                    //result->align = elem_type->align;
+                    result.type->size = (s32) (elem_type->size*result.type->Array.capacity);
+                    result.type->align = elem_type->align;
+                    result.type->Array.is_inplace = true;
+                    //result.type->size = elem_type->size * (s32) result.type->Array.capacity;
+                    //result.type->align = elem_type->align;
                 } else {
-                    result->size = sizeof(void*) + sizeof(smm);
+                    result.type->size = sizeof(void*) + sizeof(smm);
                     // TODO(Alexander): for dynamic arrays we probably just want a pointer to this struct
                     //                  to avoid dangling pointers from reallocations!
-                    if (result->Array.is_dynamic) {
-                        result->size += sizeof(smm);
+                    if (result.type->Array.is_dynamic) {
+                        result.type->size += sizeof(smm);
                     }
-                    result->align = alignof(void*);
+                    result.type->align = alignof(void*);
                 }
             }
         } break;
@@ -1878,9 +1878,9 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             // TODO(Alexander): do we really want to store a new type declaration
             // for each time we use a pointer?!???
             
-            Type* ptr_type = create_type_from_ast(tcx, ast->Pointer_Type, report_error);
+            Type* ptr_type = create_type_from_ast(tcx, ast->Pointer_Type, report_error).type;
             if (ptr_type) {
-                result = type_wrap_pointer(tcx, ptr_type);
+                result.type = type_wrap_pointer(tcx, ptr_type);
             }
         } break;
         
@@ -1895,19 +1895,19 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         } break;
         
         case Ast_Function_Type: {
-            result = arena_push_struct(&tcx->type_arena, Type);
-            result->kind = TypeKind_Function;
-            result->Function.is_variadic = false;
-            Type* return_type = create_type_from_ast(tcx, ast->Function_Type.return_type, report_error);
+            result.type = arena_push_struct(&tcx->type_arena, Type);
+            result.type->kind = TypeKind_Function;
+            result.type->Function.is_variadic = false;
+            Type* return_type = create_type_from_ast(tcx, ast->Function_Type.return_type, report_error).type;
             if (return_type) {
-                result->Function.return_type = return_type;
+                result.type->Function.return_type = return_type;
             } else {
-                return 0;
+                return result;
             }
             
             // NOTE(Alexander): Loads in the function arguments
             Ast* ast_arguments = ast->Function_Type.arguments;
-            Type_Function* func = &result->Function;
+            Type_Function* func = &result.type->Function;
             smm offset = 0;
             //if (ast_unwrap_ident(ast->Function_Type.ident) == vars_save_cstring("push_render_command")) {
             //__debugbreak();
@@ -1918,20 +1918,20 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     break;
                 }
                 
-                if (result->Function.is_variadic) {
+                if (result.type->Function.is_variadic) {
                     if (report_error) {
                         type_error(tcx,
                                    string_lit("variable arguments `...` has to be the last argument"), 
                                    ast_argument->span);
                     }
-                    return 0;
+                    return result;
                 }
                 
                 Ast* ast_argument_type = ast_argument->Argument.type;
                 
                 Type* type = 0;
                 if (ast_argument_type->kind == Ast_Ellipsis) {
-                    result->Function.is_variadic = true;
+                    result.type->Function.is_variadic = true;
                     type = load_type_declaration(tcx, vars_save_cstring("Var_Args"), 
                                                  ast_argument_type->span, false);
                     if (!type) {
@@ -1939,7 +1939,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     }
                     
                 } else {
-                    type = create_type_from_ast(tcx, ast_argument_type, report_error);
+                    type = create_type_from_ast(tcx, ast_argument_type, report_error).type;
                 }
                 
                 if (type) {
@@ -1955,7 +1955,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                         constant_folding_of_expressions(tcx, default_arg);
                         array_push(func->default_args, default_arg);
                         
-                    } else if (!result->Function.is_variadic) {
+                    } else if (!result.type->Function.is_variadic) {
                         if (func->first_default_arg_index == arg_index) {
                             func->first_default_arg_index++;
                         } else {
@@ -1968,15 +1968,15 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 } else {
                     array_free(func->arg_idents);
                     array_free(func->arg_types);
-                    return 0;
+                    return result;
                 }
             }
             
             if (ast->Function_Type.ident && ast->Function_Type.ident->kind == Ast_Ident) {
-                result->Function.ident = ast_unwrap_ident(ast->Function_Type.ident);
+                result.type->Function.ident = ast_unwrap_ident(ast->Function_Type.ident);
             }
-            result->size = sizeof(smm);
-            result->align = alignof(smm);
+            result.type->size = sizeof(smm);
+            result.type->align = alignof(smm);
             
             if (ast->Function_Type.attributes) {
                 
@@ -1986,7 +1986,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 string library_function_name = {};
                 while (attr.is_valid) {
                     if (attr.ident == Sym_link) {
-                        if (!result->Function.ident) {
+                        if (!result.type->Function.ident) {
                             attr.is_valid = false;
                         }
                         
@@ -2001,7 +2001,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                             break;
                         }
                     } else if (attr.ident == Sym_extern_name) {
-                        if (!result->Function.ident) {
+                        if (!result.type->Function.ident) {
                             attr.is_valid = false;
                         }
                         
@@ -2022,7 +2022,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 // Link against library
                 if (library_name.count > 0) {
                     string_id library_id = vars_save_string(library_name);
-                    string_id library_function_id = result->Function.ident;
+                    string_id library_function_id = result.type->Function.ident;
                     if (library_function_name.count == 0) {
                         library_function_name = vars_load_string(library_function_id);
                     } else {
@@ -2047,7 +2047,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     Library_Function lib_func = {};
                     lib_func.name = library_function_id;
                     lib_func.pointer = func->intrinsic;
-                    lib_func.type = result;
+                    lib_func.type = result.type;
                     array_push(import.functions, lib_func);
                     map_put(tcx->import_table.libs, library_id, import);
                     
@@ -2090,20 +2090,20 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     //} 
                     //}
                     
-                    result = arena_push_struct(&tcx->type_arena, Type);
-                    result->kind = TypeKind_Struct;
-                    result->Struct_Like.types = struct_like.types;
-                    result->Struct_Like.idents = struct_like.idents;
-                    result->Struct_Like.offsets = struct_like.offsets;
-                    result->Struct_Like.ident_to_index = struct_like.ident_to_index;
-                    result->ident = ident;
-                    result->size = (s32) struct_like.size;
-                    result->align = (s32) struct_like.align;
+                    result.type = arena_push_struct(&tcx->type_arena, Type);
+                    result.type->kind = TypeKind_Struct;
+                    result.type->Struct_Like.types = struct_like.types;
+                    result.type->Struct_Like.idents = struct_like.idents;
+                    result.type->Struct_Like.offsets = struct_like.offsets;
+                    result.type->Struct_Like.ident_to_index = struct_like.ident_to_index;
+                    result.type->ident = ident;
+                    result.type->size = (s32) struct_like.size;
+                    result.type->align = (s32) struct_like.align;
                     
                 } else if (ident) {
                     
                     // Forward declare
-                    result = load_type_declaration(tcx, ident, ast->span, report_error);
+                    result.type = load_type_declaration(tcx, ident, ast->span, report_error);
                 }
             }
         } break;
@@ -2112,25 +2112,25 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             Ast* fields = ast->Union_Type.fields;
             Type_Struct_Like struct_like = create_type_struct_like_from_ast(tcx, fields, true, report_error, -1);
             if (!struct_like.has_error) {
-                result = arena_push_struct(&tcx->type_arena, Type);
-                result->kind = TypeKind_Union;
-                result->Struct_Like.types = struct_like.types;
-                result->Struct_Like.idents = struct_like.idents;
-                result->Struct_Like.offsets = struct_like.offsets;
-                result->Struct_Like.ident_to_index = struct_like.ident_to_index;
-                result->ident = try_unwrap_ident(ast->Struct_Type.ident);
-                result->size = (s32) struct_like.size;
-                result->align = (s32) struct_like.align;
+                result.type = arena_push_struct(&tcx->type_arena, Type);
+                result.type->kind = TypeKind_Union;
+                result.type->Struct_Like.types = struct_like.types;
+                result.type->Struct_Like.idents = struct_like.idents;
+                result.type->Struct_Like.offsets = struct_like.offsets;
+                result.type->Struct_Like.ident_to_index = struct_like.ident_to_index;
+                result.type->ident = try_unwrap_ident(ast->Struct_Type.ident);
+                result.type->size = (s32) struct_like.size;
+                result.type->align = (s32) struct_like.align;
             }
         } break;
         
         case Ast_Enum_Type: {
-            result = arena_push_struct(&tcx->type_arena, Type);
-            result->kind = TypeKind_Enum;
+            result.type = arena_push_struct(&tcx->type_arena, Type);
+            result.type->kind = TypeKind_Enum;
             
             Type* type;
             if (ast->Enum_Type.elem_type && ast->Enum_Type.elem_type->kind != Ast_None) {
-                type = create_type_from_ast(tcx, ast->Enum_Type.elem_type, report_error);
+                type = create_type_from_ast(tcx, ast->Enum_Type.elem_type, report_error).type;
                 if (type->kind != TypeKind_Basic) {
                     type_error(tcx, string_lit("enums can only be defined as primitive types"),
                                ast->span);
@@ -2141,10 +2141,10 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 type = t_s64;
             }
             
-            result->Enum.type = type;
-            result->size = type->size;
-            result->align = type->align;
-            result->ident = ast_unwrap_ident(ast->Enum_Type.ident);
+            result.type->Enum.type = type;
+            result.type->size = type->size;
+            result.type->align = type->align;
+            result.type->ident = ast_unwrap_ident(ast->Enum_Type.ident);
             
             Value value;
             if (is_bitflag_set(type->Basic.flags, BasicFlag_Unsigned)) {
@@ -2185,7 +2185,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 string_id ident = argument->Argument.ident->Ident;
                 
                 // TODO(Alexander): NEED TO HANDLE THE TYPE TABLE HASH MAP MEMORY
-                map_put(result->Enum.values, ident, value);
+                map_put(result.type->Enum.values, ident, value);
                 value.data.signed_int++;
             }
         } break;
@@ -2200,7 +2200,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             
             //if (!result) {
             //result = create_type_from_ast(tcx, ast->Typedef.type, report_error);
-            result = save_type_declaration_from_ast(tcx, ident, ast->Typedef.type, report_error);
+            result.type = save_type_declaration_from_ast(tcx, ident, ast->Typedef.type, report_error);
             //} else {
             //type_error(tcx, string_print("`%` is already defined", f_var(ident)), ast->span);
             //}
@@ -2208,6 +2208,21 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         
         case Ast_Const_Type: {
             result = create_type_from_ast(tcx, ast->Const_Type, report_error);
+            result.mods |= AstDeclModifier_Const;
+        } break;
+        
+        case Ast_Volatile_Type: {
+            result = create_type_from_ast(tcx, ast->Volatile_Type, report_error);
+            result.mods |= AstDeclModifier_Volatile;
+        } break;
+        
+        case Ast_Local_Persist_Type: {
+            result = create_type_from_ast(tcx, ast->Local_Persist_Type, report_error);
+            result.mods |= AstDeclModifier_Local_Persist;
+        } break;
+        
+        default: {
+            unimplemented;
         } break;
     }
     
@@ -2218,14 +2233,18 @@ Type*
 type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
     Type* result = 0;
     
+    
     switch (stmt->kind) {
-        
         case Ast_Assign_Stmt: {
-            Type* expected_type = create_type_from_ast(tcx, stmt->Assign_Stmt.type, report_error);
+            Create_Type_From_Ast_Result created_type = create_type_from_ast(tcx, stmt->Assign_Stmt.type, report_error);
+            
+            Type* expected_type = created_type.type;
             if (!expected_type) {
                 // TODO(Alexander): we can add support for auto types
                 return result;
             }
+            
+            stmt->Assign_Stmt.mods = created_type.mods;
             
             Type* found_type = type_infer_expression(tcx, 
                                                      stmt->Assign_Stmt.expr, 
@@ -2322,7 +2341,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
             
             Type* decl_type = stmt->Decl_Stmt.type->type;
             if (!decl_type) {
-                decl_type = create_type_from_ast(tcx, stmt->Decl_Stmt.type, report_error);
+                decl_type = create_type_from_ast(tcx, stmt->Decl_Stmt.type, report_error).type;
                 
                 if (!decl_type) {
                     break;
@@ -3192,7 +3211,6 @@ intrin_name->Function.first_default_arg_index++; \
 
 s32
 type_check_ast_file(Type_Context* tcx, Ast_File* ast_file, Interp* interp) {
-    
     
     // Forward declare structs to be filled in later
     for_array(ast_file->units, cu, _a) {

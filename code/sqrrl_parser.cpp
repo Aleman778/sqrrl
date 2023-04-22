@@ -1300,6 +1300,11 @@ parse_type_modifiers(Parser* parser, Ast* result) {
             volatile_type->kind = Ast_Volatile_Type;
             volatile_type->Volatile_Type = result;
             result = volatile_type;
+        } else if (parse_keyword(parser, Kw_local_persist, false)) {
+            Ast* local_persist_type = push_ast_node(parser);
+            local_persist_type->kind = Ast_Local_Persist_Type;
+            local_persist_type->Local_Persist_Type = result;
+            result = local_persist_type;
         } else if (parser->c_compatibility_mode && parse_keyword(parser, Sym___unaligned, false)) {
             Ast* unaligned_type = push_ast_node(parser);
             unaligned_type->kind = Ast_Volatile_Type;

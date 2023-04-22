@@ -278,7 +278,14 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool rhs_is_value
                       Operator op=Op_Assign, bool report_error=true);
 s32 type_check_ast_file(Type_Context* tcx, Ast_File* ast_file, Interp* interp);
 
-Type* create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error);
+
+struct Create_Type_From_Ast_Result {
+    Type* type;
+    Ast_Decl_Modifier mods;
+};
+
+
+Create_Type_From_Ast_Result create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error);
 
 Type* load_type_declaration(Type_Context* tcx, string_id ident, Span span, bool report_error);
 

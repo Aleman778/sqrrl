@@ -1246,12 +1246,24 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Bloc
             // NOTE(Alexander): push local first then it can be found elsewhere
             if (stmt->Assign_Stmt.ident->kind == Ast_Ident) {
                 string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
-                ic_push_local(cu, type, ident);
                 
-                Intermediate_Code* ic_curr = cu->ic_last;
-                Ic_Arg dest = convert_expr_to_intermediate_code(cu, stmt->Assign_Stmt.ident);
-                src = ic_clobber_register(cu, ic_curr, type, src, dest);
-                convert_assign_to_intermediate_code(cu, stmt->type, dest, src, true);
+                if (stmt->Assign_Stmt.mods & AstDeclModifier_Local_Persist) {
+                    if (!(src.type & IC_DISP)) {
+                        unimplemented;
+                    }
+                    
+                    void* data = arena_push_size(cu->data_arena, type->size, type->align);
+                    memcpy(data, &src.disp, type->size);
+                    Ic_Arg result = ic_rip_disp32(IC_T64, IcDataArea_Globals, cu->data_arena, data);
+                    map_put(cu->locals, ident, result);
+                } else {
+                    ic_push_local(cu, type, ident);
+                    
+                    Intermediate_Code* ic_curr = cu->ic_last;
+                    Ic_Arg dest = convert_expr_to_intermediate_code(cu, stmt->Assign_Stmt.ident);
+                    src = ic_clobber_register(cu, ic_curr, type, src, dest);
+                    convert_assign_to_intermediate_code(cu, stmt->type, dest, src, true);
+                }
                 
             } else if (stmt->Assign_Stmt.ident->kind == Ast_Compound) {
                 for_compound(stmt->Assign_Stmt.ident, it) {

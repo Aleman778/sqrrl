@@ -161,6 +161,7 @@ Ast* fields;                                    \
 })                                              \
 AST(Const_Type,        "const", Ast*)           \
 AST(Volatile_Type,     "volatile", Ast*)        \
+AST(Local_Persist_Type, "local persist", Ast*) \
 AST(Declspec_Type,     "declspec", struct {     \
 Ast* type; \
 Ast* spec; \
@@ -218,9 +219,11 @@ enum {
     AstDeclModifier_External       = bit(5),
     AstDeclModifier_Global         = bit(6),
     AstDeclModifier_Const          = bit(7),
-    AstDeclModifier_Cconv_cdecl    = bit(8),
-    AstDeclModifier_Cconv_fastcall = bit(9),
-    AstDeclModifier_Cconv_stdcall  = bit(10),
+    AstDeclModifier_Volatile       = bit(8),
+    AstDeclModifier_Local_Persist  = bit(9),
+    AstDeclModifier_Cconv_cdecl    = bit(10),
+    AstDeclModifier_Cconv_fastcall = bit(11),
+    AstDeclModifier_Cconv_stdcall  = bit(12),
 };
 
 union Span {
@@ -486,6 +489,12 @@ string_builder_push(String_Builder* sb, Ast_Decl_Modifier mods) {
         }
         if (is_bitflag_set(mods, AstDeclModifier_Global)) {
             string_builder_push(sb, "global ");
+        }
+        if (is_bitflag_set(mods, AstDeclModifier_Volatile)) {
+            string_builder_push(sb, "volatile ");
+        }
+        if (is_bitflag_set(mods, AstDeclModifier_Local_Persist)) {
+            string_builder_push(sb, "local_persist ");
         }
         string_builder_push(sb, ")");
     }

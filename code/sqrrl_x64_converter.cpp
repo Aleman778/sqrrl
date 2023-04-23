@@ -1254,7 +1254,7 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Bloc
                     
                     void* data = arena_push_size(cu->data_arena, type->size, type->align);
                     memcpy(data, &src.disp, type->size);
-                    Ic_Arg result = ic_rip_disp32(IC_T64, IcDataArea_Globals, cu->data_arena, data);
+                    Ic_Arg result = ic_rip_disp32(src.raw_type, IcDataArea_Globals, cu->data_arena, data);
                     map_put(cu->locals, ident, result);
                 } else {
                     ic_push_local(cu, type, ident);

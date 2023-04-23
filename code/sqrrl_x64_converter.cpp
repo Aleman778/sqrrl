@@ -1248,13 +1248,17 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Bloc
                 string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
                 
                 if (stmt->Assign_Stmt.mods & AstDeclModifier_Local_Persist) {
-                    if (!(src.type & IC_DISP)) {
+                    void* data = arena_push_size(cu->data_arena, type->size, type->align);
+                    
+                    if (src.type & IC_DISP) {
+                        memcpy(data, &src.disp, type->size);
+                    } else if ((src.type & IC_TF_MASK) != 0) {
+                        // TODO(Alexander): we need initializer (that runs before main) to setup local persist with non constant initializer
                         unimplemented;
                     }
                     
-                    void* data = arena_push_size(cu->data_arena, type->size, type->align);
-                    memcpy(data, &src.disp, type->size);
-                    Ic_Arg result = ic_rip_disp32(src.raw_type, IcDataArea_Globals, cu->data_arena, data);
+                    Ic_Raw_Type raw_type = convert_type_to_raw_type(type);
+                    Ic_Arg result = ic_rip_disp32(raw_type, IcDataArea_Globals, cu->data_arena, data);
                     map_put(cu->locals, ident, result);
                 } else {
                     ic_push_local(cu, type, ident);

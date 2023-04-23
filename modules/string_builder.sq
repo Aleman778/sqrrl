@@ -1,0 +1,75 @@
+
+struct String_Builder {
+    u8* data;
+    smm size;
+    smm curr_used;
+};
+
+inline void
+string_builder_clear(String_Builder* sb) {
+    // TODO(Alexander): maybe we want to shink the buffer if it's very large?
+    sb.curr_used = 0;
+}
+
+inline void
+string_builder_free(String_Builder* sb) {
+    free(sb.data);
+    sb.data = 0;
+    sb.curr_used = 0;
+    sb.size = 0;
+}
+
+inline void
+string_builder_alloc(String_Builder* sb, smm new_size) {
+    void* new_data = realloc(sb.data, new_size);
+    if (!new_data) {
+        new_data = malloc(new_size);
+        memcpy(new_data, sb.data, sb.size);
+        free(sb.data);
+    }
+    sb.data = (u8*) new_data;
+    sb.size = new_size;
+}
+
+inline void
+string_builder_ensure_capacity(String_Builder* sb, smm capacity) {
+    smm min_size = sb.curr_used + capacity;
+    if (min_size > sb.size) {
+        smm new_size = max(sb.size * 2, min_size);
+        string_builder_alloc(sb, new_size);
+    }
+    
+}
+
+void
+string_builder_push(String_Builder* sb, string str) {
+    string_builder_ensure_capacity(sb, str.count);
+    
+    memcpy(sb.data + sb.curr_used, str.data, str.count);
+    sb.curr_used += str.count;
+}
+
+inline void
+string_builder_push_char(String_Builder* sb, u8 c) {
+    string_builder_ensure_capacity(sb, 1);
+    *(sb.data + sb.curr_used) = c;
+    sb.curr_used += 1;
+}
+
+string
+string_builder_to_string(String_Builder* sb) {
+    string result;
+    result.data = (u8*) malloc(sb.curr_used + 1);
+    result.count = sb.curr_used;
+    memcpy(result.data, sb.data, sb.curr_used);
+    result.data[result.count] = 0;
+    return result;
+}
+
+string
+string_builder_to_string_nocopy(String_Builder* sb) {
+    string result;
+    result.data = sb.data;
+    result.count = sb.curr_used;
+    return result;
+}

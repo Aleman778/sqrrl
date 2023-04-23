@@ -864,6 +864,9 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 }
                 
                 if (!actual_type) {
+                    if (report_error) {
+                        type_error(tcx, string_lit("argument is malformed"), actual_arg->span);
+                    }
                     return 0;
                 }
                 

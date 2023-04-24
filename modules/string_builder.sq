@@ -38,7 +38,6 @@ string_builder_ensure_capacity(String_Builder* sb, smm capacity) {
         smm new_size = max(sb.size * 2, min_size);
         string_builder_alloc(sb, new_size);
     }
-    
 }
 
 void

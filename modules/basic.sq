@@ -195,10 +195,10 @@ type_info(Type type) {
 }
 
 internal void
-print_newline_with_spaces(int count) {
-    print("\n");
+print_newline_with_spaces(String_Builder* sb, int count) {
+    string_builder_push_char(sb, '\n');
     for (int i = 0; i < count; i++) {
-        print(" ");
+        string_builder_push_char(sb, ' ');
     }
 }
 
@@ -264,9 +264,9 @@ data_to_f64(Basic_Type_Info info, void* data) {
 }
 
 internal void
-print_unsigned_integer(u64 integer) {
+string_print_unsigned_integer(String_Builder* sb, u64 integer) {
     if (integer == 0) {
-        _put_string("0");
+        string_builder_push(sb, "0");
         return;
     }
     
@@ -282,13 +282,13 @@ print_unsigned_integer(u64 integer) {
     string s;
     s.data = &result[ptr];
     s.count = result.count - ptr;
-    _put_string(s);
+    string_builder_push(sb, s);
 }
 
 internal void
-print_unsigned_hex_integer(u64 integer) {
+string_print_unsigned_hex_integer(String_Builder* sb, u64 integer) {
     if (integer == 0) {
-        _put_string("0");
+        string_builder_push(sb, "0");
         return;
     }
     [16]u8 result;
@@ -307,33 +307,33 @@ print_unsigned_hex_integer(u64 integer) {
     string s;
     s.data = &result[ptr];
     s.count = result.count - ptr;
-    _put_string(s);
+    string_builder_push(sb, s);
 }
 
 internal void
-print_signed_integer(s64 integer) {
+string_print_signed_integer(String_Builder* sb, s64 integer) {
     if (integer < 0) {
         integer = -integer;
-        _put_string("-");
+        string_builder_push(sb, "-");
     }
     
     u64 unsigned_integer = (u64) integer;
-    print_unsigned_integer(unsigned_integer);
+    string_print_unsigned_integer(sb, unsigned_integer);
 }
 
 internal void
-print_floating_point(f64 floating_point) {
+string_print_floating_point(String_Builder* sb, f64 floating_point) {
     // TODO(Alexander): this is not the best implementation, improve this later
     // TODO(Alexander): we might have to make a separate print for f32 to get more accurate results
     
     if (floating_point < 0.0f) {
-        _put_string("-");
+        string_builder_push(sb, "-");
         floating_point = -floating_point;
     }
     
     u64 whole_part = (u64) floating_point;
-    print_unsigned_integer(whole_part);
-    _put_string(".");
+    string_print_unsigned_integer(sb, whole_part);
+    string_builder_push(sb, ".");
     
     f64 fractional_part = floating_point - (f64) whole_part;
     
@@ -349,13 +349,37 @@ print_floating_point(f64 floating_point) {
     string test;
     test.data = fractional_digits.data;
     test.count = fractional_digits.count;
-    _put_string(test);
+    string_builder_push(sb, test);
 }
 
 #define pln(format, ...) print(format##"\n", __VA_ARGS__)
 
-void
+inline void
 print(string format, ...var_args) {
+    String_Builder sb;
+    string_builder_push_vformat(&sb, format, var_args);
+    string result = string_builder_to_string_nocopy(&sb);
+    _put_string(result);
+    string_builder_free(&sb);
+}
+
+inline string
+string_print(string format, ...var_args) {
+    String_Builder sb;
+    string_builder_push_vformat(&sb, format, var_args);
+    
+    string result = string_builder_to_string(&sb);
+    string_builder_free(&sb);
+    return result
+}
+
+inline void
+string_builder_push_format(String_Builder* sb, string format, ...var_args) {
+    string_builder_push_vformat(sb, format, var_args);
+}
+
+void
+string_builder_push_vformat(String_Builder* sb, string format, Var_Args var_args) {
     int var_args_index = 0;
     u8* var_arg_data = var_args.data;
     
@@ -369,7 +393,7 @@ print(string format, ...var_args) {
         if (chr == '%') {
             smm cnt = var_args.types.count;
             if (var_args_index < cnt) {
-                _put_string(substring);
+                string_builder_push(sb, substring);
                 substring.data = format.data + chr_index + 1;
                 substring.count = 0;
                 
@@ -377,11 +401,9 @@ print(string format, ...var_args) {
                 // TODO(Alexander): this is a bit of a hack becuase
                 // data sizes > 8 are passed as pointer, as specified by callign convention.
                 if (arg.data_size > 8) {
-                    //pln("data_size = %\n", arg.data_size);
-                    print_data_from_type_info(arg.type, *((void**) var_arg_data));
+                    string_print_data_from_type_info(sb, arg.type, *((void**) var_arg_data));
                 } else {
-                    //pln("data_size = %\n", arg.data_size);
-                    print_data_from_type_info(arg.type, var_arg_data);
+                    string_print_data_from_type_info(sb, arg.type, var_arg_data);
                 }
                 
                 var_args_index++;
@@ -395,19 +417,19 @@ print(string format, ...var_args) {
         }
     }
     
-    _put_string(substring);
+    string_builder_push(sb, substring);
 }
 
 void
-print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
+string_print_data_from_type_info(String_Builder* sb, Type_Info* type, void* data, int indent=0) {
     switch (type.kind) {
         case Type_Kind.Basic: {
             switch (type.Basic) {
                 case Basic_Type_Info.Bool: {
                     if (*((bool*) data)) {
-                        print("true");
+                        string_builder_push(sb, "true");
                     } else {
-                        print("false");
+                        string_builder_push(sb, "false");
                     }
                 }
                 
@@ -416,7 +438,7 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                 case Basic_Type_Info.S32:
                 case Basic_Type_Info.S64: {
                     s64 num = data_to_s64(type.Basic, data);
-                    print_signed_integer(num);
+                    string_print_signed_integer(sb, num);
                 }
                 
                 case Basic_Type_Info.U8:
@@ -424,17 +446,17 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                 case Basic_Type_Info.U32:
                 case Basic_Type_Info.U64: {
                     u64 num = data_to_u64(type.Basic, data);
-                    print_unsigned_integer(num);
+                    string_print_unsigned_integer(sb, num);
                 }
                 
                 case Basic_Type_Info.F32:
                 case Basic_Type_Info.F64: {
                     f64 num = data_to_f64(type.Basic, data);
-                    print_floating_point(num);
+                    string_print_floating_point(sb, num);
                 }
                 
                 case Basic_Type_Info.String: {
-                    _put_string(*((string*) data));
+                    string_builder_push(sb, *((string*) data));
                 }
                 
                 case Basic_Type_Info.CString: {
@@ -442,15 +464,15 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                     string s;
                     s.data = (u8*) cstr;
                     s.count = cstring_count(cstr);
-                    _put_string(s);
+                    string_builder_push(sb, s);
                 }
             }
         }
         
         case Type_Kind.Pointer: {
             u64 num = (u64) data_to_u64(Basic_Type_Info.U64, data);
-            _put_string("0x");
-            print_unsigned_hex_integer(num);
+            string_builder_push(sb, "0x");
+            string_print_unsigned_hex_integer(sb, num);
         }
         
         case Type_Kind.Enum: {
@@ -471,16 +493,16 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                 }
             }
             
-            print("%.", type.Enum.ident);
+            string_builder_push_format(sb, "%.", type.Enum.ident);
             if (value >= 0 && value < type.Enum.names.count) {
-                print("% (%)", type.Enum.names[value], value);
+                string_builder_push_format(sb, "% (%)", type.Enum.names[value], value);
             } else {
-                print("%", value);
+                string_builder_push_format(sb, "%", value);
             }
         }
         
         case Type_Kind.Array: {
-            print("{ ");
+            string_builder_push(sb, "{ ");
             
             // TODO(Alexander): find a better way to deserialize arrays
             Fixed_Array arr;
@@ -500,7 +522,7 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                  array_index++) {
                 
                 if (elem_type.kind != Type_Kind.Basic) {
-                    print_newline_with_spaces(indent + 4);
+                    print_newline_with_spaces(sb, indent + 4);
                 }
                 
                 smm offset = type.Array.elem_size*array_index;
@@ -508,36 +530,36 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                 bool doubleQuoted = (elem_type.kind == Type_Kind.Basic &&
                                      elem_type.Basic == Basic_Type_Info.String);
                 if (doubleQuoted) {
-                    print("\"");
+                    string_builder_push(sb, "\"");
                 }
-                print_data_from_type_info(elem_type, (u8*) arr.data + offset, indent + 4);
+                string_print_data_from_type_info(sb, elem_type, (u8*) arr.data + offset, indent + 4);
                 if (doubleQuoted) {
-                    print("\"");
+                    string_builder_push(sb, "\"");
                 }
                 
                 if (array_index + 1 < arr.count) {
-                    print(", ");
+                    string_builder_push(sb, ", ");
                 }
             }
             
             if (arr.count >= max_elements_to_show) {
                 if (elem_type.kind != Type_Kind.Basic) {
-                    print_newline_with_spaces(indent + 4);
+                    print_newline_with_spaces(sb, indent + 4);
                 }
-                print("...+% more", arr.count - max_elements_to_show);
+                string_builder_push_format(sb, "...+% more", arr.count - max_elements_to_show);
             }
             
             if (elem_type.kind != Type_Kind.Basic) {
-                print_newline_with_spaces(indent);
-                print("}");
+                print_newline_with_spaces(sb, indent);
+                string_builder_push(sb, "}");
             } else {
-                print(" }");
+                string_builder_push(sb, " }");
             }
         }
         
         case Type_Kind.Union:
         case Type_Kind.Struct: {
-            print("% {", type.Struct.ident);
+            string_builder_push_format(sb, "% {", type.Struct.ident);
             indent += 4;
             
             for (int field_index = 0; field_index < type.Struct.fields.count; field_index++) {
@@ -546,20 +568,20 @@ print_data_from_type_info(Type_Info* type, void* data, int indent=0) {
                     break;
                 }
                 
-                print_newline_with_spaces(indent);
-                print("%: ", field.ident);
-                print_data_from_type_info(field.type, (u8*) data + field.offset, indent);
+                print_newline_with_spaces(sb, indent);
+                string_builder_push_format(sb, "%: ", field.ident);
+                string_print_data_from_type_info(sb, field.type, (u8*) data + field.offset, indent);
                 
                 if (field_index + 1 < type.Struct.fields.count) {
-                    print(", ");
+                    string_builder_push(sb, ", ");
                 }
             }
             indent -= 4;
-            print_newline_with_spaces(indent);
-            print("}");
+            print_newline_with_spaces(sb, indent);
+            string_builder_push(sb, "}");
             
             if (indent == 0) {
-                print("\n");
+                string_builder_push(sb, "\n");
             }
         }
     }

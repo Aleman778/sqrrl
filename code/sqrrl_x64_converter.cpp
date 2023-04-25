@@ -1357,7 +1357,7 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Bloc
         
         case Ast_Switch_Stmt: {
             Ic_Arg cond = convert_expr_to_intermediate_code(cu, stmt->Switch_Stmt.cond);
-            assert(cond.type & IC_STK);
+            assert(cond.type & IC_STK_RIP);
             
             Ic_Basic_Block* bb_exit = ic_basic_block();
             Ic_Basic_Block* bb_curr_stmt = ic_basic_block();

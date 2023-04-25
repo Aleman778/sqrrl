@@ -145,6 +145,7 @@ struct Type_Function {
     string_id ident;
     s32 first_default_arg_index;
     b32 is_variadic;
+    b32 dump_bytecode;
 };
 
 struct Type_Array {

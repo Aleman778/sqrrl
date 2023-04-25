@@ -346,6 +346,8 @@ struct Compilation_Unit {
     array(Ic_Stk_Entry)* stk_entries;
     s64 stk_usage;
     u8 data_reg; // TODO(Alexander): hack temporary register allocation strategy
+    
+    bool dump_bytecode;
 };
 
 struct Ast_File {
@@ -447,11 +449,16 @@ parse_attribute(Ast* node) {
     
     // Parse out values
     Ast* expr = attr->Attribute.expr;
-    if (!expr) {
+    if (!is_valid_ast(expr)) {
+        result.is_valid = false;
         return result;
     }
     
     switch (expr->kind) {
+        case Ast_Ident: {
+            // do nothing
+        } break;
+        
         case Ast_Call_Expr: {
             for_compound(expr->Call_Expr.args, arg) {
                 assert(arg->kind == Ast_Argument);

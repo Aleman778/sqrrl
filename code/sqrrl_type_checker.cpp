@@ -1145,9 +1145,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     
                     switch (field_ident) {
                         case Sym_data: {
-                            result = arena_push_struct(&tcx->type_arena, Type);
-                            result->kind = TypeKind_Pointer;
-                            result->Pointer = type->Array.type; 
+                            result = type_wrap_pointer(tcx, type->Array.type);
                         } break;
                         
                         case Sym_count: {
@@ -1180,9 +1178,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                         
                         switch (field_ident) {
                             case Sym_data: {
-                                result = arena_push_struct(&tcx->type_arena, Type);
-                                result->kind = TypeKind_Pointer;
-                                result->Pointer = t_u8;
+                                result = type_wrap_pointer(tcx, t_u8);
                             } break;
                             
                             case Sym_count: {
@@ -2018,6 +2014,8 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                             type_error(tcx, string_lit("@extern_name attribute is malformed"), ast->span);
                             break;
                         }
+                    } else if (attr.ident == Sym_dump_bytecode) {
+                        result.type->Function.dump_bytecode = true;
                     }
                     attr = parse_attribute(attr.next);
                 }

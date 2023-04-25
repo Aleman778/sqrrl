@@ -113,8 +113,8 @@ type_wrap_pointer(Type_Context* tcx, Type* type) {
         result = arena_push_struct(&tcx->type_arena, Type);
         result->kind = TypeKind_Pointer;
         result->Pointer = type;
-        result->size = sizeof(umm);
-        result->align = alignof(umm);
+        result->size = t_void_ptr->size;
+        result->align = t_void_ptr->align;
         map_put(tcx->type_to_pointer, type, result);
     }
     

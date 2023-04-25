@@ -121,7 +121,8 @@ VAR(pln)      \
 VAR(format)   \
 VAR(expr)     \
 VAR(link)     \
-VAR(extern_name)
+VAR(extern_name) \
+VAR(dump_bytecode)
 
 typedef u32 string_id;
 

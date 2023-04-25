@@ -81,7 +81,6 @@ inline s64
 compute_stk_displacement(Compilation_Unit* cu, Ic_Arg arg) {
     //assert(arg.stk_entry_index < array_count(cu->stk_entries));
     //Ic_Stk_Entry stk = cu->stk_entries[arg.stk_entry_index];
-    
     switch (arg.stk.area) {
         case IcStkArea_None:
         case IcStkArea_Args: return arg.stk.disp;
@@ -114,8 +113,12 @@ ic_stk_offset(Ic_Raw_Type raw_type, Ic_Arg stk, s64 disp) {
 
 inline Ic_Arg
 ic_push_local(Compilation_Unit* cu, Type* type, string_id ident=0) {
+    assert(type->size != 0 && "bad size");
+    assert(type->align != 0 && "bad align");
+    
     s64 disp = align_forward(cu->stk_locals, type->align);
     cu->stk_locals = disp + type->size;
+    //pln("push: disp = % (%) size = %, align = %", f_s64(disp), f_var(ident), f_int(type->size), f_int(type->align));
     
     Ic_Arg result = ic_stk(convert_type_to_raw_type(type), disp, IcStkArea_Locals);
     if (ident) {

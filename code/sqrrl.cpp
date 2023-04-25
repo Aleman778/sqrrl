@@ -328,10 +328,12 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         }
     }
     
-    if (flag_print_bc) {
-        pln("\nIntermediate code:");
-        String_Builder sb = {};
-        for_array(ast_file.units, cu, _4) {
+    String_Builder sb = {};
+    for_array(ast_file.units, cu, _4) {
+        if (flag_print_bc || (cu->ast && cu->ast->type && 
+                              cu->ast->type->kind == TypeKind_Function &&
+                              cu->ast->type->Function.dump_bytecode)) {
+            
             if (cu->ast->kind != Ast_Decl_Stmt) continue;
             
             if (cu->ast->type->kind == TypeKind_Function) {
@@ -354,16 +356,18 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 }
                 curr = curr->next;
             }
-            
-            string s = string_builder_to_string_nocopy(&sb);
-            pln("%", f_string(s));
-            string_builder_free(&sb);
         }
+    }
+    
+    if (sb.data) {
+        string s = string_builder_to_string_nocopy(&sb);
+        pln("\nIntermediate code:\n%", f_string(s));
+        string_builder_free(&sb);
     }
     
     // Convert to X64 machine code
     s64 rip = 0;
-    for_array(ast_file.units, cu, _4) {
+    for_array(ast_file.units, cu, _5) {
         rip = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage, 0, 0, rip);
     }
     
@@ -384,7 +388,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                                                            asm_buffer_main);
     
     // TODO(Alexander): the PE section_alignment is hardcoded as 0x1000
-    for_array(ast_file.units, cu, _5) {
+    for_array(ast_file.units, cu, _6) {
         Intermediate_Code* ic = cu->ic_first;
         
         while (ic) {
@@ -397,7 +401,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     global_asm_buffer = (s64) asm_buffer;
     s64 rip2 = 0;
-    for_array(ast_file.units, cu, _6) {
+    for_array(ast_file.units, cu, _7) {
         rip2 = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage,
                                            (u8*) asm_buffer, (s64) asm_size, rip2);
     }

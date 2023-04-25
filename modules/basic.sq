@@ -20,8 +20,13 @@ __assert(cstring expression, string file, smm line) {
 //#define assert(expression)
 //#endif
 
+// TODO(Alexander): this is the "C" way to do things, but when we have polymorph support
+//                  in the future we should replace this then
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#define max(a, b) ((a) > (b) ? (a) : (b))
 
 // TODO(Alexander): we only have windows support atm. later on we import the correct header
+#include <string_builder.sq>
 #include <basic_windows.sq>
 #include <ucrtwindows.h>
 

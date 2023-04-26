@@ -780,11 +780,11 @@ arena_grow(Memory_Arena* arena, umm block_size = 0) {
         block_size = arena->min_block_size;
     }
     
+    Memory_Block* block = allocate_memory_block(block_size);
     if (arena->current_block) {
         arena->total_used_minus_current += arena->current_block->used;
+        block->prev_block = arena->current_block;
     }
-    
-    Memory_Block* block = allocate_memory_block(block_size);
     arena->current_block = block;
     arena->prev_used = 0;
 }

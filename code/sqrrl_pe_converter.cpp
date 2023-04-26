@@ -499,6 +499,7 @@ write_pe_executable_to_file(File_Handle output_file, PE_Executable* pe) {
         umm rdata_size = arena_total_used(&pe->rdata_arena);
         write_memory_block_to_file(output_file, pe->rdata_arena.current_block);
         write_padding_to_file(output_file, rdata_size, pe->rdata_section->size_of_raw_data);
+        //pln(".rdata: size: %", f_u64_HEX(rdata_size));
     }
     
     if (pe->data_section) {
@@ -506,11 +507,13 @@ write_pe_executable_to_file(File_Handle output_file, PE_Executable* pe) {
         write_memory_block_to_file(output_file, pe->type_info_arena.current_block);
         write_memory_block_to_file(output_file, pe->data_arena.current_block);
         write_padding_to_file(output_file, data_size, pe->data_section->size_of_raw_data);
+        //pln(".data: size: %", f_u64_HEX(data_size));
     }
     
     if (pe->reloc_section) {
         umm reloc_size = arena_total_used(&pe->reloc_arena);
         write_memory_block_to_file(output_file, pe->reloc_arena.current_block);
         write_padding_to_file(output_file, reloc_size, pe->reloc_section->size_of_raw_data);
+        //pln(".reloc: size: %", f_u64_HEX(reloc_size));
     }
 }

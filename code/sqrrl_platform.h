@@ -45,6 +45,8 @@ void DEBUG_set_current_directory(cstring path);
 void
 write_memory_block_to_file(File_Handle file_handle, Memory_Block* block) {
     if (!block) return;
+    
+    //pln("base = %, size = %, used = %", f_u64_HEX(block->base), f_u64_HEX(block->size), f_u64_HEX(block->used));
     write_memory_block_to_file(file_handle, block->prev_block);
     DEBUG_write(file_handle, block->base, (u32) block->used);
 }
@@ -52,6 +54,7 @@ write_memory_block_to_file(File_Handle file_handle, Memory_Block* block) {
 void
 write_padding_to_file(File_Handle file_handle, umm size, umm aligned_size) {
     umm padding_size = aligned_size - size;
+    //pln("pad: %", f_u64_HEX(padding_size));
     if (padding_size) {
         void* padding = allocate_zeros(padding_size);
         DEBUG_write(file_handle, padding, (u32) padding_size);

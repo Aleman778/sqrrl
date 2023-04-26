@@ -457,7 +457,7 @@ main(int argc, char* argv[]) {
     // Enable UTF-8 encoding
     SetConsoleOutputCP(65001);
     
-    umm asm_buffer_size = megabytes(1);
+    umm asm_buffer_size = megabytes(3);
     void* asm_buffer = VirtualAlloc(0, asm_buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     
     {

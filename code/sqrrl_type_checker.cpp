@@ -1908,7 +1908,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             Ast* ast_arguments = ast->Function_Type.arguments;
             Type_Function* func = &result.type->Function;
             smm offset = 0;
-            //if (ast_unwrap_ident(ast->Function_Type.ident) == vars_save_cstring("push_render_command")) {
+            //if (ast_unwrap_ident(ast->Function_Type.ident) == vars_save_cstring("DEBUG_write_tmx_map")) {
             //__debugbreak();
             //}
             for_compound(ast_arguments, ast_argument) {
@@ -1967,7 +1967,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 } else {
                     array_free(func->arg_idents);
                     array_free(func->arg_types);
-                    return result;
+                    return {};
                 }
             }
             

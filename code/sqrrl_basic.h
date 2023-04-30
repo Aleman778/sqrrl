@@ -760,6 +760,11 @@ free_memory_blocks(Memory_Block* block) {
     free(block);
 }
 
+enum {
+    ArenaPushFlag_None = 0,
+    ArenaPushFlag_Align_From_Zero = bit(1), // useful for aligning data in file formats
+};
+typedef u32 Arena_Push_Flags;
 
 // NOTE(Alexander): memory arena
 struct Memory_Arena {
@@ -768,6 +773,8 @@ struct Memory_Arena {
     
     umm total_used_minus_current; // including all memory blocks
     umm min_block_size;
+    
+    Arena_Push_Flags flags;
 };
 
 inline void
@@ -788,12 +795,6 @@ arena_grow(Memory_Arena* arena, umm block_size = 0) {
     arena->current_block = block;
     arena->prev_used = 0;
 }
-
-enum {
-    ArenaPushFlag_None = 0,
-    ArenaPushFlag_Align_From_Zero = bit(1), // useful for aligning data in file formats
-};
-typedef u32 Arena_Push_Flags;
 
 
 inline umm
@@ -817,10 +818,12 @@ arena_total_used(Memory_Arena* arena) {
 }
 
 inline umm
-arena_aligned_offset(Memory_Arena* arena, umm size, umm align, Arena_Push_Flags flags) {
-    if (flags & ArenaPushFlag_Align_From_Zero) {
+arena_aligned_offset(Memory_Arena* arena, umm size, umm align) {
+    if (arena->flags & ArenaPushFlag_Align_From_Zero) {
         umm used = arena_total_used(arena);
-        return align_forward(used, align) - arena->total_used_minus_current;
+        umm result = align_forward(used, align) - arena->total_used_minus_current;
+        //pln("aligned = %, align = % (ok? %)", f_u64_HEX(result), f_umm(align), f_bool(result % align == 0));
+        return result;
     } else {
         Memory_Block* memory_block = arena->current_block;
         umm current = (umm) memory_block->base + (umm) memory_block->used;
@@ -829,18 +832,18 @@ arena_aligned_offset(Memory_Arena* arena, umm size, umm align, Arena_Push_Flags 
 }
 
 void*
-arena_push_size(Memory_Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT, Arena_Push_Flags flags=0) {
+arena_push_size(Memory_Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT) {
     
     umm offset = 0;
     umm arena_size = 0;
     if (arena->current_block) {
-        offset = arena_aligned_offset(arena, size, align, flags);
+        offset = arena_aligned_offset(arena, size, align);
         arena_size = arena->current_block->size;
     }
     
     if (offset + size > arena_size) {
         arena_grow(arena);
-        offset = arena_aligned_offset(arena, size, align, flags);
+        offset = arena_aligned_offset(arena, size, align);
     }
     
     void* result = arena->current_block->base + offset;
@@ -873,11 +876,11 @@ arena_can_fit_size(Memory_Arena* arena, umm size, umm align) {
 }
 
 
-#define arena_push_struct(arena, type, ...) \
-(type*) arena_push_size(arena, (umm) sizeof(type), (umm) alignof(type), ##__VA_ARGS__)
+#define arena_push_struct(arena, type) \
+(type*) arena_push_size(arena, (umm) sizeof(type), (umm) alignof(type))
 
-#define arena_push_array_of_structs(arena, count, type, ...) \
-(type*) arena_push_size(arena, (umm) count*sizeof(type), (umm) alignof(type), ##__VA_ARGS__)
+#define arena_push_array_of_structs(arena, count, type) \
+(type*) arena_push_size(arena, (umm) count*sizeof(type), (umm) alignof(type))
 
 #define arena_get_data(arena, byte_offset) \
 (void*) ((u8*) (arena)->base + (byte_offset))

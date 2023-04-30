@@ -358,6 +358,8 @@ string_print_floating_point(String_Builder* sb, f64 floating_point) {
 }
 
 #define pln(format, ...) print(format##"\n", __VA_ARGS__)
+// Below one tells you location of your prints
+//#define pln(format, ...) print(__FILE__##":"##__LINE__##": "##format##"\n", __VA_ARGS__)
 
 inline void
 print(string format, ...var_args) {
@@ -421,6 +423,23 @@ string_builder_push_vformat(String_Builder* sb, string format, Var_Args var_args
             substring.count++;
         }
     }
+    
+#if 0
+    // Push remaining args
+    smm cnt = var_args.types.count;
+    for (; var_args_index < cnt; var_args_index++) {
+        // TODO(Alexander): copy pasta from above
+        Var_Arg arg = var_args.types[var_args_index];
+        // TODO(Alexander): this is a bit of a hack becuase
+        // data sizes > 8 are passed as pointer, as specified by callign convention.
+        if (arg.data_size > 8) {
+            string_print_data_from_type_info(sb, arg.type, *((void**) var_arg_data));
+        } else {
+            string_print_data_from_type_info(sb, arg.type, var_arg_data);
+        }
+        var_arg_data += 8;
+    }
+#endif
     
     string_builder_push(sb, substring);
 }

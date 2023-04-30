@@ -18,7 +18,7 @@ struct Parser {
 
 inline Ast*
 push_ast_node(Parser* parser, Token* token=0) {
-    Ast* result = arena_push_struct(&parser->ast_arena, Ast, 0);
+    Ast* result = arena_push_struct(&parser->ast_arena, Ast);
     token = token ? token : &parser->current_token;
     if (token) {
         result->token = *token;

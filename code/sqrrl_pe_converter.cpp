@@ -188,8 +188,7 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
         string_id library_id = it->key;
         Library_Imports* imports = &it->value;
         
-        COFF_Import_Directory_Table* entry = arena_push_struct(rdata_arena, COFF_Import_Directory_Table,
-                                                               ArenaPushFlag_Align_From_Zero);
+        COFF_Import_Directory_Table* entry = arena_push_struct(rdata_arena, COFF_Import_Directory_Table);
         
         if (idt == 0) {
             idt = entry;
@@ -203,7 +202,7 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
     }
     if (idt) {
         // Push null entry
-        arena_push_struct(rdata_arena, COFF_Import_Directory_Table, ArenaPushFlag_Align_From_Zero);
+        arena_push_struct(rdata_arena, COFF_Import_Directory_Table);
         opt_header->import_table.size = (u32) arena_total_used(rdata_arena) - idt_base;
         
         COFF_Import_Directory_Table* entry = idt;
@@ -213,9 +212,7 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
             array(Library_Function)* import_names = it->value.functions;
             
             // Lookup table
-            u64* lookup_table = 0;
             u64* address_table = 0;
-            
             entry->address_table_rva = virtual_base;
             if (array_count(import_names) > 0) {
                 // TODO(Alexander): HACK to get the address table entry
@@ -229,19 +226,13 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
                     block = block->prev_block;
                 }
                 
-                //pln("address_table = %, external_address = %", f_u64_HEX(address_table),
-                //f_u64_HEX(cu->external_address));
+                pln("address_table = %, external_address = %", f_u64_HEX(address_table),
+                    f_u64_HEX(cu->external_address));
             }
             
-            for_array(import_names, ident, _) {
-                u64* lookup_entry = arena_push_struct(rdata_arena, u64);
-                if (!lookup_table) {
-                    lookup_table = lookup_entry;
-                }
-            }
-            arena_push_struct(rdata_arena, u64); // null entry
-            
+            u64* lookup_table = arena_push_array_of_structs(rdata_arena, array_count(import_names), u64);
             entry->lookup_table_rva = ptr_to_rva(virtual_base, rdata_arena, lookup_table);
+            arena_push_struct(rdata_arena, u64); // null entry
             
             // Hint
             u64* lookup_entry = lookup_table;

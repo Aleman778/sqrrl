@@ -1113,12 +1113,20 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 return result;
             }
             
+            if (t_src->kind == TypeKind_Pointer) {
+                t_src = t_s64;
+            }
+            
             if (t_dest->kind == TypeKind_Pointer) {
                 t_dest = t_s64;
             }
             
-            if (t_src->kind == TypeKind_Pointer) {
-                t_src = t_s64;
+            if (t_src->kind == TypeKind_Enum) { 
+                t_src = t_src->Enum.type;
+            }
+            
+            if (t_dest->kind == TypeKind_Enum) { 
+                t_dest = t_dest->Enum.type;
             }
             
             if (t_dest->kind == TypeKind_Basic && t_src->kind == TypeKind_Basic) {
@@ -1128,6 +1136,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                         
                         Ic_Basic_Block* bb_else = ic_basic_block();
                         Ic_Basic_Block* bb_exit = ic_basic_block();
+                        
                         convert_ic_to_conditional_jump(cu, cu->ic_last, src, bb_else);
                         ic_mov(cu, result, ic_imm(IC_U8, 1));
                         ic_add(cu, IC_JMP, bb_exit);

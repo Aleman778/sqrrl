@@ -226,8 +226,8 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
                     block = block->prev_block;
                 }
                 
-                pln("address_table = %, external_address = %", f_u64_HEX(address_table),
-                    f_u64_HEX(cu->external_address));
+                //pln("address_table = %, external_address = %", f_u64_HEX(address_table),
+                //f_u64_HEX(cu->external_address));
             }
             
             u64* lookup_table = arena_push_array_of_structs(rdata_arena, array_count(import_names), u64);

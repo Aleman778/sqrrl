@@ -279,7 +279,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 // Library function pointer is replaced by the loader
                 void* fn_ptr = arena_push_size(&rdata_arena, 8, 8);
                 Intermediate_Code* ic_jump = ic_add(cu, IC_JMP);
-                pln("-> %", f_var(cu->ident));
+                //pln("-> %", f_var(cu->ident));
                 ic_jump->src0 = ic_rip_disp32(IC_U64, IcDataArea_Read_Only, &rdata_arena, fn_ptr);
                 cu->external_address = ic_jump->src0.data.disp;
             }

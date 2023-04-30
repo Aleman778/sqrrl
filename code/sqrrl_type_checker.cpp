@@ -743,6 +743,14 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 }
                 
             } else {
+                if (first_type->kind == TypeKind_Enum) { 
+                    first_type = first_type->Enum.type;
+                }
+                
+                if (second_type->kind == TypeKind_Enum) { 
+                    second_type = second_type->Enum.type;
+                }
+                
                 if (first_type->kind == TypeKind_Basic && 
                     second_type->kind == TypeKind_Basic) {
                     

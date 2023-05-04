@@ -873,6 +873,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 
                 if (!actual_type) {
                     if (report_error) {
+                        pln("%", f_ast(expr));
                         type_error(tcx, string_lit("argument is malformed"), actual_arg->span);
                     }
                     return 0;
@@ -2760,11 +2761,6 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                     }
                     Type* arg_type = t_func->arg_types[arg_index];
                     if (!type_equals(arg_type, arg->Argument.assign->type)) {
-                        //if (!type_check_assignment(tcx, arg_type, 
-                        //arg->Argument.assign->type,
-                        //arg->Argument.assign->span))
-                        //__debugbreak();
-                        pln("%", f_ast(expr));
                         type_error_mismatch(tcx, arg_type, 
                                             arg->Argument.assign->type, 
                                             arg->Argument.assign->span);

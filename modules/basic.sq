@@ -109,6 +109,20 @@ cstring_count(cstring str) {
     return count;
 }
 
+inline cstring
+string_to_cstring(string str, u8* dest=0) {
+    u8* result = dest ? dest : (u8*) malloc(str.count + 1);
+    memcpy(result, str.data, str.count);
+    result[str.count] = 0;
+    return (cstring) result;
+}
+
+inline void
+cstring_free(cstring str) {
+    free((void*) str);
+}
+
+
 struct Fixed_Array {
     void* data;
     smm count;

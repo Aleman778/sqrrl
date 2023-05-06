@@ -1073,12 +1073,12 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             
             Ic_Arg value = convert_expr_to_intermediate_code(cu, expr->Ternary_Expr.second);
             result = ic_reg(value.raw_type);
-            ic_mov(cu, result, value);
+            convert_assign_to_intermediate_code(cu, expr->type, result, value, false);
             ic_add(cu, IC_JMP, bb_exit);
             
             ic_add(cu, IC_LABEL, bb_else);
             value = convert_expr_to_intermediate_code(cu, expr->Ternary_Expr.third);
-            ic_mov(cu, result, value);
+            convert_assign_to_intermediate_code(cu, expr->type, result, value, false);
             
             ic_add(cu, IC_LABEL, bb_exit);
         } break;

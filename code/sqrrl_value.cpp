@@ -76,8 +76,9 @@ convert_aggregate_literal_to_memory(Ast* expr, void* dest) {
             assert(e->kind == Ast_Argument);
             e = e->Argument.assign;
             
-            assert(e->kind == Ast_Value);
-            value_store_in_memory(e->type, curr, e->Value.data);
+            if (e->kind == Ast_Value) {
+                value_store_in_memory(e->type, curr, e->Value.data);
+            }
             curr += type->size;
         }
         

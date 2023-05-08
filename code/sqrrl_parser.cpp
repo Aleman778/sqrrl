@@ -577,6 +577,11 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
         atom_expr = parse_atom(parser, report_error, min_prec);
         
         if (!atom_expr) {
+            
+            if (report_error) {
+                next_token(parser);
+            }
+            
             atom_expr = push_ast_node(parser);
             return atom_expr;
         }

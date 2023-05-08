@@ -1280,6 +1280,8 @@ extern {
                               DWORD dwFlagsAndAttributes,
                               HANDLE hTemplateFile);
     
+    HANDLE WINAPI DeleteFileA(LPCSTR lpFileName);
+    
     
     HANDLE WINAPI FindFirstFileA(LPCSTR lpFileName,
                                  LPWIN32_FIND_DATAA lpFindFileData);

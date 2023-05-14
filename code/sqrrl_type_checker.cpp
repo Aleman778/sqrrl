@@ -436,23 +436,31 @@ constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
     return result;
 }
 
-internal int
+struct Function_Match_Result {
+    int score;
+    bool accepted;
+};
+
+
+internal Function_Match_Result
 match_function_args(Type_Context* tcx,
                     Type* function_type,
                     array(Type*)* actual_args,
                     array(bool)* actual_args_is_value,
                     bool report_error,
                     bool strict_match=false) {
+    
+    Function_Match_Result result = {};
+    result.accepted = true;
+    
     Type_Function* t_func = &function_type->Function;
     array(Type*)* formal_args = t_func->arg_types;
     smm actual_arg_count = array_count(actual_args);
     smm formal_arg_count = array_count(formal_args);
     
-    int match_score = 0;
-    
     if (actual_arg_count < t_func->first_default_arg_index ||
         (actual_arg_count > formal_arg_count && !t_func->is_variadic)) {
-        return false;
+        result.accepted = false;
     }
     
     // TODO(Alexander): nice to have: support for keyworded args, default args
@@ -471,7 +479,7 @@ match_function_args(Type_Context* tcx,
         if (actual_type) {
             bool exact_match = formal_type && type_equals(formal_type, actual_type);
             if (exact_match) {
-                match_score++;
+                result.score++;
             }
             
             if (strict_match) {
@@ -479,26 +487,26 @@ match_function_args(Type_Context* tcx,
                     if (report_error) {
                         type_error_mismatch(tcx, formal_type, actual_type, empty_span);
                     }
-                    match_score = 0;
+                    result.accepted = false;
                     break;
                 }
             } else {
                 if (formal_type && !type_check_assignment(tcx, formal_type, actual_type, arg_is_value,
                                                           empty_span, Op_Assign, report_error)) {
-                    match_score = 0;
+                    result.accepted = false;
                     break;
                 }
             }
         } else {
-            match_score = 0;
+            result.accepted = false;
             break;
         }
         
-        match_score++;
+        result.score++;
         arg_index++;
     }
     
-    return match_score;
+    return result;
 }
 
 internal Ast*
@@ -887,20 +895,29 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             
             if (ident) {
                 int highest_score = 0;
+                Type* function_with_highest_score = 0;
                 
                 Overloaded_Function_List* overload = &map_get(tcx->overloaded_functions, ident);
                 if (overload && overload->is_valid) {
                     for_array_v(overload->functions, overload_func, _) {
-                        int score = match_function_args(tcx, 
-                                                        overload_func,
-                                                        actual_arg_types,
-                                                        actual_arg_is_value,
-                                                        false);
+                        //if (ident == vars_save_cstring("DEBUG_read_tmx_map_data")) {
+                        //__debugbreak();
+                        //}
+                        Function_Match_Result match = match_function_args(tcx, 
+                                                                          overload_func,
+                                                                          actual_arg_types,
+                                                                          actual_arg_is_value,
+                                                                          false);
                         
-                        if (score > highest_score) {
-                            highest_score = score;
-                            //pln("highest score = %", f_int(highest_score));
-                            function_type = overload_func;
+                        if (match.score > highest_score) {
+                            highest_score = match.score;
+                            
+                            if (match.accepted) {
+                                function_type = overload_func;
+                            } else {
+                                //pln("highest score = %", f_int(highest_score));
+                                function_with_highest_score = overload_func;
+                            }
                         }
                     }
                     
@@ -909,6 +926,10 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                         if (report_error) {
                             // TODO(Alexander): can we improve this e.g. showing closest matched function?
                             type_error(tcx, string_print("no overloaded function matched `%`", f_var(ident)), expr->span);
+                            if (function_with_highest_score) {
+                                // TODO(Alexander): should have a way to do follow up information
+                                type_error(tcx, string_print("did you mean to call: `%`", f_type(function_with_highest_score)), expr->span);
+                            }
                         }
                         return 0;
                     }
@@ -1715,8 +1736,7 @@ save_type_declaration(Type_Context* tcx, string_id ident, Type* type, Span span,
                 for_array_v(overload->functions, overloaded_fn, overload_index) {
                     if (match_function_args(tcx, overloaded_fn, 
                                             type->Function.arg_types,
-                                            0,
-                                            report_error, true)) {
+                                            0, report_error, true).accepted) {
                         
                         // TODO(Alexander): we might not have stored the unit yet so this error isn't going to do anything
                         if (overloaded_fn->Function.unit) {
@@ -2615,7 +2635,7 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool is_rhs_value
         } break;
         
         case TypeKind_Array: {
-            bool success = type_check_assignment(tcx, lhs->Pointer, rhs->Pointer, false, span, op, false);
+            bool success = type_equals(lhs->Array.type, rhs->Array.type);
             
             if (lhs->Array.capacity != rhs->Array.capacity) {
                 success = false;
@@ -2650,7 +2670,8 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool is_rhs_value
                 return true;
                 
             } else {
-                bool success = type_check_assignment(tcx, lhs->Pointer, rhs->Pointer, false, span, op, false);
+                // Strict type check for non void* assignment
+                bool success = type_equals(lhs->Pointer, rhs->Pointer);
                 if (!success) {
                     if (report_error) {
                         type_error_mismatch(tcx, lhs, rhs, span);

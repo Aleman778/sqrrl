@@ -273,9 +273,8 @@ bool match_struct_like_args(Type_Context* tcx, Type* formal_type, int first_fiel
 
 Type* type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool report_error);
 
-bool 
-type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool rhs_is_value, Span span,
-                      Operator op=Op_Assign, bool report_error=true);
+bool type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool rhs_is_value, Span span,
+                           Operator op=Op_Assign, bool report_error=true);
 s32 type_check_ast_file(Type_Context* tcx, Ast_File* ast_file, Interp* interp);
 
 

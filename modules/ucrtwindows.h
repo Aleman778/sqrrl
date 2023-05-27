@@ -16,6 +16,7 @@ extern {
     @extern_name("roundf") f32 _round_f32(f32 num);
     @extern_name("floorf") f32 _floor_f32(f32 num);
     @extern_name("ceilf")  f32 _ceil_f32(f32 num);
+    @extern_name("powf")  f32 _pow_f32(f32 num, f32 power);
     
     void* malloc(umm size);
     void* calloc(umm num, umm size);

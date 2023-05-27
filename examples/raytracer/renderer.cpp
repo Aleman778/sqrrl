@@ -204,8 +204,8 @@ dieletric_scatter(ray r, Hit_Result hit) {
     Scatter_Result result;
     result.attenuation = vec3(1.0f, 1.0f, 1.0f);
     
-    hit.normal = vec3(-0.027596f, 0.827434f, 0.560884f);
-    r.direction = vec3(-1.408918f, 0.574960f, -1.000000f);
+    //hit.normal = vec3(-0.027596f, 0.827434f, 0.560884f);
+    //r.direction = vec3(-1.408918f, 0.574960f, -1.000000f);
     //print_vec3(r.direction);
     //hit.normal = vec3_normalize(vec3(1.0f, 1.0f, 0.0f));
     
@@ -226,30 +226,11 @@ dieletric_scatter(ray r, Hit_Result hit) {
     //printf("%f\n", sin_theta);
     //printf("%f\n", refraction_ratio);
     
-    bool is_reflection = (refraction_ratio * sin_theta) > 1.0f;
-    //pln("% * % > 1.0f -> %", refraction_ratio, sin_theta, is_reflection);
-    //printf("%f * %f > 1.0f -> %s\n", refraction_ratio, sin_theta, is_reflection ? "true" : "false");
-    //if (scatter_count > 6) {
-    //debug_break();
-    //}
-    //scatter_count += 1;
-    
-    //pln("%", is_reflection);
-    //debug_break();
-    if (is_reflection) {
+    bool cannot_refract = (refraction_ratio * sin_theta) > 1.0f;
+    if (cannot_refract || reflectance(cos_theta, refraction_ratio) > random_f32()) {
         result.scattered.direction = vec3_reflect(unit_direction, hit.normal);
     } else {
-        //print_vec3(unit_direction);
-        //print_vec3(hit.normal);
         result.scattered.direction = vec3_refract(unit_direction, hit.normal, refraction_ratio);
-        //print_vec3(result.scattered.direction);
-        //debug_break();
-        //v3 perp = vec3_scale(hit.normal, cos_theta);
-        //perp = vec3_add(unit_direction, perp);
-        //perp = vec3_scale(perp, refraction_ratio);
-        
-        //v3 parallel = vec3_scale(hit.normal, -sqrt(abs_f32(1.0f - vec3_length_squared(perp))));
-        //result.scattered.direction = vec3_add(perp, parallel);
     }
     
     result.scattered.origin = hit.p;
@@ -258,8 +239,16 @@ dieletric_scatter(ray r, Hit_Result hit) {
     return result;
 }
 
+f32
+reflectance(f32 cos_theta, f32 refraction_ratio) {
+    // Schlick's approximation
+    f32 r0 = (1-refraction_ratio) / (1+refraction_ratio);
+    r0 = r0 * r0;
+    return r0 + (1 - r0) * pow((1 - cos_theta), 5);
+}
+
 v3
-ray_color(ray r, Sphere spheres[4], int depth) {
+ray_color(ray r, Sphere* spheres, int sphere_count, int depth) {
     if (depth <= 0) {
         return vec3(0.0f, 0.0f, 0.0f);
     }
@@ -270,7 +259,7 @@ ray_color(ray r, Sphere spheres[4], int depth) {
     Hit_Result found_hit = {};
     found_hit.t = -1.0f;
     
-    for (int i = 0; i < (int) 4; i += 1) {
+    for (int i = 0; i < sphere_count; i += 1) {
         Sphere s = spheres[i];
         //pln("sphere% - pos: %, %, % - radius: %", i, s.p.x, s.p.y, s.p.z, s.radius);
         Hit_Result hit = sphere_hit(s, r, t_min, t_max);
@@ -295,7 +284,7 @@ ray_color(ray r, Sphere spheres[4], int depth) {
         
         depth -= 1;
         if (s.scatter) {
-            v3 c = ray_color(s.scattered, spheres, depth);
+            v3 c = ray_color(s.scattered, spheres, sphere_count, depth);
             color = vec3_mul(c, s.attenuation);
         } else {
             color = vec3(0.0f, 0.0f, 0.0f);
@@ -308,9 +297,10 @@ ray_color(ray r, Sphere spheres[4], int depth) {
 }
 
 struct Game_State {
+    v3 camera_look_at;
     v3 camera_p;
     
-    Sphere spheres[4];
+    Sphere spheres[5];
     
     int samples_per_pixel;
 };
@@ -326,24 +316,32 @@ int
 render(HDR_Software_Texture* texture, Game_State* state) {
     //f32 aspect_ratio = 16.0f / 9.0f;
     f32 aspect_ratio = (f32) texture->width / (f32) texture->height;
-    int max_ray_depth = 5;
+    int max_ray_depth = 10;
     
     //pln("resolution: % x %", texture->width, texture->height);
+    v3 vec3_up = vec3(0.0f, 1.0f, 0.0f);
+    v3 look_at = vec3(0.0f, 0.0f, -1.0f);
+    v3 forward = vec3_normalize(vec3_sub(state->camera_p, look_at));
+    v3 right = vec3_normalize(vec3_cross(vec3_up, forward));
+    v3 up = vec3_cross(forward, right);
     
+    
+    //pln("%, %, %", forward, right, up);
     f32 viewport_height = 2.0f;
     f32 viewport_width = aspect_ratio * viewport_height;
     
-    v3 origin = state->camera_p;//vec3(0.0f, 0.0f, 0.0f);
-    v3 horizontal = vec3(viewport_width, 0.0f, 0.0f);
-    v3 vertical = vec3(0.0f, viewport_height, 0.0f);
-    v3 focal = vec3(0.0f, 0.0f, 1.0f);
+    v3 origin = state->camera_p;
+    //v3 origin = vec3(0.0f, 2.0f, 0.0f);
+    v3 horizontal = vec3_scale(right, viewport_width);
+    v3 vertical = vec3_scale(up, viewport_height);
+    
     
     // Compute the lower left screen coordinate
     v3 temp = vec3_scale(horizontal, 0.5f);
     v3 lower_left_corner = vec3_sub(origin, temp);
     temp = vec3_scale(vertical, 0.5f);
     lower_left_corner = vec3_sub(lower_left_corner, temp);
-    lower_left_corner = vec3_sub(lower_left_corner, focal);
+    lower_left_corner = vec3_sub(lower_left_corner, forward);
     
     //pln("P3\n% %\n255", texture->width, texture->height);
     state->samples_per_pixel += 1;
@@ -374,7 +372,13 @@ render(HDR_Software_Texture* texture, Game_State* state) {
             r.origin = origin;
             r.direction = dir;
             
-            v3 c = ray_color(r, state->spheres, max_ray_depth);
+#ifdef __cplusplus
+            v3 c = ray_color(r, state->spheres, 
+                             sizeof(state->spheres)/sizeof(state->spheres[0]),
+                             max_ray_depth);
+#else
+            v3 c = ray_color(r, state->spheres.data, state->spheres.count, max_ray_depth);
+#endif
             color = vec3_add(color, c);
             
             

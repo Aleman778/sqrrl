@@ -171,12 +171,19 @@ is_down(Game_Button_State state) {
     return state.ended_down;
 }
 
-struct Game_Controller {
-    Game_Button_State move_up;
-    Game_Button_State move_right;
-    Game_Button_State move_down;
-    Game_Button_State move_left;
-};
+union Game_Controller {
+    struct {
+        Game_Button_State move_up;
+        Game_Button_State move_right;
+        Game_Button_State move_down;
+        Game_Button_State move_left;
+        
+        Game_Button_State mouse_left;
+        Game_Button_State mouse_middle;
+        Game_Button_State mouse_right;
+    };
+    Game_Button_State buttons[7];
+}
 
 void
 win32_process_keyboard_message(Game_Button_State* new_state, bool is_down) {
@@ -232,7 +239,7 @@ main() {
         //mat0.roughness = 0.0f;
         
         Material mat1 = {};
-        mat1.type = MT_Dielectric;
+        mat1.type = MT_Lambertian;
         mat1.refraction_index = 1.5f;
         mat1.albedo = vec3_rgb(232, 112, 79);
         //mat1.roughness = 0.3f;
@@ -240,17 +247,22 @@ main() {
         Material mat2 = {};
         mat2.type = MT_Metallic;
         mat2.albedo = vec3_rgb(74, 127, 212);
-        mat2.roughness = 1.0f;
+        mat2.roughness = 0.3f;
         
         Material mat3 = {};
-        mat3.albedo = vec3_rgb(128, 171, 120);
+        mat3.albedo = vec3_rgb(160, 242, 17);
         
         Game_State state = {};
-        state.spheres[0].p = vec3(0.0f, 0.0f, -1.0f);
+        state.spheres[0].p = vec3(-1.0f, 0.0f, -1.0f);
         state.spheres[0].radius = 0.5f;
         state.spheres[0].material = &mat0;
         
-        state.spheres[1].p = vec3(-1.0f, 0.0f, -1.0f);
+        // Make sphere above hollowed glass
+        state.spheres[4].p = vec3(-1.0f, 0.0f, -1.0f);
+        state.spheres[4].radius = -0.48f;
+        state.spheres[4].material = &mat0;
+        
+        state.spheres[1].p = vec3(0.0f, 0.0f, -1.0f);
         state.spheres[1].radius = 0.5f;
         state.spheres[1].material = &mat1;
         
@@ -271,15 +283,22 @@ main() {
         int buffer_memory_size = (texture.width*texture.height)*4*4;
         texture.data = (f32*) VirtualAlloc(0, buffer_memory_size, MEM_COMMIT, PAGE_READWRITE);
         
+        local_persist POINT prev_mouse_pos;
+        GetCursorPos(&prev_mouse_pos);
+        ScreenToClient(window, &prev_mouse_pos);
+        
         //debug_break();//pln("is_running = %", is_running);
         int i = 0;
         while (is_running) {
             {
                 Game_Controller new_controller = {};
-                new_controller.move_up.ended_down = controller.move_up.ended_down;
-                new_controller.move_left.ended_down = controller.move_left.ended_down;
-                new_controller.move_down.ended_down = controller.move_down.ended_down;
-                new_controller.move_right.ended_down = controller.move_right.ended_down;
+                for (int button_index = 0; 
+                     button_index < new_controller.buttons.count; 
+                     button_index++) {
+                    
+                    new_controller.buttons[button_index].ended_down = 
+                        controller.buttons[button_index].ended_down;
+                }
                 controller = new_controller;
             }
             
@@ -333,6 +352,14 @@ main() {
                 }
             }
             
+            win32_process_keyboard_message(&controller.mouse_left,
+                                           (bool) (GetKeyState(VK_LBUTTON) & (1 << 15)));
+            win32_process_keyboard_message(&controller.mouse_middle,
+                                           (bool) (GetKeyState(VK_MBUTTON) & (1 << 15)));
+            win32_process_keyboard_message(&controller.mouse_right,
+                                           (bool) (GetKeyState(VK_RBUTTON) & (1 << 15)));
+            
+            
             bool discard_buffer = false;
             if (is_down(controller.move_up)) {
                 state.camera_p.z -= 0.1f;
@@ -354,6 +381,29 @@ main() {
                 discard_buffer = true;
             }
             
+            // Mouse control
+            POINT mouse_pos;
+            GetCursorPos(&mouse_pos);
+            ScreenToClient(window, &mouse_pos);
+            int delta_x = mouse_pos.x - prev_mouse_pos.x;
+            int delta_y = mouse_pos.y - prev_mouse_pos.y;
+            
+            local_persist f32 rot_angle_y;
+            if (delta_x != 0 || delta_y != 0) {
+                rot_angle_y += delta_y * 0.005f;
+                //state.camera_p.x = mouse_pos.x * 0.002f;
+                state.camera_p.y = sin(rot_angle_y) * 2.0f;
+                state.camera_p.z = cos(rot_angle_y - PI_F32/2.0f) * 2.0f - 1.0f;//sqrt(4.0f - state.camera_p.y*state.camera_p.y);
+                pln("%, %, %", delta_y, state.camera_p.y, state.camera_p.z);
+                //if (state.camera_p.y < 0.01f) //pln("reset");
+                //state.camera_p.y = 0.01f;
+                //}
+                
+                discard_buffer = true;
+            }
+            prev_mouse_pos = mouse_pos;
+            
+            // Discard buffer if change was made
             if (discard_buffer) {
                 state.samples_per_pixel = 0;
                 int size = texture.width*texture.height;

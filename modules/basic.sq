@@ -81,6 +81,11 @@ ceil(f32 num) {
 }
 
 f32
+pow(f32 num, f32 power) {
+    return _pow_f32(num, power);
+}
+
+f32
 abs(f32 num) {
     // TODO(Alexander): we can perhaps optimize this?
     return num < 0.0f ? -num : num;
@@ -135,7 +140,7 @@ struct Dynamic_Array {
 };
 
 enum Type_Kind {
-    Unresolved,
+    Unresolved, // TODO: maybe this shouldn't be here?
     Void,
     Any,
     Type,

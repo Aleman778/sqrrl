@@ -1775,6 +1775,10 @@ x64_mov(Intermediate_Code* ic,
                     x64_mov(ic, t1, r1, d1, IC_T64 + IC_REG, X64_RAX, 0, rip);
                 } else {
                     // C7 /0 id 	MOV r/m32, imm32 	MI
+                    if (t1 & IC_T16) {
+                        ic_u8(ic, X64_OP_SIZE_PREFIX);
+                    }
+                    
                     if (t1 & IC_T64) {
                         x64_rex(ic, REX_FLAG_64_BIT);
                     }
@@ -1788,6 +1792,8 @@ x64_mov(Intermediate_Code* ic,
                     }
                     if (t1 & IC_T8) {
                         ic_u8(ic, (u8) d2);
+                    } else if (t1 & IC_T16) {
+                        ic_u16(ic, (u16) d2);
                     } else {
                         ic_u32(ic, (u32) d2);
                     }

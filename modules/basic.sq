@@ -22,8 +22,8 @@ __assert(cstring expression, string file, smm line) {
 
 // TODO(Alexander): this is the "C" way to do things, but when we have polymorph support
 //                  in the future we should replace this then
-#define min(a, b) ((a) < (b) ? (a) : (b))
-#define max(a, b) ((a) > (b) ? (a) : (b))
+//#define min(a, b) ((a) < (b) ? (a) : (b))
+//#define max(a, b) ((a) > (b) ? (a) : (b))
 
 // TODO(Alexander): we only have windows support atm. later on we import the correct header
 #include <string_builder.sq>
@@ -61,6 +61,11 @@ atan(f32 num) {
 }
 
 f32
+atan2(f32 y, f32 x) {
+    return _atan2_f32(y, x);
+}
+
+f32
 sqrt(f32 num) {
     return _sqrt_f32(num);
 }
@@ -91,15 +96,123 @@ abs(f32 num) {
     return num < 0.0f ? -num : num;
 }
 
+f32
+min(f32 a, f32 b) {
+    return a <= b ? a : b;
+}
+
+f32
+max(f32 a, f32 b) {
+    return a >= b ? a : b;
+}
+
+f32
+random_f32() {
+    return (f32) _random_s32() / (RAND_MAX + 1.0f);
+}
+
+
+f64
+cos(f64 num) {
+    return _cos_f64(num);
+}
+
+f64
+acos(f64 num) {
+    return _acos_f64(num);
+}
+
+f64
+sin(f64 num) {
+    return _sin_f64(num);
+}
+
+f64
+asin(f64 num) {
+    return _asin_f64(num);
+}
+
+f64
+tan(f64 num) {
+    return _tan_f64(num);
+}
+
+f64
+atan(f64 num) {
+    return _atan_f64(num);
+}
+
+f64
+atan2(f64 y, f64 x) {
+    return _atan2_f64(y, x);
+}
+
+f64
+sqrt(f64 num) {
+    return _sqrt_f64(num);
+}
+
+f64
+round(f64 num) {
+    return _round_f64(num);
+}
+
+f64
+floor(f64 num) {
+    return _floor_f64(num);
+}
+
+f64
+ceil(f64 num) {
+    return _ceil_f64(num);
+}
+
+f64
+pow(f64 num, f64 power) {
+    return _pow_f64(num, power);
+}
+
+f64
+abs(f64 num) {
+    // TODO(Alexander): we can perhaps optimize this?
+    return num < 0.0f ? -num : num;
+}
+
+f64
+min(f64 a, f64 b) {
+    return a <= b ? a : b;
+}
+
+f64
+max(f64 a, f64 b) {
+    return a >= b ? a : b;
+}
+
+
 s32
 abs(s32 num) {
     // TODO(Alexander): we can perhaps optimize this?
     return num < 0 ? -num : num;
 }
 
-f32
-random_f32() {
-    return (f32) _random_s32() / (RAND_MAX + 1.0f);
+s32
+min(s32 a, s32 b) {
+    return a <= b ? a : b;
+}
+
+s32
+max(s32 a, s32 b) {
+    return a >= b ? a : b;
+}
+
+smm
+min(smm a, smm b) {
+    return a <= b ? a : b;
+}
+
+smm
+max(smm a, smm b) {
+    return a >= b ? a : b;
 }
 
 

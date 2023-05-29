@@ -2174,7 +2174,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             result.type->Enum.type = type;
             result.type->size = type->size;
             result.type->align = type->align;
-            result.type->ident = ast_unwrap_ident(ast->Enum_Type.ident);
+            result.type->ident = try_unwrap_ident(ast->Enum_Type.ident);
             
             Value value;
             if (is_bitflag_set(type->Basic.flags, BasicFlag_Unsigned)) {
@@ -2195,21 +2195,26 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 
                 assert(!argument->Argument.type && "enums fields don't have different types, parsing bug");
                 
-                if (argument->Argument.assign && argument->Argument.assign->kind != Ast_None) {
+                if (is_valid_ast(argument->Argument.assign)) {
+                    value = constant_folding_of_expressions(tcx, argument->Argument.assign);
                     
-                    // TODO(Alexander): add constant expression evaluation
-                    //value = interp_expression(interp, argument->Argument.assign).value;
-                    //if (!is_integer(value)) {
-                    //TODO(Alexander): show the value in the message
-                    //type_error(tcx, string_lit("enums only support integer values"));
-                    //break;
-                    //}
-                    
-                    if (is_bitflag_set(type->Basic.flags, BasicFlag_Unsigned)) {
-                        value.type = Value_unsigned_int;
-                    } else {
-                        value.type = Value_signed_int;
+                    if (value.type ==Value_void) {
+                        type_error(tcx, string_lit("enums assignment can only be integer literal"),
+                                   argument->Argument.assign->span);
+                        break;
+                        
+                    } else if (!is_integer(value)) {
+                        //TODO(Alexander): show the value in the message
+                        type_error(tcx, string_lit("enums only support integer values"),
+                                   argument->Argument.assign->span);
+                        break;
                     }
+                }
+                
+                if (is_bitflag_set(type->Basic.flags, BasicFlag_Unsigned)) {
+                    value.type = Value_unsigned_int;
+                } else {
+                    value.type = Value_signed_int;
                 }
                 
                 string_id ident = argument->Argument.ident->Ident;

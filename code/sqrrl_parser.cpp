@@ -883,7 +883,16 @@ parse_statement(Parser* parser, bool report_error) {
                         } break;
                         
                         case Ast_Function_Type: {
-                            type->Function_Type.attributes = attributes;
+                            
+                            if (attributes) {
+                                Ast* last = type->Function_Type.attributes;
+                                if (last) {
+                                    for_compound(last, it) {};
+                                    *compound_it = *attributes;
+                                } else {
+                                    type->Function_Type.attributes = attributes;
+                                }
+                            }
                             
                             result = push_ast_node(parser, &token);
                             result->kind = Ast_Decl_Stmt;
@@ -1818,13 +1827,13 @@ register_top_level_declaration(Parser* parser, Ast_File* ast_file,
                             //}
                             Ast* last_attr = type_ast->Function_Type.attributes;
                             
-                            if (last_attr) {
-                                while (is_valid_ast(last_attr->Compound.next)) {
-                                    last_attr = last_attr->Compound.next;
+                            if (attributes) {
+                                if (last_attr) {
+                                    for_compound(last_attr, it) {};
+                                    *compound_it = *attributes;
+                                } else {
+                                    type_ast->Function_Type.attributes = attributes;
                                 }
-                                last_attr->Compound.next = attributes;
-                            } else {
-                                type_ast->Function_Type.attributes = attributes;
                             }
                         } break;
                         

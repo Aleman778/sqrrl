@@ -77,7 +77,7 @@ VAR(defined)  \
 VAR(elif)     \
 VAR(endif)    \
 VAR(include)  \
-VAR(assert)    \
+VAR(__assert)    \
 VAR(ifdef)    \
 VAR(ifndef)   \
 VAR(pragma)   \

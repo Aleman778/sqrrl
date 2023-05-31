@@ -135,21 +135,22 @@ ic_imm(Ic_Raw_Type t, s64 d) {
     return result;
 }
 
+
 inline Ic_Arg
-ic_rip_disp32(Ic_Raw_Type t, Ic_Data_Area data_area, u32 disp) {
+ic_rip_disp32(Compilation_Unit* cu, Ic_Raw_Type t, Ic_Data_Area data_area, void* data, u32 relative_ptr) {
     Ic_Arg result = {};
     result.type = t + IC_RIP_DISP32;
     result.reg = X64_RIP;
-    result.data.disp = disp;
-    result.data.area = data_area;
+    if (cu->use_absolute_ptrs) {
+        result.disp = (s64) data;
+    } else {
+        result.data.disp = relative_ptr;
+        result.data.area = data_area;
+    }
+    
     return result;
 }
 
-inline Ic_Arg
-ic_rip_disp32(Ic_Raw_Type t, Ic_Data_Area data_area, Memory_Arena* arena, void* data) {
-    u32 disp = (s32) arena_relative_pointer(arena, data);
-    return ic_rip_disp32(t, data_area, disp);
-}
 
 inline bool
 x64_is_scalar_type(int size) {
@@ -263,6 +264,7 @@ _ic_add(Compilation_Unit* cu, Ic_Opcode opcode = IC_NOOP, cstring comment=0, voi
             cu->bb_last->next = bb;
         }
         
+        bb->index = cu->bb_index++;
         bb->ic_last = cu->ic_last;
         cu->bb_last = bb;
     } else {
@@ -378,3 +380,7 @@ Ic_Arg convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr);
 
 void convert_procedure_to_intermediate_code(Compilation_Unit* cu, bool insert_debug_break);
 s64 convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64 buf_size, s64 rip);
+
+void string_builder_push(String_Builder* sb, Ic_Arg arg);
+void string_builder_push(String_Builder* sb, Intermediate_Code* ic, int bb_index=0);
+void print_intermediate_code(Intermediate_Code* value);

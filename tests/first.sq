@@ -1,5 +1,9 @@
+
+@intrinsic void __assert(int expr, cstring msg, cstring file, smm line);
+#define assert(expression) __assert(expression, #expression, __FILE__, __LINE__)
+
 void
-@test_proc 
+@test_proc
 unary_expressions() {
     int x = 42;
     int y = -x;
@@ -34,7 +38,7 @@ void_ptr_assign_and_int_casting() {
 void
 @test_proc
 sign_extend_and_wrapping_integers() {
-    s8 x = (s8) -10;
+    s8 x = cast(s8) -10;
     x += (s8) 200;
     
     int y = (int) x;
@@ -244,7 +248,7 @@ struct v2s {
 void
 @test_proc
 struct_v2s() {
-    v2s v = v2s { x: 5, y: -12 };
+    v2s v = { x: 5, y: -12 };
     assert(v.x + v.y == -7);
 }
 
@@ -257,7 +261,7 @@ v2s_ptr_scale(v2s* v, s32 s) {
 void
 @test_proc
 modify_struct_v2s_via_call_as_pointer() {
-    v2s v = v2s { x: 5, y: -12 };
+    v2s v = { x: 5, y: -12 };
     v2s_ptr_scale(&v, 10);
     assert(v.x + v.y == -70);
 }
@@ -271,7 +275,7 @@ v2s_scale(v2s v, s32 s) {
 void
 @test_proc
 no_modify_struct_v2s_via_call_as_copy() {
-    v2s v = v2s { x: 5, y: -12 };
+    v2s v = { x: 5, y: -12 };
     v2s_scale(v, 10);
     assert(v.x + v.y == -7);
 }

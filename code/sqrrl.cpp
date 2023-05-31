@@ -15,6 +15,7 @@
 #include "sqrrl_parser.cpp"
 #include "sqrrl_type_checker.cpp"
 #include "sqrrl_interp.cpp"
+#include "sqrrl_intermediate_code.cpp"
 #include "sqrrl_x64_converter.cpp"
 #include "sqrrl_pe_converter.cpp"
 #include "sqrrl_pdb_converter.cpp"
@@ -139,36 +140,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     Preprocessor preprocessor = {};
     
-#if 0
-    {
-        // Create global pln macro
-        Preprocessor_Macro pln_macro = {};
-        pln_macro.source = string_lit("print(format##\"\\n\", __VA_ARGS__)");
-        string_id format_id = Sym_format;
-        map_put(pln_macro.arg_mapper, format_id, 0);
-        pln_macro.is_functional = true;
-        pln_macro.is_variadic = true;
-        pln_macro.is_valid = true;
-        
-        string_id pln_id = Sym_pln;
-        map_put(preprocessor.macros, pln_id, pln_macro);
-    }
-    
-    {
-        // Create global pln macro
-        Preprocessor_Macro assert_macro = {};
-        assert_macro.source = string_lit("(void) ((expr) || __assert(expr, #expr \" \" __VA_ARGS__, __FILE__, __LINE__))");
-        string_id expr_id = Sym_expr;
-        map_put(assert_macro.arg_mapper, expr_id, 0);
-        assert_macro.is_functional = true;
-        assert_macro.is_variadic = true;
-        assert_macro.is_valid = true;
-        
-        string_id assert_id = Sym_assert;
-        map_put(preprocessor.macros, assert_id, assert_macro);
-    }
-#endif
-    
     string preprocessed_source = preprocess_file(&preprocessor, 
                                                  file.source, file.abspath, file.extension, file.index);
     
@@ -278,9 +249,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 
                 // Library function pointer is replaced by the loader
                 void* fn_ptr = arena_push_size(&rdata_arena, 8, 8);
+                u32 relative_ptr = (u32) arena_relative_pointer(&rdata_arena, fn_ptr);
                 Intermediate_Code* ic_jump = ic_add(cu, IC_JMP);
                 //pln("-> %", f_var(cu->ident));
-                ic_jump->src0 = ic_rip_disp32(IC_U64, IcDataArea_Read_Only, &rdata_arena, fn_ptr);
+                ic_jump->src0 = ic_rip_disp32(cu, IC_U64, IcDataArea_Read_Only, fn_ptr, relative_ptr);
                 cu->external_address = ic_jump->src0.data.disp;
             }
         }
@@ -335,29 +307,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         if (flag_print_bc || (cu->ast && cu->ast->type && 
                               cu->ast->type->kind == TypeKind_Function &&
                               cu->ast->type->Function.dump_bytecode)) {
-            
-            if (cu->ast->kind != Ast_Decl_Stmt) continue;
-            
-            if (cu->ast->type->kind == TypeKind_Function) {
-                string_builder_push_format(&sb, "\n%:\n", f_type(cu->ast->type));
-                
-            } else {
-                continue;
-            }
-            
-            int bb_index = 0;
-            Intermediate_Code* curr = cu->ic_first;
-            while (curr) {
-                if (curr->opcode == IC_LABEL) {
-                    string_builder_push(&sb, "\n");
-                }
-                
-                string_builder_push(&sb, curr, &bb_index);
-                if (curr->next) {
-                    string_builder_push(&sb, "\n");
-                }
-                curr = curr->next;
-            }
+            string_builder_dump_bytecode(&sb, cu);
         }
     }
     

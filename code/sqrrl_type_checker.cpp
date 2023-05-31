@@ -3243,6 +3243,39 @@ intrin_name->Function.first_default_arg_index++; \
 s32
 type_check_ast_file(Type_Context* tcx, Ast_File* ast_file, Interp* interp) {
     
+    // Set the basic types sizes
+    if (t_string->size < 0) {
+        t_string->size = sizeof(string);
+    }
+    
+    if (t_string->align < 0) {
+        t_string->align = alignof(string);
+    }
+    
+    if (t_cstring->size < 0) {
+        t_cstring->size = sizeof(cstring);
+    }
+    
+    if (t_cstring->align < 0) {
+        t_cstring->align = alignof(cstring);
+    }
+    
+    if (t_type->size < 0) {
+        t_type->size = sizeof(smm);
+    }
+    
+    if (t_type->align < 0) {
+        t_type->align = alignof(smm);
+    }
+    
+    if (t_void_ptr->size < 0) {
+        t_void_ptr->size = sizeof(smm);
+    }
+    
+    if (t_void_ptr->align < 0) {
+        t_void_ptr->align = alignof(smm);
+    }
+    
     // Forward declare structs to be filled in later
     for_array(ast_file->units, cu, _a) {
         Ast* ast = cu->ast;

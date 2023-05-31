@@ -662,25 +662,28 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             if (is_integer(expr->Value)) {
                 Ic_Raw_Type raw_type = convert_type_to_raw_type(expr->type);
                 result.type = raw_type + IC_DISP;
-                result.disp = value_to_s64(expr->Value);
+                //result.disp = value_to_s64(expr->Value);
+                value_store_in_memory(expr->type, &result.disp, expr->Value.data);
                 
             } else if (is_floating(expr->Value)) {
                 Type* type = expr->type;
                 Ic_Raw_Type raw_type = convert_type_to_raw_type(expr->type);
                 void* data = arena_push_size(cu->rdata_arena, type->size, type->size);
+                u32 relative_ptr = (u32) arena_relative_pointer(cu->rdata_arena, data);
                 value_store_in_memory(type, data, expr->Value.data);
-                result = ic_rip_disp32(raw_type, IcDataArea_Read_Only, cu->rdata_arena, data);
+                result = ic_rip_disp32(cu, raw_type, IcDataArea_Read_Only, data, relative_ptr);
                 
             } else if (is_string(expr->Value)) {
                 Ic_Raw_Type raw_type = IC_T64;
                 
                 smm string_count = expr->Value.data.str.count;
                 void* string_data = arena_push_size(cu->rdata_arena, string_count, 1);
+                u32 relative_ptr = (s32) arena_relative_pointer(cu->rdata_arena, string_data);
                 memcpy(string_data, expr->Value.data.str.data, string_count);
                 
                 result = ic_push_local(cu, t_string);
                 
-                Ic_Arg data = ic_rip_disp32(IC_T64, IcDataArea_Read_Only, cu->rdata_arena, string_data);
+                Ic_Arg data = ic_rip_disp32(cu, IC_T64, IcDataArea_Read_Only, string_data, relative_ptr);
                 Ic_Arg count_dest = result;
                 count_dest.disp += 8; // TODO(Alexander): hardcoded offset for string.count
                 count_dest.raw_type = IC_S64;
@@ -693,8 +696,9 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 if (expr->Value.data.cstr) {
                     smm str_count = cstring_count(expr->Value.data.cstr);
                     cstring cstr = (cstring) arena_push_size(cu->rdata_arena, str_count + 1, 1);
+                    u32 relative_ptr = (u32) arena_relative_pointer(cu->rdata_arena, (void*) cstr);
                     memcpy((void*) cstr, (void*) expr->Value.data.cstr, str_count + 1);
-                    result = ic_rip_disp32(IC_T64, IcDataArea_Read_Only, cu->rdata_arena, (void*) cstr);
+                    result = ic_rip_disp32(cu, IC_T64, IcDataArea_Read_Only, (void*) cstr, relative_ptr);
                 } else {
                     result = ic_imm(IC_S64, 0);
                 }
@@ -705,7 +709,9 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
         } break;
         
         case Ast_Exported_Type: {
-            result = ic_rip_disp32(IC_T64, IcDataArea_Type_Info, expr->Exported_Type.relative_ptr);
+            result = ic_rip_disp32(cu, IC_T64, IcDataArea_Type_Info, 
+                                   expr->Exported_Type.type_info, 
+                                   expr->Exported_Type.relative_ptr);
         } break;
         
         case Ast_Ident: {
@@ -739,9 +745,10 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                         }
                         
                         void* dest = arena_push_size(cu->data_arena, type->size, type->align);
+                        u32 relative_ptr = (u32) arena_relative_pointer(cu->data_arena, dest);
                         memcpy(dest, data, type->size);
                         
-                        result = ic_rip_disp32(raw_type, IcDataArea_Globals, cu->data_arena, dest);
+                        result = ic_rip_disp32(cu, raw_type, IcDataArea_Globals, dest, relative_ptr);
                         map_put(cu->globals, ident, result);
                     }
                 }
@@ -759,9 +766,11 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             // The non-constant fields shouldn't be set here!!!
             
             void* data = 0;
+            u32 relative_ptr = 0;
             if (is_valid_ast(expr->Aggregate_Expr.elements->Compound.node)) {
                 // TODO(Alexander): Merge the type info with data arena
                 data = arena_push_size(&cu->type_info_packer->arena, type->size, type->align);
+                relative_ptr = (u32) arena_relative_pointer(&cu->type_info_packer->arena, data);
                 //data = arena_push_size(cu->data_arena, type->size, type->align);
                 //__debugbreak();
                 convert_aggregate_literal_to_memory(expr, data);
@@ -769,8 +778,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             
             
             if (data) {
-                result = ic_rip_disp32(IC_T64, IcDataArea_Type_Info, 
-                                       &cu->type_info_packer->arena, data);
+                result = ic_rip_disp32(cu, IC_T64, IcDataArea_Type_Info, data, relative_ptr);
                 
                 // Write to non-constant fields
                 Ic_Arg result_dest = {};
@@ -947,13 +955,16 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     if (src.type & IC_FLOAT) {
                         Type* type = expr->type;
                         void* data;
+                        u32 relative_ptr;
                         
                         if (type == t_f64) {
                             data = arena_push_size(cu->rdata_arena, type->size*2, type->align*2);
+                            relative_ptr = (u32) arena_relative_pointer(cu->rdata_arena, data);
                             u64* values = (u64*) data;
                             for (int i = 0; i < 2; i++) *values++ = 0x8000000000000000ull;
                         } else {
                             data = arena_push_size(cu->rdata_arena, type->size*4, type->align*4);
+                            relative_ptr = (u32) arena_relative_pointer(cu->rdata_arena, data);
                             u32* values = (u32*) data;
                             for (int i = 0; i < 4; i++) *values++ = 0x80000000;
                         }
@@ -961,7 +972,7 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                         Intermediate_Code* ic = ic_add(cu, IC_FXOR);
                         ic->dest = ic_reg(rt);
                         ic->src0 = src;
-                        ic->src1 = ic_rip_disp32(rt, IcDataArea_Read_Only, cu->rdata_arena, data);
+                        ic->src1 = ic_rip_disp32(cu, rt, IcDataArea_Read_Only, data, relative_ptr);
                         result = ic->dest;
                         
                     } else {
@@ -1258,6 +1269,7 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Bloc
                 
                 if (stmt->Assign_Stmt.mods & AstDeclModifier_Local_Persist) {
                     void* data = arena_push_size(cu->data_arena, type->size, type->align);
+                    u32 relative_ptr = (u32) arena_relative_pointer(cu->data_arena, data);
                     
                     if (src.type & IC_DISP) {
                         memcpy(data, &src.disp, type->size);
@@ -1267,7 +1279,7 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Bloc
                     }
                     
                     Ic_Raw_Type raw_type = convert_type_to_raw_type(type);
-                    Ic_Arg result = ic_rip_disp32(raw_type, IcDataArea_Globals, cu->data_arena, data);
+                    Ic_Arg result = ic_rip_disp32(cu, raw_type, IcDataArea_Globals, data, relative_ptr);
                     map_put(cu->locals, ident, result);
                 } else {
                     ic_push_local(cu, type, ident);
@@ -2614,17 +2626,16 @@ string_builder_push(String_Builder* sb, Ic_Arg arg) {
 }
 
 void
-string_builder_push(String_Builder* sb, Intermediate_Code* ic, int* bb_index=0) {
+string_builder_push(String_Builder* sb, Intermediate_Code* ic, int bb_index) {
     smm start_used = sb->curr_used;
     
     if (ic->opcode == IC_LABEL) {
-        if (bb_index && *bb_index > 0) {
-            string_builder_push_format(sb, "bb%:", f_int(*bb_index));
-            *bb_index += 1;
+        if (bb_index > 0) {
+            string_builder_push_format(sb, "  bb%:", f_int(bb_index));
         }
         
     } else if (ic->opcode == IC_CALL) {
-        string_builder_push(sb, "  CALL ");
+        string_builder_push(sb, "    CALL ");
         if (ic->data) {
             Compilation_Unit* call_cu = (Compilation_Unit*) ic->data;
             if (call_cu->ident) {
@@ -2633,7 +2644,7 @@ string_builder_push(String_Builder* sb, Intermediate_Code* ic, int* bb_index=0) 
         }
         
     } else {
-        string_builder_push(sb, "  ");
+        string_builder_push(sb, "    ");
         
         if (ic->dest.type) {
             string_builder_push(sb, ic->dest);
@@ -2641,6 +2652,13 @@ string_builder_push(String_Builder* sb, Intermediate_Code* ic, int* bb_index=0) 
         }
         
         string_builder_push(sb, ic_opcode_names[ic->opcode]);
+        
+        if (ic->opcode >= IC_JMP && ic->opcode <= IC_JNE) {
+            Ic_Basic_Block* bb = (Ic_Basic_Block*) ic->data;
+            if (bb) {
+                string_builder_push_format(sb, " bb%", f_int(bb->index));
+            }
+        }
         
         if (ic->src0.type) {
             string_builder_push(sb, " ");

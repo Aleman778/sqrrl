@@ -182,7 +182,7 @@ AST_GROUP(Type_End,    "type")
 Ast* compound_##it = compound; \
 if (compound_##it) \
 for (Ast* it = compound_##it->Compound.node; \
-compound_##it&& compound_##it->kind == Ast_Compound && compound_##it->Compound.node && compound_##it->Compound.node->kind != Ast_None; \
+compound_##it && compound_##it->kind == Ast_Compound && compound_##it->Compound.node && compound_##it->Compound.node->kind != Ast_None; \
 compound_##it = compound_##it->Compound.next, it = compound_##it->Compound.node)
 
 global cstring ast_strings[] = {
@@ -331,6 +331,7 @@ struct Compilation_Unit {
     Ic_Basic_Block* bb_last;
     Ic_Basic_Block* bb_return;
     Ic_Basic_Block* bb_data;
+    int bb_index;
     
     // TODO(Alexander): move these to different place!
     Type_Info_Packer* type_info_packer;
@@ -347,7 +348,7 @@ struct Compilation_Unit {
     s64 stk_usage;
     u8 data_reg; // TODO(Alexander): hack temporary register allocation strategy
     
-    bool dump_bytecode;
+    bool use_absolute_ptrs;
 };
 
 struct Ast_File {

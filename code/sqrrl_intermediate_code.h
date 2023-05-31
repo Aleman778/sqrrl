@@ -278,6 +278,8 @@ struct Ic_Basic_Block {
     Intermediate_Code *ic_first, *ic_last;
     
     s64 addr;
+    
+    int index;
 };
 
 struct Ic_Data {
@@ -296,3 +298,6 @@ ic_basic_block() {
     result->addr = IC_INVALID_ADDR;
     return result;
 }
+
+void string_builder_dump_bytecode(String_Builder* sb, Compilation_Unit* cu);
+void dump_bytecode(Compilation_Unit* cu);

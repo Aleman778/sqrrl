@@ -33,6 +33,16 @@ run_compiler_tests(string filename,
     
     is_test_mode = true;
     
+    // TODO(Alexander): this is hardcoded for now
+    t_string->size = sizeof(string);
+    t_string->align = alignof(string);
+    t_cstring->size = sizeof(cstring);
+    t_cstring->align = alignof(cstring);
+    t_type->size = sizeof(smm);
+    t_type->align = alignof(smm);
+    t_void_ptr->size = sizeof(smm);
+    t_void_ptr->align = alignof(smm);
+    
     vars_initialize_keywords_and_symbols();
     
     // Load source code
@@ -66,14 +76,34 @@ run_compiler_tests(string filename,
         return 1;
     }
     
+    Memory_Arena rdata_arena = {};
+    rdata_arena.flags |= ArenaPushFlag_Align_From_Zero;
+    Memory_Arena data_arena = {};
+    data_arena.flags |= ArenaPushFlag_Align_From_Zero;
+    
     // Convert to intermediate code
+    Ic_Arg_Map* x64_globals = 0;
     for_array(ast_file.units, cu, _) {
+        
+        if (cu->ident == Sym___assert && cu->ast->type->kind == TypeKind_Function) {
+            // Route the __assert to our test case assert
+            cu->ast->type->Function.intrinsic = &intrinsic_assert;
+            continue;
+        }
+        
+        
+        cu->type_info_packer = &tcx.type_info_packer;
+        cu->rdata_arena = &rdata_arena;
+        cu->data_arena = &data_arena;
+        cu->globals = x64_globals;
         if (cu->ast->kind == Ast_Decl_Stmt) {
             Type* type = cu->ast->type;
             if (type->kind == TypeKind_Function) {
                 convert_procedure_to_intermediate_code(cu, is_debugger_present);
             }
         }
+        
+        x64_globals = cu->globals;
     }
     
     // Compute the actual stack displacement for each Ic_Arg
@@ -89,9 +119,9 @@ run_compiler_tests(string filename,
             if (ic->src1.type & IC_STK) {
                 ic->src1.disp = compute_stk_displacement(cu, ic->src1);
             }
+            
+            ic = ic->next;
         }
-        
-        cu->stk_usage = cu->stk_locals + cu->stk_args + cu->stk_caller_args;
     }
     
     
@@ -133,7 +163,12 @@ run_compiler_tests(string filename,
                     test.unit = unit;
                     test.modes = modes;
                     
-                    assert(map_key_exists(tests, unit->ident) && "duplicate test name");
+                    if (decl->type->Function.dump_bytecode) {
+                        dump_bytecode(unit);
+                    }
+                    
+                    pln("test: %", f_var(unit->ident));
+                    assert(!map_key_exists(tests, unit->ident) && "duplicate test name");
                     map_put(tests, unit->ident, test);
                 }
             }

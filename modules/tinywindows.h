@@ -1169,6 +1169,54 @@ extern {
     
 }
 
+/* Type flags for MessageBox() */
+#define MB_OK                       0x00000000L
+#define MB_OKCANCEL                 0x00000001L
+#define MB_ABORTRETRYIGNORE         0x00000002L
+#define MB_YESNOCANCEL              0x00000003L
+#define MB_YESNO                    0x00000004L
+#define MB_RETRYCANCEL              0x00000005L
+#define MB_CANCELTRYCONTINUE        0x00000006L
+
+
+#define MB_ICONHAND                 0x00000010L
+#define MB_ICONQUESTION             0x00000020L
+#define MB_ICONEXCLAMATION          0x00000030L
+#define MB_ICONASTERISK             0x00000040L
+
+#define MB_USERICON                 0x00000080L
+#define MB_ICONWARNING              MB_ICONEXCLAMATION
+#define MB_ICONERROR                MB_ICONHAND
+
+#define MB_ICONINFORMATION          MB_ICONASTERISK
+#define MB_ICONSTOP                 MB_ICONHAND
+
+#define MB_DEFBUTTON1               0x00000000L
+#define MB_DEFBUTTON2               0x00000100L
+#define MB_DEFBUTTON3               0x00000200L
+#define MB_DEFBUTTON4               0x00000300L
+
+#define MB_APPLMODAL                0x00000000L
+#define MB_SYSTEMMODAL              0x00001000L
+#define MB_TASKMODAL                0x00002000L
+#define MB_HELP                     0x00004000L // Help Button
+
+#define MB_NOFOCUS                  0x00008000L
+#define MB_SETFOREGROUND            0x00010000L
+#define MB_DEFAULT_DESKTOP_ONLY     0x00020000L
+
+#define MB_TOPMOST                  0x00040000L
+#define MB_RIGHT                    0x00080000L
+#define MB_RTLREADING               0x00100000L
+
+#define MB_SERVICE_NOTIFICATION          0x00200000L
+#define MB_SERVICE_NOTIFICATION_NT3X     0x00040000L
+
+#define MB_TYPEMASK                 0x0000000FL
+#define MB_ICONMASK                 0x000000F0L
+#define MB_DEFMASK                  0x00000F00L
+#define MB_MODEMASK                 0x00003000L
+#define MB_MISCMASK                 0x0000C000L
 
 /* Device Parameters for GetDeviceCaps() */
 #define DRIVERVERSION 0     /* Device driver version                    */
@@ -1244,7 +1292,79 @@ extern {
                                 const BITMAPINFO * lpbmi,
                                 UINT iUsage,
                                 DWORD rop);
+    
+    int __stdcall ChoosePixelFormat(HDC hdc, const PIXELFORMATDESCRIPTOR* ppfd);
+    //
+    int __stdcall DescribePixelFormat(HDC hdc, 
+                                      int iPixelFormat, 
+                                      UINT nBytes,
+                                      LPPIXELFORMATDESCRIPTOR ppfd);
+    
+    BOOL __stdcall SetPixelFormat(HDC hdc, int format, const PIXELFORMATDESCRIPTOR *ppfd);
 }
+
+typedef struct tagPIXELFORMATDESCRIPTOR {
+    WORD  nSize;
+    WORD  nVersion;
+    DWORD dwFlags;
+    BYTE  iPixelType;
+    BYTE  cColorBits;
+    BYTE  cRedBits;
+    BYTE  cRedShift;
+    BYTE  cGreenBits;
+    BYTE  cGreenShift;
+    BYTE  cBlueBits;
+    BYTE  cBlueShift;
+    BYTE  cAlphaBits;
+    BYTE  cAlphaShift;
+    BYTE  cAccumBits;
+    BYTE  cAccumRedBits;
+    BYTE  cAccumGreenBits;
+    BYTE  cAccumBlueBits;
+    BYTE  cAccumAlphaBits;
+    BYTE  cDepthBits;
+    BYTE  cStencilBits;
+    BYTE  cAuxBuffers;
+    BYTE  iLayerType;
+    BYTE  bReserved;
+    DWORD dwLayerMask;
+    DWORD dwVisibleMask;
+    DWORD dwDamageMask;
+} PIXELFORMATDESCRIPTOR;
+typedef PIXELFORMATDESCRIPTOR* PPIXELFORMATDESCRIPTOR;
+typedef PIXELFORMATDESCRIPTOR* LPPIXELFORMATDESCRIPTOR;
+
+/* pixel types */
+#define PFD_TYPE_RGBA        0
+#define PFD_TYPE_COLORINDEX  1
+
+/* layer types */
+#define PFD_MAIN_PLANE       0
+#define PFD_OVERLAY_PLANE    1
+#define PFD_UNDERLAY_PLANE   (-1)
+
+/* PIXELFORMATDESCRIPTOR flags */
+#define PFD_DOUBLEBUFFER            0x00000001
+#define PFD_STEREO                  0x00000002
+#define PFD_DRAW_TO_WINDOW          0x00000004
+#define PFD_DRAW_TO_BITMAP          0x00000008
+#define PFD_SUPPORT_GDI             0x00000010
+#define PFD_SUPPORT_OPENGL          0x00000020
+#define PFD_GENERIC_FORMAT          0x00000040
+#define PFD_NEED_PALETTE            0x00000080
+#define PFD_NEED_SYSTEM_PALETTE     0x00000100
+#define PFD_SWAP_EXCHANGE           0x00000200
+#define PFD_SWAP_COPY               0x00000400
+#define PFD_SWAP_LAYER_BUFFERS      0x00000800
+#define PFD_GENERIC_ACCELERATED     0x00001000
+#define PFD_SUPPORT_DIRECTDRAW      0x00002000
+#define PFD_DIRECT3D_ACCELERATED    0x00004000
+#define PFD_SUPPORT_COMPOSITION     0x00008000
+
+/* PIXELFORMATDESCRIPTOR flags for use in ChoosePixelFormat only */
+#define PFD_DEPTH_DONTCARE          0x20000000
+#define PFD_DOUBLEBUFFER_DONTCARE   0x40000000
+#define PFD_STEREO_DONTCARE         0x80000000
 
 /*
 * File API

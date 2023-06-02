@@ -1,0 +1,7 @@
+
+@link("opengl32.dll")
+extern {
+    HGLRC __stdcall wglCreateContext(HDC hdc);
+    
+    BOOL __stdcall wglMakeCurrent(HDC hdc, HGLRC hglrc);
+}

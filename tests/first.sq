@@ -1,6 +1,13 @@
 
+#define BASIC_NO_ASSERT_IMPLEMENTATION
+#include <basic.sq>
+
 @intrinsic void __assert(int expr, cstring msg, cstring file, smm line);
 #define assert(expression) __assert(expression, #expression, __FILE__, __LINE__)
+
+#include "types.sq"
+
+#include "second.sq"
 
 void
 @test_proc
@@ -240,11 +247,6 @@ while_loop() {
     assert(x == 25);
 }
 
-struct v2s {
-    s32 x;
-    s32 y;
-}
-
 void
 @test_proc
 struct_v2s() {
@@ -260,7 +262,7 @@ v2s_ptr_scale(v2s* v, s32 s) {
 
 void
 @test_proc
-modify_struct_v2s_via_call_as_pointer() {
+modify_struct_v2s_via_call_as_ptr() {
     v2s v = { x: 5, y: -12 };
     v2s_ptr_scale(&v, 10);
     assert(v.x + v.y == -70);

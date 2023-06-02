@@ -1,0 +1,1039 @@
+
+void
+@test_proc
+struct_assignment_using_ternary_operator() {
+    s128 t1 = { 10, 20 };
+    s128 t2 = { 30, 40 };
+    
+    int x = 10;
+    s128 y = x > 5 ? t1 : t2;
+    assert(y.low == 20);
+}
+
+void
+@test_proc
+ternary_operator() {
+    int x = 10;
+    int y = x > 5 ? 20 : 5;
+    assert(y == 20);
+    
+    x = 2;
+    y = x > 5 ? 20 : 5;
+    assert(y == 5);
+}
+
+inline bool
+bitflag_operations_is_set(Entity* entity) {
+    return (bool) is_bit_set(entity.states, 9);
+}
+
+void
+@test_proc
+bitflag_operations() {
+    Entity ent;
+    ent.states = 1<<9;
+    assert(bitflag_operations_is_set(&ent));
+}
+
+void
+@test_proc
+sign_macro() {
+#define sign(value) ((value) < 0 ? -1 : ((value) > 0 ? 1 : 0 ))
+    f32 signedValue = 1.0f;
+    f32 value = 2.0f;
+    assert(signedValue == sign(value));
+    
+    signedValue = 0.0f;
+    value = 0.0f;
+    assert(signedValue == sign(value));
+    
+    signedValue = -1.0f;
+    value = -13.5f;
+    assert(signedValue == sign(value));
+}
+
+void
+@test_proc
+struct_assignment_from_ptr_deref() {
+    v4s foo = {z: 10};
+    v4s* pfoo = &foo;
+    v4s bar = *pfoo;
+    foo.z = 20; // won't overwrite bar
+    
+    assert(bar.z == 10);
+}
+
+void
+@test_proc
+struct_assignment_assigning_from_and_to_ptr_deref() {
+    [2]v4s foo = {};
+    foo[0].x = 10;
+    foo[0].y = 30;
+    foo[0].w = 21;
+    foo[1].x = 20;
+    foo[1].y = 40;
+    foo[1].w = 32;
+    
+    v4s* zero = &foo[0];
+    v4s* one = &foo[1];
+    int* zero_w = &zero.w;
+    *zero = *one;
+    
+    assert(*zero_w == 32);
+}
+
+
+internal void
+process_button_state_change(Game_Button_State* new_state, s32 is_down) {
+    if (new_state.ended_down != is_down) {
+        new_state.num_half_transitions++;
+        new_state.ended_down = is_down;
+    }
+}
+
+#define array_count(array) (sizeof(array) / sizeof((array)[0]))
+
+void
+@test_proc
+game_controller_input_update_logic() {
+    Game_Controller _old_controller = {};
+    Game_Controller* old_controller = &_old_controller;
+    
+    bool state = true;
+    process_button_state_change(&old_controller.move_left, true);
+    process_button_state_change(&old_controller.move_up, false);
+    process_button_state_change(&old_controller.move_right, false);
+    process_button_state_change(&old_controller.move_down, false);
+    
+    
+    Game_Controller _new_controller = {};
+    Game_Controller* new_controller = &_new_controller;
+    
+    for (int i = 0; i < new_controller.buttons.count; i++) {
+        new_controller.buttons[i].ended_down =
+            old_controller.buttons[i].ended_down;
+    }
+    
+    assert(is_down(new_controller.move_left));
+}
+
+
+internal void
+win32_process_xinput_digital_button(u32 xinput_button_state,
+                                    u16 xinput_button_mask,
+                                    Game_Button_State* new_state,
+                                    Game_Button_State* old_state) {
+    new_state.ended_down = ((xinput_button_state & xinput_button_mask) == xinput_button_mask);
+    new_state.num_half_transitions = (old_state.ended_down != new_state.ended_down) ? 1 : 0;
+}
+
+void
+@test_proc
+xinput_digital_button() {
+    
+    Game_Button_State new_button = {};
+    Game_Button_State old_button = {};
+    
+    win32_process_xinput_digital_button(0b11011, 0b1000, &new_button, &old_button);
+    assert(new_button.ended_down);
+}
+
+#if 0
+
+union v2 {
+    struct {
+        f32 x, y;
+    };
+    struct {
+        f32 u, v;
+    };
+    struct {
+        f32 width, height;
+    };
+    [2]f32 data;
+};
+
+v2
+operator-(v2 a) {
+    v2 result = {};
+    result.x = -a.x;
+    result.y = -a.y;
+    return result;
+}
+
+
+v2
+operator+(v2 a, v2 b) {
+    v2 result = {};
+    result.x = a.x + b.x;
+    result.y = a.y + b.y;
+    return result;
+}
+
+v2
+operator*(v2 a, f32 s) {
+    v2 result = {};
+    result.x = a.x * s;
+    result.y = a.y * s;
+    return result;
+}
+
+
+inline v2
+vec2(f32 x, f32 y) {
+    v2 result;
+    result.x = x;
+    result.y = y;
+    return result;
+}
+
+
+struct v3 {
+    f32 x, y, z;
+}
+
+void
+foo(v3 x) {
+    
+}
+
+int 
+main() {
+    v2 size = { 1.0f, 64.0f };
+    
+    v2 min = -size;
+    
+    foo(min);
+    //print_var(min);
+    
+    return (int) min.y;
+}
+
+
+
+int
+main() {
+    v2 size = { 1.0f, 2.0f };
+    v2 min_p = { 10.0f, 5.0f };
+    v2 p1 = min_p + vec2(0.0f,   size.y);
+    
+    return (int) p1.y;
+}
+;
+
+
+int 
+main() {
+    
+    [10]u32 pixels = {};
+    
+    u32* row = pixels.data;
+    
+    int right = 4;
+    u32* pixel = (u32*) row + right - 1;
+    
+    pln("% -> pixels[%] pixel, %", pixels.data, right - 1, pixel);
+}
+
+
+
+
+
+int
+main() {
+    
+    
+    
+    v2 foo = { x: 121432.0f, y: 24324.0f};
+    print_data_from_type_info(v2, &foo);
+    
+    return 0;
+}
+
+
+
+
+#define TILE_SIZE 32
+
+int
+main() {
+    f32 x = 1.0f;
+    f32 y = 2.0f;
+    //v2 world_p = vec2((f32) x, (f32) y)*(f32) TILE_SIZE;
+    
+    s32 heart_index = 2;
+    v2 world_p  = vec2(16.0f + 18.0f * heart_index, 16.0f);
+    
+    pln("%, %", world_p.x, world_p.y);
+}
+
+
+
+struct Memory_Arena {
+    u8* base;
+    umm size;
+    umm curr_used;
+    umm prev_used;
+    umm min_block_size;
+};
+
+inline void
+set_specific_arena_block(Memory_Arena* arena, u8* base, umm size) {
+    arena.base = base;
+    arena.size = size;
+    arena.curr_used = 0;
+    arena.prev_used = 0;
+    arena.min_block_size = size;
+}
+#define kilobytes(value) (1024LL * (value))
+#define megabytes(value) (1024LL * kilobytes(value))
+#define gigabytes(value) (1024LL * megabytes(value))
+#define terabytes(value) (1024LL * gigabytes(value))
+
+struct Game_State {
+    Memory_Arena world_arena;
+}
+
+int
+main() {
+    Game_State state = {};
+    Game_State* pstate = &state;
+    
+    u8* transient_block = (s64) terabytes(1) + megabytes(64);
+    set_specific_arena_block(&pstate.world_arena, transient_block, kilobytes(10));
+    pln("arena->base = %", pstate.world_arena.base);
+    return 0;
+}
+
+
+
+struct Loaded_Tmx {
+    void* entities;
+    void* colliders;
+    
+    u8* tile_map;
+    s32 tile_map_count;
+    s32 tile_map_width;
+    s32 tile_map_height;
+    s32 tile_width;
+    s32 tile_height;
+    
+    s32 entity_count;
+    s32 collider_count;
+    
+    s32 is_loaded;
+};
+
+
+int
+main() {
+    
+    
+    Loaded_Tmx result = {};
+    result.tile_map = (u8*) allocate_zeros(1000);
+    
+    int tile_index = 0;
+    int number = 9;
+    result.tile_map[tile_index] = (u8) (result.tile_map[tile_index]*10 + number);
+    pln("\ntile: %", (int) result.tile_map[tile_index]);
+}
+
+
+
+struct DEBUG_Read_File_Result {
+    void* contents;
+    u32 contents_size;
+};
+
+
+int
+main() {
+    
+    DEBUG_Read_File_Result file = {};
+    file.contents = (void*) 200000;
+    
+    u32* color_palette = (u32*) ((u8*) file.contents + 54);
+    return (int) color_palette;
+}
+
+
+
+union v2s {
+    struct {
+        s32 x, y;
+    };
+    struct {
+        s32 u, v;
+    };
+    struct {
+        s32 width, height;
+    };
+    [2]s32 data;
+};
+
+union rect2s {
+    struct {
+        v2s min;
+        v2s max;
+    };
+    struct {
+        v2s p0;
+        v2s p1;
+    };
+    struct {
+        s32 min_x; 
+        s32 min_y;
+        s32 max_x; 
+        s32 max_y;
+    };
+    struct {
+        s32 left;
+        s32 top;
+        s32 right;
+        s32 bottom;
+    };
+    [4]s32 data;
+};
+
+
+struct Buffer {
+    int width;
+    int height;
+}
+
+int
+main() {
+    
+    Buffer buffer = {640, 480};
+    
+    rect2s scissor_region = { 0, 0, buffer.width, buffer.height };
+    pln("scissor region: (%, %, %, %))", scissor_region.left, scissor_region.top, scissor_region.right, scissor_region.bottom);
+}
+
+
+
+int
+main() {
+    
+    
+    []u32 buf = { 10, 20, 30, 0, 0 };
+    
+    u32* data = buf.data;
+    data += 2;
+    
+    return data[0] + data[1] + data[2]; // 30
+}
+
+
+
+
+int
+main() {
+    
+    
+    [5]u32 buf = {};
+    
+    u32* data = buf.data;
+    *data++ = 10;
+    data++;
+    *data++ = 20;
+    *data++ = 30;
+    
+    return buf[0] + buf[1] + buf[2]; // 30
+}
+
+
+
+
+int
+main() {
+    cstring foo = "brown\" fox";
+    u8 end = '"';
+    
+    
+    string result;
+    result.data = cast(u8*) foo;
+    
+    u32 count = 0;
+    u8* scan = (u8*) foo;
+    while (*scan) {
+        pln("scan: %", *scan);
+        if (*scan++ == end) {
+            result.count = count;
+            break;
+        }
+        count++;
+    }
+    
+    pln("eat: %", result);
+    return 0;
+}
+
+
+
+int
+main() {
+    
+    cstring foo = "The brown fox";
+    
+    string color;
+    color.data = (u8*) foo + 4;
+    color.count = 5;
+    
+    pln("%", color);
+}
+
+
+
+struct v2s {
+    int x;
+    int y;
+}
+
+int
+main() {
+    v2s foo = { x: 543, y: 30 };
+    v2s bar = { x: 282, y: 20 };
+    
+    v2s* pfoo = &foo;
+    v2s* pbar = &bar;
+    
+    pbar.x -= pfoo.x / 2;
+    
+    
+    //bar.y -= foo.y / 2;
+    
+    return pbar.x; // 11
+}
+
+
+
+int
+main() {
+    
+    // fibonacci
+    [10]int x = {};
+    x[0] = 0;
+    x[1] = 1;
+    
+    for (int i = 2; i < x.count; i++) {
+        x[i] = x[i - 1] + x[i - 2];
+    }
+    
+    for (int i = 0; i < x.count; i++) {
+        pln("%", x[i]);
+    }
+}
+
+
+
+
+struct Foo {
+    union {
+        int foo;
+        int bar;
+    };
+}
+
+struct Foo_State {
+    Foo foo;
+}
+
+int 
+main() {
+    
+    Foo foo = {};
+    
+    foo.foo = 10;
+    foo.bar = 20;
+    
+    Foo_State state = {};
+    state.foo = foo;
+    
+    Foo_State* pstate = &state;
+    
+    
+    for (int y = 0; y < pstate.foo.foo; y++) {
+        for (int x = 0; x < pstate.foo.bar; x++) {
+            pln("push tile: %, %", x, y);
+        }
+    }
+    
+    return foo.foo + foo.bar;
+}
+
+
+
+
+
+bool
+__myassert(cstring expr, cstring file, smm line) {
+    pln("%:%: Assertion failed: %", file, line, expr);
+    flush_stdout();
+    *(int *)0 = 0;
+    return false;
+}
+
+
+#define myassert(expr, ...) (void) ((expr) || __myassert(#expr " " __VA_ARGS__, __FILE__, __LINE__))
+
+
+int
+main() {
+    
+    int x = 0;
+    //myassert(x > 10, " x should be larger than 10");
+    
+    //assert(x > 10, " x should be larger than 10");
+    
+    assert(0 && "not escaping quotes");
+    
+    return 0;
+}
+
+
+
+struct Loaded_Bitmap {
+    void* pixels;
+    int width;
+    int height;
+    int bytes_per_row;
+    int bytes_per_pixel;
+};
+
+int
+main() {
+    Loaded_Bitmap bitmap = {};
+    bitmap.width = 100;
+    bitmap.height = 200;
+    
+    Loaded_Bitmap bitmap2 = {};
+    bitmap2.width = 10;
+    bitmap2.height = 20;
+    
+    
+    int x = 0;
+    int y = 0;
+    
+    int index = (bitmap.height - y - 1)*bitmap.width + x; // 19900
+    
+    
+    Loaded_Bitmap* pbitmap = &bitmap;
+    Loaded_Bitmap* pbitmap2 = &bitmap2;
+    pbitmap.width = pbitmap2.width;
+    pln("%", bitmap.width);
+    
+    return index;
+}
+
+
+
+int
+eat_cstring(u8** scanner, cstring pattern) {
+    int count = 0;
+    u8* scan = *scanner;
+    pln("%", scan);
+    u8* pattern_scan = (u8*) pattern;
+    while (*pattern_scan) {
+        count++;
+        pln("% != % (%)", *scan, *pattern_scan, *scan != *pattern_scan);
+        if (*scan++ != *pattern_scan++) {
+            return false;
+        }
+    }
+    
+    pln("update");
+    *scanner = scan;
+    return true;
+}
+
+int main() {
+    string test = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><map version=\"1.5\" tiledversion=\"1.7.2\" orientation=\"orthogonal\" renderorder=\"right-down\" width=\"48\" height=\"32\" tilewidth=\"32\" tileheight=\"32\" infinite=\"1\" nextlayerid=\"4\" nextobjectid=\"23\">";
+    
+    u8* scan = test.data;
+    for (; *scan; scan++) {
+        //print_format("%", *scan);
+        if (eat_cstring(&scan, "<map")) {
+            break;
+        }
+    }
+    
+    for (; *scan; scan++) {
+        print_format("%", *scan);
+    }
+    
+}
+
+
+
+union Texture {
+    u64 packed;
+    struct {
+        u32 index;
+        u16 width;
+        u16 height;
+    };
+};
+
+struct Render_Push_Buffer {
+    u8* base;
+    u8* curr;
+    u8* end;
+};
+struct Render_Command {
+    int type;
+    
+    void* vertex_buffer;
+    smm vertex_count;
+    smm max_vertex_count;
+    
+    u32* index_buffer;
+    smm index_count;
+    smm max_index_count;
+    
+    Render_Command* next;
+};
+
+struct Render_Group {
+    Render_Push_Buffer push_buffer;
+    Render_Command* first_command;
+    Render_Command* last_command;
+    
+    smm max_vertex_count;
+    smm max_index_count;
+    
+    int camera_projection;
+    
+    [64]Texture textures;
+    [64]Loaded_Bitmap* loaded_bitmaps;
+    u32 num_textures;
+};
+
+struct Loaded_Bitmap {
+    void* pixels;
+    int width;
+    int height;
+    int bytes_per_row;
+    int bytes_per_pixel;
+};
+
+int
+main() {
+    
+    Render_Group group = {};
+    Loaded_Bitmap bitmap = {};
+    
+    Texture tex = push_texture(&group, &bitmap);
+    return tex.width;
+}
+
+inline Texture
+push_texture(Render_Group* group, Loaded_Bitmap* bitmap) {
+    //assert(group.num_textures < array_count(group.textures));
+    Texture texture;
+    texture.index = group.num_textures;
+    texture.width = (u16) bitmap.width;
+    texture.height = (u16) bitmap.height;
+    group.textures[group.num_textures] = texture;
+    group.loaded_bitmaps[group.num_textures] = bitmap;
+    group.num_textures++;
+    return texture;
+}
+
+
+
+
+struct DEBUG_Read_File_Result {
+    void* contents;
+    u32 contents_size;
+};
+
+@pack
+struct Bitmap_Header {
+    u16 signature;
+    u32 file_size;
+    u32 reserved;
+    u32 bitmap_offset;
+    u32 size;
+    s32 width;
+    s32 height;
+    u16 planes;
+    u16 bits_per_pixel;
+    u32 compression;
+    u32 size_of_bitmap;
+    u32 x_pixel_to_meters;
+    u32 y_pixel_to_meters;
+    u32 palette_size;
+    u32 important_palette_size;
+    
+    u32 red_mask;
+    u32 green_mask;
+    u32 blue_mask;
+};
+
+int
+main() {
+    Bitmap_Header* header = 0;
+    DEBUG_Read_File_Result file = {};
+    u8* src_indices = ((u8*) file.contents) + header.bitmap_offset;
+    return 10;
+}
+
+
+
+
+
+
+#define MAX_UINT32 0xFFFFFFFF
+
+int
+main() {
+    u64 value = 1000;
+    if (value <= MAX_UINT32 && "u64 cannot fit in u32") {
+        return 10;
+    }
+    return 0;
+}
+
+
+int
+main() {
+    
+    cstring filename = "C:\\Dev\\platformer\\code\\assets\\maps\\level1-act2.tmx";
+    HANDLE file_handle = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+    
+    pln("%", file_handle);
+}
+
+
+
+
+
+int
+main() {
+    u64 last_cycle_count = rdtsc();
+    return (int) last_cycle_count;
+}
+
+
+
+
+
+#define kilobytes(value) (1024LL * (value))
+#define megabytes(value) (1024LL * kilobytes(value))
+#define gigabytes(value) (1024LL * megabytes(value))
+#define terabytes(value) (1024LL * gigabytes(value))
+
+int 
+main() {
+    void* base_address = (void*) terabytes(2);
+    u64 permanent_storage_size = megabytes(64);
+    u64 transient_storage_size = gigabytes((u64) 1);
+    void* permanent_storage = base_address;
+    void* transient_storage = ((u8*) base_address + permanent_storage_size);
+    
+    pln("%, %", permanent_storage, transient_storage);
+    
+    if (permanent_storage && transient_storage) {
+        return 0;
+    }
+    
+    return 1;
+}
+
+
+
+
+int
+main() {
+    
+    int count = 100;
+    u8* buf = (u8*) allocate_zeros(count);
+    
+    
+    u8* curr = buf;
+    for (int i = 0; i < count; i++) {
+        *curr++ = (u8) i;
+    }
+    
+    return buf[40];
+}
+
+
+
+global int foo = 3;
+global v3 vec3_right = { x: 1.0f };
+global f32 pi = 3.14f;
+
+
+struct v3 {
+    f32 x, y, z;
+}
+
+
+v3
+operator+(v3 a, v3 b) {
+    v3 result;
+    result.x = a.x + b.x;
+    result.y = a.y + b.y;
+    result.z = a.z + b.z;
+    return result;
+}
+
+void
+operator+=(v3* a, v3 b) {
+    a.x += b.x;
+    a.y += b.y;
+    a.z += b.z;
+}
+
+f32
+test_fn(v3 a, f32 b, s32 c, v3* d, f32* f) {
+    
+    return a.x + b * c + d.x + *f;
+}
+
+f32
+main() {
+    
+    v3 a = { x: 5.0f };
+    
+    foo = 5;
+    pi = 3.14159265359f;
+    
+    //return test_fn(a, 1.0f, foo, &vec3_right, &pi); // 5.0f + 1.0f * 3.0f + 1.0f + 3.14f = 14.14f
+    
+    
+    return a.x + 1.0f * foo + test_fn(a, 1.0f, foo, &vec3_right, &pi) + vec3_right.x + pi;
+    // 28.28...
+}
+
+
+
+
+
+
+enum Entity_Type {
+    None,
+    Player,
+    Red_Missile,
+    Blue_Missile,
+    Spring,
+    Hazard,
+    Block,
+    Cursor,
+    Enemy_Red_Slime,
+    Moving_Platform,
+    Move_Up,
+    Move_Left,
+    Move_Down,
+    Move_Right,
+    Collider,
+    
+    Count
+};
+
+
+
+f32
+main() {
+    
+    Entity_Type type = Entity_Type.None;
+    
+    type = Entity_Type.Hazard;
+    
+    
+    
+    
+    s32 index = 10;
+    f32 x = -0.5f + (1.0f/3.0f)*index;
+    return x;
+    
+    int x = 33;
+    
+    switch (x) {
+        case 1: {
+            x += 10;
+        }
+        
+        case 18:
+        case 19:
+        case 20: {
+            x -= 10;
+        }
+        
+        case: {
+            x *= 2;
+        }
+    }
+    
+    return x;
+    
+}
+#endif
+
+
+#if 0
+int
+main() {
+    [5]u8 x;
+    
+    x[0] = 10;
+    x[1] = 10;
+    
+    [5]u16 y;
+    y = ([5]u16) x;
+    
+    return y[4];
+}
+#endif
+
+
+#if  0
+union v2s {
+    struct {
+        s32 x, y;
+    };
+    struct {
+        s32 u, v;
+    };
+    struct {
+        s32 width, height;
+    };
+    [2]s32 data;
+};
+
+union rect2s {
+    struct {
+        v2s min;
+        v2s max;
+    };
+    struct {
+        v2s p0;
+        v2s p1;
+    };
+    struct {
+        s32 min_x; 
+        s32 min_y;
+        s32 max_x; 
+        s32 max_y;
+    };
+    struct {
+        s32 left;
+        s32 top;
+        s32 right;
+        s32 bottom;
+    };
+    [4]s32 data;
+};
+
+int
+main() {
+    local_persist rect2s sel;
+    
+    sel = {10, 20, 14, 23};
+    s32 delta_x = sel.min.x - sel.max.x;
+    //s32 delta_x = sel.data[2] - sel.data[0];
+    return delta_x;
+}
+#endif

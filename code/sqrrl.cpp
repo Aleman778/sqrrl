@@ -57,6 +57,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 filepath = string_lit(argv[2]);
             } else {
                 filepath = string_lit("../tests/first.sq");
+                working_directory = string_lit("../tests/");
             }
             return run_compiler_tests(filepath, asm_buffer, asm_size, asm_make_executable,
                                       is_debugger_present);
@@ -320,7 +321,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     // Convert to X64 machine code
     s64 rip = 0;
     for_array(ast_file.units, cu, _5) {
-        rip = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage, 0, 0, rip);
+        rip = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage, 0, 0, 0, rip);
     }
     
     Type* type = main_cu->ast->type;
@@ -355,7 +356,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     s64 rip2 = 0;
     for_array(ast_file.units, cu, _7) {
         rip2 = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage,
-                                           (u8*) asm_buffer, (s64) asm_size, rip2);
+                                           (u8*) asm_buffer, 0, (s64) asm_size, rip2);
     }
     assert(rip == rip2);
     

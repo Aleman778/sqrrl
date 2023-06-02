@@ -1,0 +1,67 @@
+
+struct s128 {
+    s64 high;
+    s64 low;
+}
+
+struct v2s {
+    s32 x;
+    s32 y;
+}
+
+struct v4s {
+    s32 x;
+    s32 y;
+    s32 z;
+    s32 w;
+}
+
+
+#define is_bit_set(var, x) ((var) & (1 << (x)))
+
+enum Entity_State: s32 {
+    Foo,
+    Bar
+}
+
+struct Entity {
+    Entity_State states;
+}
+
+
+struct Game_Button_State {
+    s32 num_half_transitions;
+    s32 ended_down;
+};
+
+inline bool
+is_down(Game_Button_State state) {
+    return (bool) state.ended_down;
+}
+
+struct Game_Controller {
+    s32 is_connected; // NOTE(Alexander): controller 0 is always connected
+    s32 is_analog; // NOTE(Alexander): do we have anlogue sticks or digital buttons
+    
+    s32 is_cursor_absolute; // NOTE(Alexander): is the cursor behaving like a mouse absolute screen position, or relative for stick.
+    
+    union {
+        [9]Game_Button_State buttons;
+        struct {
+            // NOTE(Alexander): movement buttons (dpad or keyboard)
+            Game_Button_State move_up;
+            Game_Button_State move_right;
+            Game_Button_State move_down;
+            Game_Button_State move_left;
+            
+            // NOTE(Alexander): action buttons
+            Game_Button_State run;
+            Game_Button_State jump;
+            Game_Button_State action;
+            Game_Button_State block_place;
+            
+            Game_Button_State pause;
+        };
+    };
+    // TODO(alexander): add more buttons later...
+};

@@ -1547,6 +1547,9 @@ parse_type(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
                                                                   &parse_formal_struct_or_union_argument);
                     }
                     base = mod;
+                    base = parse_pointer_type(parser, base, report_error, mods);
+                    return base;
+                    
                 } break;
                 
                 case Kw_union: {
@@ -1560,10 +1563,8 @@ parse_type(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
                                                                  Token_Semi,
                                                                  &parse_formal_struct_or_union_argument);
                     }
-                    
-                    //if (base->Union_Type.fields) {
-                    //return base;
-                    //}
+                    base = parse_pointer_type(parser, base, report_error,  mods);
+                    return base;
                 } break;
                 
                 case Kw_enum: { 
@@ -1576,6 +1577,7 @@ parse_type(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
                     base->Enum_Type.fields = parse_compound(parser,
                                                             Token_Open_Brace, Token_Close_Brace, Token_Comma,
                                                             &parse_formal_enum_argument);
+                    base = parse_pointer_type(parser, base, report_error,  mods);
                     return base;
                 } break;
                 
@@ -1744,21 +1746,7 @@ parse_complex_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_M
         } break;
         
         case Token_Mul: {
-            next_token(parser);
-            result = push_ast_node(parser);
-            result->kind = Ast_Pointer_Type;
-            result->Pointer_Type = base_type;
-            
-            token = peek_token(parser);
-            if (parser->c_compatibility_mode && token.type == Token_Ident) {
-                string_id ident = vars_save_string(token.source);
-                if (ident == Sym___ptr32 || ident == Sym___ptr64) {
-                    // TODO(Alexander): discard these I don't think they are useful
-                    next_token(parser);
-                }
-            }
-            
-            result = parse_complex_type(parser, result, false, mods);
+            result = parse_pointer_type(parser, base_type, mods, report_error);
         } break;
     }
     
@@ -1772,6 +1760,27 @@ parse_complex_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_M
     return result;
 }
 
+Ast*
+parse_pointer_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_Modifier mods) {
+    if (next_token_if_matched(parser, Token_Mul, false)) {
+        Ast* result = push_ast_node(parser);
+        result->kind = Ast_Pointer_Type;
+        result->Pointer_Type = base_type;
+        
+        Token token = peek_token(parser);
+        if (parser->c_compatibility_mode && token.type == Token_Ident) {
+            string_id ident = vars_save_string(token.source);
+            if (ident == Sym___ptr32 || ident == Sym___ptr64) {
+                // TODO(Alexander): discard these I don't think they are useful
+                next_token(parser);
+            }
+        }
+        
+        return parse_complex_type(parser, result, false, mods);
+    }
+    
+    return base_type;
+}
 
 internal void
 push_static_ast_node(Parser* parser, Ast_File* ast_file, Ast* node) {

@@ -379,7 +379,7 @@ inline void x64_add(Intermediate_Code* ic,
 Ic_Arg convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr);
 
 void convert_procedure_to_intermediate_code(Compilation_Unit* cu, bool insert_debug_break);
-s64 convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buf, s64 buf_size, s64 rip);
+s64 convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buffer, s64 buffer_offset, s64 buf_size, s64 rip);
 
 void string_builder_push(String_Builder* sb, Ic_Arg arg);
 void string_builder_push(String_Builder* sb, Intermediate_Code* ic, int bb_index=0);

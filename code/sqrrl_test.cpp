@@ -96,10 +96,12 @@ run_compiler_tests(string filename,
         cu->rdata_arena = &rdata_arena;
         cu->data_arena = &data_arena;
         cu->globals = x64_globals;
+        
+        cu->use_absolute_ptrs = true; // TODO(Alexander): this is needed for JIT compilation
         if (cu->ast->kind == Ast_Decl_Stmt) {
             Type* type = cu->ast->type;
             if (type->kind == TypeKind_Function) {
-                convert_procedure_to_intermediate_code(cu, is_debugger_present);
+                convert_procedure_to_intermediate_code(cu, false);
             }
         }
         
@@ -128,13 +130,13 @@ run_compiler_tests(string filename,
     // Convert to X64 machine code
     s64 rip = 0;
     for_array(ast_file.units, cu, _3) {
-        rip = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage, 0, 0, rip);
+        rip = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage, 0, 0, 0, rip);
     }
     
     s64 rip2 = 0;
     for_array(ast_file.units, cu, _4) {
         rip2 = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage,
-                                           (u8*) asm_buffer, (s64) asm_size, rip2);
+                                           (u8*) asm_buffer, (s64) asm_buffer, (s64) asm_size, rip2);
     }
     assert(rip == rip2);
     

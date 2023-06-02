@@ -1,6 +1,6 @@
 
 // Assert
-//#if BUILD_DEBUG
+#ifndef BASIC_NO_ASSERT_IMPLEMENTATION
 bool
 __assert(cstring expression, string file, smm line) {
     // TODO(Alexander): improve assertion printing.
@@ -19,6 +19,7 @@ __assert(cstring expression, string file, smm line) {
 //#else
 //#define assert(expression)
 //#endif
+#endif
 
 // TODO(Alexander): this is the "C" way to do things, but when we have polymorph support
 //                  in the future we should replace this then

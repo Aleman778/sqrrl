@@ -106,6 +106,7 @@ Ast* parse_block_or_single_statement(Parser* parser, bool report_error=true);
 inline Ast* parse_array_type(Parser* parser, Ast* elem_type, Ast_Decl_Modifier mods=0);
 Ast* parse_type(Parser* parser, bool report_error=true, Ast_Decl_Modifier mods=0);
 Ast* parse_complex_type(Parser* parser, Ast* base_type, bool report_error=true, Ast_Decl_Modifier mods=0);
+Ast* parse_pointer_type(Parser* parser, Ast* base_type, bool report_error=true, Ast_Decl_Modifier mods=0);
 
 Operator parse_unary_op(Parser* parser);
 Operator parse_binary_op(Parser* parser);

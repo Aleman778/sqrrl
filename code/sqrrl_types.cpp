@@ -63,6 +63,7 @@ export_var_args_info(Type_Info_Packer* packer, int var_arg_start, Ast* actual_ar
             Exported_Type exported = export_type_info(packer, argument->type);
             push_relocation(packer, curr_type, curr_type_relative_ptr, exported.relative_ptr);
             curr_type->data_size = argument->type->size;
+            curr_type->type = exported.type_info;
             
             var_args->count++;
             curr_type++;

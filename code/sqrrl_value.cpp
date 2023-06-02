@@ -1,6 +1,11 @@
 
 void
 value_store_in_memory(Type* type, void* dest, Value_Data src) {
+    if (type->kind == TypeKind_Enum) {
+        type = type->Enum.type;
+    }
+    
+    
     switch (type->kind) {
         case TypeKind_Basic: {
             switch (type->Basic.kind) {

@@ -2,7 +2,7 @@
 // This source code file is not owned by the author(s) of Sqrrl, majority of this file
 // is copyrighted by Microsoft Corporation as stated below:
 
-// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights resered.
 
 typedef cstring LPCSTR;
 typedef cstring PSTR;
@@ -86,6 +86,7 @@ typedef void* HANDLE;
 typedef HANDLE* PHANDLE;
 
 typedef int FARPROC();
+typedef int PROC();
 
 typedef long HRESULT;
 
@@ -1269,40 +1270,6 @@ extern {
 #define BLTALIGNMENT    119  /* Preferred blt alignment                 */
 
 
-@link("gdi32.dll")
-extern {
-    int   WINAPI GetDeviceCaps(HDC hdc, int index);
-    
-    BOOL  __stdcall BitBlt(HDC hdc,
-                           int x, int y, int cx, int cy,
-                           HDC hdcSrc, 
-                           int x1, int y1, 
-                           DWORD rop);
-    
-    int __stdcall StretchDIBits(HDC hdc,
-                                int xDest,
-                                int yDest,
-                                int DestWidth,
-                                int DestHeight,
-                                int xSrc,
-                                int ySrc,
-                                int SrcWidth,
-                                int SrcHeight,
-                                const void * lpBits,
-                                const BITMAPINFO * lpbmi,
-                                UINT iUsage,
-                                DWORD rop);
-    
-    int __stdcall ChoosePixelFormat(HDC hdc, const PIXELFORMATDESCRIPTOR* ppfd);
-    //
-    int __stdcall DescribePixelFormat(HDC hdc, 
-                                      int iPixelFormat, 
-                                      UINT nBytes,
-                                      LPPIXELFORMATDESCRIPTOR ppfd);
-    
-    BOOL __stdcall SetPixelFormat(HDC hdc, int format, const PIXELFORMATDESCRIPTOR *ppfd);
-}
-
 typedef struct tagPIXELFORMATDESCRIPTOR {
     WORD  nSize;
     WORD  nVersion;
@@ -1333,6 +1300,42 @@ typedef struct tagPIXELFORMATDESCRIPTOR {
 } PIXELFORMATDESCRIPTOR;
 typedef PIXELFORMATDESCRIPTOR* PPIXELFORMATDESCRIPTOR;
 typedef PIXELFORMATDESCRIPTOR* LPPIXELFORMATDESCRIPTOR;
+
+@link("gdi32.dll")
+extern {
+    int   WINAPI GetDeviceCaps(HDC hdc, int index);
+    
+    BOOL  __stdcall BitBlt(HDC hdc,
+                           int x, int y, int cx, int cy,
+                           HDC hdcSrc, 
+                           int x1, int y1, 
+                           DWORD rop);
+    
+    int __stdcall StretchDIBits(HDC hdc,
+                                int xDest,
+                                int yDest,
+                                int DestWidth,
+                                int DestHeight,
+                                int xSrc,
+                                int ySrc,
+                                int SrcWidth,
+                                int SrcHeight,
+                                const void * lpBits,
+                                const BITMAPINFO * lpbmi,
+                                UINT iUsage,
+                                DWORD rop);
+    
+    int __stdcall ChoosePixelFormat(HDC hdc, const PIXELFORMATDESCRIPTOR* ppfd);
+    
+    int __stdcall DescribePixelFormat(HDC hdc, 
+                                      int iPixelFormat, 
+                                      UINT nBytes,
+                                      LPPIXELFORMATDESCRIPTOR ppfd);
+    
+    BOOL __stdcall SetPixelFormat(HDC hdc, int format, const PIXELFORMATDESCRIPTOR* ppfd);
+    
+    BOOL SwapBuffers(HDC hdc);
+}
 
 /* pixel types */
 #define PFD_TYPE_RGBA        0

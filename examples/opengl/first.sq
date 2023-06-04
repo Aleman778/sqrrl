@@ -1,0 +1,150 @@
+#include <basic.sq>
+#include <opengl.sq>
+
+
+global bool is_running = false;
+
+
+LRESULT CALLBACK
+win32_main_callback(HWND window, UINT message, WPARAM w_param, LPARAM l_param) {
+    LRESULT result = 0;
+    
+    if (message == WM_CLOSE) {
+        is_running = false;
+    } else if (message == WM_DESTROY) {
+        is_running = false;
+    } else {
+        result = DefWindowProcA(window, message, w_param, l_param);
+    }
+    
+    return result;
+}
+
+void
+win32_show_error(string message) {
+    int error_code = GetLastError();
+    message = string_print("% (Error code: %)", message, error_code);
+    MessageBoxA(0, string_to_cstring(message), "Error", MB_OK);
+    ExitProcess(error_code);
+}
+
+int
+main() {
+    HINSTANCE h_instance = GetModuleHandleA(0);
+    
+    WNDCLASSA wndclass = {};
+    wndclass.style = CS_HREDRAW | CS_VREDRAW;
+    wndclass.lpfnWndProc = win32_main_callback;
+    wndclass.hInstance = h_instance;
+    wndclass.lpszClassName = "OpenGLTestClass";
+    
+    f32 aspect_ratio = 16.0f / 9.0f;
+    int height = 720;
+    int width = (int) ((f32) height * aspect_ratio);
+    
+    if (RegisterClassA(&wndclass)) {
+        HWND window = CreateWindowExA(0,
+                                      "OpenGLTestClass",
+                                      "OpenGL Test",
+                                      WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                                      CW_USEDEFAULT,
+                                      CW_USEDEFAULT,
+                                      width, height,
+                                      0, 0,
+                                      wndclass.hInstance,
+                                      0);
+        HDC window_dc = GetDC(window);
+        
+        // Let windows suggest a pixel format to use
+        PIXELFORMATDESCRIPTOR desired_pfd = {};
+        desired_pfd.nSize = sizeof(PIXELFORMATDESCRIPTOR);
+        desired_pfd.nVersion = 1;
+        desired_pfd.dwFlags = PFD_DOUBLEBUFFER | PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL;
+        desired_pfd.cColorBits = 32;
+        desired_pfd.cAlphaBits = 8;
+        desired_pfd.iLayerType = PFD_MAIN_PLANE;
+        int pixel_format_index = ChoosePixelFormat(window_dc, &desired_pfd);
+        
+        // Set the suggested pixel format
+        PIXELFORMATDESCRIPTOR suggested_pfd = {};
+        DescribePixelFormat(window_dc, pixel_format_index, sizeof(suggested_pfd), &suggested_pfd);
+        SetPixelFormat(window_dc, pixel_format_index, &suggested_pfd);
+        
+        HGLRC opengl_rc = wglCreateContext(window_dc);
+        
+        if (wglMakeCurrent(window_dc, opengl_rc)) {
+            
+            wglCreateContextAttribsARB = (wgl_create_context_attribs_arb*) wglGetProcAddress("wglCreateContextAttribsARB");
+            
+            if (wglCreateContextAttribsARB) {
+                // TODO: Make debug context optional, maybe forward compatible too?
+                // TODO: USE CORE PROFILE!
+                []int attribs = {
+                    WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
+                    WGL_CONTEXT_MINOR_VERSION_ARB, 3,
+                    WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_DEBUG_BIT_ARB | WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
+                    WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB, 
+                    0,
+                };
+                
+                HGLRC share_opengl_rc;
+                HGLRC modern_opengl_rc = wglCreateContextAttribsARB(window_dc, share_opengl_rc, attribs.data);
+                if (modern_opengl_rc) {
+                    wglMakeCurrent(window_dc, modern_opengl_rc);
+                    wglDeleteContext(opengl_rc);
+                    opengl_rc = modern_opengl_rc;
+                } else {
+                    win32_show_error("OpenGL version 3.3 is not supported!");
+                }
+                
+                debug_break();
+                
+                
+                for (int i = 0; i < opengl_library.functions.count; i++) {
+                    Dynamic_Function* fn = &opengl_library.functions[i];
+                    fn.pointer = wglGetProcAddress(fn.name);
+                }
+                
+                // Initialize OpenGL
+                OpenGL_Info glinfo = {};
+                glinfo.vendor = cstring_to_string((cstring) glGetString(GL_VENDOR));
+                glinfo.renderer = cstring_to_string((cstring) glGetString(GL_RENDERER));
+                glinfo.version = cstring_to_string((cstring) glGetString(GL_VERSION));
+                glinfo.extensions = cstring_to_string((cstring) glGetString(GL_EXTENSIONS));
+                //glinfo.shader_language_version = cstring_to_string((cstring) glGetString(GL_SHADING_LANGUAGE_VERSION));
+                pln("%", glinfo);
+                
+            } else {
+                win32_show_error("Failed to intialize Modern OpenGL!");
+            }
+            
+            is_running = true;
+            while (is_running) {
+                MSG message;
+                while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
+                    TranslateMessage(&message);
+                    DispatchMessageA(&message);
+                }
+                
+                glClearColor(0.0f, 0.5f, 1.0f, 1.0f);
+                glClear(GL_COLOR_BUFFER_BIT);
+                
+                glBegin(GL_TRIANGLES);
+                glColor3f(1.0, 0.0, 0.0); glVertex3f(-1.0, -1.0, 0.0);
+                glColor3f(0.0, 1.0, 0.0); glVertex3f( 0.0,  1.0, 0.0);
+                glColor3f(0.0, 0.0, 1.0); glVertex3f( 1.0, -1.0, 0.0);
+                glEnd();
+                
+                SwapBuffers(window_dc);
+            }
+            
+            
+        } else {
+            win32_show_error("Failed to intialize OpenGL!");
+        }
+    }
+    
+    
+    
+    ExitProcess(0);
+}

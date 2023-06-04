@@ -1,6 +1,8 @@
 
 // Assert
 #ifndef BASIC_NO_ASSERT_IMPLEMENTATION
+
+#ifndef DISABLE_ASSERT
 bool
 __assert(cstring expression, string file, smm line) {
     // TODO(Alexander): improve assertion printing.
@@ -16,9 +18,10 @@ __assert(cstring expression, string file, smm line) {
     return true;
 }
 #define assert(expr, ...) (void) ((expr) || __assert(#expr " - " __VA_ARGS__, __FILE__, __LINE__))
-//#else
-//#define assert(expression)
-//#endif
+#else
+#define assert(expr, ...)
+#endif
+
 #endif
 
 // TODO(Alexander): this is the "C" way to do things, but when we have polymorph support
@@ -236,11 +239,18 @@ string_to_cstring(string str, u8* dest=0) {
     return (cstring) result;
 }
 
+inline string
+cstring_to_string(cstring str) {
+    string result;
+    result.data = (u8*) str;
+    result.count = cstring_count(str);
+    return result;
+}
+
 inline void
 cstring_free(cstring str) {
     free((void*) str);
 }
-
 
 struct Fixed_Array {
     void* data;
@@ -328,7 +338,7 @@ struct Var_Args {
 }
 
 inline Type_Info*
-type_info(Type type) {
+to_type_info(Type type) {
     return (Type_Info*) type;
 }
 
@@ -746,3 +756,14 @@ string_print_data_from_type_info(String_Builder* sb, Type_Info* type, void* data
 
 #define print_var(var) \
 print_data_from_type_info(type_of(var), &var);
+
+struct Dynamic_Function {
+    void* pointer;
+    string name;
+    //Type_Info* type_info; // TODO: maybe we want the type info (we don't support function type info yet)
+};
+
+struct Dynamic_Library {
+    []Dynamic_Function functions;
+}
+

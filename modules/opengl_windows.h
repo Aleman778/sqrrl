@@ -60,11 +60,6 @@ extern {
     
     // OpenGL 1.0 and 1.1 are linked at compile time
 #define GLAPI 
-    // TODO: remove later (fixed function pipeline)
-    GLAPI void APIENTRY glBegin (GLenum mode);
-    GLAPI void APIENTRY glVertex3f (GLfloat x, GLfloat y, GLfloat z);
-    GLAPI void APIENTRY glColor3f (GLfloat red, GLfloat green, GLfloat blue);
-    GLAPI void APIENTRY glEnd (void);
     
 #ifndef GL_VERSION_1_0
 #define GL_VERSION_1_0 1

@@ -222,6 +222,8 @@ max(smm a, smm b) {
 
 inline umm
 cstring_count(cstring str) {
+    if (!str) return 0;
+    
     umm count = 0;
     u8* curr = (u8*) str;
     while (*curr) {

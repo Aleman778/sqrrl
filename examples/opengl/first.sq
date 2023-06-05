@@ -23,9 +23,78 @@ win32_main_callback(HWND window, UINT message, WPARAM w_param, LPARAM l_param) {
 void
 win32_show_error(string message) {
     int error_code = GetLastError();
-    message = string_print("% (Error code: %)", message, error_code);
+    if (error_code) {
+        message = string_print("% (Error code: %)", message, error_code);
+    } else {
+        message = string_print("%", message);
+    }
     MessageBoxA(0, string_to_cstring(message), "Error", MB_OK);
     ExitProcess(error_code);
+}
+
+string
+win32_read_entire_file(cstring filename) {
+    string result;
+    HANDLE file_handle = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+    
+    if (file_handle != INVALID_HANDLE_VALUE) {
+        LARGE_INTEGER file_size;
+        if (GetFileSizeEx(file_handle, &file_size)) {
+            result.count = (u32) file_size.QuadPart;
+            result.data = (u8*) VirtualAlloc(0, result.count, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+            
+            if (result.data) {
+                if (!ReadFile(file_handle, result.data, (u32) result.count, 0, 0)) {
+                    // TODO(alexander): logging, failed read file
+                }
+                
+            } else {
+                // TODO(alexander): logging, failed to allocate memory
+            }
+            
+        } else {
+            // TODO(alexander): logging, failed to get file size
+        }
+        
+        CloseHandle(file_handle);
+    } else {
+        // TODO(alexander): logging, file not found
+    }
+    
+    return result;
+}
+
+void
+win32_free_file_memory(void* memory) {
+    VirtualFree(memory, 0, MEM_RELEASE);
+}
+
+int
+compile_shader_from_file(int program, int shader_type, cstring filename) {
+    int shader = glCreateShader(shader_type);
+    string source = win32_read_entire_file(filename);
+    cstring source_cstring = string_to_cstring(source);
+    
+    glShaderSource(shader, 1, cast(GLchar**) &source_cstring, 0);
+    glCompileShader(shader);
+    win32_free_file_memory(source.data);
+    cstring_free(source_cstring);
+    
+    GLint success;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+    if (success != GL_TRUE) {
+        // TODO: COMPILER BUG: wasn't possible to just use a stack allocated array?!??!
+        string message;
+        message.data = (u8*) malloc(1024);
+        message.count = 0;
+        glGetShaderInfoLog(shader, 1024, cast(GLsizei*) &message.count, cast(GLchar*) message.data);
+        pln("%: shader error: %", filename, message);
+        free(message.data);
+        return false;
+    }
+    
+    glAttachShader(program, shader);
+    return shader;
 }
 
 int
@@ -78,17 +147,19 @@ main() {
             
             if (wglCreateContextAttribsARB) {
                 // TODO: Make debug context optional, maybe forward compatible too?
-                // TODO: USE CORE PROFILE!
                 []int attribs = {
                     WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
                     WGL_CONTEXT_MINOR_VERSION_ARB, 3,
-                    WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_DEBUG_BIT_ARB, // | WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
-                    WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB, 
+                    WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_DEBUG_BIT_ARB | WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
+                    //WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
                     0,
                 };
                 
-                HGLRC share_opengl_rc;
+                //win32_show_error(string_print("attribs = %", attribs[7]));
+                
+                HGLRC share_opengl_rc = 0;
                 HGLRC modern_opengl_rc = wglCreateContextAttribsARB(window_dc, share_opengl_rc, attribs.data);
+                
                 if (modern_opengl_rc) {
                     wglMakeCurrent(window_dc, modern_opengl_rc);
                     wglDeleteContext(opengl_rc);
@@ -97,17 +168,11 @@ main() {
                     win32_show_error("OpenGL version 3.3 is not supported!");
                 }
                 
-                pln("function count = %", opengl_library.functions.count);
-                
-                void* ptr = wglGetProcAddress("glClearColor");
-                pln("glClear = %", ptr);
-                
                 for (int i = 0; i < opengl_library.functions.count; i++) {
                     Dynamic_Function* fn = &opengl_library.functions[i];
                     // TODO: COMPILER BUG: type checker should have complained without cstring conversion
                     cstring name = string_to_cstring(fn.name);
                     fn.pointer = wglGetProcAddress(name); 
-                    pln("Loaded: % (%)", name, fn.pointer);
                 }
                 
                 // Initialize OpenGL
@@ -115,13 +180,69 @@ main() {
                 glinfo.vendor = cstring_to_string((cstring) glGetString(GL_VENDOR));
                 glinfo.renderer = cstring_to_string((cstring) glGetString(GL_RENDERER));
                 glinfo.version = cstring_to_string((cstring) glGetString(GL_VERSION));
-                glinfo.extensions = cstring_to_string((cstring) glGetString(GL_EXTENSIONS));
-                //glinfo.shader_language_version = cstring_to_string((cstring) glGetString(GL_SHADING_LANGUAGE_VERSION));
-                //pln("%", glinfo);
+                // TODO: implement extension support
+                //glinfo.extensions = cstring_to_string((cstring) glGetStringi(GL_EXTENSIONS, 0));
+                glinfo.shader_language_version = cstring_to_string((cstring) glGetString(GL_SHADING_LANGUAGE_VERSION));
+                pln("%", glinfo);
                 
             } else {
                 win32_show_error("Failed to intialize Modern OpenGL!");
             }
+            
+            // Setup buffers
+            int vbo;
+            glGenBuffers(1, &vbo);
+            
+            []f32 triangle_data = { 
+                -1.0, -1.0, 0.0, 
+                0.0,  1.0, 0.0,
+                1.0, -1.0, 0.0
+            };
+            int count = triangle_data.count*8;
+            pln("> %", sizeof(f32));
+            glBindBuffer(GL_ARRAY_BUFFER, vbo);
+            glBufferData(GL_ARRAY_BUFFER,
+                         triangle_data.count*sizeof(f32), 
+                         triangle_data.data, GL_STATIC_DRAW);
+            
+            int vao;
+            glGenVertexArrays(1, &vao);
+            
+            // Setup shaders
+            int program = glCreateProgram();
+            int vs = compile_shader_from_file(program, GL_VERTEX_SHADER, "../examples/opengl/test.vs");
+            int fs = compile_shader_from_file(program, GL_FRAGMENT_SHADER, "../examples/opengl/test.fs");
+            
+            if (vs && fs) {
+                int success;
+                glLinkProgram(program);
+                glDeleteShader(vs);
+                glDeleteShader(fs);
+                
+                glGetProgramiv(program, GL_LINK_STATUS, &success);
+                if (!success) {
+                    string message;
+                    message.data = (u8*) malloc(1024);
+                    message.count = 0;
+                    glGetProgramInfoLog(program, 1024, cast(GLsizei*) &message.count, cast(GLchar*) message.data);
+                    win32_show_error(string_print("shader error: %", message));
+                    free(message.data);
+                    return false;
+                }
+            } else {
+                win32_show_error("Failed to compile shaders");
+            }
+            
+            glUseProgram(program);
+            
+            
+            // position attribute
+            glBindVertexArray(vao);
+            glBindBuffer(GL_ARRAY_BUFFER, vbo);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(f32), 0);
+            glEnableVertexAttribArray(0);
+            
+            
             
             is_running = true;
             while (is_running) {
@@ -134,11 +255,7 @@ main() {
                 glClearColor(0.0f, 0.5f, 1.0f, 1.0f);
                 glClear(GL_COLOR_BUFFER_BIT);
                 
-                glBegin(GL_TRIANGLES);
-                glColor3f(1.0, 0.0, 0.0); glVertex3f(-1.0, -1.0, 0.0);
-                glColor3f(0.0, 1.0, 0.0); glVertex3f( 0.0,  1.0, 0.0);
-                glColor3f(0.0, 0.0, 1.0); glVertex3f( 1.0, -1.0, 0.0);
-                glEnd();
+                glDrawArrays(GL_TRIANGLES, 0, 3);
                 
                 SwapBuffers(window_dc);
             }

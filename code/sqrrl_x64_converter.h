@@ -151,7 +151,6 @@ ic_rip_disp32(Compilation_Unit* cu, Ic_Raw_Type t, Ic_Data_Area data_area, void*
     return result;
 }
 
-
 inline bool
 x64_is_scalar_type(int size) {
     return size == 1 || size == 2 || size == 4 || size == 8;

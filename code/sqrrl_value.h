@@ -257,7 +257,7 @@ inline s64
 value_to_s64(Value value) {
     switch (value.type) {
         case Value_boolean: return value.data.boolean == true ? 1 : 0;
-        case Value_signed_int: return value.data.signed_int;
+        case Value_unsigned_int: return (s64) value.data.unsigned_int;
         case Value_floating: return (s64) value.data.floating;
         case Value_pointer: return (s64) value.data.pointer;
         default: return (s64) value.data.signed_int;

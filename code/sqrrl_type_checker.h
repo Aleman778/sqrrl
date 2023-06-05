@@ -26,8 +26,21 @@ struct Library_Function {
     Type* type;
 };
 
+struct Dynamic_Function {
+    void* pointer;
+    string name;
+    //Type_Info* type_info; // TODO: maybe we want the type info (we don't support function type info yet)
+};
+
+struct Dynamic_Library {
+    Dynamic_Function* functions;
+    int count;
+};
+
 struct Library_Imports {
     array(Library_Function)* functions;
+    bool resolve_at_compile_time;
+    
     bool is_valid;
 };
 
@@ -38,7 +51,7 @@ struct Library_Import_Table {
 struct Type_Context {
     Memory_Arena type_arena;
     
-    Type_Info_Packer type_info_packer;
+    Data_Packer* data_packer;
     
     map(string_id, Type*)* locals;
     map(string_id, Type*)* globals;

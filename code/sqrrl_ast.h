@@ -4,7 +4,7 @@
 AST_GROUP(None,        "none")                  \
 AST(Abi,               "abi", string)           \
 AST(Value,             "value", Value)          \
-AST(Exported_Type,     "type info", Exported_Type) \
+AST(Exported_Data,     "type info", Exported_Data) \
 AST(Ident,             "identifier", string_id) \
 AST(Ident_Data,        "identifier", struct {   \
 string_id ident;                                \
@@ -334,11 +334,9 @@ struct Compilation_Unit {
     int bb_index;
     
     // TODO(Alexander): move these to different place!
-    Type_Info_Packer* type_info_packer;
+    Data_Packer* data_packer;
     Ic_Arg_Map* locals;
     Ic_Arg_Map* globals;
-    Memory_Arena* rdata_arena;
-    Memory_Arena* data_arena;
     
     s64 external_address = 0;
     s64 stk_args = 0;
@@ -425,14 +423,33 @@ struct Attribute_Parser {
     string_id next_ident;
 };
 
+enum Attribute_Arg_Kind {
+    AttributeArg_Int,
+    AttributeArg_Float,
+    AttributeArg_Bool,
+    AttributeArg_String,
+    AttributeArg_Ident,
+};
+
+struct Attribute_Arg {
+    Attribute_Arg_Kind kind;
+    union {
+        s64 Int;
+        f64 Float;
+        bool Bool;
+        string String;
+        string_id Ident;
+    };
+};
+
 struct Parsed_Attribute {
     Ast* next;
     
     string_id ident;
-    Value values[9];
-    s32 value_count;
+    Attribute_Arg args[9];
+    s32 arg_count;
     
-    b32 is_valid;
+    bool is_valid;
 };
 
 Parsed_Attribute
@@ -461,15 +478,48 @@ parse_attribute(Ast* node) {
         } break;
         
         case Ast_Call_Expr: {
-            for_compound(expr->Call_Expr.args, arg) {
-                assert(arg->kind == Ast_Argument);
-                Ast* target = arg->Argument.assign;
+            for_compound(expr->Call_Expr.args, ast_arg) {
+                assert(ast_arg->kind == Ast_Argument);
+                Ast* target = ast_arg->Argument.assign;
                 
-                if (target && target->kind == Ast_Value &&
-                    result.value_count < fixed_array_count(result.values)) {
-                    result.values[result.value_count++] = target->Value;
-                } else {
-                    unimplemented;
+                if (result.arg_count < fixed_array_count(result.args)) {
+                    Attribute_Arg* arg = &result.args[result.arg_count++];
+                    
+                    if (target && target->kind == Ast_Value) {
+                        
+                        switch (target->Value.type) {
+                            case Value_signed_int:
+                            case Value_unsigned_int: {
+                                arg->kind = AttributeArg_Int;
+                                arg->Int = value_to_s64(target->Value);
+                            } break;
+                            
+                            case Value_floating: {
+                                arg->kind = AttributeArg_Float;
+                                arg->Float = value_to_f64(target->Value);
+                            } break;
+                            
+                            case Value_boolean: {
+                                arg->kind = AttributeArg_Bool;
+                                arg->Bool = value_to_bool(target->Value);
+                            } break;
+                            
+                            case Value_string: {
+                                arg->kind = AttributeArg_String;
+                                arg->String = target->Value.data.str;
+                            } break;
+                            
+                            default: {
+                                unimplemented;
+                            } break;
+                        }
+                    } else if (target && target->kind == Ast_Ident) {
+                        arg->kind = AttributeArg_Ident;
+                        arg->Ident = target->Ident;
+                        
+                    } else {
+                        unimplemented;
+                    }
                 }
             }
         } break;
@@ -510,7 +560,7 @@ string_builder_push(String_Builder* sb, Ast_Decl_Modifier mods) {
 
 void
 string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spacing=0) {
-    if (!node || node->kind == Ast_Exported_Type) {
+    if (!node || node->kind == Ast_Exported_Data) {
         return;
     }
     

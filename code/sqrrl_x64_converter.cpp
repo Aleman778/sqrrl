@@ -668,8 +668,11 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             } else if (is_floating(expr->Value)) {
                 Type* type = expr->type;
                 Ic_Raw_Type raw_type = convert_type_to_raw_type(expr->type);
-                void* data = arena_push_size(cu->rdata_arena, type->size, type->size);
-                u32 relative_ptr = (u32) arena_relative_pointer(cu->rdata_arena, data);
+                
+                
+                void* data = arena_push_size(&cu->data_packer->rdata_arena, type->size, type->align);
+                u32 relative_ptr = (u32) arena_relative_pointer(&cu->data_packer->rdata_arena, data);
+                
                 value_store_in_memory(type, data, expr->Value.data);
                 result = ic_rip_disp32(cu, raw_type, IcDataArea_Read_Only, data, relative_ptr);
                 
@@ -677,8 +680,8 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                 Ic_Raw_Type raw_type = IC_T64;
                 
                 smm string_count = expr->Value.data.str.count;
-                void* string_data = arena_push_size(cu->rdata_arena, string_count, 1);
-                u32 relative_ptr = (s32) arena_relative_pointer(cu->rdata_arena, string_data);
+                void* string_data = arena_push_size(&cu->data_packer->rdata_arena, string_count, 1);
+                u32 relative_ptr = (s32) arena_relative_pointer(&cu->data_packer->rdata_arena, string_data);
                 memcpy(string_data, expr->Value.data.str.data, string_count);
                 
                 result = ic_push_local(cu, t_string);
@@ -695,8 +698,8 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             } else if (is_cstring(expr->Value)) {
                 if (expr->Value.data.cstr) {
                     smm str_count = cstring_count(expr->Value.data.cstr);
-                    cstring cstr = (cstring) arena_push_size(cu->rdata_arena, str_count + 1, 1);
-                    u32 relative_ptr = (u32) arena_relative_pointer(cu->rdata_arena, (void*) cstr);
+                    cstring cstr = (cstring) arena_push_size(&cu->data_packer->rdata_arena, str_count + 1, 1);
+                    u32 relative_ptr = (u32) arena_relative_pointer(&cu->data_packer->rdata_arena, (void*) cstr);
                     memcpy((void*) cstr, (void*) expr->Value.data.cstr, str_count + 1);
                     result = ic_rip_disp32(cu, IC_T64, IcDataArea_Read_Only, (void*) cstr, relative_ptr);
                 } else {
@@ -708,10 +711,10 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             }
         } break;
         
-        case Ast_Exported_Type: {
+        case Ast_Exported_Data: {
             result = ic_rip_disp32(cu, IC_T64, IcDataArea_Type_Info, 
-                                   expr->Exported_Type.type_info, 
-                                   expr->Exported_Type.relative_ptr);
+                                   expr->Exported_Data.data, 
+                                   expr->Exported_Data.relative_ptr);
         } break;
         
         case Ast_Ident: {
@@ -744,8 +747,8 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                             assert(0);
                         }
                         
-                        void* dest = arena_push_size(cu->data_arena, type->size, type->align);
-                        u32 relative_ptr = (u32) arena_relative_pointer(cu->data_arena, dest);
+                        void* dest = arena_push_size(&cu->data_packer->data_arena, type->size, type->align);
+                        u32 relative_ptr = (u32) arena_relative_pointer(&cu->data_packer->data_arena, dest);
                         memcpy(dest, data, type->size);
                         
                         result = ic_rip_disp32(cu, raw_type, IcDataArea_Globals, dest, relative_ptr);
@@ -765,20 +768,16 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
             // TODO(Alexander): OPTIMIZATION - we should store this in read only data!!!
             // The non-constant fields shouldn't be set here!!!
             
-            void* data = 0;
-            u32 relative_ptr = 0;
+            Exported_Data base = {};
             if (is_valid_ast(expr->Aggregate_Expr.elements->Compound.node)) {
-                // TODO(Alexander): Merge the type info with data arena
-                data = arena_push_size(&cu->type_info_packer->arena, type->size, type->align);
-                relative_ptr = (u32) arena_relative_pointer(&cu->type_info_packer->arena, data);
-                //data = arena_push_size(cu->data_arena, type->size, type->align);
-                //__debugbreak();
-                convert_aggregate_literal_to_memory(expr, data);
+                base = export_size(cu->data_packer, Data_Section, type->size, type->align);
+                convert_aggregate_literal_to_memory(expr, base.data);
             }
             
             
-            if (data) {
-                result = ic_rip_disp32(cu, IC_T64, IcDataArea_Type_Info, data, relative_ptr);
+            if (base.data) {
+                result = ic_rip_disp32(cu, IC_T64, IcDataArea_Type_Info, 
+                                       base.data, base.relative_ptr);
                 
                 // Write to non-constant fields
                 Ic_Arg result_dest = {};
@@ -806,14 +805,11 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                     // TODO(Alexander): make it possible to store dynamic things
                     
                     if (assign->kind == Ast_Value && assign->Value.type == Value_string) {
-                        // TODO(Alexander): we should probably find a way to store this in
-                        // rdata_section but we don't support relocations there yet (if that
-                        // is even a  thing you do on Windows PE-format?
                         string_id str_id = vars_save_string(assign->Value.data.str);
-                        export_string(cu->type_info_packer, str_id, 
-                                      (string*) ((u8*) data + info.offset),
-                                      result.data.disp + (u32) info.offset);
-                        pln("export: % (%)", f_string(assign->Value.data.str), f_u32(result.data.disp + (u32) info.offset));
+                        Exported_Data exported = export_string(cu->data_packer, str_id);
+                        push_relocation(cu->data_packer, add_offset(base, (int) info.offset), exported);
+                        *((string*) ((u8*) base.data + info.offset)) = exported.str;
+                        //pln("export: % (%)", f_string(assign->Value.data.str), f_u32(result.data.disp + (u32) info.offset));
                     }
                     
                     
@@ -958,13 +954,13 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
                         u32 relative_ptr;
                         
                         if (type == t_f64) {
-                            data = arena_push_size(cu->rdata_arena, type->size*2, type->align*2);
-                            relative_ptr = (u32) arena_relative_pointer(cu->rdata_arena, data);
+                            data = arena_push_size(&cu->data_packer->rdata_arena, type->size*2, type->align*2);
+                            relative_ptr = (u32) arena_relative_pointer(&cu->data_packer->rdata_arena, data);
                             u64* values = (u64*) data;
                             for (int i = 0; i < 2; i++) *values++ = 0x8000000000000000ull;
                         } else {
-                            data = arena_push_size(cu->rdata_arena, type->size*4, type->align*4);
-                            relative_ptr = (u32) arena_relative_pointer(cu->rdata_arena, data);
+                            data = arena_push_size(&cu->data_packer->rdata_arena, type->size*4, type->align*4);
+                            relative_ptr = (u32) arena_relative_pointer(&cu->data_packer->rdata_arena, data);
                             u32* values = (u32*) data;
                             for (int i = 0; i < 4; i++) *values++ = 0x80000000;
                         }
@@ -1268,8 +1264,8 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Bloc
                 string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
                 
                 if (stmt->Assign_Stmt.mods & AstDeclModifier_Local_Persist) {
-                    void* data = arena_push_size(cu->data_arena, type->size, type->align);
-                    u32 relative_ptr = (u32) arena_relative_pointer(cu->data_arena, data);
+                    void* data = arena_push_size(&cu->data_packer->data_arena, type->size, type->align);
+                    u32 relative_ptr = (u32) arena_relative_pointer(&cu->data_packer->data_arena, data);
                     
                     if (src.type & IC_DISP) {
                         memcpy(data, &src.disp, type->size);

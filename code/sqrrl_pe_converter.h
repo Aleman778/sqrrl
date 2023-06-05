@@ -390,6 +390,25 @@ struct COFF_Base_Relocation_Table {
     u32 block_size;
 };
 
+struct PE_Executable {
+    COFF_Header* main_header;
+    COFF_PE32_Plus_Header* opt_header;
+    
+    COFF_Section_Header* text_section;
+    COFF_Section_Header* rdata_section;
+    COFF_Section_Header* data_section; // TODO: might break Type_Info data into separate one
+    COFF_Section_Header* reloc_section;
+    
+    u8* text_data;
+    u32 text_data_size;
+    u32 global_data_offset;
+    
+    Memory_Arena header_arena;
+    Memory_Arena rdata_arena;
+    Memory_Arena type_info_arena;
+    Memory_Arena data_arena;
+    Memory_Arena reloc_arena;
+};
 
 inline u32
 read_u32_bytes(string s) {

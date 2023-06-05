@@ -141,7 +141,7 @@ struct Type_Function {
     Calling_Convention cconv;
     Compilation_Unit* unit;
     Value (*interp_intrinsic)(Interp*, array(Interp_Value)*); // TODO(Alexander): temporary intrinsic definition
-    void* intrinsic;
+    void* intrinsic; // TODO: intrinsic is a bad name, used as normal function pointer too
     string_id ident;
     s32 first_default_arg_index;
     b32 is_variadic;
@@ -360,6 +360,7 @@ type_alignof(Type* type) {
 }
 
 //
+
 // Type introspection
 //
 
@@ -428,37 +429,16 @@ struct Type_Info {
     };
 };
 
-struct Relocation {
-    void* from_ptr;
-    u32 from;
-    u32 to;
-};
+//enum Section {
+//Text_Section,
+//Read_Only_Data_Section,
+//Read_Write_Data_Section,
+//Relocation_Section,
+//}
 
-struct Exported_Type {
-    union {
-        Type_Info* type_info;
-        Var_Args* var_args;
-    };
-    u32 relative_ptr;
-};
+Exported_Data export_var_args_info(Data_Packer* packer, int var_arg_start, Ast* actual_arguments);
 
-struct Exported_String {
-    string str;
-    u32 relative_ptr;
-    b32 is_valid;
-};
-
-struct Type_Info_Packer {
-    Memory_Arena arena;
-    map(Type*, Exported_Type)* mapper;
-    array(Relocation)* relocations;
-    
-    map(string_id, Exported_String)* exported_strings;
-};
-
-Exported_Type export_var_args_info(Type_Info_Packer* packer, int var_arg_start, Ast* actual_arguments);
-
-Exported_Type export_type_info(Type_Info_Packer* packer, Type* type);
+Exported_Data export_type_info(Data_Packer* packer, Type* type);
 
 void print_type(Type* type);
 

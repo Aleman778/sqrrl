@@ -176,7 +176,7 @@ push_coff_section(Memory_Arena* arena, COFF_PE32_Plus_Header* opt_header, cstrin
 }
 
 void
-push_coff_import_directory_table(Memory_Arena* rdata_arena, 
+push_coff_import_directory_table(Data_Packer* data_packer, 
                                  COFF_PE32_Plus_Header* opt_header,
                                  Library_Import_Table* import_table, 
                                  u32 virtual_base) {
@@ -185,14 +185,18 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
     
     COFF_Import_Directory_Table* idt = 0;
     for_map(import_table->libs, it) {
+        if (!it->value.resolve_at_compile_time) {
+            continue;
+        }
+        
         string_id library_id = it->key;
         Library_Imports* imports = &it->value;
         
-        COFF_Import_Directory_Table* entry = arena_push_struct(rdata_arena, COFF_Import_Directory_Table);
+        Exported_Data entry = export_struct(data_packer, COFF_Import_Directory_Table, Read_Data_Section);
         
         if (idt == 0) {
-            idt = entry;
-            idt_base = (u32) arena_relative_pointer(rdata_arena, idt);
+            idt = (COFF_Import_Directory_Table*) entry.data;
+            idt_base = entry.relative_ptr;
             if (map_count(import_table->libs) > 0) {
                 opt_header->import_table.rva = virtual_base + idt_base;
                 opt_header->import_address_table.rva = virtual_base; // NOTE(Alexander): always start at 0
@@ -202,12 +206,16 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
     }
     if (idt) {
         // Push null entry
-        arena_push_struct(rdata_arena, COFF_Import_Directory_Table);
-        opt_header->import_table.size = (u32) arena_total_used(rdata_arena) - idt_base;
+        Exported_Data null_entry = export_struct(data_packer, COFF_Import_Directory_Table, Read_Data_Section);
+        opt_header->import_table.size = null_entry.relative_ptr - idt_base;
         
         COFF_Import_Directory_Table* entry = idt;
         
         for_map(import_table->libs, it) {
+            if (!it->value.resolve_at_compile_time) {
+                continue;
+            }
+            
             string library_name = vars_load_string(it->key);
             array(Library_Function)* import_names = it->value.functions;
             
@@ -220,7 +228,8 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
                 address_table = (u64*) cu->external_address;
                 entry->address_table_rva += (u32) cu->external_address;
                 
-                Memory_Block* block = rdata_arena->current_block;
+                // We store the external addresses first thing we do in the rdata arena
+                Memory_Block* block = data_packer->rdata_arena.current_block;
                 while (block) {
                     address_table = (u64*) (cu->external_address + block->base);
                     block = block->prev_block;
@@ -230,9 +239,10 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
                 //f_u64_HEX(cu->external_address));
             }
             
-            u64* lookup_table = arena_push_array_of_structs(rdata_arena, array_count(import_names), u64);
-            entry->lookup_table_rva = ptr_to_rva(virtual_base, rdata_arena, lookup_table);
-            arena_push_struct(rdata_arena, u64); // null entry
+            Exported_Data tbl = export_array(data_packer, array_count(import_names), u64, Read_Data_Section);
+            u64* lookup_table = (u64*) tbl.data;
+            entry->lookup_table_rva = ptr_to_rva(virtual_base, &data_packer->rdata_arena, lookup_table);
+            arena_push_struct(&data_packer->rdata_arena, u64); // null entry
             
             // Hint
             u64* lookup_entry = lookup_table;
@@ -240,10 +250,10 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
             for_array_v(import_names, function, _1) {
                 string function_name = vars_load_string(function.name);
                 smm size = function_name.count + 3; // 3: hint (2 bytes) + null-term
-                u8* hint = (u8*) arena_push_size(rdata_arena, size, 8);
+                u8* hint = (u8*) arena_push_size(&data_packer->rdata_arena, size, 8);
                 memcpy(hint + 2, function_name.data, function_name.count);
                 
-                u64 hint_rva = ptr_to_rva(virtual_base, rdata_arena, hint);
+                u64 hint_rva = ptr_to_rva(virtual_base, &data_packer->rdata_arena, hint);
                 *lookup_entry++ = hint_rva;
                 *address_entry++ = hint_rva;
                 opt_header->import_address_table.size += 8;
@@ -252,9 +262,9 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
             }
             
             // Library name
-            void* library_name_dest = arena_push_size(rdata_arena, library_name.count + 1, 8);
+            void* library_name_dest = arena_push_size(&data_packer->rdata_arena, library_name.count + 1, 8);
             memcpy(library_name_dest, library_name.data, library_name.count);
-            entry->name_rva = ptr_to_rva(virtual_base, rdata_arena, library_name_dest);
+            entry->name_rva = ptr_to_rva(virtual_base, &data_packer->rdata_arena, library_name_dest);
             //pln("LIB: %", f_string(library_name));
             
             entry++;
@@ -262,33 +272,11 @@ push_coff_import_directory_table(Memory_Arena* rdata_arena,
     }
 }
 
-struct PE_Executable {
-    COFF_Header* main_header;
-    COFF_PE32_Plus_Header* opt_header;
-    
-    COFF_Section_Header* text_section;
-    COFF_Section_Header* rdata_section;
-    COFF_Section_Header* data_section; // TODO: might break Type_Info data into separate one
-    COFF_Section_Header* reloc_section;
-    
-    u8* text_data;
-    u32 text_data_size;
-    u32 global_data_offset;
-    
-    Memory_Arena header_arena;
-    Memory_Arena rdata_arena;
-    Memory_Arena type_info_arena;
-    Memory_Arena data_arena;
-    Memory_Arena reloc_arena;
-};
-
 PE_Executable
 convert_to_pe_executable(Memory_Arena* arena,
                          u8* machine_code, u32 machine_code_size,
                          Library_Import_Table* import_table,
-                         Type_Info_Packer* type_info_packer,
-                         Memory_Arena* rdata_arena,
-                         Memory_Arena* data_arena,
+                         Data_Packer* data_packer,
                          u8* entry_point) {
     
     PE_Executable result = {};
@@ -350,9 +338,9 @@ convert_to_pe_executable(Memory_Arena* arena,
     result.header_arena = *arena;
     
     // .rdata section
-    push_coff_import_directory_table(rdata_arena, opt_header,
+    push_coff_import_directory_table(data_packer, opt_header,
                                      import_table, opt_header->size_of_image);
-    u32 rdata_size = (u32) arena_total_used(rdata_arena);
+    u32 rdata_size = (u32) arena_total_used(&data_packer->rdata_arena);
     if (rdata_size > 0) {
         rdata_section = push_coff_section(arena, opt_header, COFF_RDATA_SECTION, rdata_size,
                                           COFF_SCN_CNT_INITIALIZED_DATA | COFF_SCN_MEM_READ);
@@ -362,9 +350,7 @@ convert_to_pe_executable(Memory_Arena* arena,
     }
     
     // .data section
-    u32 data_size = (u32) arena_total_used(&type_info_packer->arena);
-    result.global_data_offset = data_size;
-    data_size += (u32) arena_total_used(data_arena);
+    u32 data_size = (u32) arena_total_used(&data_packer->data_arena);
     if (data_size > 0) {
         data_section = push_coff_section(arena, opt_header, COFF_DATA_SECTION, data_size,
                                          (u32) COFF_SCN_CNT_INITIALIZED_DATA | COFF_SCN_MEM_READ | COFF_SCN_MEM_WRITE);
@@ -373,28 +359,54 @@ convert_to_pe_executable(Memory_Arena* arena,
         header->number_of_sections++; // added .data
     }
     
-    // Create base relocation table (for Type_Info_Packer)
+    // Create base relocation table
     Memory_Arena reloc_arena = {};
-    if (array_count(type_info_packer->relocations) > 0) {
-        COFF_Base_Relocation_Table* reloc_table = arena_push_struct(&reloc_arena, COFF_Base_Relocation_Table);
-        reloc_table->page_rva = data_section->virtual_address;
-        for_array(type_info_packer->relocations, reloc, reloc_index) {
+    if (array_count(data_packer->relocations) > 0) {
+        
+        // Create separate tables
+        // TODO(Alexander): we need to restrict only 4kB per table
+        for (int from_section_enum = 0; from_section_enum < Section_Count; from_section_enum++) {
+            COFF_Section_Header* from_section = from_section_enum == Read_Data_Section ? rdata_section : data_section;
+            COFF_Base_Relocation_Table* reloc_table = 0;
             
-            assert(reloc->from < U16_MAX);
-            u16* reloc_entry = arena_push_struct(&reloc_arena, u16);
-            *reloc_entry = 0xA000 + (u16) reloc->from;
+            for_array(data_packer->relocations, reloc, reloc_index) {
+                if (reloc->from_section != from_section_enum) {
+                    continue;
+                }
+                
+                if (!reloc_table) {
+                    reloc_table = arena_push_struct(&reloc_arena, COFF_Base_Relocation_Table);
+                    reloc_table->page_rva = from_section->virtual_address;
+                }
+                
+                COFF_Section_Header* to_section = reloc->to_section == Read_Data_Section ? rdata_section : data_section;
+                
+                verify(reloc->from < kilobytes(4) && "reached end of page specified in relocation table");
+                u16* reloc_entry = arena_push_struct(&reloc_arena, u16);
+                *reloc_entry = 0xA000 + (u16) reloc->from;
+                
+                *((u64*) reloc->from_ptr) = (u64) (opt_header->image_base + 
+                                                   to_section->virtual_address + 
+                                                   reloc->to);
+                
+                cstring section_names[] = {"rdata", "data"};
+                
+                //pln("\nRelocation: \n  from_ptr = % (%)\n  from = % (%)\n  to = % (%)", f_u64_HEX(reloc->from_ptr),
+                //f_u64_HEX(*((u64*) reloc->from_ptr)), f_u64_HEX(reloc->from), f_cstring(section_names[reloc->from_section]), 
+                //f_u64_HEX(reloc->to), f_cstring(section_names[reloc->to_section]));
+                
+            }
             
-            *((u64*) reloc->from_ptr) = (u64) (opt_header->image_base + 
-                                               data_section->virtual_address + 
-                                               reloc->to);
-            
-            //pln("\nRelocation: \n  from_ptr = % (%)\n  from = %\n  to = %", f_u64_HEX(reloc->from_ptr),
-            //f_u64_HEX(*((u64*) reloc->from_ptr)), f_u64_HEX(reloc->from), f_u64_HEX(reloc->to));
-            
+            if (reloc_table) {
+                reloc_table->block_size = (u32) arena_total_used(&reloc_arena);
+                reloc_table = 0;
+            }
         }
-        reloc_table->block_size = (u32) arena_total_used(&reloc_arena);
+        
+        // Finally compute to sizes for opt header
+        u32 reloc_size = (u32) arena_total_used(&reloc_arena);
         opt_header->base_relocation_table.rva = opt_header->size_of_image;
-        opt_header->base_relocation_table.size = reloc_table->block_size;
+        opt_header->base_relocation_table.size = reloc_size;
     }
     
     // .reloc section
@@ -427,15 +439,14 @@ convert_to_pe_executable(Memory_Arena* arena,
         rdata_section->pointer_to_raw_data = output_size;
         output_size += rdata_section->size_of_raw_data;
         
-        result.rdata_arena = *rdata_arena;
+        result.rdata_arena = data_packer->rdata_arena;
     }
     
     if (data_section) {
         data_section->pointer_to_raw_data = output_size;
         output_size += data_section->size_of_raw_data;
         
-        result.type_info_arena = type_info_packer->arena;
-        result.data_arena = *data_arena;
+        result.data_arena = data_packer->data_arena;
     }
     
     if (reloc_section) {

@@ -68,18 +68,19 @@ run_compiler_tests(string filename,
         return 1;
     }
     
+    Data_Packer data_packer = {};
+    // TODO: do we need worry about align from zero for JIT!?!?!?
+    //rdata_arena.flags |= ArenaPushFlag_Align_From_Zero;
+    //data_arena.flags |= ArenaPushFlag_Align_From_Zero;
+    
     // Type checking
     Interp interp = {};
     Type_Context tcx = {};
+    tcx.data_packer = &data_packer;
     if (type_check_ast_file(&tcx, &ast_file, &interp) != 0) {
         pln("\nErrors found during type checking, exiting...\n");
         return 1;
     }
-    
-    Memory_Arena rdata_arena = {};
-    rdata_arena.flags |= ArenaPushFlag_Align_From_Zero;
-    Memory_Arena data_arena = {};
-    data_arena.flags |= ArenaPushFlag_Align_From_Zero;
     
     // Convert to intermediate code
     Ic_Arg_Map* x64_globals = 0;
@@ -91,10 +92,7 @@ run_compiler_tests(string filename,
             continue;
         }
         
-        
-        cu->type_info_packer = &tcx.type_info_packer;
-        cu->rdata_arena = &rdata_arena;
-        cu->data_arena = &data_arena;
+        cu->data_packer = &data_packer;
         cu->globals = x64_globals;
         
         cu->use_absolute_ptrs = true; // TODO(Alexander): this is needed for JIT compilation

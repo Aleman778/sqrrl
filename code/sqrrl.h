@@ -27,6 +27,7 @@ sqrrl_free(void* data) {
 #include "sqrrl_source.h"
 #include "sqrrl_tokenizer.h"
 #include "sqrrl_value.h"
+#include "sqrrl_data.h"
 #include "sqrrl_types.h"
 #include "sqrrl_intermediate_code.h"
 #include "sqrrl_ast.h"

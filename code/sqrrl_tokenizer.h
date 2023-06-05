@@ -33,7 +33,7 @@ TOKEN(Backslash,               "\\")                \
 TOKEN(Line_Comment,            "line comment")      \
 TOKEN(Block_Comment,           "block comment")     \
 TOKEN(Whitespace,              "whitespace")        \
-TOKEN(Newline,                 "newline")        \
+TOKEN(Newline,                 "newline")           \
 TOKEN(Ident,                   "identifier")        \
 TOKEN(Raw_Ident,               "identifier")        \
 TOKEN(Int,                     "number")            \

@@ -8,6 +8,7 @@
 #include "sqrrl_basic.cpp"
 
 #include "sqrrl_value.cpp"
+#include "sqrrl_data.cpp"
 #include "sqrrl_types.cpp"
 #include "sqrrl_test.cpp"
 #include "sqrrl_tokenizer.cpp"
@@ -195,9 +196,15 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         return 1;
     }
     
+    Data_Packer data_packer = {};
+    data_packer.rdata_arena.flags |= ArenaPushFlag_Align_From_Zero;
+    data_packer.data_arena.flags |= ArenaPushFlag_Align_From_Zero;
+    Ic_Arg_Map* x64_globals = 0;
+    
     // Typecheck the AST
     Interp interp = {};
     Type_Context tcx = {};
+    tcx.data_packer = &data_packer;
     
     if (type_check_ast_file(&tcx, &ast_file, &interp) != 0) {
         if (flag_print_ast) {
@@ -231,15 +238,15 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         return 0;
     }
     
-    Memory_Arena rdata_arena = {};
-    rdata_arena.flags |= ArenaPushFlag_Align_From_Zero;
-    Memory_Arena data_arena = {};
-    data_arena.flags |= ArenaPushFlag_Align_From_Zero;
-    
     // Start by pushing address lookup table for external libs
     for_map(tcx.import_table.libs, it) {
+        
+        Exported_Data library = {};
         for_array(it->value.functions, function, function_index) {
             if (function->type) {
+                
+                //pln("LIB(%): %", f_var(it->key), f_type(function->type));
+                
                 assert(function->type->kind == TypeKind_Function && 
                        function->type->Function.unit);
                 
@@ -248,26 +255,53 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 Ic_Basic_Block* bb_begin = ic_basic_block();
                 ic_add(cu, IC_LABEL, bb_begin);
                 
-                // Library function pointer is replaced by the loader
-                void* fn_ptr = arena_push_size(&rdata_arena, 8, 8);
-                u32 relative_ptr = (u32) arena_relative_pointer(&rdata_arena, fn_ptr);
+                Exported_Data import_fn;
+                Ic_Data_Area data_area;
+                if (it->value.resolve_at_compile_time) {
+                    // Library function pointer is replaced by the loader
+                    import_fn = export_size(&data_packer, Read_Data_Section, 8, 8);
+                    data_area = IcDataArea_Read_Only;
+                } else {
+                    if (!library.data) {
+                        library = export_struct(&data_packer, Dynamic_Library, Data_Section);
+                    }
+                    Dynamic_Library* dynamic_library = (Dynamic_Library*) library.data;
+                    dynamic_library->count++;
+                    
+                    
+                    // Library function pointer is replaced by user at runtime
+                    import_fn = export_struct(&data_packer, Dynamic_Function, Data_Section);
+                    data_area = IcDataArea_Globals;
+                    
+                    if (!map_key_exists(x64_globals, it->key)) {
+                        push_relocation(&data_packer, library, import_fn);
+                        Ic_Arg ptr = ic_rip_disp32(cu, IC_U64, data_area, library.data, library.relative_ptr);
+                        map_put(x64_globals, it->key, ptr);
+                    }
+                    
+                    Dynamic_Function* dynamic_fn = (Dynamic_Function*) import_fn.data;
+                    Exported_Data fn_name = export_string(&data_packer, function->name);
+                    dynamic_fn->name = fn_name.str;
+                    push_relocation(&data_packer, add_offset(import_fn, 8), fn_name);
+                }
+                
+                // Jump to library function
                 Intermediate_Code* ic_jump = ic_add(cu, IC_JMP);
                 //pln("-> %", f_var(cu->ident));
-                ic_jump->src0 = ic_rip_disp32(cu, IC_U64, IcDataArea_Read_Only, fn_ptr, relative_ptr);
+                ic_jump->src0 = ic_rip_disp32(cu, IC_U64, data_area, import_fn.data, import_fn.relative_ptr);
                 cu->external_address = ic_jump->src0.data.disp;
             }
         }
         
-        arena_push_size(&rdata_arena, 8, 8); // null entry
+        if (it->value.resolve_at_compile_time) {
+            export_size(&data_packer, Read_Data_Section, 8, 8); // null entry
+        }
     }
     
-    Ic_Arg_Map* x64_globals = 0;
     
     Compilation_Unit* main_cu = 0;
     for_array(ast_file.units, cu, _2) {
-        cu->type_info_packer = &tcx.type_info_packer;
-        cu->rdata_arena = &rdata_arena;
-        cu->data_arena = &data_arena;
+        cu->data_packer = &data_packer;
         cu->globals = x64_globals;
         if (cu->ast->kind == Ast_Decl_Stmt) {
             Type* type = cu->ast->type;
@@ -335,9 +369,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     PE_Executable pe_executable = convert_to_pe_executable(&build_arena,
                                                            (u8*) asm_buffer, (u32) rip,
                                                            &tcx.import_table,
-                                                           &tcx.type_info_packer,
-                                                           &rdata_arena,
-                                                           &data_arena,
+                                                           &data_packer,
                                                            asm_buffer_main);
     
     // TODO(Alexander): the PE section_alignment is hardcoded as 0x1000

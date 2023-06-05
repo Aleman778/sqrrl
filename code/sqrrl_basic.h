@@ -104,7 +104,6 @@ __assert(cstring expression, cstring file, smm line) {
     DEBUG_log_backtrace();
     
     // Flush the standard streams make sure we get all debug data
-    fflush(stdout);
     fflush(stderr);
     
     *(int *)0 = 0; // NOTE(Alexander): purposefully trap the program

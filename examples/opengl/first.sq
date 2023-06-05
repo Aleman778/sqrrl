@@ -82,7 +82,7 @@ main() {
                 []int attribs = {
                     WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
                     WGL_CONTEXT_MINOR_VERSION_ARB, 3,
-                    WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_DEBUG_BIT_ARB | WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
+                    WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_DEBUG_BIT_ARB, // | WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
                     WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB, 
                     0,
                 };
@@ -97,12 +97,17 @@ main() {
                     win32_show_error("OpenGL version 3.3 is not supported!");
                 }
                 
-                debug_break();
+                pln("function count = %", opengl_library.functions.count);
                 
+                void* ptr = wglGetProcAddress("glClearColor");
+                pln("glClear = %", ptr);
                 
                 for (int i = 0; i < opengl_library.functions.count; i++) {
                     Dynamic_Function* fn = &opengl_library.functions[i];
-                    fn.pointer = wglGetProcAddress(fn.name);
+                    // TODO: COMPILER BUG: type checker should have complained without cstring conversion
+                    cstring name = string_to_cstring(fn.name);
+                    fn.pointer = wglGetProcAddress(name); 
+                    pln("Loaded: % (%)", name, fn.pointer);
                 }
                 
                 // Initialize OpenGL
@@ -112,7 +117,7 @@ main() {
                 glinfo.version = cstring_to_string((cstring) glGetString(GL_VERSION));
                 glinfo.extensions = cstring_to_string((cstring) glGetString(GL_EXTENSIONS));
                 //glinfo.shader_language_version = cstring_to_string((cstring) glGetString(GL_SHADING_LANGUAGE_VERSION));
-                pln("%", glinfo);
+                //pln("%", glinfo);
                 
             } else {
                 win32_show_error("Failed to intialize Modern OpenGL!");

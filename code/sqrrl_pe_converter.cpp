@@ -367,21 +367,26 @@ convert_to_pe_executable(Memory_Arena* arena,
         // TODO(Alexander): we need to restrict only 4kB per table
         for (int from_section_enum = 0; from_section_enum < Section_Count; from_section_enum++) {
             COFF_Section_Header* from_section = from_section_enum == Read_Data_Section ? rdata_section : data_section;
+            
             COFF_Base_Relocation_Table* reloc_table = 0;
+            u32 page_offset = 0;
             
             for_array(data_packer->relocations, reloc, reloc_index) {
                 if (reloc->from_section != from_section_enum) {
                     continue;
                 }
                 
-                if (!reloc_table) {
-                    reloc_table = arena_push_struct(&reloc_arena, COFF_Base_Relocation_Table);
-                    reloc_table->page_rva = from_section->virtual_address;
-                }
-                
                 COFF_Section_Header* to_section = reloc->to_section == Read_Data_Section ? rdata_section : data_section;
                 
-                verify(reloc->from < kilobytes(4) && "reached end of page specified in relocation table");
+                if (!reloc_table || (reloc->from < page_offset && reloc->from >= page_offset + kilobytes(4))) {
+                    if (reloc_table) {
+                        reloc_table->block_size = (u32) arena_total_used(&reloc_arena);
+                    }
+                    reloc_table = arena_push_struct(&reloc_arena, COFF_Base_Relocation_Table);
+                    reloc_table->page_rva = from_section->virtual_address + reloc->from;
+                    page_offset = reloc->from;
+                }
+                
                 u16* reloc_entry = arena_push_struct(&reloc_arena, u16);
                 *reloc_entry = 0xA000 + (u16) reloc->from;
                 

@@ -88,7 +88,7 @@ compile_shader_from_file(int program, int shader_type, cstring filename) {
         message.data = (u8*) malloc(1024);
         message.count = 0;
         glGetShaderInfoLog(shader, 1024, cast(GLsizei*) &message.count, cast(GLchar*) message.data);
-        pln("%: shader error: %", filename, message);
+        pln("%: %", filename, message);
         free(message.data);
         return false;
     }
@@ -145,11 +145,14 @@ main() {
             
             wglCreateContextAttribsARB = (wgl_create_context_attribs_arb*) wglGetProcAddress("wglCreateContextAttribsARB");
             
+            int major = 3;
+            int minor = 3;
+            
             if (wglCreateContextAttribsARB) {
                 // TODO: Make debug context optional, maybe forward compatible too?
                 []int attribs = {
-                    WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
-                    WGL_CONTEXT_MINOR_VERSION_ARB, 3,
+                    WGL_CONTEXT_MAJOR_VERSION_ARB, major,
+                    WGL_CONTEXT_MINOR_VERSION_ARB, minor,
                     WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_DEBUG_BIT_ARB | WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
                     WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
                     0,
@@ -165,7 +168,7 @@ main() {
                     wglDeleteContext(opengl_rc);
                     opengl_rc = modern_opengl_rc;
                 } else {
-                    win32_show_error("OpenGL version 3.3 is not supported!");
+                    win32_show_error(string_print("OpenGL version %.% is not supported!", major, minor));
                 }
                 
                 for (int i = 0; i < opengl_library.functions.count; i++) {
@@ -200,8 +203,12 @@ main() {
             
             []f32 triangle_data = {
                 1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
-                0.0f,  1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+                -1.0f,  1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
                 -1.0f, -1.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+                
+                -1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+                1.0f,  1.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+                1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
             };  
             
             glBindBuffer(GL_ARRAY_BUFFER, vbo);
@@ -232,7 +239,7 @@ main() {
                     message.data = (u8*) malloc(1024);
                     message.count = 0;
                     glGetProgramInfoLog(program, 1024, cast(GLsizei*) &message.count, cast(GLchar*) message.data);
-                    win32_show_error(string_print("shader error: %", message));
+                    win32_show_error(string_print("%", message));
                     free(message.data);
                     return false;
                 }
@@ -240,7 +247,14 @@ main() {
                 win32_show_error("Failed to compile shaders");
             }
             
+            int uniform_t = glGetUniformLocation(program, (GLchar*) string_to_cstring("t"));
+            pln("%", uniform_t);
+            
             glUseProgram(program);
+            glUniform1f(uniform_t, 0.0f);
+            
+            
+            f32 time = 0.0f;
             
             is_running = true;
             while (is_running) {
@@ -250,12 +264,15 @@ main() {
                     DispatchMessageA(&message);
                 }
                 
+                time += 0.1f;
+                glUniform1f(uniform_t, time);
+                
                 glClearColor(0.0f, 0.5f, 1.0f, 1.0f);
                 glClear(GL_COLOR_BUFFER_BIT);
                 
                 glUseProgram(program);
                 glBindVertexArray(vao);
-                glDrawArrays(GL_TRIANGLES, 0, 3);
+                glDrawArrays(GL_TRIANGLES, 0, 6);
                 
                 SwapBuffers(window_dc);
             }

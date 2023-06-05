@@ -82,7 +82,7 @@ compile_shader_from_file(int program, int shader_type, cstring filename) {
     
     GLint success;
     glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-    if (success != GL_TRUE) {
+    if (!success) {
         // TODO: COMPILER BUG: wasn't possible to just use a stack allocated array?!??!
         string message;
         message.data = (u8*) malloc(1024);
@@ -151,7 +151,7 @@ main() {
                     WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
                     WGL_CONTEXT_MINOR_VERSION_ARB, 3,
                     WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_DEBUG_BIT_ARB | WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
-                    //WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+                    WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
                     0,
                 };
                 
@@ -189,24 +189,31 @@ main() {
                 win32_show_error("Failed to intialize Modern OpenGL!");
             }
             
+            // Vertex array
+            GLuint vao;
+            glGenVertexArrays(1, &vao);
+            glBindVertexArray(vao);
+            
             // Setup buffers
-            int vbo;
+            GLuint vbo;
             glGenBuffers(1, &vbo);
             
-            []f32 triangle_data = { 
-                -1.0, -1.0, 0.0, 
-                0.0,  1.0, 0.0,
-                1.0, -1.0, 0.0
-            };
-            int count = triangle_data.count*8;
-            pln("> %", sizeof(f32));
+            []f32 triangle_data = {
+                1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+                0.0f,  1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+                -1.0f, -1.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+            };  
+            
             glBindBuffer(GL_ARRAY_BUFFER, vbo);
             glBufferData(GL_ARRAY_BUFFER,
                          triangle_data.count*sizeof(f32), 
                          triangle_data.data, GL_STATIC_DRAW);
             
-            int vao;
-            glGenVertexArrays(1, &vao);
+            // position attribute
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(f32), 0);
+            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(f32), 3 * sizeof(f32));
+            glEnableVertexAttribArray(0);
+            glEnableVertexAttribArray(1);
             
             // Setup shaders
             int program = glCreateProgram();
@@ -235,15 +242,6 @@ main() {
             
             glUseProgram(program);
             
-            
-            // position attribute
-            glBindVertexArray(vao);
-            glBindBuffer(GL_ARRAY_BUFFER, vbo);
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(f32), 0);
-            glEnableVertexAttribArray(0);
-            
-            
-            
             is_running = true;
             while (is_running) {
                 MSG message;
@@ -255,6 +253,8 @@ main() {
                 glClearColor(0.0f, 0.5f, 1.0f, 1.0f);
                 glClear(GL_COLOR_BUFFER_BIT);
                 
+                glUseProgram(program);
+                glBindVertexArray(vao);
                 glDrawArrays(GL_TRIANGLES, 0, 3);
                 
                 SwapBuffers(window_dc);

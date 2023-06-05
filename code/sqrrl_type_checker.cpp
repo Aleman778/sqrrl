@@ -873,10 +873,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                                                         actual_arg->Argument.assign, 
                                                         0, 
                                                         report_error);
-                    
-                } else if (is_valid_ast(actual_arg->Argument.type)) {
-                    
-                    actual_type = create_type_from_ast(tcx, actual_arg->Argument.type, report_error).type;
                 }
                 
                 if (!actual_type) {
@@ -998,44 +994,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             if (function_type && t_func->intrinsic) {
                 void* intrinsic = t_func->intrinsic;
                 
-                if (intrinsic == &print && !expr->Call_Expr.added_format_types) {
-                    
-                    
-                    //pln("%", f_ast(expr));
-                    //__debugbreak();
-                    
-                    s32 arg_index = 0;
-                    Ast* prev_compound = 0;
-                    Ast* curr_compound = actual_args;
-                    while (curr_compound && curr_compound->Compound.node) {
-                        Ast* actual_arg = curr_compound->Compound.node;
-                        if (prev_compound) {
-                            Format_Type fmt_type = convert_type_to_format_type(actual_arg->type);
-                            // TODO(Alexander): refactor this later when the AST storage gets updated
-                            
-                            Ast* fmt_arg = arena_push_struct(&tcx->type_arena, Ast);
-                            fmt_arg->kind = Ast_Argument;
-                            fmt_arg->type = t_s32;
-                            
-                            Ast* fmt_value = arena_push_struct(&tcx->type_arena, Ast);
-                            fmt_value->kind = Ast_Value;
-                            fmt_value->type = t_s32;
-                            fmt_value->Value = create_signed_int_value(fmt_type);
-                            fmt_arg->Argument.assign = fmt_value;
-                            
-                            Ast* fmt_compound = arena_push_struct(&tcx->type_arena, Ast);
-                            fmt_compound->kind = Ast_Compound;
-                            fmt_compound->Compound.node = fmt_arg;
-                            fmt_compound->Compound.next = curr_compound;
-                            prev_compound->Compound.next = fmt_compound;
-                        }
-                        
-                        prev_compound = curr_compound;
-                        curr_compound = curr_compound->Compound.next;
-                    }
-                    
-                    expr->Call_Expr.added_format_types = true;
-                } else if (intrinsic == &type_sizeof || intrinsic == &type_alignof) {
+                if (intrinsic == &type_sizeof || intrinsic == &type_alignof) {
                     intrin_type_def* intrinsic_proc = (intrin_type_def*) intrinsic;
                     
                     s32 arg_index = 0;
@@ -1050,10 +1009,20 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                             
                         } else if (curr_compound->Compound.node) {
                             Ast* actual_arg = curr_compound->Compound.node;
-                            expr->kind = Ast_Value;
-                            //pln("% (size = %)", f_ast(actual_arg), f_umm(intrinsic_proc(actual_arg->type)));
-                            expr->Value =
-                                create_unsigned_int_value(intrinsic_proc(actual_arg->type));
+                            
+                            if (actual_arg->Argument.assign->kind == Ast_Exported_Data) {
+                                Exported_Data* exported_type = &actual_arg->Argument.assign->Exported_Data;
+                                Type_Info* type_info = (Type_Info*) exported_type->data;
+                                expr->kind = Ast_Value;
+                                expr->Value = create_unsigned_int_value(intrinsic == &type_sizeof ? 
+                                                                        type_info->size : type_info->align);
+                                
+                            } else {
+                                expr->kind = Ast_Value;
+                                //pln("% (size = %)", f_ast(actual_arg), f_umm(intrinsic_proc(actual_arg->type)));
+                                expr->Value =
+                                    create_unsigned_int_value(intrinsic_proc(actual_arg->type));
+                            }
                         }
                     }
                     

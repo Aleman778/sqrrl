@@ -1141,9 +1141,6 @@ parse_actual_function_argument(Parser* parser) {
     //}
     //} else {
     result->Argument.assign = parse_expression(parser, false);
-    if (result->Argument.assign->kind == Ast_None) {
-        result->Argument.type = parse_type(parser, false);
-    }
     //}
     return result;
 }

@@ -289,6 +289,10 @@ string_builder_push(String_Builder* sb, Type* type) {
             string_builder_push(sb, "any");
         } break;
         
+        case TypeKind_Type: {
+            string_builder_push(sb, "Type");
+        } break;
+        
         case TypeKind_Basic: {
             string_builder_push(sb, vars_load_string(type->ident));
         } break;
@@ -427,6 +431,9 @@ struct Type_Info {
         TI_Enum_Type_Info Enum;
         TI_Array_Type_Info Array;
     };
+    
+    s32 size;
+    s32 align;
 };
 
 //enum Section {

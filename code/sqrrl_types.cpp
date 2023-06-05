@@ -52,6 +52,10 @@ export_type_info(Data_Packer* packer, Type* type) {
         result = export_struct(packer, Type_Info, Data_Section);
         Type_Info* type_info = (Type_Info*) result.data;
         type_info->kind = type->kind;
+        type_info->size = type->size;
+        type_info->align = type->align;
+        assert(type_info->size && "bad size");
+        assert(type_info->align && "bad align");
         map_put(packer->exported_types, type, result);
         
         // Serialize structure into memory

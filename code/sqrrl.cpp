@@ -20,23 +20,22 @@
 #include "sqrrl_x64_converter.cpp"
 #include "sqrrl_pe_converter.cpp"
 #include "sqrrl_pdb_converter.cpp"
+#include "sqrrl_wasm_converter.cpp"
 
 typedef int asm_main(void);
 typedef f32 asm_f32_main(void);
 
+enum Backend_Type {
+    Backend_X64,
+    Backend_WASM,
+};
+
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm), bool is_debugger_present) {
-    // TODO(Alexander): temporary use of C runtime RNG
-    //srand((uint) time(0));
-    //rand();
     
-#if 0
-    // TODO(Alexander): dumb example to print PDBs (turns out they suck, unspecified + no docs)
-    dump_pdb();
-    return 0;
-#else
     
+    Backend_Type target_backend = Backend_WASM;
     
     {
         // Put dummy file as index 0
@@ -345,7 +344,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             string_builder_dump_bytecode(&sb, cu);
         }
     }
-    
+    //
     if (sb.data) {
         string s = string_builder_to_string_nocopy(&sb);
         pln("\nIntermediate code:\n%", f_string(s));
@@ -358,9 +357,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         rip = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage, 0, 0, 0, rip);
     }
     
-    Type* type = main_cu->ast->type;
-    if (type && type->kind == TypeKind_Function) {
-        type = type->Function.return_type;
+    Type* main_func_return_type = main_cu->ast->type;
+    if (main_func_return_type && main_func_return_type->kind == TypeKind_Function) {
+        main_func_return_type = main_func_return_type->Function.return_type;
     }
     u8* asm_buffer_main = (u8*) asm_buffer + main_cu->bb_first->addr;
     
@@ -372,84 +371,127 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                                                            &data_packer,
                                                            asm_buffer_main);
     
-    // TODO(Alexander): the PE section_alignment is hardcoded as 0x1000
-    for_array(ast_file.units, cu, _6) {
-        Intermediate_Code* ic = cu->ic_first;
-        
-        while (ic) {
-            ic->dest = patch_rip_relative_address(&pe_executable, ic->dest);
-            ic->src0 = patch_rip_relative_address(&pe_executable, ic->src0);
-            ic->src1 = patch_rip_relative_address(&pe_executable, ic->src1);
-            ic = ic->next;
-        }
-    }
     
-    global_asm_buffer = (s64) asm_buffer;
-    s64 rip2 = 0;
-    for_array(ast_file.units, cu, _7) {
-        rip2 = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage,
-                                           (u8*) asm_buffer, 0, (s64) asm_size, rip2);
-    }
-    assert(rip == rip2);
-    
-    
+    switch (target_backend) {
+        case Backend_X64: {
+            // TODO(Alexander): the PE section_alignment is hardcoded as 0x1000
+            for_array(ast_file.units, cu, _6) {
+                Intermediate_Code* ic = cu->ic_first;
+                
+                while (ic) {
+                    ic->dest = patch_rip_relative_address(&pe_executable, ic->dest);
+                    ic->src0 = patch_rip_relative_address(&pe_executable, ic->src0);
+                    ic->src1 = patch_rip_relative_address(&pe_executable, ic->src1);
+                    ic = ic->next;
+                }
+            }
+            
+            global_asm_buffer = (s64) asm_buffer;
+            s64 rip2 = 0;
+            for_array(ast_file.units, cu, _7) {
+                rip2 = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage,
+                                                   (u8*) asm_buffer, 0, (s64) asm_size, rip2);
+            }
+            assert(rip == rip2);
+            
+            
 #if 0
-    pln("\nX64 Machine Code (% bytes):", f_umm(rip));
-    for (int byte_index = 0; byte_index < rip; byte_index++) {
-        u8 byte = ((u8*) asm_buffer)[byte_index];
-        if (byte > 0xF) {
-            printf("%hhX ", byte);
-        } else {
-            printf("0%hhX ", byte);
-        }
-        
-        if (byte_index % 80 == 79) {
-            printf("\n");
-        }
-    }
-    printf("\n\n");
+            pln("\nX64 Machine Code (% bytes):", f_umm(rip));
+            for (int byte_index = 0; byte_index < rip; byte_index++) {
+                u8 byte = ((u8*) asm_buffer)[byte_index];
+                if (byte > 0xF) {
+                    printf("%hhX ", byte);
+                } else {
+                    printf("0%hhX ", byte);
+                }
+                
+                if (byte_index % 80 == 79) {
+                    printf("\n");
+                }
+            }
+            printf("\n\n");
 #endif
-    
-    //asm_make_executable(asm_buffer, asm_size);
-    //asm_main* func = (asm_main*) asm_buffer;
-    //int jit_exit_code = (int) func();
-    //pln("JIT exited with code: %", f_int(jit_exit_code));
-    
-    // NOTE(Alexander): write the PE executable to file
-    File_Handle exe_file = DEBUG_open_file_for_writing("simple.exe");
-    write_pe_executable_to_file(exe_file, &pe_executable);
-    DEBUG_close_file(exe_file);
-    pln("\nWrote executable: simple.exe");
-    
-    //Read_File_Result exe_data = DEBUG_read_entire_file("simple.exe");
-    //pe_dump_executable(create_string(exe_data.contents_size, (u8*) exe_data.contents));
-    
+            
+            //asm_make_executable(asm_buffer, asm_size);
+            //asm_main* func = (asm_main*) asm_buffer;
+            //int jit_exit_code = (int) func();
+            //pln("JIT exited with code: %", f_int(jit_exit_code));
+            
+            // NOTE(Alexander): write the PE executable to file
+            File_Handle exe_file = DEBUG_open_file_for_writing("simple.exe");
+            write_pe_executable_to_file(exe_file, &pe_executable);
+            DEBUG_close_file(exe_file);
+            pln("\nWrote executable: simple.exe");
+            
+            //Read_File_Result exe_data = DEBUG_read_entire_file("simple.exe");
+            //pe_dump_executable(create_string(exe_data.contents_size, (u8*) exe_data.contents));
+            
 #if 0
-    // NOTE(Alexander): Run machine code
-    asm_make_executable(asm_buffer, rip);
-    //DEBUG_add_debug_symbols(&ast_file, (u8*) asm_buffer);
-    
-    if (working_directory.data) {
-        cstring dir = string_to_cstring(working_directory);
-        DEBUG_set_current_directory(dir);
-        cstring_free(dir);
-    }
-    
-    if (type == t_s32) {
-        asm_main* func = (asm_main*) asm_buffer_main;
-        int jit_exit_code = (int) func();
-        pln("\nJIT exited with code: %", f_int(jit_exit_code));
-    } else if (type == t_f32) {
-        asm_f32_main* func = (asm_f32_main*) asm_buffer_main;
-        f32 jit_exit_code = (f32) func();
-        pln("\nJIT exited with code: %", f_float(jit_exit_code));
-    } else {
-        asm_main* func = (asm_main*) asm_buffer_main;
-        func();
-        pln("\nJIT exited with code: 0");
-    }
+            // NOTE(Alexander): Run machine code
+            asm_make_executable(asm_buffer, rip);
+            //DEBUG_add_debug_symbols(&ast_file, (u8*) asm_buffer);
+            
+            if (working_directory.data) {
+                cstring dir = string_to_cstring(working_directory);
+                DEBUG_set_current_directory(dir);
+                cstring_free(dir);
+            }
+            
+            if (main_func_return_type == t_s32) {
+                asm_main* func = (asm_main*) asm_buffer_main;
+                int jit_exit_code = (int) func();
+                pln("\nJIT exited with code: %", f_int(jit_exit_code));
+            } else if (main_func_return_type == t_f32) {
+                asm_f32_main* func = (asm_f32_main*) asm_buffer_main;
+                f32 jit_exit_code = (f32) func();
+                pln("\nJIT exited with code: %", f_float(jit_exit_code));
+            } else {
+                asm_main* func = (asm_main*) asm_buffer_main;
+                func();
+                pln("\nJIT exited with code: 0");
+            }
 #endif
+        } break;
+        
+        case Backend_WASM: {
+            Buffer buffer = {};
+            buffer.data = (u8*) asm_buffer;
+            buffer.size = asm_size;
+            
+            convert_to_wasm_module(0, 0, &buffer);
+            for_array(ast_file.units, cu, _6) {
+                if (cu->ast->kind == Ast_Decl_Stmt) {
+                    
+                    Type* type = cu->ast->type;
+                    if (type->kind == TypeKind_Function) {
+                        
+                        smm first_byte = buffer.curr_used;
+                        pln("Compiling function: %", f_type(type));
+                        convert_type_to_wasm(type, &buffer);
+                        
+                        for (smm byte_index = first_byte; byte_index < buffer.curr_used; byte_index++) {
+                            u8 byte = buffer.data[byte_index];
+                            if (byte > 0xF) {
+                                printf("%hhX ", byte);
+                            } else {
+                                printf("0%hhX ", byte);
+                            }
+                            
+                            if ((byte_index - first_byte) % 40 == 39) {
+                                printf("\n");
+                            }
+                        }
+                        printf("\n\n");
+                    }
+                }
+            }
+            
+            File_Handle wasm_file = DEBUG_open_file_for_writing("simple.wasm");
+            DEBUG_write(wasm_file, buffer.data, (u32) buffer.curr_used);
+            DEBUG_close_file(wasm_file);
+            pln("\nWrote executable: simple.wasm");
+        } break;
+    }
     
     return 0;
-#endif
 }

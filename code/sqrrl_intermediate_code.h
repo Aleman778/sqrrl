@@ -273,6 +273,41 @@ ic_u64(Intermediate_Code* ic, u64 qw) {
     ic->count += 8;
 }
 
+void
+ic_leb128_u32(Intermediate_Code* ic, s32 num) {
+    bool neg = num < 0;
+    do {
+        u8 byte = num & 0x7F;
+        num = num >> 7;
+        if (num != 0) {
+            byte |= 0x80;
+        }
+        assert(ic->count + 1 < fixed_array_count(ic->code));
+        ic->code[ic->count++] = byte;
+    } while (num != 0);
+}
+
+void
+ic_leb128_s32(Intermediate_Code* ic, s32 num) {
+    bool cont = true;
+    while (cont) {
+        u8 byte = num & 0x7F;
+        num = num >> 7;
+        bool sign_bit = (byte & 0x40) > 0;
+        
+        if ((num == 0 && !sign_bit) ||
+            (num == -1 && sign_bit)) {
+            cont = false;
+        } else {
+            byte |= 0x80;
+        }
+        
+        assert(ic->count + 1 < fixed_array_count(ic->code));
+        *((u8*) (ic->code + ic->count)) = byte;
+        ic->count++;
+    }
+}
+
 struct Ic_Basic_Block {
     Ic_Basic_Block *next;
     Intermediate_Code *ic_first, *ic_last;

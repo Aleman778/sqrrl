@@ -180,6 +180,13 @@ struct Type {
     s32 align;
 };
 
+inline bool 
+is_valid_type(Type* type) {
+    return (type &&
+            type->kind != TypeKind_Unresolved &&
+            type->kind != TypeKind_Void);
+}
+
 Type basic_type_definitions[] = {
 #define BASIC(ident, flags, keyword, size, limits) \
 { TypeKind_Basic, { Basic_##ident, flags, limits }, keyword, size, size },

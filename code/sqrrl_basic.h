@@ -911,3 +911,80 @@ free_arena(Memory_Arena* arena) {
     free_memory_blocks(arena->current_block);
     *arena = {};
 }
+
+
+// NOTE(Alexander): buffer for pushing binary data
+struct Buffer {
+    u8* data;
+    smm size;
+    smm curr_used;
+};
+
+inline void
+push_u8(Buffer* buf, u8 b) {
+    assert(buf->curr_used < buf->size);
+    buf->data[buf->curr_used++] = b;
+}
+
+inline void
+push_u16(Buffer* buf, u16 w) {
+    assert(buf->curr_used + 2 < buf->size);
+    *((u16*) (buf->data + buf->curr_used)) = w;
+    buf->curr_used += 2;
+}
+
+inline void
+push_u24(Buffer* buf, u32 dw) {
+    assert(buf->curr_used + 4 < buf->size);
+    *((u32*) (buf->data + buf->curr_used)) = dw;
+    buf->curr_used += 3;
+}
+
+inline void
+push_u32(Buffer* buf, u32 dw) {
+    assert(buf->curr_used + 4 < buf->size);
+    *((u32*) (buf->data + buf->curr_used)) = dw;
+    buf->curr_used += 4;
+}
+
+inline void
+push_u64(Buffer* buf, u64 qw) {
+    assert(buf->curr_used + 8 < buf->size);
+    *((u64*) (buf->data + buf->curr_used)) = qw;
+    buf->curr_used += 8;
+}
+
+void
+push_leb128_u32(Buffer* buf, s32 num) {
+    bool neg = num < 0;
+    do {
+        u8 byte = num & 0x7F;
+        num = num >> 7;
+        if (num != 0) {
+            byte |= 0x80;
+        }
+        assert(buf->curr_used + 1 < buf->size);
+        buf->data[buf->curr_used++] = byte;
+    } while (num != 0);
+}
+
+void
+push_leb128_s32(Buffer* buf, s32 num) {
+    bool cont = true;
+    while (cont) {
+        u8 byte = num & 0x7F;
+        num = num >> 7;
+        bool sign_bit = (byte & 0x40) > 0;
+        
+        if ((num == 0 && !sign_bit) ||
+            (num == -1 && sign_bit)) {
+            cont = false;
+        } else {
+            byte |= 0x80;
+        }
+        
+        assert(buf->curr_used + 1 < buf->size);
+        *((u8*) (buf->data + buf->curr_used)) = byte;
+        buf->curr_used++;
+    }
+}

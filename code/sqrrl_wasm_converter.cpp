@@ -30,20 +30,30 @@ convert_type_to_wasm(Type* type, Buffer* buffer) {
                 case Basic_s32:
                 case Basic_u32:
                 case Basic_int:
-                case Basic_uint:
-                case Basic_string:
-                case Basic_cstring: push_u8(buffer, 0x7F); break;
+                case Basic_uint: push_u8(buffer, 0x7F); break;
                 
                 case Basic_s64: 
                 case Basic_u64: 
                 case Basic_smm: 
-                case Basic_umm: push_u8(buffer, 0x7E); break;
+                case Basic_umm: 
+                case Basic_string:
+                case Basic_cstring: push_u8(buffer, 0x7E); break;
                 
                 case Basic_f32: push_u8(buffer, 0x7D); break;
                 case Basic_f64: push_u8(buffer, 0x7C); break;
                 
                 default: unimplemented; break;
             }
+        } break;
+        case TypeKind_Struct:
+        case TypeKind_Union: // TODO(Alexander): should structs/ unions be a different type than 64-bit int?
+        case TypeKind_Type:
+        case TypeKind_Pointer: {
+            push_u8(buffer, 0x7E);
+        } break;
+        
+        case TypeKind_Enum: {
+            convert_type_to_wasm(type->Enum.type, buffer);
         } break;
         
         case TypeKind_Function: {
@@ -63,7 +73,15 @@ convert_type_to_wasm(Type* type, Buffer* buffer) {
                 convert_type_to_wasm(type->Function.return_type, buffer);
             }
         } break;
+        
+        default: {
+            unimplemented;
+        } break;
     }
+}
+
+void
+convert_ic_to_wasm(Intermediate_Code* ic) {
     
 }
 

@@ -48,7 +48,7 @@ commands = {
     .linux = "build/sqrrl test",
     .mac = "build/sqrrl test", },
   .run_personal = { .out = "*run*", .footer_panel = false, .save_dirty_files = true,
-    .win = "cd build && sqrrl.exe ../examples/opengl/first.sq",
+    .win = "cd build && sqrrl.exe ../personal/first.sq",
     .linux = "build/sqrrl test",
     .mac = "build/sqrrl test", },
 };

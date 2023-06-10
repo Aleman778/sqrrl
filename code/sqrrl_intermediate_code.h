@@ -227,50 +227,69 @@ struct Ic_Arg {
 
 typedef map(string_id, Ic_Arg) Ic_Arg_Map;
 
+
+#define Ic_Insn_Base_Fields \
+Ic_Opcode opcode; \
+Intermediate_Code* next; \
+cstring comment; \
+u8 code[31]; \
+u8 code_count
+
+
 struct Intermediate_Code {
-    Intermediate_Code* next;
+    Ic_Insn_Base_Fields;
+    
     void* data;
-    cstring comment;
-    
-    Ic_Opcode opcode;
     Ic_Arg dest, src0, src1;
+};
+
+struct Ic_Basic_Block;
+
+struct Ic_Jump {
+    Ic_Insn_Base_Fields;
     
-    u8 count;
-    u8 code[31];
+    Ic_Basic_Block* target;
+};
+
+struct Ic_Call {
+    Ic_Insn_Base_Fields;
+    
+    Compilation_Unit* func;
+    array(Ic_Arg)* args; // TODO: we can turn this into fixed array later!
 };
 
 inline void
 ic_u8(Intermediate_Code* ic, u8 b) {
-    assert(ic->count < fixed_array_count(ic->code));
-    ic->code[ic->count++] = b;
+    assert(ic->code_count < fixed_array_count(ic->code));
+    ic->code[ic->code_count++] = b;
 }
 
 inline void
 ic_u16(Intermediate_Code* ic, u16 w) {
-    assert(ic->count + 2 < fixed_array_count(ic->code));
-    *((u16*) (ic->code + ic->count)) = w;
-    ic->count += 2;
+    assert(ic->code_count + 2 < fixed_array_count(ic->code));
+    *((u16*) (ic->code + ic->code_count)) = w;
+    ic->code_count += 2;
 }
 
 inline void
 ic_u24(Intermediate_Code* ic, u32 dw) {
-    assert(ic->count + 4 < fixed_array_count(ic->code));
-    *((u32*) (ic->code + ic->count)) = dw;
-    ic->count += 3;
+    assert(ic->code_count + 4 < fixed_array_count(ic->code));
+    *((u32*) (ic->code + ic->code_count)) = dw;
+    ic->code_count += 3;
 }
 
 inline void
 ic_u32(Intermediate_Code* ic, u32 dw) {
-    assert(ic->count + 4 < fixed_array_count(ic->code));
-    *((u32*) (ic->code + ic->count)) = dw;
-    ic->count += 4;
+    assert(ic->code_count + 4 < fixed_array_count(ic->code));
+    *((u32*) (ic->code + ic->code_count)) = dw;
+    ic->code_count += 4;
 }
 
 inline void
 ic_u64(Intermediate_Code* ic, u64 qw) {
-    assert(ic->count + 8 < fixed_array_count(ic->code));
-    *((u64*) (ic->code + ic->count)) = qw;
-    ic->count += 8;
+    assert(ic->code_count + 8 < fixed_array_count(ic->code));
+    *((u64*) (ic->code + ic->code_count)) = qw;
+    ic->code_count += 8;
 }
 
 void
@@ -282,8 +301,8 @@ ic_leb128_u32(Intermediate_Code* ic, s32 num) {
         if (num != 0) {
             byte |= 0x80;
         }
-        assert(ic->count + 1 < fixed_array_count(ic->code));
-        ic->code[ic->count++] = byte;
+        assert(ic->code_count + 1 < fixed_array_count(ic->code));
+        ic->code[ic->code_count++] = byte;
     } while (num != 0);
 }
 
@@ -302,9 +321,9 @@ ic_leb128_s32(Intermediate_Code* ic, s32 num) {
             byte |= 0x80;
         }
         
-        assert(ic->count + 1 < fixed_array_count(ic->code));
-        *((u8*) (ic->code + ic->count)) = byte;
-        ic->count++;
+        assert(ic->code_count + 1 < fixed_array_count(ic->code));
+        *((u8*) (ic->code + ic->code_count)) = byte;
+        ic->code_count++;
     }
 }
 

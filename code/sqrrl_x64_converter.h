@@ -235,64 +235,83 @@ global const u8 x64_jmp_opcodes[] = {
 };
 
 inline Intermediate_Code*
-ic_add_orphan(Compilation_Unit* cu, Ic_Opcode opcode = IC_NOOP, void* data=0) {
-    Intermediate_Code* result = (Intermediate_Code*) calloc(1, sizeof(Intermediate_Code));
+ic_add_orphan(Compilation_Unit* cu, Ic_Opcode opcode = IC_NOOP, smm size=sizeof(Intermediate_Code)) {
+    // TODO(Alexander): temporary bump allocation for now
+    Intermediate_Code* result = (Intermediate_Code*) calloc(1, size);
     result->opcode = opcode;
-    result->data = data;
     return result;
 }
 
 #define S1(x) #x
 #define S2(x) S1(x)
-#define ic_add(cu, opcode, ...) _ic_add(cu, opcode, __FILE__ ":" S2(__LINE__), __VA_ARGS__)
+#define ic_add(cu, opcode) ic_add_insn(cu, opcode, __FILE__ ":" S2(__LINE__))
+#define ic_label(cu, bb) ic_label_insn(cu, bb, __FILE__ ":" S2(__LINE__))
+#define ic_jump(cu, opcode, target_bb) ic_jump_insn(cu, opcode, target_bb, __FILE__ ":" S2(__LINE__))
+#define ic_call(cu) (Ic_Call*) ic_add_insn(cu, IC_CALL, __FILE__ ":" S2(__LINE__), sizeof(Ic_Call))
 
-Intermediate_Code*
-_ic_add(Compilation_Unit* cu, Ic_Opcode opcode = IC_NOOP, cstring comment=0, void* data=0) {
-    // TODO(Alexander): temporary bump allocation for now
-    Intermediate_Code* result = ic_add_orphan(cu, opcode, data);
-    
-    Ic_Basic_Block* bb;
-    
-    if (opcode == IC_LABEL) {
-        bb = (Ic_Basic_Block*) data;
-        if (!cu->bb_first) {
-            cu->bb_first = bb;
-        }
-        
-        if (cu->bb_last) {
-            cu->bb_last->next = bb;
-        }
-        
-        bb->index = cu->bb_index++;
-        bb->ic_last = cu->ic_last;
-        cu->bb_last = bb;
-    } else {
-        bb = cu->bb_last;
-        
-        if (!bb) {
-            unimplemented;
-            //bb = ic_basic_block();
-            //cu->bb_first = bb;
-            //cu->bb_last = bb;
-        }
-    }
-    
+
+internal void
+ic_add_to_basic_block(Compilation_Unit* cu, Intermediate_Code* ic, Ic_Basic_Block* bb) {
     if (!bb->ic_first) {
-        bb->ic_first = result;
+        bb->ic_first = ic;
     }
     if (!cu->ic_first) {
-        cu->ic_first = result;
+        cu->ic_first = ic;
     }
     
     if (bb->ic_last) {
-        bb->ic_last->next = result;
+        bb->ic_last->next = ic;
     }
-    bb->ic_last = result;
-    cu->ic_last = result;
+    bb->ic_last = ic;
+    cu->ic_last = ic;
+}
+
+void
+ic_label_insn(Compilation_Unit* cu, Ic_Basic_Block* bb, cstring comment=0) {
+    Intermediate_Code* result = ic_add_orphan(cu, IC_LABEL);
+    result->data = bb;
+    
+    if (!cu->bb_first) {
+        cu->bb_first = bb;
+    }
+    
+    if (cu->bb_last) {
+        cu->bb_last->next = bb;
+    }
+    
+    bb->index = cu->bb_index++;
+    bb->ic_last = cu->ic_last;
+    cu->bb_last = bb;
+    
+    ic_add_to_basic_block(cu, result, bb);
+    
+    result->comment = comment;
+}
+
+Intermediate_Code*
+ic_add_insn(Compilation_Unit* cu,
+            Ic_Opcode opcode = IC_NOOP, 
+            cstring comment=0,
+            smm size=sizeof(Intermediate_Code)) {
+    
+    Intermediate_Code* result = ic_add_orphan(cu, opcode, size);
+    
+    Ic_Basic_Block* bb = cu->bb_last;
+    assert(bb && "missing label");
+    ic_add_to_basic_block(cu, result, bb);
     
     result->comment = comment;
     
     return result;
+}
+
+void
+ic_jump_insn(Compilation_Unit* cu, Ic_Opcode opcode,
+             Ic_Basic_Block* target_bb, cstring comment=0) {
+    
+    assert(opcode >= IC_JMP && opcode <= IC_JNE);
+    Ic_Jump* ic = (Ic_Jump*) ic_add_insn(cu, opcode, comment, sizeof(Ic_Jump));
+    ic->target = target_bb;
 }
 
 #define ic_mov(cu, dest, src) _ic_mov(cu, dest, src, __FILE__ ":" S2(__LINE__))
@@ -314,7 +333,7 @@ _ic_mov(Compilation_Unit* cu, Ic_Arg dest, Ic_Arg src, cstring comment=0) {
         }
     }
     
-    Intermediate_Code* ic = _ic_add(cu, opcode, comment);
+    Intermediate_Code* ic = ic_add_insn(cu, opcode, comment);
     ic->src0 = dest;
     ic->src1 = src;
 }
@@ -337,7 +356,7 @@ _ic_lea(Compilation_Unit* cu, Ic_Arg dest, Ic_Arg src, cstring comment=0, u8 tmp
         tmp = dest;
         dest = ic_reg(dest.type & IC_RT_MASK, tmp_reg);
     }
-    Intermediate_Code* ic = _ic_add(cu, IC_LEA, comment);
+    Intermediate_Code* ic = ic_add_insn(cu, IC_LEA, comment);
     ic->src0 = dest;
     ic->src1 = src;
     

@@ -252,7 +252,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 Compilation_Unit* cu = function->type->Function.unit;
                 
                 Ic_Basic_Block* bb_begin = ic_basic_block();
-                ic_add(cu, IC_LABEL, bb_begin);
+                ic_label(cu, bb_begin);
                 
                 Exported_Data import_fn;
                 Ic_Data_Area data_area;

@@ -369,6 +369,11 @@ convert_function_call_to_intermediate_code(Compilation_Unit* cu,
     Ic_Call* ic = ic_call(cu);
     ic->func = t_func->unit;
     
+    if (!ic->func) {
+        pln("func = %", f_type(function_type));
+        pln("null intrinsic: %", f_s64(t_func->intrinsic));
+    }
+    
     //if (t_func->intrinsic) {
     //ic->dest = ic_imm(IC_S64, (s64) t_func->intrinsic);
     //}
@@ -1274,7 +1279,7 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Bloc
                         memcpy(data, &src.disp, type->size);
                     } else if ((src.type & IC_TF_MASK) != 0) {
                         // TODO(Alexander): we need initializer (that runs before main) to setup local persist with non constant initializer
-                        unimplemented;
+                        //unimplemented;
                     }
                     
                     Ic_Raw_Type raw_type = convert_type_to_raw_type(type);
@@ -2534,6 +2539,7 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buffer, s6
             case IC_CALL: {
                 Ic_Call* call = (Ic_Call*) ic;
                 Compilation_Unit* func = call->func;
+                assert(func);
                 
                 if (func && func->bb_first) {
                     // E8 cd 	CALL rel32 	D

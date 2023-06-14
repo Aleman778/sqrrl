@@ -110,14 +110,17 @@ run_compiler_tests(string filename,
     for_array(ast_file.units, cu, _2) {
         Intermediate_Code* ic = cu->ic_first;
         while (ic) {
-            if (ic->dest.type & IC_STK) {
-                ic->dest.disp = compute_stk_displacement(cu, ic->dest);
-            }
-            if (ic->src0.type & IC_STK) {
-                ic->src0.disp = compute_stk_displacement(cu, ic->src0);
-            }
-            if (ic->src1.type & IC_STK) {
-                ic->src1.disp = compute_stk_displacement(cu, ic->src1);
+            // TODO: robustness we need a better way to know what the instruction data is!
+            if (ic->opcode >= IC_NEG && ic->opcode <= IC_SETNE) {
+                if (ic->dest.type & IC_STK) {
+                    ic->dest.disp = compute_stk_displacement(cu, ic->dest);
+                }
+                if (ic->src0.type & IC_STK) {
+                    ic->src0.disp = compute_stk_displacement(cu, ic->src0);
+                }
+                if (ic->src1.type & IC_STK) {
+                    ic->src1.disp = compute_stk_displacement(cu, ic->src1);
+                }
             }
             
             ic = ic->next;

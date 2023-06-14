@@ -35,7 +35,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm), bool is_debugger_present) {
     
     
-    Backend_Type target_backend = Backend_WASM;
+    Backend_Type target_backend = Backend_X64; // Backend_WASM;
     
     {
         // Put dummy file as index 0
@@ -322,14 +322,18 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     for_array(ast_file.units, cu, _3) {
         Intermediate_Code* ic = cu->ic_first;
         while (ic) {
-            if (ic->dest.type & IC_STK) {
-                ic->dest.disp = compute_stk_displacement(cu, ic->dest);
-            }
-            if (ic->src0.type & IC_STK) {
-                ic->src0.disp = compute_stk_displacement(cu, ic->src0);
-            }
-            if (ic->src1.type & IC_STK) {
-                ic->src1.disp = compute_stk_displacement(cu, ic->src1);
+            
+            // TODO: robustness we need a better way to know what the instruction data is!
+            if (ic->opcode >= IC_NEG && ic->opcode <= IC_SETNE) {
+                if (ic->dest.type & IC_STK) {
+                    ic->dest.disp = compute_stk_displacement(cu, ic->dest);
+                }
+                if (ic->src0.type & IC_STK) {
+                    ic->src0.disp = compute_stk_displacement(cu, ic->src0);
+                }
+                if (ic->src1.type & IC_STK) {
+                    ic->src1.disp = compute_stk_displacement(cu, ic->src1);
+                }
             }
             
             ic = ic->next;

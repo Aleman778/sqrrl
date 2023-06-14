@@ -1814,7 +1814,8 @@ register_top_level_declaration(Parser* parser, Ast_File* ast_file,
         
         case Ast_Decl_Stmt: {
             string_id ident = try_unwrap_ident(decl->Decl_Stmt.ident);
-            if (ident) {
+            
+            if (ident && (decl->Decl_Stmt.stmt || (mods & AstDeclModifier_External))) {
                 
                 // TODO(Alexander): decls is deprecated use units instead
                 map_put(ast_file->decls, ident, decl);

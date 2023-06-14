@@ -187,6 +187,10 @@ bool
 type_equals(Type* a, Type* b) {
     assert(a && b);
     
+    if (a->kind == TypeKind_Unresolved || b->kind == TypeKind_Unresolved) {
+        return false;
+    }
+    
     
     if (a->kind == TypeKind_Enum) {
         a = a->Enum.type;

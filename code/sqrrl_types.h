@@ -14,6 +14,7 @@ union Limits {
     };
 };
 
+
 inline Limits
 s64_limits(s64 min_value, s64 max_value) {
     Limits result;

@@ -944,6 +944,20 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 return 0;
             }
             
+            
+            if (function_type->kind == TypeKind_Function) {
+                // Check implementation unless you call indirectly from pointer
+                Type_Function* t_func = &function_type->Function;
+                if (!t_func->unit && !t_func->intrinsic) {
+                    if (report_error) {
+                        string_id function_ident = try_unwrap_ident(expr->Call_Expr.ident);
+                        type_error(tcx, string_print("no implementation for function `%`", f_var(function_ident)),
+                                   expr->span);
+                    }
+                    return 0;
+                }
+            }
+            
             if (function_type->kind == TypeKind_Pointer) {
                 function_type = function_type->Pointer;
             }
@@ -958,16 +972,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             }
             
             Type_Function* t_func = &function_type->Function;
-            
-            if (!t_func->unit && !t_func->intrinsic) {
-                if (report_error) {
-                    string_id function_ident = try_unwrap_ident(expr->Call_Expr.ident);
-                    type_error(tcx, string_print("no implementation for function `%`", f_var(function_ident)),
-                               expr->span);
-                }
-                return 0;
-            }
-            
             
             if (t_func->ident == Sym___debugbreak) {
                 __debugbreak();
@@ -2203,6 +2207,8 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     // Forward declare
                     result.type = load_type_declaration(tcx, ident, ast->span, report_error);
                 }
+            } else {
+                result.type = 0;
             }
         } break;
         

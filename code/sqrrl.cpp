@@ -206,10 +206,11 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     tcx.data_packer = &data_packer;
     
     if (type_check_ast_file(&tcx, &ast_file, &interp) != 0) {
-        if (flag_print_ast) {
-            pln("AST (not fully typed):");
-            for_array(ast_file.units, unit, _) {
-                print_ast(unit->ast, &tokenizer);
+        for_array(ast_file.units, cu, _) {
+            if (flag_print_ast || (cu->ast && cu->ast->kind == Ast_Function_Type && 
+                                   cu->ast->type->kind == TypeKind_Function &&
+                                   cu->ast->type->Function.dump_ast)) {
+                print_ast(cu->ast, &tokenizer);
             }
         }
         
@@ -217,10 +218,11 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         return 1;
     }
     
-    if (flag_print_ast) {
-        pln("AST:");
-        for_array(ast_file.units, unit, _) {
-            print_ast(unit->ast, &tokenizer);
+    for_array(ast_file.units, cu, _) {
+        if (flag_print_ast || (cu->ast && cu->ast->kind == Ast_Function_Type && 
+                               cu->ast->type->kind == TypeKind_Function &&
+                               cu->ast->type->Function.dump_ast)) {
+            print_ast(cu->ast, &tokenizer);
         }
     }
     

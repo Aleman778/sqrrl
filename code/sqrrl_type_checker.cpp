@@ -1608,7 +1608,7 @@ save_type_declaration(Type_Context* tcx, string_id ident, Type* type, Span span,
             
             
             //if (ident == vars_save_cstring("add")) {
-            pln("new overload, curr count = %", f_int(array_count(overload->functions)));
+            //pln("new overload, curr count = %", f_int(array_count(overload->functions)));
             //}
             
             //if (ident == vars_save_cstring("abs")) {
@@ -1645,8 +1645,6 @@ save_type_declaration(Type_Context* tcx, string_id ident, Type* type, Span span,
             
         } else if (type->kind == TypeKind_Struct &&
                    old_type->kind == TypeKind_Struct) {
-            
-            pln("REDELC: %", f_var(ident));
             
             // TODO(Alexander): hack to get forward declares working
             if (array_count(type->Struct_Like.types) == 0) {
@@ -1686,11 +1684,6 @@ save_type_declaration(Type_Context* tcx, string_id ident, Type* type, Span span,
         }
     }
     
-    if (type) {
-        //type->is_valid = true;
-        pln("%: %", f_var(ident), f_type(type));
-    }
-    
     return type;
 }
 
@@ -1712,11 +1705,6 @@ create_type_struct_like_from_ast(Type_Context* tcx,
         
         Ast* ast_type = argument->Argument.type;
         Type* type = create_type_from_ast(tcx, ast_type, report_error).type;
-        
-        
-        if (!type || type->size == 0) {
-            pln("STRUCTERROR: failed to create type from: %", f_ast(argument));
-        }
         
         if (!type || type->size == 0) {
             result.has_error = true;
@@ -1802,11 +1790,6 @@ create_type_struct_like_from_ast(Type_Context* tcx,
         
         if (is_union) {
             result.offset = 0;
-        }
-        
-        
-        if (result.has_error) {
-            pln("STRUCTERROR: %", f_ast(argument));
         }
     }
     
@@ -2067,6 +2050,10 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                         
                         case Sym_dump_bytecode: {
                             result.type->Function.dump_bytecode = true;
+                        } break;
+                        
+                        case Sym_dump_ast: {
+                            result.type->Function.dump_ast = true;
                         } break;
                     }
                     
@@ -2402,8 +2389,6 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                         result = 0;
                     }
                 } else {
-                    
-                    pln("GLOBAL: %", f_var(ident));
                     
                     if (map_get(tcx->globals, ident) && report_error) {
                         result = 0;

@@ -147,6 +147,7 @@ struct Type_Function {
     s32 first_default_arg_index;
     b32 is_variadic;
     b32 dump_bytecode;
+    b32 dump_ast;
 };
 
 struct Type_Array {

@@ -359,24 +359,23 @@ convert_function_call_to_intermediate_code(Compilation_Unit* cu,
     // even if they aren't used!
     cu->stk_args = max(cu->stk_args, 4*8);
     
-    if (!t_func->unit && !t_func->intrinsic && call_ident) {
-        Ic_Arg addr = convert_expr_to_intermediate_code(cu, call_ident);
-        if (addr.type & IC_DISP_STK_RIP) {
-            ic_mov(cu, ic_reg(addr.raw_type, X64_RAX), addr);
+    Ic_Arg ptr = {};
+    
+    if (!t_func->unit) {
+        if (t_func->intrinsic) {
+            ptr = ic_imm(IC_S64, (s64) t_func->intrinsic);
+        } else if (call_ident) {
+            Ic_Arg addr = convert_expr_to_intermediate_code(cu, call_ident);
+            if (addr.type & IC_DISP_STK_RIP) {
+                ptr = ic_reg(addr.raw_type, X64_RAX);
+                ic_mov(cu, ptr, addr);
+            }
         }
     }
     
     Ic_Call* ic = ic_call(cu);
     ic->func = t_func->unit;
-    
-    if (!ic->func) {
-        pln("func = %", f_type(function_type));
-        pln("null intrinsic: %", f_s64(t_func->intrinsic));
-    }
-    
-    //if (t_func->intrinsic) {
-    //ic->dest = ic_imm(IC_S64, (s64) t_func->intrinsic);
-    //}
+    ic->ptr = ptr;
     
     return result;
 }
@@ -2539,18 +2538,36 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buffer, s6
             case IC_CALL: {
                 Ic_Call* call = (Ic_Call*) ic;
                 Compilation_Unit* func = call->func;
-                assert(func);
+                //assert(func);
                 
                 if (func && func->bb_first) {
+                    // Direct function call
+                    
                     // E8 cd 	CALL rel32 	D
                     ic_u8(ic, 0xE8);
                     x64_jump(ic, func->bb_first, rip);
-                } else {
-                    // Calling intrinsic function
+                    
+#if 0
+                } else if (func && func->ast->type->Function.intrinsic) {
                     assert(func->ast && func->ast->type->kind == TypeKind_Function &&
                            func->ast->type->Function.intrinsic);
                     
+                    // Indirect function call to intrinsic function
+                    
                     x64_mov_rax_u64(ic, (u64) func->ast->type->Function.intrinsic);
+                    
+                    // FF /2 	CALL r/m64 	M 	
+                    ic_u8(ic, 0xFF);
+                    x64_modrm(ic, IC_REG + IC_S64, 0, 2, X64_RAX, rip);
+                    
+#endif
+                    
+                } else {
+                    // Indirect function call from pointer
+                    
+                    if (call->ptr.type & IC_DISP) {
+                        x64_mov_rax_u64(ic, (u64) call->ptr.disp);
+                    }
                     
                     // FF /2 	CALL r/m64 	M 	
                     ic_u8(ic, 0xFF);
@@ -2637,55 +2654,64 @@ void
 string_builder_push(String_Builder* sb, Intermediate_Code* ic, int bb_index) {
     smm start_used = sb->curr_used;
     
-    if (ic->opcode == IC_LABEL) {
-        if (bb_index > 0) {
-            string_builder_push_format(sb, "  bb%:", f_int(bb_index));
-        }
-        
-    } else if (ic->opcode == IC_CALL) {
-        string_builder_push(sb, "    CALL ");
-        if (ic->data) {
-            Compilation_Unit* call_cu = (Compilation_Unit*) ic->data;
-            if (call_cu->ident) {
-                string_builder_push(sb, call_cu->ident);
+    string_builder_push(sb, "    ");
+    
+    switch (ic->opcode) {
+        case IC_LABEL: {
+            if (bb_index > 0) {
+                string_builder_push_format(sb, "  bb%:", f_int(bb_index));
             }
-        }
-        
-    } else {
-        string_builder_push(sb, "    ");
-        
-        if (ic->dest.type) {
-            string_builder_push(sb, ic->dest);
-            string_builder_push(sb, " = ");
-        }
-        
-        string_builder_push(sb, ic_opcode_names[ic->opcode]);
-        
-        if (ic->opcode >= IC_JMP && ic->opcode <= IC_JNE) {
-            Ic_Basic_Block* bb = (Ic_Basic_Block*) ic->data;
-            if (bb) {
-                string_builder_push_format(sb, " bb%", f_int(bb->index));
-            }
-        }
-        
-        if (ic->src0.type) {
-            string_builder_push(sb, " ");
-            string_builder_push(sb, ic->src0);
             
-            if (ic->src1.type) {
-                string_builder_push(sb, ", ");
-                string_builder_push(sb, ic->src1);
-                
-            }
-        }
+        } break;
         
-        if (ic->comment) {
-            smm used = sb->curr_used - start_used;
-            for (smm i = used; i < 35; i++) {
-                string_builder_push(sb, " ");
+        case IC_CALL: {
+            Ic_Call* call = (Ic_Call*) ic;
+            
+            string_builder_push(sb, "CALL ");
+            Compilation_Unit* func = (Compilation_Unit*) call->func;
+            if (func && func->ident) {
+                string_builder_push(sb, func->ident);
+            } else {
+                string_builder_push(sb, call->ptr);
             }
-            string_builder_push_format(sb, " // %", f_cstring(ic->comment));
+        } break;
+        
+        
+        default: {
+            if (ic->dest.type) {
+                string_builder_push(sb, ic->dest);
+                string_builder_push(sb, " = ");
+            }
+            
+            string_builder_push(sb, ic_opcode_names[ic->opcode]);
+            
+            if (ic->opcode >= IC_JMP && ic->opcode <= IC_JNE) {
+                Ic_Basic_Block* bb = (Ic_Basic_Block*) ic->data;
+                if (bb) {
+                    string_builder_push_format(sb, " bb%", f_int(bb->index));
+                }
+                break;
+            }
+            
+            if (ic->src0.type) {
+                string_builder_push(sb, " ");
+                string_builder_push(sb, ic->src0);
+                
+                if (ic->src1.type) {
+                    string_builder_push(sb, ", ");
+                    string_builder_push(sb, ic->src1);
+                    
+                }
+            }
+        } break;
+    }
+    
+    if (ic->comment) {
+        smm used = sb->curr_used - start_used;
+        for (smm i = used; i < 35; i++) {
+            string_builder_push(sb, " ");
         }
+        string_builder_push_format(sb, " // %", f_cstring(ic->comment));
     }
 }
 

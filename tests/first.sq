@@ -2,7 +2,7 @@
 #define BASIC_NO_ASSERT_IMPLEMENTATION
 #include <basic.sq>
 
-@intrinsic void __assert(int expr, cstring msg, cstring file, smm line);
+@intrinsic extern void __assert(int expr, cstring msg, cstring file, smm line);
 #define assert(expression) __assert(expression, #expression, __FILE__, __LINE__)
 
 #include "types.sq"
@@ -280,4 +280,33 @@ no_modify_struct_v2s_via_call_as_copy() {
     v2s v = { x: 5, y: -12 };
     v2s_scale(v, 10);
     assert(v.x + v.y == -7);
+}
+
+void
+check_int(int val) {
+    assert(val == 42);
+}
+
+void
+pass_value_to_callback(void cb(int)*, int val) {
+    cb(val);
+}
+
+void
+@test_proc
+call_function_pointer_with_arg() {
+    pass_value_to_callback(&check_int, 42);
+}
+
+typedef void callback(int);
+
+void
+pass_value_to_typedef_callback(callback* cb, int val) {
+    cb(val);
+}
+
+void
+@test_proc
+call_typedef_function_pointer_with_arg() {
+    pass_value_to_typedef_callback(&check_int, 42);
 }

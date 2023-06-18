@@ -7,7 +7,7 @@ typedef void asm_test(void);
 // TODO(Alexander): this is just a simple assertion function to get started, improve this
 // this is intended to be called from the compiled program
 extern "C" bool
-intrinsic_assert(int expr, cstring msg, cstring file, smm line) {
+intrinsic_test_proc_assert(int expr, cstring msg, cstring file, smm line) {
     if (is_test_mode && curr_test) {
         curr_test->num_tests++;
         if (expr == 0) {
@@ -88,7 +88,8 @@ run_compiler_tests(string filename,
         
         if (cu->ident == Sym___assert && cu->ast->type->kind == TypeKind_Function) {
             // Route the __assert to our test case assert
-            cu->ast->type->Function.intrinsic = &intrinsic_assert;
+            cu->ast->type->Function.unit = 0;
+            cu->ast->type->Function.intrinsic = &intrinsic_test_proc_assert;
             continue;
         }
         
@@ -170,7 +171,6 @@ run_compiler_tests(string filename,
                         dump_bytecode(unit);
                     }
                     
-                    pln("test: %", f_var(unit->ident));
                     assert(!map_key_exists(tests, unit->ident) && "duplicate test name");
                     map_put(tests, unit->ident, test);
                 }
@@ -207,6 +207,9 @@ run_compiler_tests(string filename,
         if (is_bitflag_set(test->modes, TestExecutionMode_Interp)) {
             u32 prev_num_failed = test->num_failed;
             interp_function_call(&interp, 0, unit->ast->type);
+            //pln("interp: %, errors = %", f_var(unit->ident), f_int(interp.error_count));
+            
+            //pln("num_tests = %", f_int(curr_test->num_tests));
             if (interp.error_count > 0) {
                 test->num_failed += interp.error_count;
                 test->num_tests +=  interp.error_count;
@@ -247,7 +250,9 @@ run_compiler_tests(string filename,
         string_builder_push_format(sb_test_result, "%", f_string(test_name));
         for (umm i = test_name.count; i < test_name_max_count + 3; i++) string_builder_push(sb_test_result, ".");
         
-        if (test->num_failed == 0) {
+        if (test->num_tests == 0) {
+            string_builder_push_format(sb_test_result, " WARN! No asserts found!");
+        } else if (test->num_failed == 0) {
             totals.num_passed++;
             string_builder_push_format(sb_test_result, " OK!");
         } else {

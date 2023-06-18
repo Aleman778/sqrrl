@@ -388,7 +388,7 @@ convert_to_pe_executable(Memory_Arena* arena,
                 }
                 
                 u16* reloc_entry = arena_push_struct(&reloc_arena, u16);
-                *reloc_entry = 0xA000 + (u16) reloc->from;
+                *reloc_entry = 0xA000 + (u16) (reloc->from - page_offset);
                 
                 *((u64*) reloc->from_ptr) = (u64) (opt_header->image_base + 
                                                    to_section->virtual_address + 

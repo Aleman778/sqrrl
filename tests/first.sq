@@ -310,3 +310,16 @@ void
 call_typedef_function_pointer_with_arg() {
     pass_value_to_typedef_callback(&check_int, 42);
 }
+
+struct Vtbl {
+    int adder(int x, int y)*;
+}
+
+void
+@test_proc
+virtual_function_table() {
+    Vtbl vtbl = {};
+    vtbl.adder = &test_add;
+    
+    assert(vtbl.adder(10, 20) == 30);
+}

@@ -733,6 +733,19 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
 }
 
 inline internal Ast*
+try_extract_identifier_from_function_type(Ast* type) {
+    if (type && type->kind == Ast_Pointer_Type) {
+        type = type->Pointer_Type;
+    }
+    
+    if (type && type->kind == Ast_Function_Type) {
+        return type->Function_Type.ident;
+    }
+    
+    return 0;
+}
+
+inline internal Ast*
 parse_assign_statement(Parser* parser, Ast* type, Ast* ident=0) {
     
     Ast* result = push_ast_node(parser);
@@ -914,10 +927,10 @@ parse_statement(Parser* parser, bool report_error) {
                         } break;
                         
                         case Ast_Pointer_Type: {
-                            if (type->Pointer_Type->kind == Ast_Function_Type) {
-                                Ast* func_type = type->Pointer_Type;
+                            Ast* ident = try_extract_identifier_from_function_type(type);
+                            if (ident) {
                                 if (peek_token_match(parser, Token_Assign, false)) {
-                                    result = parse_assign_statement(parser, type, func_type->Function_Type.ident);
+                                    result = parse_assign_statement(parser, type, ident);
                                 }
                             } else {
                                 result = parse_assign_statement(parser, type);
@@ -1037,14 +1050,21 @@ Ast*
 parse_formal_struct_or_union_argument(Parser* parser) {
     Ast* result = push_ast_node(parser);
     result->kind = Ast_Argument;
-    result->Argument.type = parse_type(parser);
-    result->Argument.ident = parse_identifier(parser, false);
+    
+    
+    Ast* type = parse_type(parser);
+    result->Argument.type = type;
+    result->Argument.ident = try_extract_identifier_from_function_type(type);
+    if (!result->Argument.ident) {
+        result->Argument.ident = parse_identifier(parser, false);
+    }
     
     if (parser->c_compatibility_mode &&
         next_token_if_matched(parser, Token_Open_Bracket, false)) {
         // C-style array
         result->Argument.type = parse_array_type(parser, result->Argument.type);
     }
+    
     
     if (result->Argument.ident && 
         next_token_if_matched(parser, Token_Comma, false)) {
@@ -1132,11 +1152,8 @@ parse_formal_function_argument(Parser* parser) {
     Ast* type = parse_type(parser);
     result->Argument.type = type;
     
-    if (type && type->kind == Ast_Pointer_Type && 
-        type->Pointer_Type->kind == Ast_Function_Type) {
-        result->Argument.ident = type->Pointer_Type->Function_Type.ident;
-        
-    } else {
+    result->Argument.ident = try_extract_identifier_from_function_type(type);
+    if (!result->Argument.ident) {
         result->Argument.ident = parse_identifier(parser, false);
     }
     

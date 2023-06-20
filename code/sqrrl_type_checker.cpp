@@ -625,7 +625,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     result = type;
                     
                 } else {
-                    
                     type = load_type_declaration(tcx, ident, expr->span, false);
                     
                     if (type) {
@@ -945,6 +944,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             }
             
             
+#if 0
             if (function_type->kind == TypeKind_Function) {
                 // Check implementation unless you call indirectly from pointer
                 Type_Function* t_func = &function_type->Function;
@@ -957,6 +957,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     return 0;
                 }
             }
+#endif
             
             if (function_type->kind == TypeKind_Pointer) {
                 function_type = function_type->Pointer;
@@ -1707,6 +1708,11 @@ create_type_struct_like_from_ast(Type_Context* tcx,
         Type* type = create_type_from_ast(tcx, ast_type, report_error).type;
         
         if (!type || type->size == 0) {
+            if (report_error) {
+                type_error(tcx,
+                           string_print("invalid type `%` try pointer instead `%*`", f_type(type), f_type(type)), 
+                           argument->span);
+            }
             result.has_error = true;
             return result;
         }
@@ -1911,7 +1917,6 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         } break;
         
         case Ast_Function_Type: {
-            result.type->kind = TypeKind_Function;
             result.type->Function.is_variadic = false;
             Type* return_type = create_type_from_ast(tcx, ast->Function_Type.return_type, report_error).type;
             if (return_type) {
@@ -1957,12 +1962,23 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     type = create_type_from_ast(tcx, ast_argument_type, report_error).type;
                 }
                 
-                if (type) {
+                if (type && type->kind != TypeKind_Unresolved) {
                     
                     if (type->kind == TypeKind_Void) {
                         // TODO: make sure no arguments are specified before or after this, report error
                         verify(func->first_default_arg_index == 0);
                         break;
+                    }
+                    
+                    if (type->size == 0) {
+                        if (report_error) {
+                            type_error(tcx,
+                                       string_print("invalid argument type `%` try pointer instead `%*`", f_type(type), f_type(type)), 
+                                       ast_argument->span);
+                        }
+                        array_free(func->arg_idents);
+                        array_free(func->arg_types);
+                        return {};
                     }
                     
                     string_id ident = ast_argument->Argument.ident->Ident;
@@ -1999,8 +2015,12 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             if (ast->Function_Type.ident && ast->Function_Type.ident->kind == Ast_Ident) {
                 result.type->Function.ident = ast_unwrap_ident(ast->Function_Type.ident);
             }
-            result.type->size = sizeof(smm);
-            result.type->align = alignof(smm);
+            result.type->kind = TypeKind_Function;
+            // TODO: should function really have a size?
+            // If we assume function to be a function pointer then it makes sense,
+            // but right now that isn't possible
+            //result.type->size = sizeof(smm);
+            //result.type->align = alignof(smm);
             
             if (ast->Function_Type.attributes) {
                 
@@ -2025,6 +2045,8 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                         } break;
                         
                         case Sym_link_dynamic: {
+                            
+                            pln("link_dynamic: %", f_var(result.type->Function.ident));
                             if (!result.type->Function.ident) {
                                 attr.is_valid = false;
                             }
@@ -2167,12 +2189,6 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             Type_Struct_Like struct_like = create_type_struct_like_from_ast(tcx, fields, false, report_error, pack);
             if (!struct_like.has_error) {
                 if (array_count(struct_like.types) > 0) {
-                    
-                    if (ident == vars_save_cstring("Loaded_Bitmap")) {
-                        for_array_v(struct_like.idents, ident2, index) {
-                            pln("Entity.% + % (size = %, align = %)", f_var(ident2), f_int(struct_like.offsets[index]),f_int(struct_like.types[index]->size),f_int(struct_like.types[index]->align));
-                        } 
-                    }
                     
                     result.type->kind = TypeKind_Struct;
                     result.type->Struct_Like.types = struct_like.types;

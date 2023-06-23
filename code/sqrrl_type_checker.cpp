@@ -1933,6 +1933,9 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             //if (ast_unwrap_ident(ast->Function_Type.ident) == vars_save_cstring("DEBUG_write_tmx_map")) {
             //__debugbreak();
             //}
+            
+            array_free(func->arg_idents);
+            array_free(func->arg_types);
             for_compound(ast_arguments, ast_argument) {
                 assert(ast_argument->kind == Ast_Argument);
                 if (!ast_argument->Argument.type) {
@@ -1976,8 +1979,6 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                                        string_print("invalid argument type `%` try pointer instead `%*`", f_type(type), f_type(type)), 
                                        ast_argument->span);
                         }
-                        array_free(func->arg_idents);
-                        array_free(func->arg_types);
                         return {};
                     }
                     
@@ -2006,8 +2007,6 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                         }
                     }
                 } else {
-                    array_free(func->arg_idents);
-                    array_free(func->arg_types);
                     return {};
                 }
             }
@@ -2862,6 +2861,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                         }
                     }
                     Type* arg_type = t_func->arg_types[arg_index];
+                    //__debugbreak();
                     if (!type_equals(arg_type, arg->Argument.assign->type)) {
                         type_error_mismatch(tcx, arg_type, 
                                             arg->Argument.assign->type, 

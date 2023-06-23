@@ -240,7 +240,7 @@ type_equals(Type* a, Type* b) {
             }
             
             // TODO(Alexander): we can improve this later, doesn't work for anonymous structs
-            if (a != b) {
+            if (sa != sb) {
                 return false;
             }
             

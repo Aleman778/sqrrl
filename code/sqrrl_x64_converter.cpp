@@ -2523,16 +2523,16 @@ convert_to_x64_machine_code(Intermediate_Code* ic, s64 stk_usage, u8* buffer, s6
                 x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
             } break;
             
+            case IC_JMP_INDIRECT: {
+                // TODO(Alexander): short jumps
+                ic_u8(ic, 0xFF);
+                x64_modrm(ic, ic->src0.type, ic->src0.disp, 4, ic->src0.reg, (s64) buffer_offset + rip);
+            } break;
+            
             case IC_JMP: {
                 // TODO(Alexander): short jumps
-                
-                if (ic->data) {
-                    ic_u8(ic, 0xE9);
-                    x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
-                } else {
-                    ic_u8(ic, 0xFF);
-                    x64_modrm(ic, ic->src0.type, ic->src0.disp, 4, ic->src0.reg, (s64) buffer_offset + rip);
-                }
+                ic_u8(ic, 0xE9);
+                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
             } break;
             
             case IC_CALL: {

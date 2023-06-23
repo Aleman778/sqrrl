@@ -28,10 +28,10 @@ typedef void GLvoid;
 typedef u32 GLenum;
 typedef f32 GLfloat;
 typedef s32 GLint;
-typedef int GLsizei;
+typedef s32 GLsizei;
 typedef u32 GLbitfield;
 typedef f64 GLdouble;
-typedef s32 GLuint;
+typedef u32 GLuint;
 typedef u8 GLboolean;
 typedef u8 GLubyte;
 typedef f32 GLclampf;
@@ -137,4 +137,4 @@ extern {
 global Dynamic_Library opengl_library;
 // TODO: COMPILER BUG: for some reason a whitespace is required at the end of line below, wat
 #undef GLAPI
-#define GLAPI @link_dynamic(opengl_library)
+#define GLAPI @link_dynamic(opengl_library) extern

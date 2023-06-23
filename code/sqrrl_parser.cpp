@@ -733,12 +733,25 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
 }
 
 inline internal Ast*
-parse_assign_statement(Parser* parser, Ast* type) {
+try_extract_identifier_from_function_type(Ast* type) {
+    if (type && type->kind == Ast_Pointer_Type) {
+        type = type->Pointer_Type;
+    }
+    
+    if (type && type->kind == Ast_Function_Type) {
+        return type->Function_Type.ident;
+    }
+    
+    return 0;
+}
+
+inline internal Ast*
+parse_assign_statement(Parser* parser, Ast* type, Ast* ident=0) {
     
     Ast* result = push_ast_node(parser);
     result->kind = Ast_Assign_Stmt;
     result->Assign_Stmt.type = type;
-    result->Assign_Stmt.ident = parse_identifier(parser);
+    result->Assign_Stmt.ident = ident ? ident : parse_identifier(parser);
     
     if (peek_token_match(parser, Token_Comma, false)) {
         Ast* ident_list_cont = parse_prefixed_compound(parser, Token_Comma, 
@@ -894,12 +907,33 @@ parse_statement(Parser* parser, bool report_error) {
                                 }
                             }
                             
+                            //if (peek_token_match(parser, Token_Mul, false)) {
+                            //Ast* ident = type->Function_Type.ident;
+                            //type = parse_pointer_type(parser, type, report_error);
+                            
+                            //if (peek_token_match(parser, Token_Assign, false)) {
+                            //result = parse_assign_statement(parser, type, ident);
+                            //}
+                            //} else {
                             result = push_ast_node(parser, &token);
                             result->kind = Ast_Decl_Stmt;
                             result->Decl_Stmt.ident = type->Function_Type.ident;
                             result->Decl_Stmt.type = type;
-                            if (peek_token_match(parser, Token_Open_Brace, false)) { 
+                            
+                            if (peek_token_match(parser, Token_Open_Brace, false)) {
                                 result->Decl_Stmt.stmt = parse_block_statement(parser);
+                                //}
+                            }
+                        } break;
+                        
+                        case Ast_Pointer_Type: {
+                            Ast* ident = try_extract_identifier_from_function_type(type);
+                            if (ident) {
+                                if (peek_token_match(parser, Token_Assign, false)) {
+                                    result = parse_assign_statement(parser, type, ident);
+                                }
+                            } else {
+                                result = parse_assign_statement(parser, type);
                             }
                         } break;
                         
@@ -1016,14 +1050,21 @@ Ast*
 parse_formal_struct_or_union_argument(Parser* parser) {
     Ast* result = push_ast_node(parser);
     result->kind = Ast_Argument;
-    result->Argument.type = parse_type(parser);
-    result->Argument.ident = parse_identifier(parser, false);
+    
+    
+    Ast* type = parse_type(parser);
+    result->Argument.type = type;
+    result->Argument.ident = try_extract_identifier_from_function_type(type);
+    if (!result->Argument.ident) {
+        result->Argument.ident = parse_identifier(parser, false);
+    }
     
     if (parser->c_compatibility_mode &&
         next_token_if_matched(parser, Token_Open_Bracket, false)) {
         // C-style array
         result->Argument.type = parse_array_type(parser, result->Argument.type);
     }
+    
     
     if (result->Argument.ident && 
         next_token_if_matched(parser, Token_Comma, false)) {
@@ -1108,8 +1149,13 @@ parse_formal_function_argument(Parser* parser) {
         return result;
     }
     
-    result->Argument.type = parse_type(parser);
-    result->Argument.ident = parse_identifier(parser, false);
+    Ast* type = parse_type(parser);
+    result->Argument.type = type;
+    
+    result->Argument.ident = try_extract_identifier_from_function_type(type);
+    if (!result->Argument.ident) {
+        result->Argument.ident = parse_identifier(parser, false);
+    }
     
     if (parser->c_compatibility_mode &&
         next_token_if_matched(parser, Token_Open_Bracket, false)) {
@@ -1734,6 +1780,10 @@ parse_complex_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_M
                 result->Function_Type.arguments = parse_compound(parser,
                                                                  Token_Open_Paren, Token_Close_Paren, Token_Comma,
                                                                  &parse_formal_function_argument);
+                if (peek_token_match(parser, Token_Mul, false)) {
+                    result = parse_pointer_type(parser, result, report_error, mods);
+                }
+                
                 return result;
             } else {
                 if (function_mods != AstDeclModifier_None) {
@@ -1743,7 +1793,7 @@ parse_complex_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_M
         } break;
         
         case Token_Mul: {
-            result = parse_pointer_type(parser, base_type, mods, report_error);
+            result = parse_pointer_type(parser, base_type, report_error, mods);
         } break;
     }
     
@@ -1814,7 +1864,8 @@ register_top_level_declaration(Parser* parser, Ast_File* ast_file,
         
         case Ast_Decl_Stmt: {
             string_id ident = try_unwrap_ident(decl->Decl_Stmt.ident);
-            if (ident) {
+            
+            if (ident && (decl->Decl_Stmt.stmt || (mods & AstDeclModifier_External))) {
                 
                 // TODO(Alexander): decls is deprecated use units instead
                 map_put(ast_file->decls, ident, decl);

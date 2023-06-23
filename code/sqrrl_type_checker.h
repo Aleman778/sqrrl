@@ -187,6 +187,10 @@ bool
 type_equals(Type* a, Type* b) {
     assert(a && b);
     
+    if (a->kind == TypeKind_Unresolved || b->kind == TypeKind_Unresolved) {
+        return false;
+    }
+    
     
     if (a->kind == TypeKind_Enum) {
         a = a->Enum.type;
@@ -236,7 +240,7 @@ type_equals(Type* a, Type* b) {
             }
             
             // TODO(Alexander): we can improve this later, doesn't work for anonymous structs
-            if (a != b) {
+            if (sa != sb) {
                 return false;
             }
             

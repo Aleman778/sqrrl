@@ -52,6 +52,7 @@ IC(SETGE) \
 IC(SETL) \
 IC(SETLE) \
 IC(SETNE) \
+IC(JMP_INDIRECT) \
 IC_JMP(JMP) \
 IC_JMP(JA) \
 IC_JMP(JAE) \
@@ -255,6 +256,7 @@ struct Ic_Call {
     Ic_Insn_Base_Fields;
     
     Compilation_Unit* func;
+    Ic_Arg ptr;
     array(Ic_Arg)* args; // TODO: we can turn this into fixed array later!
 };
 

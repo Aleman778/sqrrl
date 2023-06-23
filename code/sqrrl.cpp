@@ -35,7 +35,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm), bool is_debugger_present) {
     
     
-    Backend_Type target_backend = Backend_WASM;
+    Backend_Type target_backend = Backend_X64; // Backend_WASM;
     
     {
         // Put dummy file as index 0
@@ -206,10 +206,11 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     tcx.data_packer = &data_packer;
     
     if (type_check_ast_file(&tcx, &ast_file, &interp) != 0) {
-        if (flag_print_ast) {
-            pln("AST (not fully typed):");
-            for_array(ast_file.units, unit, _) {
-                print_ast(unit->ast, &tokenizer);
+        for_array(ast_file.units, cu, _) {
+            if (flag_print_ast || (cu->ast && cu->ast->kind == Ast_Function_Type && 
+                                   cu->ast->type->kind == TypeKind_Function &&
+                                   cu->ast->type->Function.dump_ast)) {
+                print_ast(cu->ast, &tokenizer);
             }
         }
         
@@ -217,10 +218,11 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         return 1;
     }
     
-    if (flag_print_ast) {
-        pln("AST:");
-        for_array(ast_file.units, unit, _) {
-            print_ast(unit->ast, &tokenizer);
+    for_array(ast_file.units, cu, _) {
+        if (flag_print_ast || (cu->ast && cu->ast->kind == Ast_Function_Type && 
+                               cu->ast->type->kind == TypeKind_Function &&
+                               cu->ast->type->Function.dump_ast)) {
+            print_ast(cu->ast, &tokenizer);
         }
     }
     
@@ -285,7 +287,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 }
                 
                 // Jump to library function
-                Intermediate_Code* ic_jump = ic_add(cu, IC_JMP);
+                Intermediate_Code* ic_jump = ic_add(cu, IC_JMP_INDIRECT);
                 //pln("-> %", f_var(cu->ident));
                 ic_jump->src0 = ic_rip_disp32(cu, IC_U64, data_area, import_fn.data, import_fn.relative_ptr);
                 cu->external_address = ic_jump->src0.data.disp;
@@ -322,14 +324,18 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     for_array(ast_file.units, cu, _3) {
         Intermediate_Code* ic = cu->ic_first;
         while (ic) {
-            if (ic->dest.type & IC_STK) {
-                ic->dest.disp = compute_stk_displacement(cu, ic->dest);
-            }
-            if (ic->src0.type & IC_STK) {
-                ic->src0.disp = compute_stk_displacement(cu, ic->src0);
-            }
-            if (ic->src1.type & IC_STK) {
-                ic->src1.disp = compute_stk_displacement(cu, ic->src1);
+            
+            // TODO: robustness we need a better way to know what the instruction data is!
+            if (ic->opcode >= IC_NEG && ic->opcode <= IC_SETNE) {
+                if (ic->dest.type & IC_STK) {
+                    ic->dest.disp = compute_stk_displacement(cu, ic->dest);
+                }
+                if (ic->src0.type & IC_STK) {
+                    ic->src0.disp = compute_stk_displacement(cu, ic->src0);
+                }
+                if (ic->src1.type & IC_STK) {
+                    ic->src1.disp = compute_stk_displacement(cu, ic->src1);
+                }
             }
             
             ic = ic->next;
@@ -379,9 +385,14 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 Intermediate_Code* ic = cu->ic_first;
                 
                 while (ic) {
-                    ic->dest = patch_rip_relative_address(&pe_executable, ic->dest);
-                    ic->src0 = patch_rip_relative_address(&pe_executable, ic->src0);
-                    ic->src1 = patch_rip_relative_address(&pe_executable, ic->src1);
+                    // TODO: we should have instruction type or something?
+                    if (ic->opcode >= IC_NEG && ic->opcode <= IC_SETNE) {
+                        ic->dest = patch_rip_relative_address(&pe_executable, ic->dest);
+                        ic->src0 = patch_rip_relative_address(&pe_executable, ic->src0);
+                        ic->src1 = patch_rip_relative_address(&pe_executable, ic->src1);
+                    } else if (ic->opcode >= IC_JMP_INDIRECT) {
+                        ic->src0 = patch_rip_relative_address(&pe_executable, ic->src0);
+                    }
                     ic = ic->next;
                 }
             }

@@ -103,7 +103,7 @@ main() {
     
     WNDCLASSA wndclass = {};
     wndclass.style = CS_HREDRAW | CS_VREDRAW;
-    wndclass.lpfnWndProc = win32_main_callback;
+    wndclass.lpfnWndProc = &win32_main_callback;
     wndclass.hInstance = h_instance;
     wndclass.lpszClassName = "OpenGLTestClass";
     

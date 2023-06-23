@@ -124,6 +124,7 @@ VAR(link)     \
 VAR(link_dynamic) \
 VAR(extern_name) \
 VAR(dump_bytecode) \
+VAR(dump_ast) \
 VAR(Var_Args) \
 VAR(Dynamic_Library) \
 

@@ -137,4 +137,4 @@ extern {
 global Dynamic_Library opengl_library;
 // TODO: COMPILER BUG: for some reason a whitespace is required at the end of line below, wat
 #undef GLAPI
-#define GLAPI @link_dynamic(opengl_library)
+#define GLAPI @link_dynamic(opengl_library) extern

@@ -1,0 +1,44 @@
+// https://en.wikipedia.org/wiki/Reverse_Polish_notation
+// Very simple calculator using Reverse Polish Notation
+
+#include <basic.sq>
+
+int
+main() {
+    string expr = "14 40 + 32 -";
+    
+    [2]int stack;
+    int stack_pointer;
+    for (int i = 0; i < expr.count; i++) {
+        u8 chr = expr[i];
+        switch (chr) {
+            case '+': {
+                pln("% + %", stack[0], stack[1]);
+                assert(stack_pointer >= 2);
+                stack[0] += stack[1]; 
+                stack[1] = 0;
+                stack_pointer--;
+            }
+            
+            case '-': {
+                pln("% - %", stack[0], stack[1]);
+                assert(stack_pointer >= 2);
+                stack[0] -= stack[1];
+                stack[1] = 0;
+                stack_pointer--;
+            }
+            
+            case: {
+                if (chr >= '0' && chr <= '9') {
+                    stack[stack_pointer] = stack[stack_pointer]*10 + chr - '0';
+                } else if (stack[stack_pointer] > 0) {
+                    assert(stack_pointer < stack.count, "stack overflow");
+                    stack_pointer++;
+                }
+            }
+        }
+    }
+    
+    assert(stack_pointer >= 1);
+    pln("% = %", expr, stack[0]);
+}

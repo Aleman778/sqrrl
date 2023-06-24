@@ -5,7 +5,8 @@ If you are familiar with C/C++ this language will feel right at home for you and
 of the [new features](#new-features).
 
 ```diff
-- This language is a hobby project and can contain bugs and hardcoded stuff, don't use it for any serious projects.
+- This language is a hobby project and contains bugs and hardcoded stuff.
+- Don't use it for any serious projects.
 ```
 
 `examples/reverse_polish_notation.sq`

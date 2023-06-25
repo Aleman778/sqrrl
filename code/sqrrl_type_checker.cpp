@@ -2009,8 +2009,6 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                         } break;
                         
                         case Sym_link_dynamic: {
-                            
-                            pln("link_dynamic: %", f_var(result.type->Function.ident));
                             if (!result.type->Function.ident) {
                                 attr.is_valid = false;
                             }

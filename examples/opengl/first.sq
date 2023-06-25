@@ -1,36 +1,7 @@
 #include <basic.sq>
+#include <window.sq>
 #include <opengl.sq>
 
-
-global bool is_running = false;
-
-
-LRESULT CALLBACK
-win32_main_callback(HWND window, UINT message, WPARAM w_param, LPARAM l_param) {
-    LRESULT result = 0;
-    
-    if (message == WM_CLOSE) {
-        is_running = false;
-    } else if (message == WM_DESTROY) {
-        is_running = false;
-    } else {
-        result = DefWindowProcA(window, message, w_param, l_param);
-    }
-    
-    return result;
-}
-
-void
-win32_show_error(string message) {
-    int error_code = GetLastError();
-    if (error_code) {
-        message = string_print("% (Error code: %)", message, error_code);
-    } else {
-        message = string_print("%", message);
-    }
-    MessageBoxA(0, string_to_cstring(message), "Error", MB_OK);
-    ExitProcess(error_code);
-}
 
 string
 win32_read_entire_file(cstring filename) {
@@ -97,193 +68,192 @@ compile_shader_from_file(int program, int shader_type, cstring filename) {
     return shader;
 }
 
+enum Render_Op {
+    Draw_Triangles,
+}
+
+struct v2 {
+    f32 x, y;
+}
+
+struct v3 {
+    f32 x, y, z;
+}
+
+struct v4 {
+    f32 r, g, b, a;
+}
+
+struct Vertex {
+    v3 pos;
+    v2 texcoord;
+    v4 tint;
+}
+
+struct Render_Queue {
+    
+}
+
+struct Render_Command {
+    Render_Op op;
+    
+    union {
+        Vertex* vertices;
+        f32* data;
+    };
+    
+    int vertex_count;
+}
+
+struct Push_Buffer {
+    [65536]u8 data;
+    u32 curr_used;
+}
+
+// NOTE(Alexander): align has to be a power of two.
+#define is_power_of_two(x) (((x) & ((x) - 1)) == 0)
+#define assert_power_of_two(x) assert(is_power_of_two(x) && "x is not power of two")
+inline umm
+align_forward(umm address, umm align) {
+    assert_power_of_two(align);
+    umm modulo = address & (align - 1);
+    if (modulo != 0) {
+        address += align - modulo;
+    }
+    return address;
+}
+
+#if 0
+void
+push_size() {
+    
+}
+
+
+Render_Command*
+push_command(Render_Op op, Push_Buffer* buf) {
+    Render_Command* command = push_size(buf.curr_used, Render_Command);
+    command.op = op;
+    return command;
+}
+#endif
+
+struct OpenGL {
+    GLuint vertex_array;
+    GLuint vertex_buffer;
+    GLuint index_buffer;
+}
+
+void
+init_opengl(OpenGL* opengl) {
+    // Vertex array
+    glGenVertexArrays(1, &opengl.vertex_array);
+    glBindVertexArray(opengl.vertex_array);
+    
+    // Setup buffers
+    glGenBuffers(1, &opengl.vertex_buffer);
+    
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 5 * sizeof(f32));
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+}
+
+void
+opengl_begin_drawing(OpenGL* opengl) {
+    glClear(GL_COLOR_BUFFER_BIT);
+}
+
+void
+opengl_end_drawing(OpenGL* opengl, Render_Command command) {
+    
+    glBindVertexArray(opengl.vertex_array);
+    glBindBuffer(GL_ARRAY_BUFFER, opengl.vertex_buffer);
+    glBufferData(GL_ARRAY_BUFFER,
+                 command.vertex_count*sizeof(Vertex), 
+                 command.data, GL_DYNAMIC_DRAW);
+    
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 6 * sizeof(f32));
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    glDrawArrays(GL_TRIANGLES, 0, command.vertex_count);
+}
+
 int
 main() {
-    HINSTANCE h_instance = GetModuleHandleA(0);
-    
-    WNDCLASSA wndclass = {};
-    wndclass.style = CS_HREDRAW | CS_VREDRAW;
-    wndclass.lpfnWndProc = &win32_main_callback;
-    wndclass.hInstance = h_instance;
-    wndclass.lpszClassName = "OpenGLTestClass";
     
     f32 aspect_ratio = 16.0f / 9.0f;
     int height = 720;
     int width = (int) ((f32) height * aspect_ratio);
     
-    if (RegisterClassA(&wndclass)) {
-        HWND window = CreateWindowExA(0,
-                                      "OpenGLTestClass",
-                                      "OpenGL Test",
-                                      WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-                                      CW_USEDEFAULT,
-                                      CW_USEDEFAULT,
-                                      width, height,
-                                      0, 0,
-                                      wndclass.hInstance,
-                                      0);
-        HDC window_dc = GetDC(window);
+    init_window(width, height, "OpenGL Test");
+    
+    //Push_Buffer* push_buffer = calloc(1, sizeof(Push_Buffer)); // 64k
+    
+    OpenGL* opengl = (OpenGL*) calloc(1, sizeof(OpenGL));
+    init_opengl(opengl);
+    
+    
+    []f32 triangles = {
+        1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f,
+        -1.0f,  1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,
+        -1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,
         
-        // Let windows suggest a pixel format to use
-        PIXELFORMATDESCRIPTOR desired_pfd = {};
-        desired_pfd.nSize = sizeof(PIXELFORMATDESCRIPTOR);
-        desired_pfd.nVersion = 1;
-        desired_pfd.dwFlags = PFD_DOUBLEBUFFER | PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL;
-        desired_pfd.cColorBits = 32;
-        desired_pfd.cAlphaBits = 8;
-        desired_pfd.iLayerType = PFD_MAIN_PLANE;
-        int pixel_format_index = ChoosePixelFormat(window_dc, &desired_pfd);
+        -1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,
+        1.0f,  1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,
+        1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f,
+    };
+    Render_Command command = {};
+    command.data = triangles.data;
+    command.vertex_count = 6;
+    
+    
+    // Setup shaders
+    int program = glCreateProgram();
+    int vs = compile_shader_from_file(program, GL_VERTEX_SHADER, "../examples/opengl/test.vs");
+    int fs = compile_shader_from_file(program, GL_FRAGMENT_SHADER, "../examples/opengl/test.fs");
+    
+    if (vs && fs) {
+        int success;
+        glLinkProgram(program);
+        glDeleteShader(vs);
+        glDeleteShader(fs);
         
-        // Set the suggested pixel format
-        PIXELFORMATDESCRIPTOR suggested_pfd = {};
-        DescribePixelFormat(window_dc, pixel_format_index, sizeof(suggested_pfd), &suggested_pfd);
-        SetPixelFormat(window_dc, pixel_format_index, &suggested_pfd);
-        
-        HGLRC opengl_rc = wglCreateContext(window_dc);
-        
-        if (wglMakeCurrent(window_dc, opengl_rc)) {
-            
-            wglCreateContextAttribsARB = (wgl_create_context_attribs_arb*) wglGetProcAddress("wglCreateContextAttribsARB");
-            
-            int major = 3;
-            int minor = 3;
-            
-            if (wglCreateContextAttribsARB) {
-                // TODO: Make debug context optional, maybe forward compatible too?
-                []int attribs = {
-                    WGL_CONTEXT_MAJOR_VERSION_ARB, major,
-                    WGL_CONTEXT_MINOR_VERSION_ARB, minor,
-                    WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_DEBUG_BIT_ARB | WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
-                    WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
-                    0,
-                };
-                
-                //win32_show_error(string_print("attribs = %", attribs[7]));
-                
-                HGLRC share_opengl_rc = 0;
-                HGLRC modern_opengl_rc = wglCreateContextAttribsARB(window_dc, share_opengl_rc, attribs.data);
-                
-                if (modern_opengl_rc) {
-                    wglMakeCurrent(window_dc, modern_opengl_rc);
-                    wglDeleteContext(opengl_rc);
-                    opengl_rc = modern_opengl_rc;
-                } else {
-                    win32_show_error(string_print("OpenGL version %.% is not supported!", major, minor));
-                }
-                
-                for (int i = 0; i < opengl_library.functions.count; i++) {
-                    Dynamic_Function* fn = &opengl_library.functions[i];
-                    // TODO: COMPILER BUG: type checker should have complained without cstring conversion
-                    cstring name = string_to_cstring(fn.name);
-                    fn.pointer = wglGetProcAddress(name); 
-                }
-                
-                // Initialize OpenGL
-                OpenGL_Info glinfo = {};
-                glinfo.vendor = cstring_to_string((cstring) glGetString(GL_VENDOR));
-                glinfo.renderer = cstring_to_string((cstring) glGetString(GL_RENDERER));
-                glinfo.version = cstring_to_string((cstring) glGetString(GL_VERSION));
-                // TODO: implement extension support
-                //glinfo.extensions = cstring_to_string((cstring) glGetStringi(GL_EXTENSIONS, 0));
-                glinfo.shader_language_version = cstring_to_string((cstring) glGetString(GL_SHADING_LANGUAGE_VERSION));
-                pln("%", glinfo);
-                
-            } else {
-                win32_show_error("Failed to intialize Modern OpenGL!");
-            }
-            
-            // Vertex array
-            GLuint vao;
-            glGenVertexArrays(1, &vao);
-            glBindVertexArray(vao);
-            
-            // Setup buffers
-            GLuint vbo;
-            glGenBuffers(1, &vbo);
-            
-            []f32 triangle_data = {
-                1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
-                -1.0f,  1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-                -1.0f, -1.0f, 0.0f, 1.0f, 0.0f, 0.0f,
-                
-                -1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-                1.0f,  1.0f, 0.0f, 1.0f, 0.0f, 0.0f,
-                1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
-            };  
-            
-            glBindBuffer(GL_ARRAY_BUFFER, vbo);
-            glBufferData(GL_ARRAY_BUFFER,
-                         triangle_data.count*sizeof(f32), 
-                         triangle_data.data, GL_STATIC_DRAW);
-            
-            // position attribute
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(f32), 0);
-            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(f32), 3 * sizeof(f32));
-            glEnableVertexAttribArray(0);
-            glEnableVertexAttribArray(1);
-            
-            // Setup shaders
-            int program = glCreateProgram();
-            int vs = compile_shader_from_file(program, GL_VERTEX_SHADER, "../examples/opengl/test.vs");
-            int fs = compile_shader_from_file(program, GL_FRAGMENT_SHADER, "../examples/opengl/test.fs");
-            
-            if (vs && fs) {
-                int success;
-                glLinkProgram(program);
-                glDeleteShader(vs);
-                glDeleteShader(fs);
-                
-                glGetProgramiv(program, GL_LINK_STATUS, &success);
-                if (!success) {
-                    string message;
-                    message.data = (u8*) malloc(1024);
-                    message.count = 0;
-                    glGetProgramInfoLog(program, 1024, cast(GLsizei*) &message.count, cast(GLchar*) message.data);
-                    win32_show_error(string_print("%", message));
-                    free(message.data);
-                    return false;
-                }
-            } else {
-                win32_show_error("Failed to compile shaders");
-            }
-            
-            int uniform_t = glGetUniformLocation(program, (GLchar*) string_to_cstring("t"));
-            pln("%", uniform_t);
-            
-            glUseProgram(program);
-            glUniform1f(uniform_t, 0.0f);
-            
-            
-            f32 time = 0.0f;
-            
-            is_running = true;
-            while (is_running) {
-                MSG message;
-                while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
-                    TranslateMessage(&message);
-                    DispatchMessageA(&message);
-                }
-                
-                time += 0.1f;
-                glUniform1f(uniform_t, time);
-                
-                glClearColor(0.0f, 0.5f, 1.0f, 1.0f);
-                glClear(GL_COLOR_BUFFER_BIT);
-                
-                glUseProgram(program);
-                glBindVertexArray(vao);
-                glDrawArrays(GL_TRIANGLES, 0, 6);
-                
-                SwapBuffers(window_dc);
-            }
-            
-            
-        } else {
-            win32_show_error("Failed to intialize OpenGL!");
+        glGetProgramiv(program, GL_LINK_STATUS, &success);
+        if (!success) {
+            string message;
+            message.data = (u8*) malloc(1024);
+            message.count = 0;
+            glGetProgramInfoLog(program, 1024, cast(GLsizei*) &message.count, cast(GLchar*) message.data);
+            pln("%", message);
+            free(message.data);
+            return false;
         }
     }
     
+    int uniform_t = glGetUniformLocation(program, (GLchar*) string_to_cstring("t"));
     
+    glUseProgram(program);
+    glUniform1f(uniform_t, 0.0f);
+    
+    
+    f32 time = 0.0f;
+    while (!window_should_close()) {
+        
+        time += 0.1f;
+        glUniform1f(uniform_t, time);
+        
+        opengl_begin_drawing(opengl);
+        
+        glClearColor(0.0f, 0.5f, 1.0f, 1.0f);
+        
+        glUseProgram(program);
+        
+        opengl_end_drawing(opengl, command);
+        
+        window_swap_buffers();
+    }
     
     ExitProcess(0);
 }

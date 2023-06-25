@@ -24,9 +24,7 @@ typedef HGLRC wgl_create_context_attribs_arb(HDC hDC,
 wgl_create_context_attribs_arb* wglCreateContextAttribsARB;
 
 inline bool
-create_opengl_platform_context(void* window_device_context, int major, int minor) {
-    HDC window_dc = (HDC) window_device_context;
-    
+create_opengl_context(HDC hdc) {
     // Let windows suggest a pixel format to use
     PIXELFORMATDESCRIPTOR desired_pfd = {};
     desired_pfd.nSize = sizeof(PIXELFORMATDESCRIPTOR);
@@ -35,24 +33,26 @@ create_opengl_platform_context(void* window_device_context, int major, int minor
     desired_pfd.cColorBits = 32;
     desired_pfd.cAlphaBits = 8;
     desired_pfd.iLayerType = PFD_MAIN_PLANE;
-    int pixel_format_index = ChoosePixelFormat(window_dc, &desired_pfd);
+    int pixel_format_index = ChoosePixelFormat(hdc, &desired_pfd);
     
     // Set the suggested pixel format
     PIXELFORMATDESCRIPTOR suggested_pfd = {};
-    DescribePixelFormat(window_dc, pixel_format_index, sizeof(suggested_pfd), &suggested_pfd);
-    SetPixelFormat(window_dc, pixel_format_index, &suggested_pfd);
+    DescribePixelFormat(hdc, pixel_format_index, sizeof(suggested_pfd), &suggested_pfd);
+    SetPixelFormat(hdc, pixel_format_index, &suggested_pfd);
     
-    HGLRC opengl_rc = wglCreateContext(window_dc);
+    HGLRC opengl_rc = wglCreateContext(hdc);
     
-    if (wglMakeCurrent(window_dc, opengl_rc)) {
+    if (wglMakeCurrent(hdc, opengl_rc)) {
         
         wglCreateContextAttribsARB = (wgl_create_context_attribs_arb*) wglGetProcAddress("wglCreateContextAttribsARB");
         
         if (wglCreateContextAttribsARB) {
             // TODO: Make debug context optional, maybe forward compatible too?
+            int major = 3;
+            int minor = 3;
             []int attribs = {
-                WGL_CONTEXT_MAJOR_VERSION_ARB, major,
-                WGL_CONTEXT_MINOR_VERSION_ARB, minor,
+                WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
+                WGL_CONTEXT_MINOR_VERSION_ARB, 3,
                 WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_DEBUG_BIT_ARB | WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
                 WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
                 0,
@@ -61,14 +61,14 @@ create_opengl_platform_context(void* window_device_context, int major, int minor
             //win32_show_error(string_print("attribs = %", attribs[7]));
             
             HGLRC share_opengl_rc = 0;
-            HGLRC modern_opengl_rc = wglCreateContextAttribsARB(window_dc, share_opengl_rc, attribs.data);
+            HGLRC modern_opengl_rc = wglCreateContextAttribsARB(hdc, share_opengl_rc, attribs.data);
             
             if (modern_opengl_rc) {
-                wglMakeCurrent(window_dc, modern_opengl_rc);
+                wglMakeCurrent(hdc, modern_opengl_rc);
                 wglDeleteContext(opengl_rc);
                 opengl_rc = modern_opengl_rc;
             } else {
-                pln("OpenGL version %.% is not supported!", major, minor);
+                show_error(string_print("OpenGL version %.% is not supported!", major, minor));
                 return false;
             }
             
@@ -81,10 +81,10 @@ create_opengl_platform_context(void* window_device_context, int major, int minor
             
             return true;
         } else {
-            pln("Failed to intialize Modern OpenGL!")
+            show_error("Failed to intialize Modern OpenGL!")
         }
     } else {
-        pln("Failed to intialize OpenGL!");
+        show_error("Failed to intialize OpenGL!");
     }
     
     return false;

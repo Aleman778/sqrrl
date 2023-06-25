@@ -1,13 +1,14 @@
 #version 330 core
-layout (location = 0) in vec3 position;
-layout (location = 1) in vec3 color;
+layout (location = 0) in vec3 in_position;
+layout (location = 1) in vec2 in_texcoord;
+layout (location = 2) in vec3 in_tint;
 
-out vec3 p;
-out vec4 vertex_color;
+out vec2 v_texcoord;
+out vec4 v_tint;
 
 void
 main() {
-   p = position;
-   gl_Position = vec4(position, 1.0f);
-   vertex_color = vec4(color, 1.0f);
+   gl_Position = vec4(in_position, 1.0f);
+   v_tint = vec4(in_tint, 1.0f);
+   v_texcoord = in_texcoord;
 }

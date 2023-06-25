@@ -1,0 +1,7 @@
+// Sqrrl bindings of `stb_image.h` library
+// Source: https://github.com/nothings/stb/blob/master/stb_image.h
+
+@link("stb_image.dll")
+extern {
+    u8* stbi_load(cstring filename, int* x, int* y, int* channels_in_file, int desired_channels);
+}

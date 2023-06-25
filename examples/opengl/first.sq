@@ -1,6 +1,14 @@
 #include <basic.sq>
 #include <window.sq>
+#include <stb_image.sq>
+
+// TODO(Alexander): COMPILER BUG: opengl.sq has to be loaded last messes up the import directory table
 #include <opengl.sq>
+
+
+#define RED (v4) { 1.0f, 0.0f, 0.0f, 1.0f }
+#define GREEN (v4) { 0.0f, 1.0f, 0.0f, 1.0f }
+#define WHITE (v4) { 1.0f, 1.0f, 1.0f, 1.0f }
 
 
 string
@@ -106,8 +114,8 @@ struct Render_Command {
 }
 
 struct Push_Buffer {
-    [65536]u8 data;
-    u32 curr_used;
+    [65536]u8 base;
+    u32 used;
 }
 
 // NOTE(Alexander): align has to be a power of two.
@@ -123,25 +131,36 @@ align_forward(umm address, umm align) {
     return address;
 }
 
-#if 0
-void
-push_size() {
+void*
+push_size(Push_Buffer* buf, umm size, umm align) {
+    umm base_offset = (umm) buf.base.data + (umm) buf.used;
+    umm offset = align_forward(base_offset, align) - (umm) buf.base.data;
+    assert((smm) (offset + size) <= buf.base.count);
+    buf.used = (u32) (offset + size);
     
+    void* result = buf.base.data + offset;
+    memset(result, 0, size);
+    return result;
 }
 
+#define push_struct(buf, T) (T*) push_size(buf, sizeof(T), alignof(T))
 
 Render_Command*
-push_command(Render_Op op, Push_Buffer* buf) {
-    Render_Command* command = push_size(buf.curr_used, Render_Command);
+push_command(Push_Buffer* buf, Render_Op op) {
+    Render_Command* command = push_struct(buf, Render_Command);
     command.op = op;
+    command.data = (f32*) push_size(buf, 1024, alignof(f32));
     return command;
 }
-#endif
 
 struct OpenGL {
     GLuint vertex_array;
     GLuint vertex_buffer;
     GLuint index_buffer;
+    GLuint texture;
+    
+    GLuint program;
+    GLuint uniform_texture;
 }
 
 void
@@ -153,19 +172,20 @@ init_opengl(OpenGL* opengl) {
     // Setup buffers
     glGenBuffers(1, &opengl.vertex_buffer);
     
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 5 * sizeof(f32));
-    glEnableVertexAttribArray(0);
-    glEnableVertexAttribArray(1);
+    // Setup textures
+    glGenTextures(1, &opengl.texture);
+    
 }
 
 void
-opengl_begin_drawing(OpenGL* opengl) {
+opengl_begin_drawing(OpenGL* opengl, Push_Buffer* buf) {
     glClear(GL_COLOR_BUFFER_BIT);
+    
+    buf.used = 0;
 }
 
 void
-opengl_end_drawing(OpenGL* opengl, Render_Command command) {
+opengl_end_drawing(OpenGL* opengl, Render_Command* command) {
     
     glBindVertexArray(opengl.vertex_array);
     glBindBuffer(GL_ARRAY_BUFFER, opengl.vertex_buffer);
@@ -174,10 +194,59 @@ opengl_end_drawing(OpenGL* opengl, Render_Command command) {
                  command.data, GL_DYNAMIC_DRAW);
     
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 6 * sizeof(f32));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), 3 * sizeof(f32));
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 5 * sizeof(f32));
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
+    glEnableVertexAttribArray(2);
+    
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, opengl.texture);
+    
+    glUseProgram(opengl.program);
+    glUniform1i(opengl.uniform_texture, 0);
+    
     glDrawArrays(GL_TRIANGLES, 0, command.vertex_count);
+}
+
+void
+push_rectangle(Render_Command* command, f32 x, f32 y, f32 width, f32 height, v4 tint) {
+    Vertex* tl = &command.vertices[command.vertex_count++];
+    Vertex* tr = &command.vertices[command.vertex_count++];
+    Vertex* bl = &command.vertices[command.vertex_count++];
+    Vertex* tr2 = &command.vertices[command.vertex_count++];
+    Vertex* br = &command.vertices[command.vertex_count++];
+    Vertex* bl2 = &command.vertices[command.vertex_count++];
+    tl.pos  = { x, y };                  tl.texcoord  = { 0.0f, 0.0f }; tl.tint  = tint;
+    tr.pos  = { x + width, y };          tr.texcoord  = { 1.0f, 0.0f }; tr.tint  = tint;
+    tr2.pos = { x + width, y };          tr2.texcoord = { 1.0f, 0.0f }; tr2.tint = tint;
+    bl.pos  = { x, y + height };         bl.texcoord  = { 0.0f, 1.0f }; bl.tint  = tint;
+    bl2.pos = { x, y + height };         bl2.texcoord = { 0.0f, 1.0f }; bl2.tint = tint;
+    br.pos  = { x + width, y + height }; br.texcoord  = { 1.0f, 1.0f }; br.tint  = tint;
+}
+
+struct Loaded_Image {
+    int width;
+    int height;
+    int num_components;
+    int stride; 
+    u8* data;
+}
+
+Loaded_Image
+load_image(string filename) {
+    Loaded_Image result;
+    cstring cfilename = string_to_cstring(filename);
+    u8* data = stbi_load(cfilename, &result.width, &result.height, &result.num_components, 0);
+    cstring_free(cfilename);
+    
+    if (!data) {
+        pln("Failed to load image `%`", filename);
+    }
+    
+    result.data = data;
+    result.stride = result.width * result.num_components;
+    return result;
 }
 
 int
@@ -189,66 +258,74 @@ main() {
     
     init_window(width, height, "OpenGL Test");
     
-    //Push_Buffer* push_buffer = calloc(1, sizeof(Push_Buffer)); // 64k
+    Push_Buffer* push_buffer = (Push_Buffer*) calloc(1, sizeof(Push_Buffer)); // 64k
     
     OpenGL* opengl = (OpenGL*) calloc(1, sizeof(OpenGL));
     init_opengl(opengl);
     
+    Loaded_Image image = load_image("../examples/opengl/resurrect-64-1x.png");
+    // TODO: add support for freeing the image!
     
-    []f32 triangles = {
-        1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f,
-        -1.0f,  1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,
-        -1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,
-        
-        -1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,
-        1.0f,  1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,
-        1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f,
-    };
-    Render_Command command = {};
-    command.data = triangles.data;
-    command.vertex_count = 6;
+    GLenum internal_format = (image.num_components == 3) ? GL_RGB : GL_RGBA;
+    glBindTexture(GL_TEXTURE_2D, opengl.texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    
+    glTexImage2D(GL_TEXTURE_2D, 0, internal_format, image.width, image.height, 0,
+                 GL_RGB, GL_UNSIGNED_BYTE, image.data); // TODO: do we want ALPHA component in the format
+    
+    
+    
+    //[]f32 triangles = {
+    //1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f,
+    //-1.0f,  1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,
+    //-1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,
+    
+    //-1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,
+    //1.0f,  1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,
+    //1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f,
+    //};
+    
+    
+    
+    //command.vertices. = triangles.data;
+    //push_rectangle(&command, -1.0f, -1.0f, 2.0f, 2.0f, red);
+    //pln("%", command);
     
     
     // Setup shaders
-    int program = glCreateProgram();
-    int vs = compile_shader_from_file(program, GL_VERTEX_SHADER, "../examples/opengl/test.vs");
-    int fs = compile_shader_from_file(program, GL_FRAGMENT_SHADER, "../examples/opengl/test.fs");
-    
+    opengl.program = glCreateProgram();
+    int vs = compile_shader_from_file(opengl.program, GL_VERTEX_SHADER, "../examples/opengl/test.vs");
+    int fs = compile_shader_from_file(opengl.program, GL_FRAGMENT_SHADER, "../examples/opengl/test.fs");
     if (vs && fs) {
         int success;
-        glLinkProgram(program);
+        glLinkProgram(opengl.program);
         glDeleteShader(vs);
         glDeleteShader(fs);
         
-        glGetProgramiv(program, GL_LINK_STATUS, &success);
+        glGetProgramiv(opengl.program, GL_LINK_STATUS, &success);
         if (!success) {
             string message;
             message.data = (u8*) malloc(1024);
             message.count = 0;
-            glGetProgramInfoLog(program, 1024, cast(GLsizei*) &message.count, cast(GLchar*) message.data);
+            glGetProgramInfoLog(opengl.program, 1024, cast(GLsizei*) &message.count, cast(GLchar*) message.data);
             pln("%", message);
             free(message.data);
             return false;
         }
     }
+    opengl.uniform_texture = glGetUniformLocation(opengl.program, (GLchar*) string_to_cstring("u_texture"));
     
-    int uniform_t = glGetUniformLocation(program, (GLchar*) string_to_cstring("t"));
-    
-    glUseProgram(program);
-    glUniform1f(uniform_t, 0.0f);
-    
-    
-    f32 time = 0.0f;
     while (!window_should_close()) {
+        opengl_begin_drawing(opengl, push_buffer);
         
-        time += 0.1f;
-        glUniform1f(uniform_t, time);
-        
-        opengl_begin_drawing(opengl);
+        Render_Command* command = push_command(push_buffer, Render_Op.Draw_Triangles);
+        push_rectangle(command, -0.2f, -0.2f, 0.4f, 0.4f, WHITE);
+        //push_rectangle(command, -0.4f, -0.2f, 0.4f, 0.4f, GREEN);
         
         glClearColor(0.0f, 0.5f, 1.0f, 1.0f);
-        
-        glUseProgram(program);
         
         opengl_end_drawing(opengl, command);
         

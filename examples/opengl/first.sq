@@ -5,6 +5,8 @@
 // TODO(Alexander): COMPILER BUG: opengl.sq has to be loaded last messes up the import directory table
 #include <opengl.sq>
 
+#include "math.sq"
+
 
 #define RED (v4) { 1.0f, 0.0f, 0.0f, 1.0f }
 #define GREEN (v4) { 0.0f, 1.0f, 0.0f, 1.0f }
@@ -80,18 +82,6 @@ enum Render_Op {
     Draw_Triangles,
 }
 
-struct v2 {
-    f32 x, y;
-}
-
-struct v3 {
-    f32 x, y, z;
-}
-
-struct v4 {
-    f32 r, g, b, a;
-}
-
 struct Vertex {
     v3 pos;
     v2 texcoord;
@@ -107,10 +97,13 @@ struct Render_Command {
     
     union {
         Vertex* vertices;
-        f32* data;
+        f32* vertex_data;
     };
     
-    int vertex_count;
+    u16* indices;
+    
+    s32 vertex_count;
+    s32 index_count;
 }
 
 struct Push_Buffer {
@@ -149,18 +142,27 @@ Render_Command*
 push_command(Push_Buffer* buf, Render_Op op) {
     Render_Command* command = push_struct(buf, Render_Command);
     command.op = op;
-    command.data = (f32*) push_size(buf, 1024, alignof(f32));
+    command.vertex_data = (f32*) push_size(buf, 1024, alignof(f32));
+    command.indices = (u16*) push_size(buf, 512, alignof(u16));
     return command;
 }
 
 struct OpenGL {
     GLuint vertex_array;
-    GLuint vertex_buffer;
-    GLuint index_buffer;
+    
+    union {
+        struct {
+            GLuint vertex_buffer;
+            GLuint index_buffer;
+        };
+        [2]GLuint buffers;
+    };
+    
     GLuint texture;
     
     GLuint program;
     GLuint uniform_texture;
+    GLuint uniform_projection;
 }
 
 void
@@ -170,7 +172,7 @@ init_opengl(OpenGL* opengl) {
     glBindVertexArray(opengl.vertex_array);
     
     // Setup buffers
-    glGenBuffers(1, &opengl.vertex_buffer);
+    glGenBuffers(opengl.buffers.count, cast(GLuint*) &opengl.buffers);
     
     // Setup textures
     glGenTextures(1, &opengl.texture);
@@ -185,13 +187,18 @@ opengl_begin_drawing(OpenGL* opengl, Push_Buffer* buf) {
 }
 
 void
-opengl_end_drawing(OpenGL* opengl, Render_Command* command) {
+opengl_end_drawing(OpenGL* opengl, Render_Command* command, m4x4 projection) {
     
     glBindVertexArray(opengl.vertex_array);
     glBindBuffer(GL_ARRAY_BUFFER, opengl.vertex_buffer);
     glBufferData(GL_ARRAY_BUFFER,
                  command.vertex_count*sizeof(Vertex), 
-                 command.data, GL_DYNAMIC_DRAW);
+                 command.vertex_data, GL_DYNAMIC_DRAW);
+    
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, opengl.index_buffer);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                 command.index_count*sizeof(s16), 
+                 command.indices, GL_DYNAMIC_DRAW);
     
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), 3 * sizeof(f32));
@@ -206,23 +213,45 @@ opengl_end_drawing(OpenGL* opengl, Render_Command* command) {
     glUseProgram(opengl.program);
     glUniform1i(opengl.uniform_texture, 0);
     
-    glDrawArrays(GL_TRIANGLES, 0, command.vertex_count);
+    
+    glUniformMatrix4fv(opengl.uniform_projection, 1, true, &projection.data[0]);
+    
+    glDrawElements(GL_TRIANGLES, command.index_count, GL_UNSIGNED_SHORT, 0);
+}
+
+inline void
+push_vertex(Render_Command* command, v3 pos, v2 texcoord, v4 tint) {
+    command.vertices[command.vertex_count].pos = pos;
+    command.vertices[command.vertex_count].texcoord = texcoord;
+    command.vertices[command.vertex_count].tint = tint;
+    command.vertex_count++;
+}
+
+inline void
+push_indices(Render_Command* command, []u16 indices) {
+    memcpy(&command.indices[command.index_count], indices.data, indices.count*sizeof(u16));
+    command.index_count += (s32) indices.count;
+}
+
+
+void
+push_quad(Render_Command* command, v3 min_p, v3 right, v3 down, v4 tint) {
+    push_vertex(command, min_p,                vec2(0.0f, 0.0f), tint);
+    push_vertex(command, min_p + right,        vec2(1.0f, 0.0f), tint);
+    push_vertex(command, min_p + down,         vec2(0.0f, 1.0f), tint);
+    push_vertex(command, min_p + right + down, vec2(1.0f, 1.0f), tint);
+    []u16 indices = { 0, 1, 2, 1, 3, 2};
+    push_indices(command, ([]u16) indices);
 }
 
 void
-push_rectangle(Render_Command* command, f32 x, f32 y, f32 width, f32 height, v4 tint) {
-    Vertex* tl = &command.vertices[command.vertex_count++];
-    Vertex* tr = &command.vertices[command.vertex_count++];
-    Vertex* bl = &command.vertices[command.vertex_count++];
-    Vertex* tr2 = &command.vertices[command.vertex_count++];
-    Vertex* br = &command.vertices[command.vertex_count++];
-    Vertex* bl2 = &command.vertices[command.vertex_count++];
-    tl.pos  = { x, y };                  tl.texcoord  = { 0.0f, 0.0f }; tl.tint  = tint;
-    tr.pos  = { x + width, y };          tr.texcoord  = { 1.0f, 0.0f }; tr.tint  = tint;
-    tr2.pos = { x + width, y };          tr2.texcoord = { 1.0f, 0.0f }; tr2.tint = tint;
-    bl.pos  = { x, y + height };         bl.texcoord  = { 0.0f, 1.0f }; bl.tint  = tint;
-    bl2.pos = { x, y + height };         bl2.texcoord = { 0.0f, 1.0f }; bl2.tint = tint;
-    br.pos  = { x + width, y + height }; br.texcoord  = { 1.0f, 1.0f }; br.tint  = tint;
+push_box(Render_Command* command, v3 min_p, v3 size, v4 tint) {
+    //push_quad(command, min_p, vec3(size.x, 0.0f, 0.0f), vec3(0.0f, size.y, 0.0f), tint);
+    
+    min_p = vec3(min_p.x, min_p.y, min_p.z + size.z);
+    push_quad(command, min_p, vec3(size.x, 0.0f, 0.0f), vec3(0.0f, size.y, 0.0f), tint);
+    
+    
 }
 
 struct Loaded_Image {
@@ -313,21 +342,40 @@ main() {
             glGetProgramInfoLog(opengl.program, 1024, cast(GLsizei*) &message.count, cast(GLchar*) message.data);
             pln("%", message);
             free(message.data);
-            return false;
+            
+            ExitProcess(0);
         }
+    } else {
+        ExitProcess(0);
     }
     opengl.uniform_texture = glGetUniformLocation(opengl.program, (GLchar*) string_to_cstring("u_texture"));
+    opengl.uniform_projection = glGetUniformLocation(opengl.program, (GLchar*) string_to_cstring("u_projection"));
+    
+    v2 screen_size;
     
     while (!window_should_close()) {
+        RECT screen;
+        if (GetClientRect(hwnd, &screen)) {
+            screen_size.x = screen.right;
+            screen_size.y = screen.bottom;
+        }
+        m4x4 projection = m4x4_orthographic(0.0f, 0.0f, screen_size.width, screen_size.height,
+                                            -99999.0f, 99999.0f);
+        glViewport(0, 0, (int) screen_size.width, (int) screen_size.height);
+        
         opengl_begin_drawing(opengl, push_buffer);
         
         Render_Command* command = push_command(push_buffer, Render_Op.Draw_Triangles);
-        push_rectangle(command, -0.2f, -0.2f, 0.4f, 0.4f, WHITE);
-        //push_rectangle(command, -0.4f, -0.2f, 0.4f, 0.4f, GREEN);
+        //push_rectangle(command, vec2(0.0f, 0.0f), vec2(128.0f, 128.0f), WHITE);
+        //push_quad(command, vec3(0.0f, 0.0f, 0.0f), vec3(128.0f, 0.0f, 0.0f), vec3(0.0f, 128.0f, 0.0f), WHITE);
+        
+        push_box(command, 
+                 vec3(0.0f, 0.0f, 0.0f),
+                 vec3(128.0f, 128.0f, 128.0f), WHITE);
         
         glClearColor(0.0f, 0.5f, 1.0f, 1.0f);
         
-        opengl_end_drawing(opengl, command);
+        opengl_end_drawing(opengl, command, projection);
         
         window_swap_buffers();
     }

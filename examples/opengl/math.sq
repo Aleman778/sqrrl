@@ -1,0 +1,199 @@
+union v2 {
+    struct {
+        f32 x, y;
+    };
+    struct {
+        f32 u, v;
+    };
+    struct {
+        f32 width, height;
+    };
+    [2]f32 data;
+};
+
+const v2 vec2_zero  = {  0.0f,  0.0f };
+const v2 vec2_left  = { -1.0f,  0.0f };
+const v2 vec2_right = {  1.0f,  0.0f };
+const v2 vec2_up    = {  0.0f, -1.0f };
+const v2 vec2_down  = {  0.0f,  1.0f };
+
+inline v2
+vec2(f32 x, f32 y) {
+    v2 result;
+    result.x = x;
+    result.y = y;
+    return result;
+}
+
+union v3 {
+    struct {
+        f32 x;
+        f32 y;
+        f32 z;
+    };
+    struct {
+        f32 u;
+        f32 v;
+        f32 w;
+    };
+    struct {
+        f32 r;
+        f32 g;
+        f32 b;
+    };
+    struct {
+        v2 xy;
+        f32 z;
+    };
+    [3]f32 data;
+};
+
+const v3 vec3_zero  = {  0.0f,  0.0f, 0.0f };
+const v3 vec3_left  = { -1.0f,  0.0f, 0.0f };
+const v3 vec3_right = {  1.0f,  0.0f, 0.0f };
+const v3 vec3_up    = {  0.0f, -1.0f, 0.0f };
+const v3 vec3_down  = {  0.0f,  1.0f, 0.0f };
+
+inline v3
+vec3(f32 x, f32 y, f32 z) {
+    v3 result;
+    result.x = x;
+    result.y = y;
+    result.z = z;
+    return result;
+}
+
+inline v3
+vec3(v2 xy, f32 z) {
+    v3 result;
+    result.x = xy.x;
+    result.y = xy.y;
+    result.z = z;
+    return result;
+}
+
+inline v3
+operator+(v3 a, v3 b) {
+    v3 result;
+    result.x = a.x + b.x;
+    result.y = a.y + b.y;
+    result.z = a.z + b.z;
+    return result;
+}
+
+inline v3
+operator-(v3 a, v3 b) {
+    v3 result;
+    result.x = a.x - b.x;
+    result.y = a.y - b.y;
+    result.z = a.z - b.z;
+    return result;
+}
+
+inline v3
+operator*(v3 a, v3 b) {
+    v3 result;
+    result.x = a.x * b.x;
+    result.y = a.y * b.y;
+    result.z = a.z * b.z;
+    return result;
+}
+
+inline v3
+operator*(v3 a, f32 v) {
+    v3 result;
+    result.x = a.x * v;
+    result.y = a.y * v;
+    result.z = a.z * v;
+    return result;
+}
+
+inline v3
+operator/(v3 a, v3 b) {
+    v3 result;
+    result.x = a.x / b.x;
+    result.y = a.y / b.y;
+    result.z = a.z / b.z;
+    return result;
+}
+
+union v4 {
+    struct {
+        f32 x;
+        f32 y;
+        f32 z;
+        f32 w;
+    };
+    struct {
+        f32 r;
+        f32 g;
+        f32 b;
+        f32 a;
+    };
+    [4]f32 data;
+};
+
+const v4 vec4_zero  = {  0.0f,  0.0f, 0.0f, 0.0f };
+const v4 vec4_left  = { -1.0f,  0.0f, 0.0f, 0.0f };
+const v4 vec4_right = {  1.0f,  0.0f, 0.0f, 0.0f };
+const v4 vec4_up    = {  0.0f, -1.0f, 0.0f, 0.0f };
+const v4 vec4_down  = {  0.0f,  1.0f, 0.0f, 0.0f };
+
+inline v4
+vec4(f32 x, f32 y, f32 z, f32 w) {
+    v4 result;
+    result.x = x;
+    result.y = y;
+    result.z = z;
+    result.w = w;
+    return result;
+}
+
+union m4x4 {
+    struct {
+        f32 m00, m01, m02, m03;
+        f32 m10, m11, m12, m13;
+        f32 m20, m21, m22, m23;
+        f32 m30, m31, m32, m33;
+    };
+    [4]v4 row;
+    [16]f32 data;
+}
+
+m4x4 
+m4x4_identity() {
+    m4x4 result = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f,
+    };
+    return result;
+}
+
+m4x4
+m4x4_scale(f32 x, f32 y, f32 z) {
+    m4x4 result = {
+        x, 0.0f, 0.0f, 0.0f,
+        0.0f, y, 0.0f, 0.0f,
+        0.0f, 0.0f, z, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f,
+    };
+    return result;
+}
+
+m4x4
+m4x4_orthographic(f32 left, f32 top, f32 right, f32 bottom, f32 near, f32 far) {
+    m4x4 result;
+    result.m00 = 2.0f / (right - left);
+    result.m11 = 2.0f / (top - bottom);
+    result.m22 = 2.0f / (far - near);
+    result.m33 = 1.0f;
+    
+    result.m03 = -(right + left) / (right - left);
+    result.m13 = -(top + bottom) / (top - bottom);
+    result.m23 = -(far + near) / (far - near);
+    
+    // TODO: Add the third dimension, we need an actual 3D model not a flat plane to properly test this
+    return result;
+}

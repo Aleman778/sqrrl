@@ -1,3 +1,6 @@
+
+#define PI_F32 3.1415926535897932385f
+
 union v2 {
     struct {
         f32 x, y;
@@ -130,6 +133,10 @@ union v4 {
         f32 b;
         f32 a;
     };
+    struct {
+        v3 xyz;
+        f32 w;
+    };
     [4]f32 data;
 };
 
@@ -145,6 +152,16 @@ vec4(f32 x, f32 y, f32 z, f32 w) {
     result.x = x;
     result.y = y;
     result.z = z;
+    result.w = w;
+    return result;
+}
+
+inline v4
+vec4(v3 xyz, f32 w) {
+    v4 result;
+    result.x = xyz.x;
+    result.y = xyz.y;
+    result.z = xyz.z;
     result.w = w;
     return result;
 }
@@ -172,14 +189,53 @@ m4x4_identity() {
 }
 
 m4x4
-m4x4_scale(f32 x, f32 y, f32 z) {
+m4x4_scale(v3 s) {
     m4x4 result = {
-        x, 0.0f, 0.0f, 0.0f,
-        0.0f, y, 0.0f, 0.0f,
-        0.0f, 0.0f, z, 0.0f,
+        s.x,  0.0f, 0.0f, 0.0f,
+        0.0f, s.y,  0.0f, 0.0f,
+        0.0f, 0.0f, s.z,  0.0f,
         0.0f, 0.0f, 0.0f, 1.0f,
     };
     return result;
+}
+
+m4x4
+m4x4_translate(v3 t) {
+    m4x4 result = {
+        1.0f, 0.0f, 0.0f, t.x,
+        0.0f, 1.0f, 0.0f, t.y,
+        0.0f, 0.0f, 1.0f, t.z,
+        0.0f, 0.0f, 0.0f, 1.0f,
+    };
+    return result;
+}
+
+m4x4
+m4x4_euler(f32 yaw, f32 pitch, f32 roll) {
+    // yaw
+    //m4x4 result = {
+    //cos(yaw), -sin(yaw), 0.0f, 0.0f,
+    //sin(yaw),  cos(yaw), 0.0f, 0.0f,
+    //0.0f,      0.0f,     1.0f, 0.0f,
+    //0.0f,      0.0f,     0.0f, 1.0f
+    //};
+    
+    // pitch
+    m4x4 b = {
+        cos(pitch),  0.0f, sin(pitch), 0.0f,
+        0.0f,      1.0f, 0.0f, 0.0f,
+        -sin(pitch), 0.0f, cos(pitch), 0.0f,
+        0.0f,      0.0f, 0.0f, 1.0f
+    };
+    
+    // roll
+    m4x4 c = {
+        1.0f, 0.0f,      0.0f,     0.0f,
+        0.0f, cos(roll), -sin(roll), 0.0f,
+        0.0f, sin(roll),  cos(roll), 0.0f,
+        0.0f, 0.0f,      0.0f,     1.0f
+    };
+    return c * b;
 }
 
 m4x4
@@ -194,6 +250,40 @@ m4x4_orthographic(f32 left, f32 top, f32 right, f32 bottom, f32 near, f32 far) {
     result.m13 = -(top + bottom) / (top - bottom);
     result.m23 = -(far + near) / (far - near);
     
-    // TODO: Add the third dimension, we need an actual 3D model not a flat plane to properly test this
+    return result;
+}
+
+v4
+operator*(m4x4 m, v4 v) {
+    v4 result;
+    result.x = m.m00*v.x + m.m01*v.y + m.m02*v.z + m.m03*v.w;
+    result.y = m.m10*v.x + m.m11*v.y + m.m12*v.z + m.m13*v.w;
+    result.z = m.m20*v.x + m.m21*v.y + m.m22*v.z + m.m23*v.w;
+    result.w = m.m30*v.x + m.m31*v.y + m.m32*v.z + m.m33*v.w;
+    return result;
+}
+
+inline m4x4
+operator*(m4x4 a, m4x4 b) {
+    m4x4 result;
+    result.m00 = a.m00*b.m00 + a.m01*b.m10 + a.m02*b.m20 + a.m03*b.m30;
+    result.m01 = a.m00*b.m01 + a.m01*b.m11 + a.m02*b.m21 + a.m03*b.m31;
+    result.m02 = a.m00*b.m02 + a.m01*b.m12 + a.m02*b.m22 + a.m03*b.m32;
+    result.m03 = a.m00*b.m03 + a.m01*b.m13 + a.m02*b.m23 + a.m03*b.m33;
+    
+    result.m10 = a.m10*b.m00 + a.m11*b.m10 + a.m12*b.m20 + a.m13*b.m30;
+    result.m11 = a.m10*b.m01 + a.m11*b.m11 + a.m12*b.m21 + a.m13*b.m31;
+    result.m12 = a.m10*b.m02 + a.m11*b.m12 + a.m12*b.m22 + a.m13*b.m32;
+    result.m13 = a.m10*b.m03 + a.m11*b.m13 + a.m12*b.m23 + a.m13*b.m33;
+    
+    result.m20 = a.m20*b.m00 + a.m21*b.m10 + a.m22*b.m20 + a.m23*b.m30;
+    result.m21 = a.m20*b.m01 + a.m21*b.m11 + a.m22*b.m21 + a.m23*b.m31;
+    result.m22 = a.m20*b.m02 + a.m21*b.m12 + a.m22*b.m22 + a.m23*b.m32;
+    result.m23 = a.m20*b.m03 + a.m21*b.m13 + a.m22*b.m23 + a.m23*b.m33;
+    
+    result.m30 = a.m30*b.m00 + a.m31*b.m10 + a.m32*b.m20 + a.m33*b.m30;
+    result.m31 = a.m30*b.m01 + a.m31*b.m11 + a.m32*b.m21 + a.m33*b.m31;
+    result.m32 = a.m30*b.m02 + a.m31*b.m12 + a.m32*b.m22 + a.m33*b.m32;
+    result.m33 = a.m30*b.m03 + a.m31*b.m13 + a.m32*b.m23 + a.m33*b.m33;
     return result;
 }

@@ -874,7 +874,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                                                         report_error);
                 }
                 
-                if (!actual_type) {
+                if (!(actual_type && actual_type->size > 0)) {
                     if (report_error) {
                         pln("%", f_ast(expr));
                         type_error(tcx, string_lit("argument is malformed"), actual_arg->span);
@@ -978,12 +978,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 __debugbreak();
             }
             
-            //if (t_func->ident == vars_save_cstring("vec3")) {
-            //pln("%", f_ast(expr));
-            //__debugbreak();
-            //}
-            
-            
             {
                 smm arg_index = 0;
                 smm formal_arg_count = array_count(t_func->arg_types);
@@ -1010,60 +1004,29 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 void* intrinsic = t_func->intrinsic;
                 
                 if (intrinsic == &type_sizeof || intrinsic == &type_alignof) {
+                    
                     intrin_type_def* intrinsic_proc = (intrin_type_def*) intrinsic;
                     
-                    s32 arg_index = 0;
-                    Ast* prev_compound = 0;
-                    Ast* curr_compound = actual_args;
-                    if (curr_compound) {
-                        if (curr_compound->Compound.next && curr_compound->Compound.next->kind == Ast_Compound) {
-                            
-                            //pln("%", f_ast(curr_compound->Compound.next));
-                            // TODO(Alexander): error handling
-                            assert(0 && "expected only one param");
-                            
-                        } else if (curr_compound->Compound.node) {
-                            Ast* actual_arg = curr_compound->Compound.node;
-                            
-                            if (actual_arg->Argument.assign->kind == Ast_Exported_Data) {
-                                Exported_Data* exported_type = &actual_arg->Argument.assign->Exported_Data;
-                                Type_Info* type_info = (Type_Info*) exported_type->data;
-                                expr->kind = Ast_Value;
-                                expr->Value = create_unsigned_int_value(intrinsic == &type_sizeof ? 
-                                                                        type_info->size : type_info->align);
-                                
-                            } else {
-                                expr->kind = Ast_Value;
-                                //pln("% (size = %)", f_ast(actual_arg), f_umm(intrinsic_proc(actual_arg->type)));
-                                expr->Value =
-                                    create_unsigned_int_value(intrinsic_proc(actual_arg->type));
-                            }
-                        }
-                    }
+                    assert(array_count(actual_arg_types) == 1);
                     
-#if 0
-                } else if (intrinsic == &type_info) {
-                    if (t_func->return_type) {
-                        Ast* type_arg = expr->Call_Expr.args;
-                        if (type_arg->kind == Ast_Compound) {
-                            type_arg = type_arg->Compound.node;
-                        }
+                    Type* type = actual_arg_types[0];
+                    
+                    if (type->kind == TypeKind_Type) {
+                        assert(actual_args && actual_args->Compound.node);
+                        Ast* first_arg = actual_args->Compound.node;
                         
-                        Type* actual_type = (Type*) type_arg->Value.data.data;
-                        Type_Info* info = type_info(&tcx->type_info_packer, type_arg->type);
-                        expr->kind = Ast_Value;
-                        expr->Value = {};
-                        expr->Value.type = Value_pointer;
-                        expr->Value.data.data = info;
-                    } else {
-                        if (report_error) {
-                            type_error(tcx, 
-                                       string_lit("cannot use `type_info` without type introspection"),
-                                       expr->span);
-                            result = 0;
+                        if (first_arg->Argument.assign->kind == Ast_Exported_Data) {
+                            Exported_Data* exported_type = &first_arg->Argument.assign->Exported_Data;
+                            Type_Info* type_info = (Type_Info*) exported_type->data;
+                            expr->kind = Ast_Value;
+                            expr->Value = create_unsigned_int_value(intrinsic == &type_sizeof ? 
+                                                                    type_info->size : type_info->align);
+                            
                         }
+                    } else {
+                        expr->kind = Ast_Value;
+                        expr->Value = create_unsigned_int_value(intrinsic_proc(type));
                     }
-#endif
                 } else if (intrinsic == &type_of) {
                     Ast* type_arg = expr->Call_Expr.args;
                     if (type_arg->kind == Ast_Compound) {

@@ -390,7 +390,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                         ic->dest = patch_rip_relative_address(&pe_executable, ic->dest);
                         ic->src0 = patch_rip_relative_address(&pe_executable, ic->src0);
                         ic->src1 = patch_rip_relative_address(&pe_executable, ic->src1);
-                    } else if (ic->opcode >= IC_JMP_INDIRECT) {
+                    } else if (ic->opcode == IC_JMP_INDIRECT) {
                         ic->src0 = patch_rip_relative_address(&pe_executable, ic->src0);
                     }
                     ic = ic->next;

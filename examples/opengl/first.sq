@@ -1,4 +1,5 @@
 #include <basic.sq>
+#include <input.sq>
 #include <window.sq>
 #include <stb_image.sq>
 
@@ -263,7 +264,6 @@ push_box(Render_Command* command, v3 size, v4 tint) {
         5, 4, 7, 4, 6, 7, // back
         4, 0, 6, 0, 2, 6, // left
         1, 5, 3, 5, 7, 3, // right
-        4, 5, 0, 4, 1, 0, // bottom
     };
     push_indices(command, ([]u16) indices, (u16) command.vertex_count);
     
@@ -284,8 +284,12 @@ push_box(Render_Command* command, v3 size, v4 tint) {
     
     // Top
     push_quad(command, 
-              vec3(min_p.x, min_p.y + size.y, min_p.z), 
+              vec3(min_p.x, max_p.y, min_p.z), 
               vec3(size.x, 0.0f, 0.0f), vec3(0.0f, 0.0f, size.z), tint);
+    
+    // Bottom
+    push_quad(command, vec3(max_p.x, min_p.y, min_p.z), 
+              vec3(-size.x, 0.0f, 0.0f), vec3(0.0f, 0.0f, size.z), tint);
     
     
     //push_quad(command, min_p, vec3(size.x, 0.0f, 0.0f), vec3(0.0f, size.y, 0.0f), tint);
@@ -378,14 +382,14 @@ main() {
     
     v2 screen_size;
     
-    local_persist f32 time;
+    local_persist f32 pitch;
+    local_persist f32 roll;
+    roll = -PI_F32/16.0f;
     
     while (!window_should_close()) {
-        RECT screen;
-        if (GetClientRect(hwnd, &screen)) {
-            screen_size.x = screen.right;
-            screen_size.y = screen.bottom;
-        }
+        screen_size.width = get_window_width();
+        screen_size.height = get_window_height();
+        
         m4x4 projection = m4x4_orthographic(0.0f, screen_size.height, screen_size.width, 0.0f,
                                             -99999.0f, 99999.0f);
         glViewport(0, 0, (int) screen_size.width, (int) screen_size.height);
@@ -394,17 +398,30 @@ main() {
         
         Render_Command* command = push_command(push_buffer, Render_Op.Draw_Triangles);
         command.transform = 
-            m4x4_translate(vec3(500.0f, 300.0f, 0.0f)) * 
-            m4x4_euler(0.0f, time, -PI_F32/16.0f) *
+            m4x4_translate(vec3(screen_size.x*0.5f, screen_size.y*0.5f, 0.0f)) * 
+            m4x4_euler(0.0f, pitch, roll) *
             m4x4_scale(vec3(3.0f, 3.0f, 3.0f));
         
-        time += 0.01f;
+        if (is_key_down(KEY_D)) {
+            pitch += 0.01f;
+        }
+        if (is_key_down(KEY_A)) {
+            pitch -= 0.01f;
+        }
+        
+        if (is_key_down(KEY_W)) {
+            roll -= 0.01f;
+        }
+        if (is_key_down(KEY_S)) {
+            roll += 0.01f;
+        }
+        
         //push_rectangle(command, vec2(0.0f, 0.0f), vec2(128.0f, 128.0f), WHITE);
         //push_quad(command, vec3(0.0f, 0.0f, 0.0f), vec3(128.0f, 0.0f, 0.0f), vec3(0.0f, 128.0f, 0.0f), WHITE);
         
         push_box(command, vec3(128.0f, 128.0f, 128.0f), WHITE);
         
-        glClearColor(0.0f, 0.5f, 1.0f, 1.0f);
+        glClearColor(0.05f, 0.1f, 0.4f, 1.0f);
         
         opengl_end_drawing(opengl, command, projection);
         

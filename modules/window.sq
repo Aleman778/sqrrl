@@ -1,2 +1,9 @@
 
-#include "window_windows.sq"
+#include "win32_window.sq"
+
+
+void init_window(int width, int height, string title);
+
+bool window_should_close();
+
+void window_swap_buffers();

@@ -1,6 +1,4 @@
 
-#define PI_F32 3.1415926535897932385f
-
 union v2 {
     struct {
         f32 x, y;

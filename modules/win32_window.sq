@@ -1,0 +1,247 @@
+
+struct Win32_State {
+    HWND window;
+    HDC window_dc;
+    int window_width;
+    int window_height;
+    
+    bool is_running;
+}
+
+global Win32_State g_win32;
+
+
+internal LRESULT CALLBACK
+win32_window_callback(HWND window, UINT message, WPARAM w_param, LPARAM l_param) {
+    LRESULT result = 0;
+    
+    if (message == WM_CLOSE) {
+        g_win32.is_running = false;
+    } else if (message == WM_DESTROY) {
+        g_win32.is_running = false;
+    } else {
+        result = DefWindowProcA(window, message, w_param, l_param);
+    }
+    
+    return result;
+}
+
+
+void
+win32_show_error(string message, bool error=true) {
+    int error_code = GetLastError();
+    if (error_code) {
+        message = string_print("% (Error code: %)", message, error_code);
+    } else {
+        message = string_print("%", message);
+    }
+    if (error) {
+        MessageBoxA(0, string_to_cstring(message), "Error", MB_OK);
+        ExitProcess(error_code);
+    } else {
+        MessageBoxA(0, string_to_cstring(message), "Warning", MB_OK);
+    }
+}
+
+
+void
+init_window(int width, int height, string title) {
+    assert(!g_win32.window, "window is already initialized");
+    
+    HINSTANCE h_instance = GetModuleHandleA(0);
+    
+    WNDCLASSA wndclass = {};
+    wndclass.style = CS_HREDRAW | CS_VREDRAW;
+    wndclass.lpfnWndProc = &win32_window_callback;
+    wndclass.hInstance = h_instance;
+    wndclass.lpszClassName = "windclass"; // TODO: does this need to be unique for multiple windows?
+    
+    if (RegisterClassA(&wndclass)) {
+        g_win32.window = CreateWindowExA(0,
+                                         wndclass.lpszClassName,
+                                         string_to_cstring(title),
+                                         WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                                         CW_USEDEFAULT,
+                                         CW_USEDEFAULT,
+                                         width, height,
+                                         0, 0,
+                                         wndclass.hInstance,
+                                         0);
+        
+        if (g_win32.window) {
+            g_win32.window_dc = GetDC(g_win32.window);
+            
+            if (win32_create_opengl_context(g_win32.window_dc)) {
+                g_win32.is_running = true;
+            }
+            
+            win32_load_xinput();
+            
+            g_input = (Input*) calloc(1, sizeof(Input));
+            
+        } else {
+            win32_show_error("Failed to create window");
+        }
+    } else {
+        win32_show_error("Failed to create window");
+    }
+}
+
+int
+get_window_width() {
+    return g_win32.window_width;
+    
+}
+
+int
+get_window_height() {
+    return g_win32.window_height;
+}
+
+bool
+window_should_close() {
+    win32_process_pending_messages(&g_win32, g_input);
+    
+    RECT client_rect = {};
+    if (GetClientRect(g_win32.window, &client_rect)) {
+        g_win32.window_width = (int) (client_rect.right - client_rect.left);
+        g_win32.window_height = (int) (client_rect.bottom - client_rect.top);
+    }
+    
+    return !g_win32.is_running;
+}
+
+void
+window_swap_buffers() {
+    SwapBuffers(g_win32.window_dc);
+}
+
+
+//
+// Input
+//
+
+#define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
+typedef X_INPUT_GET_STATE(x_input_get_state);
+X_INPUT_GET_STATE(XInputGetStateStub) {
+    return ERROR_DEVICE_NOT_CONNECTED;
+}
+
+global x_input_get_state* XInputGetState_;
+#define XInputGetState XInputGetState_
+
+// NOTE(alexander): XInputSetState
+#define X_INPUT_SET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration)
+typedef X_INPUT_SET_STATE(x_input_set_state);
+X_INPUT_SET_STATE(XInputSetStateStub) {
+    return ERROR_DEVICE_NOT_CONNECTED;
+}
+
+global x_input_set_state* XInputSetState_;
+#define XInputSetState XInputSetState_
+
+void
+win32_load_xinput() {
+    // TODO(Alexander): for some reason GetProcAddress overwrites the our stack!
+    u64 x = 10;
+    u64 x1 = 10;
+    u64 x2 = 10;
+    
+    HMODULE xinput_library = LoadLibraryA("xinput1_4.dll");
+    if (!xinput_library) {
+        xinput_library = LoadLibraryA("xinput9_1_0.dll");
+    }
+    if (!xinput_library) {
+        xinput_library = LoadLibraryA("xinput1_3.dll");
+    }
+    
+    if (xinput_library) {
+        XInputGetState = (x_input_get_state*) GetProcAddress(xinput_library, "XInputGetState");
+        if (!XInputGetState) XInputGetState = &XInputGetStateStub;
+        XInputSetState = (x_input_set_state*) GetProcAddress(xinput_library, "XInputSetState");
+        if (!XInputSetState) XInputSetState = &XInputSetStateStub;
+    } else {
+        win32_show_error("Could not find xinput DLL! No controller support.", false);
+    }
+}
+
+
+internal void
+win32_process_keyboard_message(Input_Button_State* new_state, bool is_down) {
+    if (new_state.ended_down != is_down) {
+        new_state.num_half_transitions++;
+        new_state.ended_down = is_down;
+    }
+}
+
+internal void
+win32_process_xinput_digital_button(DWORD xinput_button_state,
+                                    WORD xinput_button_mask,
+                                    Input_Button_State* new_state,
+                                    Input_Button_State* old_state) {
+    new_state.ended_down = ((xinput_button_state & xinput_button_mask) == xinput_button_mask);
+    new_state.num_half_transitions = (old_state.ended_down != new_state.ended_down) ? 1 : 0;
+}
+
+internal v2
+win32_process_xinput_stick(SHORT stick_x, SHORT stick_y, SHORT deadzone) {
+    v2 result;
+    f32 sqr_length = (f32) ((s64) stick_x*stick_x + (s64) stick_y*stick_y);
+    f32 sqr_deadzone = (f32) ((s64) deadzone*deadzone);
+    if (sqr_length > sqr_deadzone) {
+        // TODO(alexander): there might be room for improvements here
+        f32 length = sqrt(sqr_length);
+        // TODO(alexander): if stick is < 0 max is actually 32767.0f
+        if (length > 32768.0f) {
+            length = 32768.0f;
+        }
+        f32 angle = PI_F32/2.0f;
+        if (stick_x != 0) {
+            f32 ratio = (f32) stick_y / (f32) stick_x;
+            angle = atan(ratio);
+        }
+        result.x = sign(stick_x) * cos(angle);
+        result.y = sign(stick_y) * sin(angle);
+    } else {
+        result.x = 0.0f;
+        result.y = 0.0f;
+    }
+    
+    //pln("stick_x = %, horizontal = %, stick_y = %, vertical = %\n",
+    //(int) stick_x, result.x, (int) stick_y, result.y);
+    return result;
+}
+
+internal void
+win32_process_pending_messages(Win32_State* win32_state, Input* new_input) {
+    MSG message;
+    while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
+        switch (message.message) {
+            case WM_QUIT: {
+                g_win32.is_running = false;
+            }
+            
+            case WM_SYSKEYDOWN:
+            case WM_SYSKEYUP:
+            case WM_KEYDOWN:
+            case WM_KEYUP: {
+                // TODO(alexander): improve the keyboard handling system
+                u32 vkcode = (u32) message.wParam;
+                bool was_down = (message.lParam & (1 << 30)) != 0;
+                bool is_down = (message.lParam & (1 << 31)) == 0;
+                
+                if (was_down != is_down) {
+                    if (vkcode >= 0 && vkcode < KEY_COUNT) {
+                        // TODO: we might need to convert windows vkcode to our own keycodes
+                        win32_process_keyboard_message(&g_input.keyboard_state[vkcode], is_down);
+                    }
+                }
+            }
+            
+            case: {
+                TranslateMessage(&message);
+                DispatchMessageA(&message);
+            }
+        }
+    }
+}

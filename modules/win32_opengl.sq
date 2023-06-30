@@ -24,7 +24,7 @@ typedef HGLRC wgl_create_context_attribs_arb(HDC hDC,
 wgl_create_context_attribs_arb* wglCreateContextAttribsARB;
 
 inline bool
-create_opengl_context(HDC hdc) {
+win32_create_opengl_context(HDC hdc) {
     // Let windows suggest a pixel format to use
     PIXELFORMATDESCRIPTOR desired_pfd = {};
     desired_pfd.nSize = sizeof(PIXELFORMATDESCRIPTOR);
@@ -68,7 +68,7 @@ create_opengl_context(HDC hdc) {
                 wglDeleteContext(opengl_rc);
                 opengl_rc = modern_opengl_rc;
             } else {
-                show_error(string_print("OpenGL version %.% is not supported!", major, minor));
+                win32_show_error(string_print("OpenGL version %.% is not supported!", major, minor));
                 return false;
             }
             
@@ -81,10 +81,10 @@ create_opengl_context(HDC hdc) {
             
             return true;
         } else {
-            show_error("Failed to intialize Modern OpenGL!")
+            win32_show_error("Failed to intialize Modern OpenGL!")
         }
     } else {
-        show_error("Failed to intialize OpenGL!");
+        win32_show_error("Failed to intialize OpenGL!");
     }
     
     return false;

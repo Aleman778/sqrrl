@@ -100,7 +100,28 @@ get_window_height() {
 
 bool
 window_should_close() {
+    g_input.mouse_wheel_delta = 0.0f;
     win32_process_pending_messages(&g_win32, g_input);
+    
+    POINT mouse_pos;
+    GetCursorPos(&mouse_pos);
+    ScreenToClient(g_win32.window, &mouse_pos);
+    g_input.mouse_dx = mouse_pos.x - g_input.mouse_x;
+    g_input.mouse_dy = mouse_pos.y - g_input.mouse_y;
+    g_input.mouse_x = mouse_pos.x;
+    g_input.mouse_y = mouse_pos.y;
+    
+    // TODO(Alexander): there should be a better way to handle mouse button states
+    win32_process_keyboard_message(&g_input.mouse_button_state[MOUSE_LEFT],
+                                   (bool) (GetKeyState(VK_LBUTTON) & (1 << 15)));
+    win32_process_keyboard_message(&g_input.mouse_button_state[MOUSE_RIGHT],
+                                   (bool) (GetKeyState(VK_RBUTTON) & (1 << 15)));
+    win32_process_keyboard_message(&g_input.mouse_button_state[MOUSE_MIDDLE],
+                                   (bool) (GetKeyState(VK_MBUTTON) & (1 << 15)));
+    win32_process_keyboard_message(&g_input.mouse_button_state[MOUSE_X1],
+                                   (bool) (GetKeyState(VK_XBUTTON1) & (1 << 15)));
+    win32_process_keyboard_message(&g_input.mouse_button_state[MOUSE_X2],
+                                   (bool) (GetKeyState(VK_XBUTTON2) & (1 << 15)));
     
     RECT client_rect = {};
     if (GetClientRect(g_win32.window, &client_rect)) {
@@ -236,6 +257,16 @@ win32_process_pending_messages(Win32_State* win32_state, Input* new_input) {
                         win32_process_keyboard_message(&g_input.keyboard_state[vkcode], is_down);
                     }
                 }
+            }
+            
+            case WM_MOUSEWHEEL: {
+                // NOTE(Alexander): this only supports tick based scrolling
+                // deltas are e.g. -2.0f, -1.0f, 1.0f
+                // TODO(Alexander): we might want to have more values in between later
+                s16 wheel_delta = (s16) ((u32) (message.wParam >> 16) & 0xFFFF);
+                f32 normalized_wheel_delta = (f32) wheel_delta / (f32) WHEEL_DELTA;
+                
+                g_input.mouse_wheel_delta = normalized_wheel_delta;
             }
             
             case: {

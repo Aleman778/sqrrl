@@ -384,6 +384,9 @@ main() {
     
     local_persist f32 pitch;
     local_persist f32 roll;
+    local_persist f32 scale;
+    
+    scale = 1.0f;
     roll = -PI_F32/16.0f;
     
     while (!window_should_close()) {
@@ -400,20 +403,13 @@ main() {
         command.transform = 
             m4x4_translate(vec3(screen_size.x*0.5f, screen_size.y*0.5f, 0.0f)) * 
             m4x4_euler(0.0f, pitch, roll) *
-            m4x4_scale(vec3(3.0f, 3.0f, 3.0f));
+            m4x4_scale(vec3(scale, scale, scale));
         
-        if (is_key_down(KEY_D)) {
-            pitch += 0.01f;
-        }
-        if (is_key_down(KEY_A)) {
-            pitch -= 0.01f;
-        }
+        scale = max(scale + 0.1f*get_mouse_wheel_delta(), 0.1f);
         
-        if (is_key_down(KEY_W)) {
-            roll -= 0.01f;
-        }
-        if (is_key_down(KEY_S)) {
-            roll += 0.01f;
+        if (is_mouse_down(MOUSE_RIGHT)) {
+            pitch -= 0.003f * get_mouse_dx();
+            roll -= 0.003f * get_mouse_dy();
         }
         
         //push_rectangle(command, vec2(0.0f, 0.0f), vec2(128.0f, 128.0f), WHITE);

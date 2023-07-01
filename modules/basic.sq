@@ -29,10 +29,10 @@ __assert(cstring expression, string file, smm line) {
 //#define min(a, b) ((a) < (b) ? (a) : (b))
 //#define max(a, b) ((a) > (b) ? (a) : (b))
 
-// TODO(Alexander): we only have windows support atm. later on we import the correct header
 #include <string_builder.sq>
-#include <basic_windows.sq>
-#include <ucrtwindows.h>
+
+// TODO(Alexander): we only have windows support atm. later on we import the correct header
+#include <win32_basic.sq>
 
 #define PI_F32 3.1415926535897932385f
 

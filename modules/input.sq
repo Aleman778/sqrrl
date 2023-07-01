@@ -38,6 +38,8 @@ struct Input_Gamepad {
 #define KEY_X 0x58
 #define KEY_Y 0x59
 #define KEY_Z 0x60
+#define KEY_ESCAPE 0x1B
+
 #define KEY_COUNT 0xFF
 
 // Mouse buttons
@@ -64,13 +66,13 @@ global Input* g_input;
 #define check_input_lib assert(g_input, "Input library has not been initialzed yet.")
 
 internal inline bool
-was_button_pressed(Input_Button_State* state) {
+is_button_pressed(Input_Button_State* state) {
     return (state.num_half_transitions > 1 ||
             (state.num_half_transitions == 1 && state.ended_down));
 }
 
 internal inline bool
-was_button_released(Input_Button_State* state) {
+is_button_released(Input_Button_State* state) {
     return (state.num_half_transitions > 1 ||
             (state.num_half_transitions == 1 && !state.ended_down));
 }
@@ -81,17 +83,17 @@ is_button_down(Input_Button_State* state) {
 }
 
 bool
-was_key_pressed(s32 key) {
+is_key_pressed(s32 key) {
     check_input_lib;
     Input_Button_State* state = &g_input.keyboard_state[key];
-    return was_button_pressed(state);
+    return is_button_pressed(state);
 }
 
 bool
-was_key_released(s32 key) {
+is_key_released(s32 key) {
     check_input_lib;
     Input_Button_State* state = &g_input.keyboard_state[key];
-    return was_button_released(state);
+    return is_button_released(state);
     
 }
 
@@ -103,17 +105,17 @@ is_key_down(s32 key) {
 }
 
 bool
-was_mouse_pressed(s32 button) {
+is_mouse_pressed(s32 button) {
     check_input_lib;
     Input_Button_State* state = &g_input.mouse_button_state[button];
-    return was_button_pressed(state);
+    return is_button_pressed(state);
 }
 
 bool
-was_mouse_released(s32 button) {
+is_mouse_released(s32 button) {
     check_input_lib;
     Input_Button_State* state = &g_input.mouse_button_state[button];
-    return was_button_released(state);
+    return is_button_released(state);
 }
 
 bool

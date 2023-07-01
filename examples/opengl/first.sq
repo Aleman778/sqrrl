@@ -96,6 +96,8 @@ struct Render_Queue {
 struct Render_Command {
     Render_Op op;
     
+    Texture texture;
+    
     m4x4 transform; // TODO: this should not be placed here
     
     union {
@@ -164,8 +166,6 @@ struct OpenGL {
         [2]GLuint buffers;
     };
     
-    GLuint texture;
-    
     GLuint program;
     GLuint uniform_texture;
     GLuint uniform_mvp;
@@ -179,9 +179,6 @@ init_opengl(OpenGL* opengl) {
     
     // Setup buffers
     glGenBuffers(opengl.buffers.count, cast(GLuint*) &opengl.buffers);
-    
-    // Setup textures
-    glGenTextures(1, &opengl.texture);
     
     // Enable depth testing
     glEnable(GL_DEPTH_TEST);
@@ -221,8 +218,10 @@ opengl_end_drawing(OpenGL* opengl, Render_Command* command, m4x4 mvp_transform) 
     glEnableVertexAttribArray(1);
     glEnableVertexAttribArray(2);
     
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, opengl.texture);
+    if (command.texture.is_valid) {
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, command.texture.handle);
+    }
     
     glUseProgram(opengl.program);
     glUniform1i(opengl.uniform_texture, 0);
@@ -230,6 +229,7 @@ opengl_end_drawing(OpenGL* opengl, Render_Command* command, m4x4 mvp_transform) 
     glUniformMatrix4fv(opengl.uniform_mvp, 1, true, &mvp_transform.data[0]);
     
     glDrawElements(GL_TRIANGLES, command.index_count, GL_UNSIGNED_SHORT, 0);
+    
 }
 
 inline void
@@ -319,6 +319,40 @@ load_image(string filename) {
     return result;
 }
 
+struct Texture {
+    GLuint handle;
+    Loaded_Image raw;
+    bool is_valid;
+}
+
+Texture
+load_texture(string filename,
+             int min_filter=GL_LINEAR, 
+             int mag_filter=GL_LINEAR, 
+             int wrap_s=GL_REPEAT, 
+             int wrap_t=GL_REPEAT) {
+    
+    Loaded_Image image = load_image(filename);
+    
+    Texture result;
+    result.raw = image;
+    glGenTextures(1, &result.handle);
+    
+    glBindTexture(GL_TEXTURE_2D, result.handle);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap_s);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap_t);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, min_filter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, mag_filter);
+    
+    GLenum internal_format = (image.num_components == 3) ? GL_RGB : GL_RGBA;
+    glTexImage2D(GL_TEXTURE_2D, 0, internal_format, image.width, image.height, 0,
+                 GL_RGB, GL_UNSIGNED_BYTE, image.data); // TODO: do we want ALPHA component in the format
+    
+    result.is_valid = true;
+    
+    return result;
+}
+
 int
 main() {
     
@@ -333,21 +367,8 @@ main() {
     OpenGL* opengl = (OpenGL*) calloc(1, sizeof(OpenGL));
     init_opengl(opengl);
     
-    Loaded_Image image = load_image("../examples/opengl/crate.jpg");
-    // TODO: add support for freeing the image!
-    
-    GLenum internal_format = (image.num_components == 3) ? GL_RGB : GL_RGBA;
-    glBindTexture(GL_TEXTURE_2D, opengl.texture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    //
-    glTexImage2D(GL_TEXTURE_2D, 0, internal_format, image.width, image.height, 0,
-                 GL_RGB, GL_UNSIGNED_BYTE, image.data); // TODO: do we want ALPHA component in the format
-    
+    Texture texture_crate = load_texture("../examples/opengl/crate.jpg");
+    Texture texture_grass = load_texture("../examples/opengl/grass.jpg");
     
     // Setup shaders
     opengl.program = glCreateProgram();
@@ -381,35 +402,54 @@ main() {
     local_persist f32 pan_x;
     local_persist f32 pan_y;
     local_persist f32 scale;
+    local_persist v3 player_p;
+    local_persist v3 pos;
     
-    scale = 1.0f;
+    scale = 4.0f;
     pan_x = 0;
-    pan_y = -PI_F32/16.0f;
+    pan_y = -45.0f;
+    {
+        f32 look_at_angle = degrees_to_radians(pan_x);
+        f32 look_up_angle = degrees_to_radians(-pan_y);
+        pos.x = player_p.x + scale*(cos(look_at_angle) * cos(look_up_angle));
+        pos.y = player_p.y + scale*sin(look_up_angle);
+        pos.z = player_p.z + scale*(sin(look_at_angle) * cos(look_up_angle));
+    }
+    
+    local_persist bool mouse_lock;
     
     while (!window_should_close()) {
         screen_size.width = get_window_width();
         screen_size.height = get_window_height();
         aspect_ratio = screen_size.width / screen_size.height;
         
-        if (is_mouse_down(MOUSE_RIGHT)) {
-            pan_x -= get_mouse_dx();
-            pan_y -= get_mouse_dy();
-        }
-        scale = max(scale - 1.0f*get_mouse_wheel_delta(), 0.2f);
-        
-        f32 look_at_angle = degrees_to_radians(-pan_x);
-        f32 look_up_angle = degrees_to_radians(pan_y);
+        //if (is_mouse_down(MOUSE_RIGHT)) {
+        f32 look_at_angle = degrees_to_radians(pan_x);
+        f32 look_up_angle = degrees_to_radians(-pan_y);
         //pln("% (%) => x=%, y=%", look_at_angle, pan_x, cos(look_at_angle), sin(look_at_angle));
         
-        //pan_y = min(88.0f, max(pan_y, -88.0f));
-        
-        v3 pos;
-        pos.x = scale*(sin(look_at_angle) * cos(look_up_angle));
-        pos.y = scale*sin(look_up_angle);
-        pos.z = scale*(cos(look_at_angle) * cos(look_up_angle));
+        if (is_mouse_pressed(MOUSE_LEFT)) {
+            mouse_lock = true;
+        }
+        if (is_key_pressed(KEY_ESCAPE)) {
+            mouse_lock = false;
+        }
+        if (mouse_lock) {
+            set_mouse_position(screen_size*0.5);
+            
+            pan_x -= get_mouse_dx();
+            pan_y -= get_mouse_dy();
+            pan_y = min(89.0f, max(pan_y, -89.0f));
+            //}
+            scale = max(scale - 1.0f*get_mouse_wheel_delta(), 0.2f);
+            
+            pos.x = player_p.x + scale*(cos(look_at_angle) * cos(look_up_angle));
+            pos.y = player_p.y + scale*sin(look_up_angle);
+            pos.z = player_p.z + scale*(sin(look_at_angle) * cos(look_up_angle));
+        }
         //pos.y = -scale*sin(degrees_to_radians(pan_y));
         //pos.z = scale*cos(look_at_angle);//sin(look_at_angle);
-        m4x4 view = m4x4_look_at(pos, vec3_zero, vec3(0.0f, 1.0f, 0.0f));
+        m4x4 view = m4x4_look_at(pos, player_p, vec3(0.0f, 1.0f, 0.0f));
         //view = m4x4_translate(vec3(pos.x, pos.y, pos.z))*view;
         //m4x4 view = m4x4_translate(vec3(0.0f, 0.0f, 3.0f));
         view = m4x4_inverse(view);
@@ -424,18 +464,34 @@ main() {
         opengl_begin_drawing(opengl, push_buffer);
         
         Render_Command* command = push_command(push_buffer, Render_Op.Draw_Triangles);
-        command.transform = m4x4_identity();//translate(vec3(0.0f, 0.0f, 0.0f));
+        command.texture = texture_crate;
+        
+        if (is_key_down(KEY_W)) {
+            player_p.x -= 0.05f*cos(look_at_angle);
+            player_p.z -= 0.05f*sin(look_at_angle);
+        }
+        
+        command.transform = m4x4_translate(player_p);
         push_box(command, vec3(1.0f, 1.0f, 1.0f), WHITE);
         
         command.transform = m4x4_translate(vec3(1.0f, 0.0f, 1.0f));
         push_box(command, vec3(1.0f, 1.0f, 1.0f), RED);
         
-        command.transform = m4x4_translate(vec3(2.0f, 0.0f, 2.0f));
+        command.transform = m4x4_translate(vec3(-1.0f, 0.0f, -1.0f));
         push_box(command, vec3(1.0f, 1.0f, 1.0f), GREEN);
+        
+        Render_Command* command2 = push_command(push_buffer, Render_Op.Draw_Triangles);
+        command2.texture = texture_grass;
+        command2.transform = m4x4_identity();
+        push_quad(command2, 
+                  vec3(-3.0f, -0.51f, -3.0f),
+                  vec3(6.0f, 0.0f, 0.0f),
+                  vec3(0.0f, 0.0f, 6.0f), WHITE);
         
         glClearColor(0.05f, 0.1f, 0.4f, 1.0f);
         
         opengl_end_drawing(opengl, command, projection * view);
+        opengl_end_drawing(opengl, command2, projection * view);
         
         window_swap_buffers();
     }

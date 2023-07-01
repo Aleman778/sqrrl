@@ -98,8 +98,29 @@ get_window_height() {
     return g_win32.window_height;
 }
 
+void
+set_mouse_position(v2 position) {
+    g_input.mouse_x = (int) position.x;
+    g_input.mouse_y = (int) position.y;
+    
+    POINT screen_p;
+    screen_p.x = (int) position.x;
+    screen_p.y = (int) position.y;
+    ClientToScreen(g_win32.window, &screen_p);
+    SetCursorPos((int) screen_p.x, (int) screen_p.y);
+}
+
 bool
 window_should_close() {
+    // reset half transitions
+    for (int i = 0; i < g_input.keyboard_state.count; i++) {
+        g_input.keyboard_state[i].num_half_transitions = 0;
+    }
+    for (int i = 0; i < g_input.mouse_button_state.count; i++) {
+        g_input.mouse_button_state[i].num_half_transitions = 0;
+    }
+    
+    
     g_input.mouse_wheel_delta = 0.0f;
     win32_process_pending_messages(&g_win32, g_input);
     
@@ -111,17 +132,20 @@ window_should_close() {
     g_input.mouse_x = mouse_pos.x;
     g_input.mouse_y = mouse_pos.y;
     
-    // TODO(Alexander): there should be a better way to handle mouse button states
-    win32_process_keyboard_message(&g_input.mouse_button_state[MOUSE_LEFT],
-                                   (bool) (GetKeyState(VK_LBUTTON) & (1 << 15)));
-    win32_process_keyboard_message(&g_input.mouse_button_state[MOUSE_RIGHT],
-                                   (bool) (GetKeyState(VK_RBUTTON) & (1 << 15)));
-    win32_process_keyboard_message(&g_input.mouse_button_state[MOUSE_MIDDLE],
-                                   (bool) (GetKeyState(VK_MBUTTON) & (1 << 15)));
-    win32_process_keyboard_message(&g_input.mouse_button_state[MOUSE_X1],
-                                   (bool) (GetKeyState(VK_XBUTTON1) & (1 << 15)));
-    win32_process_keyboard_message(&g_input.mouse_button_state[MOUSE_X2],
-                                   (bool) (GetKeyState(VK_XBUTTON2) & (1 << 15)));
+    
+    if (GetActiveWindow()) {
+        // TODO(Alexander): there should be a better way to handle mouse button states
+        win32_process_keyboard_message(&g_input.mouse_button_state[MOUSE_LEFT],
+                                       (bool) (GetKeyState(VK_LBUTTON) & (1 << 15)));
+        win32_process_keyboard_message(&g_input.mouse_button_state[MOUSE_RIGHT],
+                                       (bool) (GetKeyState(VK_RBUTTON) & (1 << 15)));
+        win32_process_keyboard_message(&g_input.mouse_button_state[MOUSE_MIDDLE],
+                                       (bool) (GetKeyState(VK_MBUTTON) & (1 << 15)));
+        win32_process_keyboard_message(&g_input.mouse_button_state[MOUSE_X1],
+                                       (bool) (GetKeyState(VK_XBUTTON1) & (1 << 15)));
+        win32_process_keyboard_message(&g_input.mouse_button_state[MOUSE_X2],
+                                       (bool) (GetKeyState(VK_XBUTTON2) & (1 << 15)));
+    }
     
     RECT client_rect = {};
     if (GetClientRect(g_win32.window, &client_rect)) {

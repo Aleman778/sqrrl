@@ -32,6 +32,47 @@ vec2(f32 x, f32 y) {
     return result;
 }
 
+inline v2
+operator+(v2 a, v2 b) {
+    v2 result;
+    result.x = a.x + b.x;
+    result.y = a.y + b.y;
+    return result;
+}
+
+inline v2
+operator-(v2 a, v2 b) {
+    v2 result;
+    result.x = a.x - b.x;
+    result.y = a.y - b.y;
+    return result;
+}
+
+inline v2
+operator*(v2 a, v2 b) {
+    v2 result;
+    result.x = a.x * b.x;
+    result.y = a.y * b.y;
+    return result;
+}
+
+inline v2
+operator*(v2 a, f32 v) {
+    v2 result;
+    result.x = a.x * v;
+    result.y = a.y * v;
+    return result;
+}
+
+inline v2
+operator/(v2 a, v2 b) {
+    v2 result;
+    result.x = a.x / b.x;
+    result.y = a.y / b.y;
+    return result;
+}
+
+
 union v3 {
     struct {
         f32 x;
@@ -78,7 +119,6 @@ vec3(v2 xy, f32 z) {
     result.z = z;
     return result;
 }
-
 
 inline v3
 operator+(v3 a, v3 b) {

@@ -1154,9 +1154,15 @@ extern {
                                    HINSTANCE hInstance,
                                    LPVOID lpParam);
     
+    HWND GetActiveWindow();
+    
     BOOL WINAPI GetCursorPos(LPPOINT lpPoint);
     
+    BOOL SetCursorPos(int X, int Y);
+    
     BOOL WINAPI ScreenToClient(HWND hWnd, LPPOINT lpPoint);
+    
+    BOOL ClientToScreen(HWND    hWnd, LPPOINT lpPoint);
     
     BOOL __stdcall GetWindowRect(HWND hWnd, LPRECT lpRect);
     

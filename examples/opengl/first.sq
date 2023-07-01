@@ -96,15 +96,16 @@ struct Render_Queue {
 struct Render_Command {
     Render_Op op;
     
+    m4x4 transform; // TODO: this should not be placed here
+    
     union {
         Vertex* vertices;
         f32* vertex_data;
     };
-    
     u16* indices;
     
-    m4x4 transform; // TODO: this should not be placed here
-    
+    u32 vertex_data_size;
+    u32 index_data_size;
     u32 vertex_count;
     u32 index_count;
 }
@@ -145,14 +146,15 @@ Render_Command*
 push_command(Push_Buffer* buf, Render_Op op) {
     Render_Command* command = push_struct(buf, Render_Command);
     command.op = op;
-    command.vertex_data = (f32*) push_size(buf, 1024, alignof(f32));
-    command.indices = (u16*) push_size(buf, 512, alignof(u16));
+    command.vertex_data_size = 2048;
+    command.index_data_size = 512;
+    command.vertex_data = (f32*) push_size(buf, command.vertex_data_size, alignof(f32));
+    command.indices = (u16*) push_size(buf, command.index_data_size, alignof(u16));
     return command;
 }
 
 struct OpenGL {
     GLuint vertex_array;
-    
     
     union {
         struct {
@@ -166,7 +168,7 @@ struct OpenGL {
     
     GLuint program;
     GLuint uniform_texture;
-    GLuint uniform_projection;
+    GLuint uniform_mvp;
 }
 
 void
@@ -186,9 +188,9 @@ init_opengl(OpenGL* opengl) {
     glDepthFunc(GL_LESS);
     
     // Enable face culling
-    glEnable(GL_CULL_FACE);
-    glCullFace(GL_BACK);
-    glFrontFace(GL_CCW);
+    //glEnable(GL_CULL_FACE);
+    //glCullFace(GL_BACK);
+    //glFrontFace(GL_CCW);
 }
 
 void
@@ -199,7 +201,7 @@ opengl_begin_drawing(OpenGL* opengl, Push_Buffer* buf) {
 }
 
 void
-opengl_end_drawing(OpenGL* opengl, Render_Command* command, m4x4 projection) {
+opengl_end_drawing(OpenGL* opengl, Render_Command* command, m4x4 mvp_transform) {
     
     glBindVertexArray(opengl.vertex_array);
     glBindBuffer(GL_ARRAY_BUFFER, opengl.vertex_buffer);
@@ -225,14 +227,14 @@ opengl_end_drawing(OpenGL* opengl, Render_Command* command, m4x4 projection) {
     glUseProgram(opengl.program);
     glUniform1i(opengl.uniform_texture, 0);
     
-    
-    glUniformMatrix4fv(opengl.uniform_projection, 1, true, &projection.data[0]);
+    glUniformMatrix4fv(opengl.uniform_mvp, 1, true, &mvp_transform.data[0]);
     
     glDrawElements(GL_TRIANGLES, command.index_count, GL_UNSIGNED_SHORT, 0);
 }
 
 inline void
 push_vertex(Render_Command* command, v3 pos, v2 texcoord, v4 tint) {
+    assert((command.vertex_count + 1) * sizeof(Vertex) < command.vertex_data_size);
     command.vertices[command.vertex_count].pos = (command.transform * vec4(pos, 1.0f)).xyz;
     command.vertices[command.vertex_count].texcoord = texcoord;
     command.vertices[command.vertex_count].tint = tint;
@@ -241,6 +243,7 @@ push_vertex(Render_Command* command, v3 pos, v2 texcoord, v4 tint) {
 
 inline void
 push_indices(Render_Command* command, []u16 indices, u16 first_index=0) {
+    assert((command.index_count + (u32) indices.count) * sizeof(u16) < command.index_data_size);
     for (int i = 0; i < indices.count; i++) {
         command.indices[command.index_count++] = first_index + indices[i];
     }
@@ -290,13 +293,6 @@ push_box(Render_Command* command, v3 size, v4 tint) {
     // Bottom
     push_quad(command, vec3(max_p.x, min_p.y, min_p.z), 
               vec3(-size.x, 0.0f, 0.0f), vec3(0.0f, 0.0f, size.z), tint);
-    
-    
-    //push_quad(command, min_p, vec3(size.x, 0.0f, 0.0f), vec3(0.0f, size.y, 0.0f), tint);
-    
-    // Back
-    
-    //push_quad(command, max_p, vec3(-size.x, 0.0f, 0.0f), vec3(0.0f, -size.y, 0.0f), tint);
 }
 
 struct Loaded_Image {
@@ -378,48 +374,68 @@ main() {
         ExitProcess(0);
     }
     opengl.uniform_texture = glGetUniformLocation(opengl.program, (GLchar*) string_to_cstring("u_texture"));
-    opengl.uniform_projection = glGetUniformLocation(opengl.program, (GLchar*) string_to_cstring("u_projection"));
+    opengl.uniform_mvp = glGetUniformLocation(opengl.program, (GLchar*) string_to_cstring("u_mvp"));
     
     v2 screen_size;
     
-    local_persist f32 pitch;
-    local_persist f32 roll;
+    local_persist f32 pan_x;
+    local_persist f32 pan_y;
     local_persist f32 scale;
     
     scale = 1.0f;
-    roll = -PI_F32/16.0f;
+    pan_x = 0;
+    pan_y = -PI_F32/16.0f;
     
     while (!window_should_close()) {
         screen_size.width = get_window_width();
         screen_size.height = get_window_height();
+        aspect_ratio = screen_size.width / screen_size.height;
         
-        m4x4 projection = m4x4_orthographic(0.0f, screen_size.height, screen_size.width, 0.0f,
-                                            -99999.0f, 99999.0f);
+        if (is_mouse_down(MOUSE_RIGHT)) {
+            pan_x -= get_mouse_dx();
+            pan_y -= get_mouse_dy();
+        }
+        scale = max(scale - 1.0f*get_mouse_wheel_delta(), 0.2f);
+        
+        f32 look_at_angle = degrees_to_radians(-pan_x);
+        f32 look_up_angle = degrees_to_radians(pan_y);
+        //pln("% (%) => x=%, y=%", look_at_angle, pan_x, cos(look_at_angle), sin(look_at_angle));
+        
+        //pan_y = min(88.0f, max(pan_y, -88.0f));
+        
+        v3 pos;
+        pos.x = scale*(sin(look_at_angle) * cos(look_up_angle));
+        pos.y = scale*sin(look_up_angle);
+        pos.z = scale*(cos(look_at_angle) * cos(look_up_angle));
+        //pos.y = -scale*sin(degrees_to_radians(pan_y));
+        //pos.z = scale*cos(look_at_angle);//sin(look_at_angle);
+        m4x4 view = m4x4_look_at(pos, vec3_zero, vec3(0.0f, 1.0f, 0.0f));
+        //view = m4x4_translate(vec3(pos.x, pos.y, pos.z))*view;
+        //m4x4 view = m4x4_translate(vec3(0.0f, 0.0f, 3.0f));
+        view = m4x4_inverse(view);
+        view = view*m4x4_translate(vec3(-pos.x, -pos.y, -pos.z));
+        
+        m4x4 projection = m4x4_perspective(45, aspect_ratio, 0.001f, 1000.0f);
+        //m4x4 projection = m4x4_orthographic(0.0f, 0.0f, screen_size.width, screen_size.height,
+        //-99999.0f, 99999.0f);
+        
         glViewport(0, 0, (int) screen_size.width, (int) screen_size.height);
         
         opengl_begin_drawing(opengl, push_buffer);
         
         Render_Command* command = push_command(push_buffer, Render_Op.Draw_Triangles);
-        command.transform = 
-            m4x4_translate(vec3(screen_size.x*0.5f, screen_size.y*0.5f, 0.0f)) * 
-            m4x4_euler(0.0f, pitch, roll) *
-            m4x4_scale(vec3(scale, scale, scale));
+        command.transform = m4x4_identity();//translate(vec3(0.0f, 0.0f, 0.0f));
+        push_box(command, vec3(1.0f, 1.0f, 1.0f), WHITE);
         
-        scale = max(scale + 0.1f*get_mouse_wheel_delta(), 0.1f);
+        command.transform = m4x4_translate(vec3(1.0f, 0.0f, 1.0f));
+        push_box(command, vec3(1.0f, 1.0f, 1.0f), RED);
         
-        if (is_mouse_down(MOUSE_RIGHT)) {
-            pitch -= 0.003f * get_mouse_dx();
-            roll -= 0.003f * get_mouse_dy();
-        }
-        
-        //push_rectangle(command, vec2(0.0f, 0.0f), vec2(128.0f, 128.0f), WHITE);
-        //push_quad(command, vec3(0.0f, 0.0f, 0.0f), vec3(128.0f, 0.0f, 0.0f), vec3(0.0f, 128.0f, 0.0f), WHITE);
-        
-        push_box(command, vec3(128.0f, 128.0f, 128.0f), WHITE);
+        command.transform = m4x4_translate(vec3(2.0f, 0.0f, 2.0f));
+        push_box(command, vec3(1.0f, 1.0f, 1.0f), GREEN);
         
         glClearColor(0.05f, 0.1f, 0.4f, 1.0f);
         
-        opengl_end_drawing(opengl, command, projection);
+        opengl_end_drawing(opengl, command, projection * view);
         
         window_swap_buffers();
     }

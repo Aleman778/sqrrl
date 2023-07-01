@@ -6,11 +6,11 @@ layout (location = 2) in vec3 in_tint;
 out vec2 v_texcoord;
 out vec4 v_tint;
 
-uniform mat4 u_projection;
+uniform mat4 u_mvp;
 
 void
 main() {
-   gl_Position = u_projection * vec4(in_position, 1.0f);
+   gl_Position = u_mvp * vec4(in_position, 1.0f);
    v_tint = vec4(in_tint, 1.0f);
    v_texcoord = in_texcoord;
 }

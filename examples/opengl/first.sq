@@ -353,6 +353,22 @@ load_texture(string filename,
     return result;
 }
 
+struct AABB {
+    v3 min_p;
+    v3 max_p;
+}
+
+bool
+aabb_intersects_aabb(AABB a, AABB b) {
+    return (a.min_p.x <= b.max_p.x &&
+            a.max_p.x >= b.min_p.x &&
+            a.min_p.y <= b.max_p.y &&
+            a.max_p.y >= b.min_p.y &&
+            a.min_p.z <= b.max_p.z &&
+            a.max_p.z >= b.min_p.z);
+}
+
+
 int
 main() {
     
@@ -399,11 +415,14 @@ main() {
     
     v2 screen_size;
     
-    local_persist f32 pan_x;
-    local_persist f32 pan_y;
-    local_persist f32 scale;
-    local_persist v3 player_p;
-    local_persist v3 pos;
+    f32 pan_x;
+    f32 pan_y;
+    f32 scale;
+    v3 player_p;
+    v3 velocity;
+    v3 acceleration;
+    
+    v3 pos;
     
     scale = 4.0f;
     pan_x = 0;
@@ -416,7 +435,16 @@ main() {
         pos.z = player_p.z + scale*(sin(look_at_angle) * cos(look_up_angle));
     }
     
-    local_persist bool mouse_lock;
+    bool mouse_lock;
+    
+    
+    
+    
+    AABB player_aabb;
+    AABB red_box_aabb;
+    red_box_aabb.min_p = vec3(1.0f, 0.0f, 1.0f);
+    red_box_aabb.max_p = red_box_aabb.min_p + vec3(1.0f, 1.0f, 1.0f);
+    
     
     while (!window_should_close()) {
         screen_size.width = get_window_width();
@@ -428,6 +456,10 @@ main() {
         f32 look_up_angle = degrees_to_radians(-pan_y);
         //pln("% (%) => x=%, y=%", look_at_angle, pan_x, cos(look_at_angle), sin(look_at_angle));
         
+        f32 walk_angle = 0.0f;
+        f32 walk_speed = 0.0f;
+        
+        
         if (is_mouse_pressed(MOUSE_LEFT)) {
             mouse_lock = true;
         }
@@ -437,16 +469,106 @@ main() {
         if (mouse_lock) {
             set_mouse_position(screen_size*0.5);
             
+            f32 max_walk_speed = 0.05f;
+            if (is_key_down(KEY_SHIFT)) {
+                max_walk_speed *= 2.0f;
+            }
+            
+            if (is_key_down(KEY_W)) {
+                walk_speed += max_walk_speed;
+                walk_angle = look_at_angle;
+            }
+            
+            if (is_key_down(KEY_S)) {
+                walk_speed -= max_walk_speed;
+                walk_angle = look_at_angle;
+            }
+            
+            if (is_key_down(KEY_A)) {
+                if (walk_speed == 0.0f) {
+                    walk_speed = max_walk_speed;
+                }
+                if (walk_angle == 0.0f) {
+                    walk_angle = look_at_angle + PI_F32/2.0f;
+                } else {
+                    walk_angle += sign(walk_speed) * PI_F32/4.0f;
+                }
+            }
+            
+            if (is_key_down(KEY_D)) {
+                if (walk_speed == 0.0f) {
+                    walk_speed = max_walk_speed;
+                }
+                if (walk_angle == 0.0f) {
+                    walk_angle = look_at_angle - PI_F32/2.0f;
+                } else {
+                    walk_angle -= sign(walk_speed) * PI_F32/4.0f;
+                }
+            }
+            
+            if (is_key_pressed(KEY_SPACE)) {
+                velocity.y = 5.05f;
+            }
+            
+            // Update camera
             pan_x -= get_mouse_dx();
             pan_y -= get_mouse_dy();
+            
             pan_y = min(89.0f, max(pan_y, -89.0f));
             //}
             scale = max(scale - 1.0f*get_mouse_wheel_delta(), 0.2f);
-            
-            pos.x = player_p.x + scale*(cos(look_at_angle) * cos(look_up_angle));
-            pos.y = player_p.y + scale*sin(look_up_angle);
-            pos.z = player_p.z + scale*(sin(look_at_angle) * cos(look_up_angle));
         }
+        
+        pos.x = player_p.x + scale*(cos(look_at_angle) * cos(look_up_angle));
+        pos.y = player_p.y + scale*sin(look_up_angle);
+        pos.z = player_p.z + scale*(sin(look_at_angle) * cos(look_up_angle));
+        
+        //
+        // Update player movement
+        //
+        f32 curr_speed = length(vec3(velocity.x, 0.0f, velocity.z));
+        f32 curr_angle = atan(velocity.x / velocity.z);
+        const f32 max_speed = 3.0f;
+        if (curr_speed >= max_speed) {
+            walk_speed = -0.05f * curr_angle;// * sign();
+        }
+        pln("walk_speed = %", walk_speed);
+        
+        acceleration.x -= walk_speed*cos(walk_angle);
+        acceleration.z -= walk_speed*sin(walk_angle);
+        
+        if (abs(velocity.x) > 3.0f) {
+            acceleration.x = 0.0f;
+        }
+        if (abs(velocity.z) > 3.0f) {
+            acceleration.z = 0.0f;
+        }
+        
+        acceleration.y = -8.0f; // gravity
+        
+        f32 delta_time = 1.0f/30.0f;
+        
+        v3 step_velocity = velocity * delta_time + acceleration * delta_time * delta_time * 0.5f;
+        
+        if (player_p.y + step_velocity.y < 0.0f) {
+            step_velocity.y = -player_p.y;
+            velocity.y = 0.0f;
+        }
+        
+        // Collision detection and response
+        player_aabb.min_p = player_p;
+        player_aabb.max_p = player_p + vec3(1.0f, 1.0f, 1.0f);
+        if (aabb_intersects_aabb(player_aabb, red_box_aabb)) {
+            
+            pln("INTERSECTION");
+        }
+        
+        // Update player position
+        &player_p += step_velocity;
+        &velocity += acceleration * delta_time;
+        
+        
+        
         //pos.y = -scale*sin(degrees_to_radians(pan_y));
         //pos.z = scale*cos(look_at_angle);//sin(look_at_angle);
         m4x4 view = m4x4_look_at(pos, player_p, vec3(0.0f, 1.0f, 0.0f));
@@ -465,11 +587,6 @@ main() {
         
         Render_Command* command = push_command(push_buffer, Render_Op.Draw_Triangles);
         command.texture = texture_crate;
-        
-        if (is_key_down(KEY_W)) {
-            player_p.x -= 0.05f*cos(look_at_angle);
-            player_p.z -= 0.05f*sin(look_at_angle);
-        }
         
         command.transform = m4x4_translate(player_p);
         push_box(command, vec3(1.0f, 1.0f, 1.0f), WHITE);

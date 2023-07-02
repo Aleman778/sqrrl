@@ -156,6 +156,20 @@ operator*(v3 a, f32 v) {
     return result;
 }
 
+inline void
+operator+=(v3* a, v3 b) {
+    a.x += b.x;
+    a.y += b.y;
+    a.z += b.z;
+}
+
+inline void
+operator*=(v3* a, v3 b) {
+    a.x *= b.x;
+    a.y *= b.y;
+    a.z *= b.z;
+}
+
 inline v3
 operator/(v3 a, v3 b) {
     v3 result;

@@ -1,0 +1,64 @@
+
+#include <basic.sq>
+
+string
+win32_read_entire_file(cstring filename) {
+    string result;
+    HANDLE file_handle = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+    
+    if (file_handle != INVALID_HANDLE_VALUE) {
+        LARGE_INTEGER file_size;
+        if (GetFileSizeEx(file_handle, &file_size)) {
+            result.count = (u32) file_size.QuadPart;
+            result.data = (u8*) VirtualAlloc(0, result.count, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+            
+            if (result.data) {
+                if (!ReadFile(file_handle, result.data, (u32) result.count, 0, 0)) {
+                    // TODO(alexander): logging, failed read file
+                }
+                
+            } else {
+                // TODO(alexander): logging, failed to allocate memory
+            }
+            
+        } else {
+            // TODO(alexander): logging, failed to get file size
+        }
+        
+        CloseHandle(file_handle);
+    } else {
+        // TODO(alexander): logging, file not found
+    }
+    
+    return result;
+}
+
+int 
+main() {
+    stbtt_fontinfo font;
+    u8* bitmap;
+    int w, h, i, j;
+    int c = 'a';
+    int s = 20;
+    
+    
+    string font_data = win32_read_entire_file("c:/windows/fonts/arialbd.ttf");
+    
+    stbtt_InitFont(&font, font_data.data, stbtt_GetFontOffsetForIndex(font_data.data, 0));
+    bitmap = stbtt_GetCodepointBitmap(&font, 0,stbtt_ScaleForPixelHeight(&font, s), c, &w, &h, 0,0);
+    
+    string pixel_map = " .:ioVM@";
+    
+    for (j=0; j < h; ++j) {
+        for (i=0; i < w; ++i) {
+            // TODO: this is a bit stupid, we need char printing
+            u8 chr = pixel_map[bitmap[j*w+i]>>5];
+            string chr_string;
+            chr_string.data = &chr;
+            chr_string.count = 1;
+            print("%", chr_string);
+        }
+        print("\n");
+    }
+    return 0;
+}

@@ -2,6 +2,7 @@
 #include <input.sq>
 #include <window.sq>
 #include <stb_image.sq>
+#include <stb_truetype.sq>
 
 // TODO(Alexander): COMPILER BUG: opengl.sq has to be loaded last messes up the import directory table
 #include <opengl.sq>
@@ -295,17 +296,16 @@ push_box(Render_Command* command, v3 size, v4 tint) {
               vec3(-size.x, 0.0f, 0.0f), vec3(0.0f, 0.0f, size.z), tint);
 }
 
-struct Loaded_Image {
+struct Image {
     int width;
     int height;
     int num_components;
-    int stride; 
     u8* data;
 }
 
-Loaded_Image
+Image
 load_image(string filename) {
-    Loaded_Image result;
+    Image result;
     cstring cfilename = string_to_cstring(filename);
     u8* data = stbi_load(cfilename, &result.width, &result.height, &result.num_components, 0);
     cstring_free(cfilename);
@@ -315,24 +315,23 @@ load_image(string filename) {
     }
     
     result.data = data;
-    result.stride = result.width * result.num_components;
     return result;
 }
 
 struct Texture {
     GLuint handle;
-    Loaded_Image raw;
+    Image raw;
     bool is_valid;
 }
 
+
 Texture
-load_texture(string filename,
-             int min_filter=GL_LINEAR, 
-             int mag_filter=GL_LINEAR, 
-             int wrap_s=GL_REPEAT, 
-             int wrap_t=GL_REPEAT) {
+create_texture(Image image,
+               int min_filter=GL_LINEAR, 
+               int mag_filter=GL_LINEAR, 
+               int wrap_s=GL_REPEAT, 
+               int wrap_t=GL_REPEAT) {
     
-    Loaded_Image image = load_image(filename);
     
     Texture result;
     result.raw = image;
@@ -344,13 +343,138 @@ load_texture(string filename,
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, min_filter);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, mag_filter);
     
-    GLenum internal_format = (image.num_components == 3) ? GL_RGB : GL_RGBA;
-    glTexImage2D(GL_TEXTURE_2D, 0, internal_format, image.width, image.height, 0,
-                 GL_RGB, GL_UNSIGNED_BYTE, image.data); // TODO: do we want ALPHA component in the format
+    GLenum format;
+    switch (image.num_components) {
+        case 1: { format = GL_RED; }
+        case 2: { format = GL_RG; }
+        case 3: { format = GL_RGB; }
+        case 4: { format = GL_RGBA; }
+    }
+    
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, image.width, image.height, 0,
+                 format, GL_UNSIGNED_BYTE, image.data); // TODO: do we want ALPHA component in the internal_format?
     
     result.is_valid = true;
     
     return result;
+}
+
+Texture
+create_texture_from_subimage(Image subimage,
+                             int offset_x, int offset_y,
+                             int full_width, int full_height,
+                             int min_filter=GL_LINEAR, 
+                             int mag_filter=GL_LINEAR, 
+                             int wrap_s=GL_REPEAT, 
+                             int wrap_t=GL_REPEAT) {
+    
+    
+    Texture result;
+    result.raw = subimage;
+    glGenTextures(1, &result.handle);
+    
+    glBindTexture(GL_TEXTURE_2D, result.handle);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap_s);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap_t);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, min_filter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, mag_filter);
+    
+    GLenum format;
+    switch (subimage.num_components) {
+        case 1: { format = GL_RED; }
+        case 2: { format = GL_RG; }
+        case 3: { format = GL_RGB; }
+        case 4: { format = GL_RGBA; }
+    }
+    
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, full_width, full_height, 0,
+                 format, GL_UNSIGNED_BYTE, 0); // TODO: do we want ALPHA component in the internal_format?
+    
+    glTexSubImage2D(GL_TEXTURE_2D, 0, offset_x, offset_y, subimage.width, subimage.height,
+                    format, GL_UNSIGNED_BYTE, subimage.data);
+    
+    result.is_valid = true;
+    
+    return result;
+}
+
+inline Texture
+load_texture(string filename,
+             int min_filter=GL_LINEAR, 
+             int mag_filter=GL_LINEAR, 
+             int wrap_s=GL_REPEAT, 
+             int wrap_t=GL_REPEAT) {
+    
+    Image image = load_image(filename);
+    return create_texture(image, min_filter, mag_filter, wrap_s, wrap_s);
+}
+struct Font {
+    Texture texture;
+    
+    stbtt_fontinfo info;
+    bool is_valid;
+}
+
+Font
+load_font(string filename) {
+    Font result;
+    
+    cstring cfilename = string_to_cstring(filename);
+    string font = win32_read_entire_file(cfilename);
+    cstring_free(cfilename);
+    
+    if (!font.data) {
+        return result;
+    }
+    
+    int file_offset = stbtt_GetFontOffsetForIndex(font.data, 0);
+    if (!stbtt_InitFont(&result.info, font.data, file_offset)) {
+        return result;
+    }
+    
+    f32 font_scale = stbtt_ScaleForPixelHeight(&result.info, 50);
+    
+    int c = 'a';
+    Image image;
+    image.data = stbtt_GetCodepointBitmap(&result.info, 0, font_scale, c, 
+                                          &image.width, &image.height, 0,0);
+    
+    int output_size = 64;//max(image.width, image.height);
+    u8* output = (u8*) calloc(1, output_size*output_size);
+    int x_offset = (output_size - image.width) / 2;
+    int y_offset = (output_size - image.height) / 2;
+    
+    string pixel_map = " .:ioVM@";
+    int row_index = y_offset * output_size+ x_offset;
+    for (int j = image.height - 1; j > 0; j--) {
+        row_index += output_size;
+        for (int i = 0; i < image.width; i++) {
+            output[row_index + i] = image.data[j*image.width+i];
+            //string chr_string;
+            //chr_string.data = &chr;
+            //chr_string.count = 1;
+            //print("%", chr_string);
+        }
+        
+        print("\n")
+    }
+    image.width = output_size;
+    image.height = output_size;
+    image.data = output;
+    image.num_components = 1;
+    
+    int full_size = 32;//max(image.width, image.height);
+    pln("full_size = %", full_size);
+    result.texture = create_texture(image);
+    result.is_valid = true;
+    
+    
+    return result;
+}
+
+void
+push_text(Render_Command* command, Font font, string text) {
+    if (!font.is_valid) return;
 }
 
 struct AABB {
@@ -385,6 +509,7 @@ main() {
     
     Texture texture_crate = load_texture("../examples/opengl/crate.jpg");
     Texture texture_grass = load_texture("../examples/opengl/grass.jpg");
+    Font font_arial = load_font("c:/windows/fonts/arialbd.ttf");
     
     // Setup shaders
     opengl.program = glCreateProgram();
@@ -594,8 +719,8 @@ main() {
         command.transform = m4x4_translate(vec3(1.0f, 0.0f, 1.0f));
         push_box(command, vec3(1.0f, 1.0f, 1.0f), RED);
         
-        command.transform = m4x4_translate(vec3(-1.0f, 0.0f, -1.0f));
-        push_box(command, vec3(1.0f, 1.0f, 1.0f), GREEN);
+        //command.transform = m4x4_translate(vec3(-1.0f, 0.0f, -1.0f));
+        //push_box(command, vec3(1.0f, 1.0f, 1.0f), GREEN);
         
         Render_Command* command2 = push_command(push_buffer, Render_Op.Draw_Triangles);
         command2.texture = texture_grass;
@@ -605,10 +730,16 @@ main() {
                   vec3(6.0f, 0.0f, 0.0f),
                   vec3(0.0f, 0.0f, 6.0f), WHITE);
         
+        Render_Command* command3 = push_command(push_buffer, Render_Op.Draw_Triangles);
+        command3.transform = m4x4_translate(vec3(-1.0f, 0.0f, -1.0f));
+        command3.texture = font_arial.texture;
+        push_box(command3, vec3(1.0f, 1.0f, 1.0f), WHITE);
+        
         glClearColor(0.05f, 0.1f, 0.4f, 1.0f);
         
         opengl_end_drawing(opengl, command, projection * view);
         opengl_end_drawing(opengl, command2, projection * view);
+        opengl_end_drawing(opengl, command3, projection * view);
         
         window_swap_buffers();
     }

@@ -21,7 +21,75 @@
 typedef HGLRC wgl_create_context_attribs_arb(HDC hDC, 
                                              HGLRC hshareContext,
                                              const int *attribList);
-global wgl_create_context_attribs_arb* wglCreateContextAttribsARB;
+wgl_create_context_attribs_arb* wglCreateContextAttribsARB;
+
+inline bool
+win32_create_opengl_context(HDC hdc) {
+    // Let windows suggest a pixel format to use
+    PIXELFORMATDESCRIPTOR desired_pfd = {};
+    desired_pfd.nSize = sizeof(PIXELFORMATDESCRIPTOR);
+    desired_pfd.nVersion = 1;
+    desired_pfd.dwFlags = PFD_DOUBLEBUFFER | PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL;
+    desired_pfd.cColorBits = 32;
+    desired_pfd.cAlphaBits = 8;
+    desired_pfd.iLayerType = PFD_MAIN_PLANE;
+    int pixel_format_index = ChoosePixelFormat(hdc, &desired_pfd);
+    
+    // Set the suggested pixel format
+    PIXELFORMATDESCRIPTOR suggested_pfd = {};
+    DescribePixelFormat(hdc, pixel_format_index, sizeof(suggested_pfd), &suggested_pfd);
+    SetPixelFormat(hdc, pixel_format_index, &suggested_pfd);
+    
+    HGLRC opengl_rc = wglCreateContext(hdc);
+    
+    if (wglMakeCurrent(hdc, opengl_rc)) {
+        
+        wglCreateContextAttribsARB = (wgl_create_context_attribs_arb*) wglGetProcAddress("wglCreateContextAttribsARB");
+        
+        if (wglCreateContextAttribsARB) {
+            // TODO: Make debug context optional, maybe forward compatible too?
+            int major = 3;
+            int minor = 3;
+            []int attribs = {
+                WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
+                WGL_CONTEXT_MINOR_VERSION_ARB, 3,
+                WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_DEBUG_BIT_ARB | WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
+                WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+                0,
+            };
+            
+            //win32_show_error(string_print("attribs = %", attribs[7]));
+            
+            HGLRC share_opengl_rc = 0;
+            HGLRC modern_opengl_rc = wglCreateContextAttribsARB(hdc, share_opengl_rc, attribs.data);
+            
+            if (modern_opengl_rc) {
+                wglMakeCurrent(hdc, modern_opengl_rc);
+                wglDeleteContext(opengl_rc);
+                opengl_rc = modern_opengl_rc;
+            } else {
+                win32_show_error(string_print("OpenGL version %.% is not supported!", major, minor));
+                return false;
+            }
+            
+            for (int i = 0; i < opengl_library.functions.count; i++) {
+                Dynamic_Function* fn = &opengl_library.functions[i];
+                // TODO: COMPILER BUG: type checker should have complained without cstring conversion
+                cstring name = string_to_cstring(fn.name);
+                fn.pointer = wglGetProcAddress(name); 
+            }
+            
+            return true;
+        } else {
+            win32_show_error("Failed to intialize Modern OpenGL!")
+        }
+    } else {
+        win32_show_error("Failed to intialize OpenGL!");
+    }
+    
+    return false;
+}
+
 
 // TODO: COMPILER BUG: out of order processing of these APIs don't work without these types specified first!
 typedef void GLvoid;

@@ -1,5 +1,4 @@
-
-#include "opengl_windows.h"
+#include "win32_opengl.sq"
 
 #ifndef GLAPI
 #error GLAPI not set

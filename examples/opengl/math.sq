@@ -1,0 +1,471 @@
+
+f32
+degrees_to_radians(f32 degrees) {
+    return degrees * PI_F32 / 180.0f;
+}
+
+
+union v2 {
+    struct {
+        f32 x, y;
+    };
+    struct {
+        f32 u, v;
+    };
+    struct {
+        f32 width, height;
+    };
+    [2]f32 data;
+};
+
+const v2 vec2_zero  = {  0.0f,  0.0f };
+const v2 vec2_left  = { -1.0f,  0.0f };
+const v2 vec2_right = {  1.0f,  0.0f };
+const v2 vec2_up    = {  0.0f, -1.0f };
+const v2 vec2_down  = {  0.0f,  1.0f };
+
+inline v2
+vec2(f32 x, f32 y) {
+    v2 result;
+    result.x = x;
+    result.y = y;
+    return result;
+}
+
+inline v2
+operator+(v2 a, v2 b) {
+    v2 result;
+    result.x = a.x + b.x;
+    result.y = a.y + b.y;
+    return result;
+}
+
+inline v2
+operator-(v2 a, v2 b) {
+    v2 result;
+    result.x = a.x - b.x;
+    result.y = a.y - b.y;
+    return result;
+}
+
+inline v2
+operator*(v2 a, v2 b) {
+    v2 result;
+    result.x = a.x * b.x;
+    result.y = a.y * b.y;
+    return result;
+}
+
+inline v2
+operator*(v2 a, f32 v) {
+    v2 result;
+    result.x = a.x * v;
+    result.y = a.y * v;
+    return result;
+}
+
+inline v2
+operator/(v2 a, v2 b) {
+    v2 result;
+    result.x = a.x / b.x;
+    result.y = a.y / b.y;
+    return result;
+}
+
+
+union v3 {
+    struct {
+        f32 x;
+        f32 y;
+        f32 z;
+    };
+    struct {
+        f32 u;
+        f32 v;
+        f32 w;
+    };
+    struct {
+        f32 r;
+        f32 g;
+        f32 b;
+    };
+    struct {
+        v2 xy;
+        f32 z;
+    };
+    [3]f32 data;
+};
+
+const v3 vec3_zero  = {  0.0f,  0.0f, 0.0f };
+const v3 vec3_left  = { -1.0f,  0.0f, 0.0f };
+const v3 vec3_right = {  1.0f,  0.0f, 0.0f };
+const v3 vec3_up    = {  0.0f, -1.0f, 0.0f };
+const v3 vec3_down  = {  0.0f,  1.0f, 0.0f };
+
+inline v3
+vec3(f32 x, f32 y, f32 z) {
+    v3 result;
+    result.x = x;
+    result.y = y;
+    result.z = z;
+    return result;
+}
+
+inline v3
+vec3(v2 xy, f32 z) {
+    v3 result;
+    result.x = xy.x;
+    result.y = xy.y;
+    result.z = z;
+    return result;
+}
+
+inline v3
+operator+(v3 a, v3 b) {
+    v3 result;
+    result.x = a.x + b.x;
+    result.y = a.y + b.y;
+    result.z = a.z + b.z;
+    return result;
+}
+
+inline v3
+operator-(v3 a, v3 b) {
+    v3 result;
+    result.x = a.x - b.x;
+    result.y = a.y - b.y;
+    result.z = a.z - b.z;
+    return result;
+}
+
+inline v3
+operator*(v3 a, v3 b) {
+    v3 result;
+    result.x = a.x * b.x;
+    result.y = a.y * b.y;
+    result.z = a.z * b.z;
+    return result;
+}
+
+inline v3
+operator*(v3 a, f32 v) {
+    v3 result;
+    result.x = a.x * v;
+    result.y = a.y * v;
+    result.z = a.z * v;
+    return result;
+}
+
+inline void
+operator+=(v3* a, v3 b) {
+    a.x += b.x;
+    a.y += b.y;
+    a.z += b.z;
+}
+
+inline void
+operator*=(v3* a, v3 b) {
+    a.x *= b.x;
+    a.y *= b.y;
+    a.z *= b.z;
+}
+
+inline v3
+operator/(v3 a, v3 b) {
+    v3 result;
+    result.x = a.x / b.x;
+    result.y = a.y / b.y;
+    result.z = a.z / b.z;
+    return result;
+}
+
+inline v3
+cross(v3 a, v3 b) {
+    v3 result;
+    result.x = a.y * b.z - a.z * b.y;
+    result.y = a.z * b.x - a.x * b.z;
+    result.z = a.x * b.y - a.y * b.x;
+    return result;
+}
+
+inline f32
+dot(v3 a, v3 b) {
+    return a.x*b.x + a.y*b.y + a.z*b.z;
+}
+
+inline v3
+reflect(v3 v, v3 normal) {
+    f32 s = dot(v, normal)*2;
+    return v - (normal * s);
+}
+
+inline f32
+length_squared(v3 v) {
+    return v.x*v.x + v.y*v.y + v.z*v.z;
+}
+
+inline f32
+length(v3 v) {
+    return sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
+}
+
+inline v3
+normalize(v3 v) {
+    f32 len = length(v);
+    f32 inv_len = 1.0f / len;
+    v3 result = (v * inv_len);
+    return result;
+}
+union v4 {
+    struct {
+        f32 x;
+        f32 y;
+        f32 z;
+        f32 w;
+    };
+    struct {
+        f32 r;
+        f32 g;
+        f32 b;
+        f32 a;
+    };
+    struct {
+        v3 xyz;
+        f32 w;
+    };
+    [4]f32 data;
+};
+
+const v4 vec4_zero  = {  0.0f,  0.0f, 0.0f, 0.0f };
+const v4 vec4_left  = { -1.0f,  0.0f, 0.0f, 0.0f };
+const v4 vec4_right = {  1.0f,  0.0f, 0.0f, 0.0f };
+const v4 vec4_up    = {  0.0f, -1.0f, 0.0f, 0.0f };
+const v4 vec4_down  = {  0.0f,  1.0f, 0.0f, 0.0f };
+
+inline v4
+vec4(f32 x, f32 y, f32 z, f32 w) {
+    v4 result;
+    result.x = x;
+    result.y = y;
+    result.z = z;
+    result.w = w;
+    return result;
+}
+
+inline v4
+vec4(v3 xyz, f32 w) {
+    v4 result;
+    result.x = xyz.x;
+    result.y = xyz.y;
+    result.z = xyz.z;
+    result.w = w;
+    return result;
+}
+
+union m4x4 {
+    struct {
+        f32 m00, m01, m02, m03;
+        f32 m10, m11, m12, m13;
+        f32 m20, m21, m22, m23;
+        f32 m30, m31, m32, m33;
+    };
+    [4]v4 row;
+    [16]f32 data;
+}
+
+m4x4 
+m4x4_identity() {
+    m4x4 result = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f,
+    };
+    return result;
+}
+
+m4x4
+m4x4_scale(v3 s) {
+    m4x4 result = {
+        s.x,  0.0f, 0.0f, 0.0f,
+        0.0f, s.y,  0.0f, 0.0f,
+        0.0f, 0.0f, s.z,  0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f,
+    };
+    return result;
+}
+
+m4x4
+m4x4_translate(v3 t) {
+    m4x4 result = {
+        1.0f, 0.0f, 0.0f, t.x,
+        0.0f, 1.0f, 0.0f, t.y,
+        0.0f, 0.0f, 1.0f, t.z,
+        0.0f, 0.0f, 0.0f, 1.0f,
+    };
+    return result;
+}
+
+m4x4
+m4x4_euler(f32 yaw, f32 pitch, f32 roll) {
+    
+    f32 cos_yaw = cos(yaw);
+    f32 cos_pitch = cos(pitch);
+    f32 cos_roll = cos(roll);
+    f32 sin_yaw = sin(yaw);
+    f32 sin_pitch = sin(pitch);
+    f32 sin_roll = sin(roll);
+    
+    m4x4 result = {
+        cos_yaw*cos_pitch, cos_yaw*sin_pitch*sin_roll - sin_yaw*cos_roll, cos_yaw*sin_pitch*cos_roll + sin_yaw*sin_roll, 0.0f,
+        sin_yaw*cos_pitch, sin_yaw*sin_pitch*sin_roll + cos_yaw*cos_roll, sin_yaw*sin_pitch*cos_roll - cos_yaw*sin_roll, 0.0f,
+        -sin_pitch,        cos_pitch*sin_roll,                            cos_pitch*cos_roll,                            0.0f,
+        0.0f,              0.0f,                                          0.0f,                                          1.0f
+    };
+    
+    return result;
+}
+
+m4x4
+m4x4_orthographic(f32 left, f32 top, f32 right, f32 bottom, f32 near, f32 far) {
+    m4x4 result;
+    result.m00 = 2.0f / (right - left);
+    result.m11 = 2.0f / (top - bottom);
+    result.m22 = 2.0f / (far - near);
+    result.m33 = 1.0f;
+    
+    result.m03 = -(right + left) / (right - left);
+    result.m13 = -(top + bottom) / (top - bottom);
+    result.m23 = -(far + near) / (far - near);
+    
+    return result;
+}
+
+m4x4
+m4x4_perspective(f32 fov, f32 aspect_ratio, f32 near, f32 far) {
+    
+    f32 tan_half_fov = tan(degrees_to_radians(fov/2.0f));
+    f32 z_range = near - far;
+    
+    m4x4 result;
+    result.m00 = 1.0f / (tan_half_fov * aspect_ratio);
+    result.m11 = 1.0f / (tan_half_fov);
+    result.m22 = (-far - near) / z_range;
+    result.m23 = (2.0f*far*near) / z_range;
+    result.m32 = 1.0f;
+    return result;
+}
+
+m4x4
+m4x4_look_at(v3 pos, v3 target, v3 up) {
+    v3 forward = normalize(target - pos);
+    v3 right = normalize(cross(up, forward));
+    up = cross(forward, right);
+    
+    m4x4 result = {
+        right.x, up.x, forward.x, 0.0f,
+        right.y, up.y, forward.y, 0.0f,
+        right.z, up.z, forward.z, 0.0f,
+        0.0f,    0.0f, 0.0f,      1.0f 
+    };
+    
+    return result;
+}
+
+m4x4
+m4x4_inverse(m4x4 m) {
+    f32 x0  = m.m00 * m.m11 - m.m01 * m.m10;
+    f32 x1  = m.m00 * m.m12 - m.m02 * m.m10;
+    f32 x2  = m.m00 * m.m13 - m.m03 * m.m10;
+    f32 x3  = m.m01 * m.m12 - m.m02 * m.m11;
+    f32 x4  = m.m01 * m.m13 - m.m03 * m.m11;
+    f32 x5  = m.m02 * m.m13 - m.m03 * m.m12;
+    f32 x6  = m.m20 * m.m31 - m.m21 * m.m30;
+    f32 x7  = m.m20 * m.m32 - m.m22 * m.m30;
+    f32 x8  = m.m20 * m.m33 - m.m23 * m.m30;
+    f32 x9  = m.m21 * m.m32 - m.m22 * m.m31;
+    f32 x10 = m.m21 * m.m33 - m.m23 * m.m31;
+    f32 x11 = m.m22 * m.m33 - m.m23 * m.m32;
+    f32 det = x0 * x11 - x1 * x10 + x2 * x9 + x3 * x8 - x4 * x7 + x5 * x6;
+    if (det == 0.0f) {
+        // TODO(Alexander): singular matrix, can't compute reciprocal.
+        return m4x4_identity();
+    }
+    
+    f32 reciprocal = 1.0f / det;
+    m4x4 result;
+    result.m00 = ( m.m11 * x11 - m.m12 * x10 + m.m13 * x8) * reciprocal;
+    result.m01 = (-m.m01 * x11 + m.m02 * x10 - m.m03 * x8) * reciprocal;
+    result.m02 = ( m.m31 * x5  - m.m32 * x4  + m.m33 * x3) * reciprocal;
+    result.m03 = (-m.m21 * x5  + m.m22 * x4  - m.m23 * x3) * reciprocal;
+    result.m10 = (-m.m10 * x11 + m.m12 * x8  - m.m13 * x7) * reciprocal;
+    result.m11 = ( m.m00 * x11 - m.m02 * x8  + m.m03 * x7) * reciprocal;
+    result.m12 = (-m.m30 * x5  + m.m32 * x2  - m.m33 * x1) * reciprocal;
+    result.m13 = ( m.m20 * x5  - m.m22 * x2  + m.m23 * x1) * reciprocal;
+    result.m20 = ( m.m10 * x10 - m.m11 * x8  + m.m13 * x6) * reciprocal;
+    result.m21 = (-m.m00 * x10 + m.m01 * x8  - m.m03 * x6) * reciprocal;
+    result.m22 = ( m.m30 * x4  - m.m31 * x2  + m.m33 * x0) * reciprocal;
+    result.m23 = (-m.m20 * x4  + m.m21 * x2  - m.m23 * x0) * reciprocal;
+    result.m30 = (-m.m10 * x9  + m.m11 * x7  - m.m12 * x6) * reciprocal;
+    result.m31 = ( m.m00 * x9  - m.m01 * x7  + m.m02 * x6) * reciprocal;
+    result.m32 = (-m.m30 * x3  + m.m31 * x1  - m.m32 * x0) * reciprocal;
+    result.m33 = ( m.m20 * x3  - m.m21 * x1  + m.m22 * x0) * reciprocal;
+    
+    return result;
+}
+
+m4x4
+m4x4_transpose(m4x4 m) {
+    m4x4 result = m;
+    result.m01 = m.m10;
+    result.m02 = m.m20;
+    result.m03 = m.m30;
+    
+    result.m10 = m.m01;
+    result.m12 = m.m21;
+    result.m13 = m.m31;
+    
+    result.m20 = m.m02;
+    result.m21 = m.m12;
+    result.m23 = m.m32;
+    
+    result.m30 = m.m03;
+    result.m31 = m.m13;
+    result.m32 = m.m23;
+    return result;
+}
+
+v4
+operator*(m4x4 m, v4 v) {
+    v4 result;
+    result.x = m.m00*v.x + m.m01*v.y + m.m02*v.z + m.m03*v.w;
+    result.y = m.m10*v.x + m.m11*v.y + m.m12*v.z + m.m13*v.w;
+    result.z = m.m20*v.x + m.m21*v.y + m.m22*v.z + m.m23*v.w;
+    result.w = m.m30*v.x + m.m31*v.y + m.m32*v.z + m.m33*v.w;
+    return result;
+}
+
+inline m4x4
+operator*(m4x4 a, m4x4 b) {
+    m4x4 result;
+    result.m00 = a.m00*b.m00 + a.m01*b.m10 + a.m02*b.m20 + a.m03*b.m30;
+    result.m01 = a.m00*b.m01 + a.m01*b.m11 + a.m02*b.m21 + a.m03*b.m31;
+    result.m02 = a.m00*b.m02 + a.m01*b.m12 + a.m02*b.m22 + a.m03*b.m32;
+    result.m03 = a.m00*b.m03 + a.m01*b.m13 + a.m02*b.m23 + a.m03*b.m33;
+    
+    result.m10 = a.m10*b.m00 + a.m11*b.m10 + a.m12*b.m20 + a.m13*b.m30;
+    result.m11 = a.m10*b.m01 + a.m11*b.m11 + a.m12*b.m21 + a.m13*b.m31;
+    result.m12 = a.m10*b.m02 + a.m11*b.m12 + a.m12*b.m22 + a.m13*b.m32;
+    result.m13 = a.m10*b.m03 + a.m11*b.m13 + a.m12*b.m23 + a.m13*b.m33;
+    
+    result.m20 = a.m20*b.m00 + a.m21*b.m10 + a.m22*b.m20 + a.m23*b.m30;
+    result.m21 = a.m20*b.m01 + a.m21*b.m11 + a.m22*b.m21 + a.m23*b.m31;
+    result.m22 = a.m20*b.m02 + a.m21*b.m12 + a.m22*b.m22 + a.m23*b.m32;
+    result.m23 = a.m20*b.m03 + a.m21*b.m13 + a.m22*b.m23 + a.m23*b.m33;
+    
+    result.m30 = a.m30*b.m00 + a.m31*b.m10 + a.m32*b.m20 + a.m33*b.m30;
+    result.m31 = a.m30*b.m01 + a.m31*b.m11 + a.m32*b.m21 + a.m33*b.m31;
+    result.m32 = a.m30*b.m02 + a.m31*b.m12 + a.m32*b.m22 + a.m33*b.m32;
+    result.m33 = a.m30*b.m03 + a.m31*b.m13 + a.m32*b.m23 + a.m33*b.m33;
+    return result;
+}

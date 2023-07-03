@@ -35,7 +35,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm), bool is_debugger_present) {
     
     
-    Backend_Type target_backend = Backend_X64; // Backend_WASM;
+    Backend_Type target_backend = Backend_WASM; // Backend_X64
     
     {
         // Put dummy file as index 0
@@ -486,37 +486,14 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             buffer.data = (u8*) asm_buffer;
             buffer.size = asm_size;
             
-            convert_to_wasm_module(0, 0, &buffer);
-            for_array(ast_file.units, cu, _6) {
-                if (cu->ast->kind == Ast_Decl_Stmt) {
-                    
-                    Type* type = cu->ast->type;
-                    if (type->kind == TypeKind_Function) {
-                        
-                        smm first_byte = buffer.curr_used;
-                        pln("Compiling function: %", f_type(type));
-                        convert_type_to_wasm(type, &buffer);
-                        
-                        for (smm byte_index = first_byte; byte_index < buffer.curr_used; byte_index++) {
-                            u8 byte = buffer.data[byte_index];
-                            if (byte > 0xF) {
-                                printf("%hhX ", byte);
-                            } else {
-                                printf("0%hhX ", byte);
-                            }
-                            
-                            if ((byte_index - first_byte) % 40 == 39) {
-                                printf("\n");
-                            }
-                        }
-                        printf("\n\n");
-                    }
-                }
-            }
+            convert_to_wasm_module(&ast_file, 0, &buffer);
             
             File_Handle wasm_file = DEBUG_open_file_for_writing("simple.wasm");
             DEBUG_write(wasm_file, buffer.data, (u32) buffer.curr_used);
             DEBUG_close_file(wasm_file);
+            
+            system("wasm2wat simple.wasm");
+            
             pln("\nWrote executable: simple.wasm");
         } break;
     }

@@ -955,7 +955,7 @@ push_u64(Buffer* buf, u64 qw) {
 }
 
 void
-push_leb128_u32(Buffer* buf, s32 num) {
+push_leb128_u32(Buffer* buf, u32 num) {
     bool neg = num < 0;
     do {
         u8 byte = num & 0x7F;

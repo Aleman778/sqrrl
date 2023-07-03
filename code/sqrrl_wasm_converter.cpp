@@ -222,6 +222,18 @@ DEBUG_wasm_end(WASM_Debug* debug, Buffer* buf) {
 }
 
 void
+wasm_set_vec_size(Buffer* buf, smm vec_first_byte) {
+    // TODO: this is perhaps a bit of a hack to push the leb128 size
+    smm size = buf->curr_used - vec_first_byte - 4;
+    buf->curr_used = vec_first_byte;
+    push_leb128_u32(buf, (u32) size);
+    memmove(&buf->data[buf->curr_used], 
+            &buf->data[vec_first_byte + 4], size);
+    buf->curr_used += size;
+}
+
+
+void
 convert_to_wasm_module(Ast_File* ast_file, s64 stk_usage, Buffer* buf) {
     
     // Define module
@@ -271,16 +283,7 @@ convert_to_wasm_module(Ast_File* ast_file, s64 stk_usage, Buffer* buf) {
             }
         }
     }
-    
-    {
-        // TODO: this is perhaps a bit of a hack to push the leb128 size
-        smm size = buf->curr_used - type_section_start - 4;
-        buf->curr_used = type_section_start;
-        push_leb128_u32(buf, (u32) size);
-        memmove(&buf->data[buf->curr_used], 
-                &buf->data[type_section_start + 4], size);
-        buf->curr_used += size;
-    }
+    wasm_set_vec_size(buf, type_section_start);
     
     // Import section (2)
     DEBUG_wasm_begin_section(&debug, WASMSection_Import, buf);
@@ -316,9 +319,11 @@ convert_to_wasm_module(Ast_File* ast_file, s64 stk_usage, Buffer* buf) {
     
     s64 rip = 0;
     for_array(ast_file->units, cu, _2) {
-        if (cu->ast->kind == Ast_Decl_Stmt) {
+        Type* type = cu->ast->type;
+        if (cu->ast->kind == Ast_Decl_Stmt && type->kind == TypeKind_Function) {
             
-            push_leb128_u32(buf, 5); // size of the function
+            smm function_start = buf->curr_used;
+            push_u32(buf, 0); // reserve space for size
             push_leb128_u32(buf, 0); // number of locals
             //push_leb128_u32(buf, 0); // TODO: add locals
             
@@ -328,25 +333,17 @@ convert_to_wasm_module(Ast_File* ast_file, s64 stk_usage, Buffer* buf) {
                 curr = curr->next;
             }
             
-            Type* type = cu->ast->type;
-            if (type->kind == TypeKind_Function && type->Function.return_type) {
+            if (type->Function.return_type) {
                 // TODO(Alexander): should we only call return on functions with return type?
                 push_u8(buf, 0x0F); // return
             }
             
             push_u8(buf, 0x0B); // end marker
+            
+            wasm_set_vec_size(buf, function_start);
         }
     }
-    
-    {
-        // TODO: this is perhaps a bit of a hack to push the leb128 size
-        smm size = buf->curr_used - code_section_start - 4;
-        buf->curr_used = code_section_start;
-        push_leb128_u32(buf, (u32) size);
-        memmove(&buf->data[buf->curr_used], 
-                &buf->data[code_section_start + 4], size);
-        buf->curr_used += size;
-    }
+    wasm_set_vec_size(buf, code_section_start);
     
     DEBUG_wasm_end(&debug, buf);
 }

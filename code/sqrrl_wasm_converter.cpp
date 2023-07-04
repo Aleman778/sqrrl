@@ -234,7 +234,7 @@ wasm_set_vec_size(Buffer* buf, smm vec_first_byte) {
 
 
 void
-convert_to_wasm_module(Ast_File* ast_file, s64 stk_usage, Buffer* buf) {
+convert_to_wasm_module(Bytecode* bytecode, s64 stk_usage, Buffer* buf) {
     
     // Define module
     push_u32(buf, 0x6D736100); // Signature (.asm)
@@ -248,13 +248,13 @@ convert_to_wasm_module(Ast_File* ast_file, s64 stk_usage, Buffer* buf) {
     smm type_section_start = buf->curr_used;
     push_u32(buf, 0); // reserve space for the size
     
+#if 0
     u32 num_types = 0;
     for_array(ast_file->units, cu, _) {
         if (cu->ast->kind == Ast_Decl_Stmt) {
             num_types++;
         }
     }
-    
     
     push_leb128_u32(buf, num_types); // number of types
     for_array(ast_file->units, cu, _1) {
@@ -283,6 +283,7 @@ convert_to_wasm_module(Ast_File* ast_file, s64 stk_usage, Buffer* buf) {
             }
         }
     }
+#endif
     wasm_set_vec_size(buf, type_section_start);
     
     // Import section (2)
@@ -317,6 +318,7 @@ convert_to_wasm_module(Ast_File* ast_file, s64 stk_usage, Buffer* buf) {
     push_u32(buf, 0); // reserve space for the size
     push_leb128_u32(buf, 1); // number of functions
     
+#if 0
     s64 rip = 0;
     for_array(ast_file->units, cu, _2) {
         Type* type = cu->ast->type;
@@ -343,6 +345,7 @@ convert_to_wasm_module(Ast_File* ast_file, s64 stk_usage, Buffer* buf) {
             wasm_set_vec_size(buf, function_start);
         }
     }
+#endif
     wasm_set_vec_size(buf, code_section_start);
     
     DEBUG_wasm_end(&debug, buf);

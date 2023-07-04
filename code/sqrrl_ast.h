@@ -318,11 +318,15 @@ struct Ast {
 
 typedef map(string_id, Ast*) Ast_Decl_Table;
 
+struct Bytecode_Function;
+
 struct Compilation_Unit {
     Ast* ast;
     Interp* interp;
     Value interp_result;
     string_id ident;
+    
+    Bytecode_Function* bc_func;
     
     Ic_Arg ic_return;
     Intermediate_Code* ic_first;

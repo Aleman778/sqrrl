@@ -16,7 +16,7 @@
 #include "sqrrl_parser.cpp"
 #include "sqrrl_type_checker.cpp"
 #include "sqrrl_interp.cpp"
-#include "sqrrl_intermediate_code.cpp"
+#include "sqrrl_bytecode_builder.cpp"
 #include "sqrrl_x64_converter.cpp"
 #include "sqrrl_pe_converter.cpp"
 #include "sqrrl_pdb_converter.cpp"
@@ -35,7 +35,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm), bool is_debugger_present) {
     
     
-    Backend_Type target_backend = Backend_WASM; // Backend_X64
+    Backend_Type target_backend = Backend_X64;
     
     {
         // Put dummy file as index 0
@@ -65,7 +65,17 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         }
 #endif
         
-        filepath = string_lit(argv[1]);
+        if (argc > 2) {
+            if (string_equals(string_lit(argv[1]), string_lit("-wasm"))) {
+                target_backend = Backend_WASM;
+            } else if (string_equals(string_lit(argv[1]), string_lit("-x64"))) {
+                target_backend = Backend_X64;
+            }
+            
+            filepath = string_lit(argv[2]);
+        } else {
+            filepath = string_lit(argv[1]);
+        }
         
         if (argc > 3) {
             if (string_equals(string_lit(argv[2]), string_lit("-output"))) {
@@ -254,6 +264,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         return 0;
     }
     
+    Bytecode_Builder bytecode_builder = {};
+    
+#if 0
     // Start by pushing address lookup table for external libs
     for_map(tcx.import_table.libs, it) {
         
@@ -313,6 +326,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             export_size(&data_packer, Read_Data_Section, 8, 8); // null entry
         }
     }
+#endif
     
     
     Compilation_Unit* main_cu = 0;
@@ -323,7 +337,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             Type* type = cu->ast->type;
             if (type->kind == TypeKind_Function) {
                 bool is_main = cu->ident == Sym_main;
-                convert_procedure_to_intermediate_code(cu, is_debugger_present && is_main);
+                cu->bc_func = convert_function_to_bytecode(&bytecode_builder, cu, 
+                                                           is_debugger_present && is_main);
                 
                 if (is_main) {
                     main_cu = cu;
@@ -333,68 +348,75 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         
         x64_globals = cu->globals;
     }
-    assert(main_cu);
+    assert(main_cu && "no main function"); // TODO: turn this into an actual error
     
-    // Compute the actual stack displacement for each Ic_Arg
-    for_array(ast_file.units, cu, _3) {
-        Intermediate_Code* ic = cu->ic_first;
-        while (ic) {
-            
-            // TODO: robustness we need a better way to know what the instruction data is!
-            if (ic->opcode >= IC_NEG && ic->opcode <= IC_SETNE) {
-                if (ic->dest.type & IC_STK) {
-                    ic->dest.disp = compute_stk_displacement(cu, ic->dest);
-                }
-                if (ic->src0.type & IC_STK) {
-                    ic->src0.disp = compute_stk_displacement(cu, ic->src0);
-                }
-                if (ic->src1.type & IC_STK) {
-                    ic->src1.disp = compute_stk_displacement(cu, ic->src1);
-                }
-            }
-            
-            ic = ic->next;
-        }
-    }
-    
-    String_Builder sb = {};
-    for_array(ast_file.units, cu, _4) {
-        if (flag_print_bc || (cu->ast && cu->ast->type && 
-                              cu->ast->type->kind == TypeKind_Function &&
-                              cu->ast->type->Function.dump_bytecode)) {
-            string_builder_dump_bytecode(&sb, cu);
-        }
-    }
-    //
-    if (sb.data) {
-        string s = string_builder_to_string_nocopy(&sb);
-        pln("\nIntermediate code:\n%", f_string(s));
-        string_builder_free(&sb);
-    }
-    
-    // Convert to X64 machine code
-    s64 rip = 0;
-    for_array(ast_file.units, cu, _5) {
-        rip = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage, 0, 0, 0, rip);
-    }
-    
-    Type* main_func_return_type = main_cu->ast->type;
-    if (main_func_return_type && main_func_return_type->kind == TypeKind_Function) {
-        main_func_return_type = main_func_return_type->Function.return_type;
-    }
-    u8* asm_buffer_main = (u8*) asm_buffer + main_cu->bb_first->addr;
-    
-    // NOTE(Alexander): Build initial PE executable
-    Memory_Arena build_arena = {};
-    PE_Executable pe_executable = convert_to_pe_executable(&build_arena,
-                                                           (u8*) asm_buffer, (u32) rip,
-                                                           &tcx.import_table,
-                                                           &data_packer,
-                                                           asm_buffer_main);
     
     
     switch (target_backend) {
         case Backend_X64: {
+            
+            // Compute the actual stack displacement for each Ic_Arg
+            for_array(ast_file.units, cu, _3) {
+                Intermediate_Code* ic = cu->ic_first;
+                while (ic) {
+                    
+                    // TODO: robustness we need a better way to know what the instruction data is!
+                    if (ic->opcode >= IC_NEG && ic->opcode <= IC_SETNE) {
+                        if (ic->dest.type & IC_STK) {
+                            ic->dest.disp = compute_stk_displacement(cu, ic->dest);
+                        }
+                        if (ic->src0.type & IC_STK) {
+                            ic->src0.disp = compute_stk_displacement(cu, ic->src0);
+                        }
+                        if (ic->src1.type & IC_STK) {
+                            ic->src1.disp = compute_stk_displacement(cu, ic->src1);
+                        }
+                    }
+                    
+                    ic = ic->next;
+                }
+            }
+            
+            String_Builder sb = {};
+            for_array(ast_file.units, cu, _4) {
+                if (flag_print_bc || (cu->ast && cu->ast->type && 
+                                      cu->ast->type->kind == TypeKind_Function &&
+                                      cu->ast->type->Function.dump_bytecode)) {
+                    string_builder_dump_bytecode(&sb, cu->bc_func, cu->ast->type);
+                }
+            }
+            //
+            if (sb.data) {
+                string s = string_builder_to_string_nocopy(&sb);
+                pln("\nIntermediate code:\n%", f_string(s));
+                string_builder_free(&sb);
+            }
+            
+            return 0;
+            
+#if 0
+            // Convert to X64 machine code
+            s64 rip = 0;
+            for_array(ast_file.units, cu, _5) {
+                unimplemented;
+                //rip = convert_to_x64_machine_code(cu->first, 0, 0, 0, rip);
+            }
+            
+            Type* main_func_return_type = main_cu->ast->type;
+            if (main_func_return_type && main_func_return_type->kind == TypeKind_Function) {
+                main_func_return_type = main_func_return_type->Function.return_type;
+            }
+            u8* asm_buffer_main = (u8*) asm_buffer + main_cu->bb_first->addr;
+            
+            // NOTE(Alexander): Build initial PE executable
+            Memory_Arena build_arena = {};
+            PE_Executable pe_executable = convert_to_pe_executable(&build_arena,
+                                                                   (u8*) asm_buffer, (u32) rip,
+                                                                   &tcx.import_table,
+                                                                   &data_packer,
+                                                                   asm_buffer_main);
+            
+            
             // TODO(Alexander): the PE section_alignment is hardcoded as 0x1000
             for_array(ast_file.units, cu, _6) {
                 Intermediate_Code* ic = cu->ic_first;
@@ -479,14 +501,26 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 pln("\nJIT exited with code: 0");
             }
 #endif
+#endif
         } break;
         
         case Backend_WASM: {
+            
+            String_Builder sb = {};
+            for_array(ast_file.units, cu, _4) {
+                pln("flag_print_bc = %", f_bool(flag_print_bc));
+                if (flag_print_bc || (cu->ast && cu->ast->type && 
+                                      cu->ast->type->kind == TypeKind_Function &&
+                                      cu->ast->type->Function.dump_bytecode)) {
+                    string_builder_dump_bytecode(&sb, cu->bc_func, cu->ast->type);
+                }
+            }
+            
             Buffer buffer = {};
             buffer.data = (u8*) asm_buffer;
             buffer.size = asm_size;
             
-            convert_to_wasm_module(&ast_file, 0, &buffer);
+            convert_to_wasm_module(&bytecode_builder.bytecode, 0, &buffer);
             
             File_Handle wasm_file = DEBUG_open_file_for_writing("simple.wasm");
             DEBUG_write(wasm_file, buffer.data, (u32) buffer.curr_used);

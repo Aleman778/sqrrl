@@ -6,6 +6,7 @@ IC(EPLG) \
 IC(DEBUG_BREAK) \
 IC(LABEL) \
 IC(CALL) \
+IC(RET) \
 IC(NEG) \
 IC(NOT) \
 IC(INC) \
@@ -168,7 +169,7 @@ enum {
     IC_RIP_DISP32 = bit(11),
     IC_TF_MASK = 0xFF00,
 };
-typedef u8 Ic_Type_Flags;
+typedef u8 Ic_Arg_Type;
 
 #define IC_STK_RIP (IC_STK | IC_RIP_DISP32)
 #define IC_STK_RIP_REG (IC_STK | IC_RIP_DISP32 | IC_REG)
@@ -198,12 +199,13 @@ struct Ic_Stk_Entry {
     Ic_Stk_Area area;
 };
 
+
 struct Ic_Arg {
     union {
         Ic_Type type;
         struct {
             Ic_Raw_Type raw_type;
-            Ic_Type_Flags type_flags;
+            Ic_Arg_Type type_flags;
         };
     };
     u8 reg;
@@ -245,6 +247,17 @@ struct Intermediate_Code {
 };
 
 struct Ic_Basic_Block;
+
+struct Ic_Function {
+    Intermediate_Code* ic_first;
+    Intermediate_Code* ic_last;
+    Ic_Basic_Block* bb_first;
+    Ic_Basic_Block* bb_last;
+    Ic_Basic_Block* bb_return;
+    Ic_Basic_Block* bb_data;
+    
+    array(Ic_Arg*) args;
+};
 
 struct Ic_Jump {
     Ic_Insn_Base_Fields;
@@ -355,5 +368,8 @@ ic_basic_block() {
     return result;
 }
 
-void string_builder_dump_bytecode(String_Builder* sb, Compilation_Unit* cu);
-void dump_bytecode(Compilation_Unit* cu);
+void convert_function_to_intermediate_code(Compilation_Unit* cu, bool insert_debug_break);
+
+//void string_builder_dump_bytecode(String_Builder* sb, Compilation_Unit* cu);
+//void dump_bytecode(Compilation_Unit* cu);
+

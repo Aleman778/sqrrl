@@ -168,7 +168,8 @@ run_compiler_tests(string filename,
                     test.modes = modes;
                     
                     if (decl->type->Function.dump_bytecode) {
-                        dump_bytecode(unit);
+                        unimplemented;
+                        //dump_bytecode(bytecode_builder);
                     }
                     
                     assert(!map_key_exists(tests, unit->ident) && "duplicate test name");

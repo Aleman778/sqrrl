@@ -35,6 +35,14 @@ commands = {
     .win   = "build_msvc.bat release",
     .linux = "./build_gcc.sh release",
     .mac   = "./build_gcc.sh release", },
+  .build_personal = { .out = "*run*", .footer_panel = false, .save_dirty_files = true,
+    .win = "cd build && sqrrl.exe ../personal/first.sq",
+    .linux = "build/sqrrl test",
+    .mac = "build/sqrrl test", },
+  .build_personal_wasm = { .out = "*run*", .footer_panel = false, .save_dirty_files = true,
+    .win = "cd build && sqrrl.exe -wasm ../personal/first.sq",
+    .linux = "build/sqrrl test",
+    .mac = "build/sqrrl test", },
   .run = { .out = "*run*", .footer_panel = false, .save_dirty_files = false,
     .win = "cd build && sqrrl.exe",
     .linux = "build/sqrrl",
@@ -47,10 +55,6 @@ commands = {
     .win = "cd build && sqrrl.exe test",
     .linux = "build/sqrrl test",
     .mac = "build/sqrrl test", },
-  .run_personal = { .out = "*run*", .footer_panel = false, .save_dirty_files = true,
-    .win = "cd build && sqrrl.exe ../personal/first.sq",
-    .linux = "build/sqrrl test",
-    .mac = "build/sqrrl test", },
 };
 
 fkey_command = {
@@ -58,6 +62,7 @@ fkey_command = {
   .F2 = "run",
   .F3 = "build_release",
   .F4 = "run_build",
-  .F5 = "run_personal",
+  .F5 = "build_personal",
+  .F6 = "build_personal_wasm",
   .F9 = "run_all_tests",
 };

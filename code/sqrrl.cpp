@@ -508,13 +508,15 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             
             String_Builder sb = {};
             for_array(ast_file.units, cu, _4) {
-                pln("flag_print_bc = %", f_bool(flag_print_bc));
                 if (flag_print_bc || (cu->ast && cu->ast->type && 
                                       cu->ast->type->kind == TypeKind_Function &&
                                       cu->ast->type->Function.dump_bytecode)) {
                     string_builder_dump_bytecode(&sb, cu->bc_func, cu->ast->type);
                 }
             }
+            string s = string_builder_to_string_nocopy(&sb);
+            pln("%", f_string(s));
+            string_builder_free(&sb);
             
             Buffer buffer = {};
             buffer.data = (u8*) asm_buffer;

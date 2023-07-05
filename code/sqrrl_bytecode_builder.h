@@ -1,14 +1,28 @@
 
+struct Stack_Entry {
+    u32 size;
+    u32 align;
+};
+
 struct Bytecode_Builder {
     Memory_Arena arena;
     
-    Bytecode bytecode;
-    
     array(string_id)* function_names;
+    array(Bytecode_Instruction*)* labels;
+    array(Stack_Entry)* stack;
     
-    u32 next_type_index; 
+    map(string_id, Bytecode_Operand)* locals;
+    map(string_id, Bytecode_Operand)* globals;
     
     Bytecode_Function* curr_function;
+    
+    Data_Packer* data_packer;
+    Interp* interp;
+    
+    Bytecode bytecode;
+    
+    u32 next_type_index;
+    u32 next_register_index;
 };
 
 Bytecode_Type
@@ -61,16 +75,16 @@ to_bytecode_type(Type* type) {
 }
 
 Bytecode_Function*
-begin_bytecode_function(Bytecode_Builder* builder, Type* type) {
+begin_bytecode_function(Bytecode_Builder* bc, Type* type) {
     assert(type && type->kind == TypeKind_Function && "not a function type");
     
     int ret_count = is_valid_type(type->Function.return_type) ? 1 : 0;
     int arg_count = (int) array_count(type->Function.arg_types);
     int size = sizeof(Bytecode_Function) + ret_count + arg_count;
     
-    Bytecode_Function* func = (Bytecode_Function*) arena_push_size(&builder->arena, size, 
+    Bytecode_Function* func = (Bytecode_Function*) arena_push_size(&bc->arena, size, 
                                                                    alignof(Bytecode_Function));
-    func->type_index = builder->next_type_index++;
+    func->type_index = bc->next_type_index++;
     func->ret_count = ret_count;
     func->arg_count = arg_count;
     
@@ -84,139 +98,98 @@ begin_bytecode_function(Bytecode_Builder* builder, Type* type) {
         *curr_type++ = to_bytecode_type(type->Function.arg_types[i]);
     }
     
-    array_push(builder->bytecode.functions, func);
-    array_push(builder->function_names, type->Function.ident);
+    array_push(bc->bytecode.functions, func);
+    array_push(bc->function_names, type->Function.ident);
     
-    builder->curr_function = func;
+    bc->curr_function = func;
     return func;
 }
 
 void
-end_bytecode_function(Bytecode_Builder* builder) {
-    builder->curr_function = 0;
+end_bytecode_function(Bytecode_Builder* bc) {
+    bc->curr_function = 0;
 }
 
-
+#define S1(x) #x
+#define S2(x) S1(x)
 #define add_insn(bc, opcode) add_bytecode_insn(bc, opcode, \
+BytecodeInstructionKind_Base, \
 sizeof(Bytecode_Instruction), \
 alignof(Bytecode_Instruction), \
 __FILE__ ":" S2(__LINE__));
 
+#define add_insn_t(bc, opcode, T) (Bytecode_##T*) add_bytecode_insn(bc, opcode, \
+BytecodeInstructionKind_##T, \
+sizeof(Bytecode_##T), \
+alignof(Bytecode_##T), \
+__FILE__ ":" S2(__LINE__));
+
 Bytecode_Instruction*
-add_bytecode_insn(Bytecode_Builder* builder, Bytecode_Operator opcode, umm size, umm align, cstring loc) {
-    assert(builder->curr_function && "cannot add instruction outside function scope");
+add_bytecode_insn(Bytecode_Builder* bc, 
+                  Bytecode_Operator opcode, 
+                  Bytecode_Instruction_Kind kind, 
+                  umm size, umm align, cstring loc) {
     
-    Bytecode_Function* func = builder->curr_function;
-    func->insn_count++;
+    assert(bc->curr_function && "cannot add instruction outside function scope");
     
     // TODO(Alexander): when we run out of memory we need to make sure we have pointer to next instruction
-    Bytecode_Instruction* insn = (Bytecode_Instruction*) arena_push_size(&builder->arena, size, align);
+    Bytecode_Instruction* insn = (Bytecode_Instruction*) arena_push_size(&bc->arena, size, align);
     insn->opcode = opcode;
-    insn->kind = BytecodeInstructionKind_Base;
+    insn->kind = kind;
     insn->comment = loc;
     
     return insn;
 }
 
-#if 0
-inline Intermediate_Code*
-ic_add_orphan(Bytecode_Builder* bc, Ic_Opcode opcode = IC_NOOP, smm size=sizeof(Intermediate_Code)) {
-    // TODO(Alexander): temporary bump allocation for now
-    Intermediate_Code* result = (Intermediate_Code*) calloc(1, size);
-    result->opcode = opcode;
-    return result;
-}
-
-#define S1(x) #x
-#define S2(x) S1(x)
-#define ic_add(bc, opcode) ic_add_insn(bc, opcode, __FILE__ ":" S2(__LINE__))
-#define ic_label(bc, bb) ic_label_insn(bc, bb, __FILE__ ":" S2(__LINE__))
-#define ic_jump(bc, opcode, target_bb) ic_jump_insn(bc, opcode, target_bb, __FILE__ ":" S2(__LINE__))
-#define ic_call(bc) (Ic_Call*) ic_add_insn(bc, IC_CALL, __FILE__ ":" S2(__LINE__), sizeof(Ic_Call))
-
-
-inline Intermediate_Code*
-ic_add_orphan(Bytecode_Builder* bc, Ic_Opcode opcode = IC_NOOP, smm size=sizeof(Intermediate_Code)) {
-    // TODO(Alexander): temporary bump allocation for now
-    Intermediate_Code* result = (Intermediate_Code*) calloc(1, size);
-    result->opcode = opcode;
-    return result;
-}
-
-#define S1(x) #x
-#define S2(x) S1(x)
-#define ic_add(bc, opcode) ic_add_insn(bc, opcode, __FILE__ ":" S2(__LINE__))
-#define ic_label(bc, bb) ic_label_insn(bc, bb, __FILE__ ":" S2(__LINE__))
-#define ic_jump(bc, opcode, target_bb) ic_jump_insn(bc, opcode, target_bb, __FILE__ ":" S2(__LINE__))
-#define ic_call(bc) (Ic_Call*) ic_add_insn(bc, IC_CALL, __FILE__ ":" S2(__LINE__), sizeof(Ic_Call))
-#define ic_bc(bc) (Ic_Func*) ic_add_insn(bc, IC_FUNC, __FILE__ ":" S2(__LINE__), sizeof(Ic_Func))
-
-
-internal void
-ic_add_to_basic_block(Bytecode_Builder* bc, Intermediate_Code* ic, Ic_Basic_Block* bb) {
-    if (!bb->ic_first) {
-        bb->ic_first = ic;
-    }
-    if (!bc->ic_first) {
-        bc->ic_first = ic;
-    }
-    
-    if (bb->ic_last) {
-        bb->ic_last->next = ic;
-    }
-    bb->ic_last = ic;
-    bc->ic_last = ic;
-}
-
 void
-ic_label_insn(Bytecode_Builder* bc, Ic_Basic_Block* bb, cstring comment=0) {
-    Intermediate_Code* result = ic_add_orphan(bc, IC_LABEL);
-    result->data = bb;
-    
-    if (!bc->bb_first) {
-        bc->bb_first = bb;
-    }
-    
-    if (bc->bb_last) {
-        bc->bb_last->next = bb;
-    }
-    
-    bb->index = bc->bb_index++;
-    bb->ic_last = bc->ic_last;
-    bc->bb_last = bb;
-    
-    ic_add_to_basic_block(bc, result, bb);
-    
-    result->comment = comment;
+add_store_insn(Bytecode_Builder* bc, Bytecode_Operand dest, Bytecode_Operand src) {
+    assert(src.type == dest.type);
+    Bytecode_Binary* result = add_insn_t(bc, BC_STORE, Binary);
+    result->first = dest;
+    result->second = src;
 }
 
-Intermediate_Code*
-ic_add_insn(Bytecode_Builder* bc,
-            Ic_Opcode opcode = IC_NOOP, 
-            cstring comment=0,
-            smm size=sizeof(Intermediate_Code)) {
-    
-    Intermediate_Code* result = ic_add_orphan(bc, opcode, size);
-    
-    Ic_Basic_Block* bb = bc->bb_last;
-    assert(bb && "missing label");
-    ic_add_to_basic_block(bc, result, bb);
-    
-    result->comment = comment;
-    
+#define push_bytecode_stack_t(bc, T) push_bytecode_stack(bc, (u32) sizeof(T), (u32) alignof(T));
+
+inline Bytecode_Operand
+push_bytecode_register(Bytecode_Builder* bc, Bytecode_Type type) {
+    Bytecode_Operand result = {};
+    result.kind = BytecodeOperand_register;
+    result.type = type;
+    result.register_index = bc->next_register_index++;
     return result;
 }
 
-void
-ic_jump_insn(Bytecode_Builder* bc, Ic_Opcode opcode,
-             Ic_Basic_Block* target_bb, cstring comment=0) {
-    
-    assert(opcode >= IC_JMP && opcode <= IC_JNE);
-    Ic_Jump* ic = (Ic_Jump*) ic_add_insn(bc, opcode, comment, sizeof(Ic_Jump));
-    ic->target = target_bb;
+inline Bytecode_Operand
+push_bytecode_stack(Bytecode_Builder* bc, u32 size, u32 align) {
+    Bytecode_Operand result = {};
+    result.kind = BytecodeOperand_stack;
+    result.type = BytecodeType_i64;
+    result.stack_index = (u32) array_count(bc->stack);
+    Stack_Entry stk = { size, align };
+    array_push(bc->stack, stk);
+    return result;
 }
-#endif
 
-void string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode_Instruction* insn);
-void string_builder_dump_bytecode(String_Builder* sb, Bytecode_Function* func, Type* type=0);
+inline Bytecode_Operand
+push_bytecode_memory(Bytecode_Builder* bc, Bytecode_Memory_Kind kind, smm size, smm align, void* init=0) {
+    Memory_Arena* arena = (kind == BytecodeMemory_read_only ? 
+                           &bc->data_packer->rdata_arena : 
+                           &bc->data_packer->data_arena);
+    void* data = arena_push_size(arena, size, align);
+    u32 offset = (s32) arena_relative_pointer(arena, data);
+    if (init) {
+        memcpy(data, init, size);
+    }
+    
+    Bytecode_Operand result = {};
+    result.kind = BytecodeOperand_memory;
+    result.type = BytecodeType_i64;
+    result.memory_offset = offset;
+    result.memory_kind = kind;
+    return result;
+}
+
+void string_bc_dump_bytecode_insn(String_Builder* sb, Bytecode_Instruction* insn);
+void string_bc_dump_bytecode(String_Builder* sb, Bytecode_Function* func, Type* type=0);
 void dump_bytecode(Compilation_Unit* cu);

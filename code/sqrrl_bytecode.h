@@ -9,7 +9,8 @@ struct Bytecode {
 #define DEF_BYTECODE_OPERATORS \
 OP(NOOP) \
 OP(DEBUG_BREAK) \
-OP(LABEL) \
+OP(LOAD_FUNCTION_PTR) \
+OP(BLOCK) \
 OP(LOAD) \
 OP(STORE) \
 OP(ADD) \
@@ -42,12 +43,44 @@ struct Bytecode_Function {
     u32 arg_count;
     // followed by Bytecode_Type, returns, args and lastly instructions
     
-    u32 insn_count;
-    u32 first_insn; // relative pointer to first instruction
+    u32 first_insn; // relative pointer to first basic block
+};
+
+enum Bytecode_Operand_Kind {
+    BytecodeOperand_empty,
+    
+    BytecodeOperand_const,
+    BytecodeOperand_register,
+    BytecodeOperand_stack,
+    BytecodeOperand_memory,
+};
+
+enum Bytecode_Memory_Kind {
+    BytecodeMemory_read_only,
+    BytecodeMemory_read_write,
 };
 
 struct Bytecode_Operand {
-    
+    Bytecode_Operand_Kind kind;
+    Bytecode_Type type;
+    union {
+        s32 const_i32;
+        s64 const_i64;
+        f32 const_f32;
+        f64 const_f64;
+        
+        u32 register_index;
+        
+        struct {
+            u32 stack_index;
+            u32 stack_offset;
+        };
+        
+        struct {
+            u32 memory_offset;
+            Bytecode_Memory_Kind memory_kind;
+        };
+    };
 };
 
 enum Bytecode_Instruction_Kind {
@@ -55,6 +88,7 @@ enum Bytecode_Instruction_Kind {
     
     BytecodeInstructionKind_Base,
     BytecodeInstructionKind_Binary,
+    BytecodeInstructionKind_Block,
 };
 
 #define Bytecode_Instruction_Base \
@@ -64,17 +98,29 @@ u32 next_insn; \
 cstring comment
 
 // NOTE(Alexander): this is just a base structure, most are extended
+struct Bytecode_Base {
+    Bytecode_Instruction_Base;
+};
+
+// NOTE(Alexander): alias for Bytecode_Base
 struct Bytecode_Instruction {
     Bytecode_Instruction_Base;
 };
 
 global Bytecode_Instruction bc_empty = {};
 
-struct Binary_Instruction {
+struct Bytecode_Binary {
     Bytecode_Instruction_Base;
     
     Bytecode_Operand first;
     Bytecode_Operand second;
+};
+
+// NOTE(Alexander): this is basically a label instruction
+struct Bytecode_Block {
+    Bytecode_Instruction_Base;
+    
+    u32 label_index;
 };
 
 inline Bytecode_Instruction*

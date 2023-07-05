@@ -242,8 +242,6 @@ ic_add_orphan(Compilation_Unit* cu, Ic_Opcode opcode = IC_NOOP, smm size=sizeof(
     return result;
 }
 
-#define S1(x) #x
-#define S2(x) S1(x)
 #define ic_add(cu, opcode) ic_add_insn(cu, opcode, __FILE__ ":" S2(__LINE__))
 #define ic_label(cu, bb) ic_label_insn(cu, bb, __FILE__ ":" S2(__LINE__))
 #define ic_jump(cu, opcode, target_bb) ic_jump_insn(cu, opcode, target_bb, __FILE__ ":" S2(__LINE__))

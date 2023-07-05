@@ -664,63 +664,12 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
         case Ast_None: {
         } break;
         
-        case Ast_Value: {
-            if (is_integer(expr->Value)) {
-                Ic_Raw_Type raw_type = convert_type_to_raw_type(expr->type);
-                result.type = raw_type + IC_DISP;
-                //result.disp = value_to_s64(expr->Value);
-                value_store_in_memory(expr->type, &result.disp, expr->Value.data);
-                
-            } else if (is_floating(expr->Value)) {
-                Type* type = expr->type;
-                Ic_Raw_Type raw_type = convert_type_to_raw_type(expr->type);
-                
-                
-                void* data = arena_push_size(&cu->data_packer->rdata_arena, type->size, type->align);
-                u32 relative_ptr = (u32) arena_relative_pointer(&cu->data_packer->rdata_arena, data);
-                
-                value_store_in_memory(type, data, expr->Value.data);
-                result = ic_rip_disp32(cu, raw_type, IcDataArea_Read_Only, data, relative_ptr);
-                
-            } else if (is_string(expr->Value)) {
-                Ic_Raw_Type raw_type = IC_T64;
-                
-                smm string_count = expr->Value.data.str.count;
-                void* string_data = arena_push_size(&cu->data_packer->rdata_arena, string_count, 1);
-                u32 relative_ptr = (s32) arena_relative_pointer(&cu->data_packer->rdata_arena, string_data);
-                memcpy(string_data, expr->Value.data.str.data, string_count);
-                
-                result = ic_push_local(cu, t_string);
-                
-                Ic_Arg data = ic_rip_disp32(cu, IC_T64, IcDataArea_Read_Only, string_data, relative_ptr);
-                Ic_Arg count_dest = result;
-                count_dest.disp += 8; // TODO(Alexander): hardcoded offset for string.count
-                count_dest.raw_type = IC_S64;
-                
-                ic_lea(cu, result, data);
-                ic_mov(cu, count_dest, ic_imm(IC_S64, string_count));
-                
-                
-            } else if (is_cstring(expr->Value)) {
-                if (expr->Value.data.cstr) {
-                    smm str_count = cstring_count(expr->Value.data.cstr);
-                    cstring cstr = (cstring) arena_push_size(&cu->data_packer->rdata_arena, str_count + 1, 1);
-                    u32 relative_ptr = (u32) arena_relative_pointer(&cu->data_packer->rdata_arena, (void*) cstr);
-                    memcpy((void*) cstr, (void*) expr->Value.data.cstr, str_count + 1);
-                    result = ic_rip_disp32(cu, IC_T64, IcDataArea_Read_Only, (void*) cstr, relative_ptr);
-                } else {
-                    result = ic_imm(IC_S64, 0);
-                }
-                
-            } else {
-                unimplemented;
-            }
-        } break;
         
-        case Ast_Exported_Data: {
-            result = ic_rip_disp32(cu, IC_T64, IcDataArea_Type_Info, 
-                                   expr->Exported_Data.data, 
-                                   expr->Exported_Data.relative_ptr);
+        case Ast_Value: {
+            // TODO(Alexander): for floating we need to allocate it on rdata section
+            //void* data = arena_push_size(&cu->data_packer->rdata_arena, type->size, type->align);
+            //u32 relative_ptr = (u32) arena_relative_pointer(&cu->data_packer->rdata_arena, data);
+            
         } break;
         
         case Ast_Ident: {
@@ -1247,53 +1196,16 @@ convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr) {
 void
 convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Block* bb_break, Ic_Basic_Block* bb_continue) {
     switch (stmt->kind) {
-        case Ast_Decl_Stmt: {
-            Ast* decl = stmt->Decl_Stmt.stmt;
-            if (is_ast_stmt(decl)) {
-                convert_stmt_to_intermediate_code(cu, decl, bb_break, bb_continue);
-            }
-        } break;
-        
-        case Ast_Expr_Stmt: {
-            Ic_Arg src = convert_expr_to_intermediate_code(cu, stmt->Expr_Stmt);
-        } break;
         
         case Ast_Assign_Stmt: {
-            Type* type = stmt->type;
             
-            Ic_Arg src = {};
-            if (is_valid_ast(stmt->Assign_Stmt.expr)) {
-                src = convert_expr_to_intermediate_code(cu, stmt->Assign_Stmt.expr);
-            }
             
             // NOTE(Alexander): push local first then it can be found elsewhere
             if (stmt->Assign_Stmt.ident->kind == Ast_Ident) {
-                string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
-                
-                if (stmt->Assign_Stmt.mods & AstDeclModifier_Local_Persist) {
-                    void* data = arena_push_size(&cu->data_packer->data_arena, type->size, type->align);
-                    u32 relative_ptr = (u32) arena_relative_pointer(&cu->data_packer->data_arena, data);
-                    
-                    if (src.type & IC_DISP) {
-                        memcpy(data, &src.disp, type->size);
-                    } else if ((src.type & IC_TF_MASK) != 0) {
-                        // TODO(Alexander): we need initializer (that runs before main) to setup local persist with non constant initializer
-                        //unimplemented;
-                    }
-                    
-                    Ic_Raw_Type raw_type = convert_type_to_raw_type(type);
-                    Ic_Arg result = ic_rip_disp32(cu, raw_type, IcDataArea_Globals, data, relative_ptr);
-                    map_put(cu->locals, ident, result);
-                } else {
-                    ic_push_local(cu, type, ident);
-                    
-                    Intermediate_Code* ic_curr = cu->ic_last;
-                    Ic_Arg dest = convert_expr_to_intermediate_code(cu, stmt->Assign_Stmt.ident);
-                    //src = ic_clobber_register(cu, ic_curr, type, src, dest); // TODO: why is this here, is this needed?!?!
-                    convert_assign_to_intermediate_code(cu, stmt->type, dest, src, true);
-                }
                 
             } else if (stmt->Assign_Stmt.ident->kind == Ast_Compound) {
+#if 0
+                // TODO: add this to bytecode too
                 for_compound(stmt->Assign_Stmt.ident, it) {
                     string_id ident = ast_unwrap_ident(it);
                     ic_push_local(cu, type, ident);
@@ -1304,6 +1216,7 @@ convert_stmt_to_intermediate_code(Compilation_Unit* cu, Ast* stmt, Ic_Basic_Bloc
                     src = ic_clobber_register(cu, ic_curr, type, src, dest);
                     convert_assign_to_intermediate_code(cu, stmt->type, dest, src, true);
                 }
+#endif
             } else {
                 assert(0 && "invalid assign statment identifier");
             }

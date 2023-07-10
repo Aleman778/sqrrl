@@ -38,6 +38,7 @@ sqrrl_free(void* data) {
 #include "sqrrl_interp.h"
 #include "sqrrl_bytecode_builder.h"
 #include "sqrrl_x64_converter.h"
+#include "sqrrl_wasm_converter.h"
 #include "sqrrl_pe_converter.h"
 #include "sqrrl_test.h"
 

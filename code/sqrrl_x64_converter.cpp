@@ -1486,7 +1486,6 @@ convert_bytecode_function_to_x64_machine_code(Buffer* buf, Bytecode_Function* fu
 
 void 
 convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytecode_Instruction* insn) {
-    
     s64 rip = 0;
     
     

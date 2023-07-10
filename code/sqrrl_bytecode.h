@@ -108,6 +108,7 @@ enum Bytecode_Instruction_Kind {
     BytecodeInstructionKind_Base,
     BytecodeInstructionKind_Unary,
     BytecodeInstructionKind_Binary,
+    BytecodeInstructionKind_Call,
     BytecodeInstructionKind_Block,
 };
 
@@ -140,6 +141,13 @@ struct Bytecode_Binary {
     
     Bytecode_Operand first;
     Bytecode_Operand second;
+};
+
+struct Bytecode_Call {
+    Bytecode_Instruction_Base;
+    
+    u32 func_index;
+    // argument operands followed by return operands
 };
 
 // NOTE(Alexander): this is basically a label instruction

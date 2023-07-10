@@ -96,6 +96,36 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             }
         } break;
         
+        case Ast_Binary_Expr: {
+            // TODO: add correct opcode
+            Bytecode_Operator first = convert_expression_to_bytecode(bc, expr->Binary_Expr.first);
+            
+            
+            Bytecode_Binary* insn = add_insn_t(bc, BC_ADD, Binary);
+            insn->first = ;
+            insn->second = convert_expression_to_bytecode(bc, expr->Binary_Expr.second);
+            
+            
+            
+            result = insn->first;
+            
+        } break;
+        
+        case Ast_Call_Expr: {
+            
+            Type* type = expr->Call_Expr.function_type;
+            assert(type && type->kind == TypeKind_Function);
+            
+            Compilation_Unit* target_cu = type->Function.unit;
+            assert(target_cu && target_cu->bc_func);
+            
+            Bytecode_Function* func = target_cu->bc_func;
+            
+            Bytecode_Call* insn = add_insn_t(bc, BC_CALL, Call);
+            func.type_index
+                
+        } break;
+        
         default: {
             unimplemented;
         } break;
@@ -107,7 +137,6 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
 
 void
 convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, s32 continue_label) {
-    
     switch (stmt->kind) {
         case Ast_Decl_Stmt: {
             Ast* decl = stmt->Decl_Stmt.stmt;
@@ -119,7 +148,6 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
         case Ast_Expr_Stmt: {
             convert_expression_to_bytecode(bc, stmt->Expr_Stmt);
         } break;
-        
         
         case Ast_Assign_Stmt: {
             Type* type = stmt->type;

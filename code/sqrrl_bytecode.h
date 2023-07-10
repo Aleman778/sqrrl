@@ -78,6 +78,7 @@ enum Bytecode_Memory_Kind {
     BytecodeMemory_read_write,
 };
 
+// TODO: maybe we want to ecode the kind and type as part of the instruction?
 struct Bytecode_Operand {
     Bytecode_Operand_Kind kind;
     Bytecode_Type type;

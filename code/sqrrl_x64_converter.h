@@ -58,6 +58,50 @@ global const X64_Reg float_arg_registers_ccall_windows[] {
     X64_XMM0, X64_XMM1, X64_XMM2, X64_XMM3
 };
 
+
+#define X64_OP_SIZE_PREFIX 0x66
+
+#define REX_PATTERN 0x40
+#define REX_FLAG_W bit(3)
+#define REX_FLAG_R bit(2)
+#define REX_FLAG_X bit(1)
+#define REX_FLAG_B bit(0)
+#define REX_FLAG_64_BIT REX_FLAG_W
+
+
+#define MODRM_DIRECT 0xC0
+#define MODRM_INDIRECT_DISP8 0x40
+#define MODRM_INDIRECT_DISP32 0x80
+
+
+inline void
+x64_rex(Buffer* buf, u8 flags) {
+    push_u8(buf, REX_PATTERN | flags);
+}
+
+inline void x64_mov(Buffer* buf,
+                    Ic_Type t1, s64 r1, s64 d1, 
+                    Ic_Type t2, s64 r2, s64 d2, s64 rip);
+
+inline void x64_add(Buffer* buf, 
+                    Ic_Type t1, s64 r1, s64 d1, 
+                    Ic_Type t2, s64 r2, s64 d2, 
+                    Ic_Type t3, s64 r3, s64 d3,
+                    u8 reg_field, u8 opcode, s64 rip);
+
+struct X64_Assembler {
+    array(s32)* rbp_offsets;
+    s32 curr_rbp_offset;
+    
+};
+
+void convert_bytecode_function_to_x64_machine_code(Buffer* buf, Bytecode_Function* func);
+void convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, 
+                                               Buffer* buf, 
+                                               Bytecode_Instruction* insn);
+
+
+#if 0
 struct X64_Arg_Copy {
     Type* type;
     union {
@@ -364,34 +408,6 @@ _ic_lea(Compilation_Unit* cu, Ic_Arg dest, Ic_Arg src, cstring comment=0, u8 tmp
     }
 }
 
-#define X64_OP_SIZE_PREFIX 0x66
-
-#define REX_PATTERN 0x40
-#define REX_FLAG_W bit(3)
-#define REX_FLAG_R bit(2)
-#define REX_FLAG_X bit(1)
-#define REX_FLAG_B bit(0)
-#define REX_FLAG_64_BIT REX_FLAG_W
-
-inline void
-x64_rex(Intermediate_Code* ic, u8 flags) {
-    ic_u8(ic, REX_PATTERN | flags);
-}
-
-#define MODRM_DIRECT 0xC0
-#define MODRM_INDIRECT_DISP8 0x40
-#define MODRM_INDIRECT_DISP32 0x80
-
-inline void x64_mov(Intermediate_Code* ic, 
-                    Ic_Type t1, s64 r1, s64 d1, 
-                    Ic_Type t2, s64 r2, s64 d2, s64 rip);
-
-inline void x64_add(Intermediate_Code* ic, 
-                    Ic_Type t1, s64 r1, s64 d1, 
-                    Ic_Type t2, s64 r2, s64 d2, 
-                    Ic_Type t3, s64 r3, s64 d3,
-                    u8 reg_field, u8 opcode, s64 rip);
-
 Ic_Arg convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr);
 
 void convert_procedure_to_intermediate_code(Compilation_Unit* cu, bool insert_debug_break);
@@ -400,3 +416,4 @@ s64 convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buff
 void string_builder_push(String_Builder* sb, Ic_Arg arg);
 void string_builder_push(String_Builder* sb, Intermediate_Code* ic, int bb_index=0);
 void print_intermediate_code(Intermediate_Code* value);
+#endif

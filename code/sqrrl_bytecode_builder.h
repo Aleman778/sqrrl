@@ -75,41 +75,14 @@ to_bytecode_type(Type* type) {
     return BytecodeType_i32;
 }
 
-Bytecode_Function*
-begin_bytecode_function(Bytecode_Builder* bc, Type* type) {
-    assert(type && type->kind == TypeKind_Function && "not a function type");
-    
-    int ret_count = is_valid_type(type->Function.return_type) ? 1 : 0;
-    int arg_count = (int) array_count(type->Function.arg_types);
-    int size = sizeof(Bytecode_Function) + ret_count + arg_count;
-    
-    Bytecode_Function* func = (Bytecode_Function*) arena_push_size(&bc->arena, size, 
-                                                                   alignof(Bytecode_Function));
-    func->type_index = bc->next_type_index++;
-    func->ret_count = ret_count;
-    func->arg_count = arg_count;
-    
-    Bytecode_Type* curr_type = (Bytecode_Type*) (func + 1);
-    if (ret_count > 0) {
-        assert(ret_count == 1 && "TODO: multiple arguments");
-        *curr_type++ = to_bytecode_type(type->Function.return_type);
-    }
-    
-    for (int i = 0; i < arg_count; i++) {
-        *curr_type++ = to_bytecode_type(type->Function.arg_types[i]);
-    }
-    
-    array_push(bc->bytecode.functions, func);
-    array_push(bc->function_names, type->Function.ident);
-    
-    bc->curr_function = func;
-    return func;
-}
 
-void
-end_bytecode_function(Bytecode_Builder* bc) {
-    bc->curr_function = 0;
-}
+Bytecode_Function* begin_bytecode_function(Bytecode_Builder* bc, Type* type);
+void end_bytecode_function(Bytecode_Builder* bc);
+
+Bytecode_Instruction* add_bytecode_insn(Bytecode_Builder* bc, 
+                                        Bytecode_Operator opcode, 
+                                        Bytecode_Instruction_Kind kind, 
+                                        umm size, umm align, cstring loc);
 
 #define S1(x) #x
 #define S2(x) S1(x)
@@ -125,33 +98,7 @@ sizeof(Bytecode_##T), \
 alignof(Bytecode_##T), \
 __FILE__ ":" S2(__LINE__));
 
-Bytecode_Instruction*
-add_bytecode_insn(Bytecode_Builder* bc, 
-                  Bytecode_Operator opcode, 
-                  Bytecode_Instruction_Kind kind, 
-                  umm size, umm align, cstring loc) {
-    
-    assert(bc->curr_function && "cannot add instruction outside function scope");
-    
-    // TODO(Alexander): when we run out of memory we need to make sure we have pointer to next instruction
-    Bytecode_Instruction* insn = (Bytecode_Instruction*) arena_push_size(&bc->arena, size, align);
-    insn->opcode = opcode;
-    insn->kind = kind;
-    insn->comment = loc;
-    
-    if (!bc->curr_function->first_insn) {
-        bc->curr_function->first_insn = (u32) ((u8*) insn - (u8*) bc->curr_function);
-    }
-    
-    if (bc->curr_insn) {
-        bc->curr_insn->next_insn = (u32) ((u8*) insn - (u8*) bc->curr_insn);
-    }
-    bc->curr_insn = insn;
-    
-    return insn;
-}
-
-void
+inline void
 add_store_insn(Bytecode_Builder* bc, Bytecode_Operand dest, Bytecode_Operand src) {
     assert(src.type == dest.type);
     Bytecode_Binary* result = add_insn_t(bc, BC_STORE, Binary);

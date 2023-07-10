@@ -195,6 +195,74 @@ convert_function_to_bytecode(Bytecode_Builder* bc, Compilation_Unit* cu, bool in
     return func;
 }
 
+
+Bytecode_Function*
+begin_bytecode_function(Bytecode_Builder* bc, Type* type) {
+    assert(type && type->kind == TypeKind_Function && "not a function type");
+    
+    int ret_count = is_valid_type(type->Function.return_type) ? 1 : 0;
+    int arg_count = (int) array_count(type->Function.arg_types);
+    int size = sizeof(Bytecode_Function) + ret_count + arg_count;
+    
+    Bytecode_Function* func = (Bytecode_Function*) arena_push_size(&bc->arena, size, 
+                                                                   alignof(Bytecode_Function));
+    func->type_index = bc->next_type_index++;
+    func->ret_count = ret_count;
+    func->arg_count = arg_count;
+    
+    Bytecode_Type* curr_type = (Bytecode_Type*) (func + 1);
+    if (ret_count > 0) {
+        assert(ret_count == 1 && "TODO: multiple arguments");
+        *curr_type++ = to_bytecode_type(type->Function.return_type);
+    }
+    
+    for (int i = 0; i < arg_count; i++) {
+        string_id arg_ident = type->Function.arg_idents[i];
+        Type* arg_type = type->Function.arg_types[i];
+        *curr_type++ = to_bytecode_type(arg_type);
+        
+        Bytecode_Operand arg = push_bytecode_stack(bc, arg_type->size, arg_type->align);
+        map_put(bc->locals, arg_ident, arg);
+    }
+    
+    array_push(bc->bytecode.functions, func);
+    array_push(bc->function_names, type->Function.ident);
+    
+    bc->curr_function = func;
+    return func;
+}
+
+void
+end_bytecode_function(Bytecode_Builder* bc) {
+    bc->curr_function = 0;
+}
+
+Bytecode_Instruction*
+add_bytecode_insn(Bytecode_Builder* bc, 
+                  Bytecode_Operator opcode, 
+                  Bytecode_Instruction_Kind kind, 
+                  umm size, umm align, cstring loc) {
+    
+    assert(bc->curr_function && "cannot add instruction outside function scope");
+    
+    // TODO(Alexander): when we run out of memory we need to make sure we have pointer to next instruction
+    Bytecode_Instruction* insn = (Bytecode_Instruction*) arena_push_size(&bc->arena, size, align);
+    insn->opcode = opcode;
+    insn->kind = kind;
+    insn->comment = loc;
+    
+    if (!bc->curr_function->first_insn) {
+        bc->curr_function->first_insn = (u32) ((u8*) insn - (u8*) bc->curr_function);
+    }
+    
+    if (bc->curr_insn) {
+        bc->curr_insn->next_insn = (u32) ((u8*) insn - (u8*) bc->curr_insn);
+    }
+    bc->curr_insn = insn;
+    
+    return insn;
+}
+
 void
 string_builder_dump_bytecode_operand(String_Builder* sb, Bytecode_Operand op) {
     switch (op.kind) {
@@ -253,7 +321,6 @@ string_builder_dump_bytecode(String_Builder* sb, Bytecode_Function* func, Type* 
     
     int bb_index = 0;
     
-    //__debugbreak();
     Bytecode_Instruction* curr = iter_bytecode_instructions(func, 0);
     while (curr->kind) {
         string_builder_push(sb, "\n    ");

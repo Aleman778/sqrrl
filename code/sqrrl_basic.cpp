@@ -4,7 +4,6 @@ struct Ast_Node;
 
 
 struct Intermediate_Code;
-void print_intermediate_code(Intermediate_Code* value);
 
 void
 print(const char* format...) {
@@ -133,10 +132,6 @@ print(const char* format...) {
                 
                 case FormatType_value: {
                     print_value(va_arg(args, Value*));
-                } break;
-                
-                case FormatType_intermediate_code: {
-                    print_intermediate_code(va_arg(args, Intermediate_Code*));
                 } break;
                 
                 default: {

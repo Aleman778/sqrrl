@@ -82,6 +82,7 @@ run_compiler_tests(string filename,
         return 1;
     }
     
+#if 0
     // Convert to intermediate code
     Ic_Arg_Map* x64_globals = 0;
     for_array(ast_file.units, cu, _) {
@@ -142,6 +143,7 @@ run_compiler_tests(string filename,
     }
     assert(rip == rip2);
     
+#endif
     asm_make_executable(asm_buffer, asm_size);
     
     // Collect all the test to run

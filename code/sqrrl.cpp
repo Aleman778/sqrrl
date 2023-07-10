@@ -350,11 +350,93 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     assert(main_cu && "no main function"); // TODO: turn this into an actual error
     
+    String_Builder sb = {};
+    for_array(ast_file.units, cu, _3) {
+        if (flag_print_bc || (cu->ast && cu->ast->type && 
+                              cu->ast->type->kind == TypeKind_Function &&
+                              cu->ast->type->Function.dump_bytecode)) {
+            string_builder_dump_bytecode(&sb, cu->bc_func, cu->ast->type);
+        }
+    }
+    //
+    if (sb.data) {
+        string s = string_builder_to_string_nocopy(&sb);
+        pln("\nIntermediate code:\n%", f_string(s));
+        string_builder_free(&sb);
+    }
     
     
     switch (target_backend) {
         case Backend_X64: {
             
+            
+            Type* main_func_return_type = main_cu->ast->type;
+            if (main_func_return_type && main_func_return_type->kind == TypeKind_Function) {
+                main_func_return_type = main_func_return_type->Function.return_type;
+            }
+            // TODO: find the main function
+            u8* asm_buffer_main = (u8*) asm_buffer;
+            
+            Buffer buf = {};
+            buf.data = (u8*) asm_buffer;
+            buf.size = asm_size;
+            
+            for_array(ast_file.units, cu, _4) {
+                if (cu->bc_func) {
+                    if (cu == main_cu) {
+                        asm_buffer_main = (u8*) asm_buffer + buf.curr_used;
+                    }
+                    
+                    convert_bytecode_function_to_x64_machine_code(&buf, cu->bc_func);
+                }
+            }
+            
+            
+#if 1
+            pln("\nX64 Machine Code (% bytes):", f_umm(buf.curr_used));
+            for (int byte_index = 0; byte_index < buf.curr_used; byte_index++) {
+                u8 byte = ((u8*) asm_buffer)[byte_index];
+                if (byte > 0xF) {
+                    printf("%hhX ", byte);
+                } else {
+                    printf("0%hhX ", byte);
+                }
+                
+                if (byte_index % 80 == 79) {
+                    printf("\n");
+                }
+            }
+            printf("\n\n");
+#endif
+            
+#if 1
+            // NOTE(Alexander): Run machine code
+            asm_make_executable(buf.data, buf.curr_used);
+            //DEBUG_add_debug_symbols(&ast_file, (u8*) asm_buffer);
+            
+            if (working_directory.data) {
+                cstring dir = string_to_cstring(working_directory);
+                DEBUG_set_current_directory(dir);
+                cstring_free(dir);
+            }
+            
+            if (main_func_return_type == t_s32) {
+                asm_main* func = (asm_main*) asm_buffer_main;
+                int jit_exit_code = (int) func();
+                pln("\nJIT exited with code: %", f_int(jit_exit_code));
+            } else if (main_func_return_type == t_f32) {
+                asm_f32_main* func = (asm_f32_main*) asm_buffer_main;
+                f32 jit_exit_code = (f32) func();
+                pln("\nJIT exited with code: %", f_float(jit_exit_code));
+            } else {
+                asm_main* func = (asm_main*) asm_buffer_main;
+                func();
+                pln("\nJIT exited with code: 0");
+            }
+#endif
+            
+            
+#if 0
             // Compute the actual stack displacement for each Ic_Arg
             for_array(ast_file.units, cu, _3) {
                 Intermediate_Code* ic = cu->ic_first;
@@ -377,36 +459,14 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 }
             }
             
-            String_Builder sb = {};
-            for_array(ast_file.units, cu, _4) {
-                if (flag_print_bc || (cu->ast && cu->ast->type && 
-                                      cu->ast->type->kind == TypeKind_Function &&
-                                      cu->ast->type->Function.dump_bytecode)) {
-                    string_builder_dump_bytecode(&sb, cu->bc_func, cu->ast->type);
-                }
-            }
-            //
-            if (sb.data) {
-                string s = string_builder_to_string_nocopy(&sb);
-                pln("\nIntermediate code:\n%", f_string(s));
-                string_builder_free(&sb);
-            }
-            
             return 0;
             
-#if 0
             // Convert to X64 machine code
             s64 rip = 0;
             for_array(ast_file.units, cu, _5) {
                 unimplemented;
                 //rip = convert_to_x64_machine_code(cu->first, 0, 0, 0, rip);
             }
-            
-            Type* main_func_return_type = main_cu->ast->type;
-            if (main_func_return_type && main_func_return_type->kind == TypeKind_Function) {
-                main_func_return_type = main_func_return_type->Function.return_type;
-            }
-            u8* asm_buffer_main = (u8*) asm_buffer + main_cu->bb_first->addr;
             
             // NOTE(Alexander): Build initial PE executable
             Memory_Arena build_arena = {};
@@ -442,24 +502,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             }
             assert(rip == rip2);
             
-            
-#if 0
-            pln("\nX64 Machine Code (% bytes):", f_umm(rip));
-            for (int byte_index = 0; byte_index < rip; byte_index++) {
-                u8 byte = ((u8*) asm_buffer)[byte_index];
-                if (byte > 0xF) {
-                    printf("%hhX ", byte);
-                } else {
-                    printf("0%hhX ", byte);
-                }
-                
-                if (byte_index % 80 == 79) {
-                    printf("\n");
-                }
-            }
-            printf("\n\n");
-#endif
-            
             //asm_make_executable(asm_buffer, asm_size);
             //asm_main* func = (asm_main*) asm_buffer;
             //int jit_exit_code = (int) func();
@@ -476,47 +518,11 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             //Read_File_Result exe_data = DEBUG_read_entire_file("simple.exe");
             //pe_dump_executable(create_string(exe_data.contents_size, (u8*) exe_data.contents));
             
-#if 0
-            // NOTE(Alexander): Run machine code
-            asm_make_executable(asm_buffer, rip);
-            //DEBUG_add_debug_symbols(&ast_file, (u8*) asm_buffer);
             
-            if (working_directory.data) {
-                cstring dir = string_to_cstring(working_directory);
-                DEBUG_set_current_directory(dir);
-                cstring_free(dir);
-            }
-            
-            if (main_func_return_type == t_s32) {
-                asm_main* func = (asm_main*) asm_buffer_main;
-                int jit_exit_code = (int) func();
-                pln("\nJIT exited with code: %", f_int(jit_exit_code));
-            } else if (main_func_return_type == t_f32) {
-                asm_f32_main* func = (asm_f32_main*) asm_buffer_main;
-                f32 jit_exit_code = (f32) func();
-                pln("\nJIT exited with code: %", f_float(jit_exit_code));
-            } else {
-                asm_main* func = (asm_main*) asm_buffer_main;
-                func();
-                pln("\nJIT exited with code: 0");
-            }
-#endif
 #endif
         } break;
         
         case Backend_WASM: {
-            
-            String_Builder sb = {};
-            for_array(ast_file.units, cu, _4) {
-                if (flag_print_bc || (cu->ast && cu->ast->type && 
-                                      cu->ast->type->kind == TypeKind_Function &&
-                                      cu->ast->type->Function.dump_bytecode)) {
-                    string_builder_dump_bytecode(&sb, cu->bc_func, cu->ast->type);
-                }
-            }
-            string s = string_builder_to_string_nocopy(&sb);
-            pln("%", f_string(s));
-            string_builder_free(&sb);
             
             Buffer buffer = {};
             buffer.data = (u8*) asm_buffer;

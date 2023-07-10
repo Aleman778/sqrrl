@@ -15,6 +15,7 @@ struct Bytecode_Builder {
     map(string_id, Bytecode_Operand)* globals;
     
     Bytecode_Function* curr_function;
+    Bytecode_Instruction* curr_insn;
     
     Data_Packer* data_packer;
     Interp* interp;
@@ -137,6 +138,15 @@ add_bytecode_insn(Bytecode_Builder* bc,
     insn->opcode = opcode;
     insn->kind = kind;
     insn->comment = loc;
+    
+    if (!bc->curr_function->first_insn) {
+        bc->curr_function->first_insn = (u32) ((u8*) insn - (u8*) bc->curr_function);
+    }
+    
+    if (bc->curr_insn) {
+        bc->curr_insn->next_insn = (u32) ((u8*) insn - (u8*) bc->curr_insn);
+    }
+    bc->curr_insn = insn;
     
     return insn;
 }

@@ -57,7 +57,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             result.type = to_bytecode_type(expr->type);
             
             if (is_integer(expr->Value) || is_floating(expr->Value)) {
-                result.kind = BytecodeOperand_const;
+                result.kind = get_const_operand_from_type(result.type);
                 value_store_in_memory(expr->type, &result.const_i64, expr->Value.data);
                 
             } else if (is_string(expr->Value)) {
@@ -76,7 +76,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 store_count->first = result;
                 store_count->first.stack_offset += 8;
                 store_count->second = result;
-                store_count->second.kind = BytecodeOperand_const;
+                store_count->second.kind = BytecodeOperand_const_i64;
                 store_count->second.const_i64 = (s64) string_count;
                 
             } else if (is_cstring(expr->Value)) {
@@ -87,7 +87,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                                                   (void*) expr->Value.data.cstr);
                     
                 } else {
-                    result.kind = BytecodeOperand_const;
+                    result.kind = BytecodeOperand_const_i64;
                     result.const_i64 = 0;
                 }
                 
@@ -147,6 +147,20 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
             }
         } break;
         
+        case Ast_Block_Stmt: {
+            for_compound(stmt->Block_Stmt.stmts, it) {
+                convert_statement_to_bytecode(bc, it, break_label, continue_label);
+            }
+        } break;
+        
+        case Ast_Return_Stmt: {
+            if (is_valid_ast(stmt->Return_Stmt.expr)) {
+                Bytecode_Operand result = convert_expression_to_bytecode(bc, stmt->Return_Stmt.expr);
+                Bytecode_Unary* insn = add_insn_t(bc, BC_RETURN, Unary);
+                insn->first = result;
+            }
+        } break;
+        
         default: {
             unimplemented;
         } break;
@@ -182,18 +196,46 @@ convert_function_to_bytecode(Bytecode_Builder* bc, Compilation_Unit* cu, bool in
 }
 
 void
+string_builder_dump_bytecode_operand(String_Builder* sb, Bytecode_Operand op) {
+    switch (op.kind) {
+        case BytecodeOperand_const_i32: {
+            string_builder_push_format(sb, " %", f_int(op.const_i32));
+        } break;
+        
+        case BytecodeOperand_const_i64: {
+            string_builder_push_format(sb, " %", f_s64(op.const_i64));
+        } break;
+        
+        case BytecodeOperand_const_f32: {
+            string_builder_push_format(sb, " %", f_float(op.const_f32));
+        } break;
+        
+        case BytecodeOperand_const_f64: {
+            string_builder_push_format(sb, " %", f_float(op.const_f64));
+        } break;
+    }
+    
+}
+
+void
 string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode_Instruction* insn) {
     switch (insn->kind) {
         case BytecodeInstructionKind_None: break;
         
         case BytecodeInstructionKind_Base: {
             string_builder_push(sb, bc_opcode_names[insn->opcode]);
-            
+        } break;
+        
+        case BytecodeInstructionKind_Unary: {
+            string_builder_push(sb, bc_opcode_names[insn->opcode]);
+            string_builder_dump_bytecode_operand(sb, ((Bytecode_Unary*) insn)->first);
         } break;
         
         case BytecodeInstructionKind_Binary: {
             string_builder_push(sb, bc_opcode_names[insn->opcode]);
-            string_builder_push(sb, "binary");
+            string_builder_dump_bytecode_operand(sb, ((Bytecode_Binary*) insn)->first);
+            string_builder_push(sb, ',');
+            string_builder_dump_bytecode_operand(sb, ((Bytecode_Binary*) insn)->second);
         } break;
     }
 }
@@ -211,13 +253,11 @@ string_builder_dump_bytecode(String_Builder* sb, Bytecode_Function* func, Type* 
     
     int bb_index = 0;
     
+    //__debugbreak();
     Bytecode_Instruction* curr = iter_bytecode_instructions(func, 0);
     while (curr->kind) {
+        string_builder_push(sb, "\n    ");
         string_builder_dump_bytecode_insn(sb, curr);
-        
-        if (curr->next_insn) {
-            string_builder_push(sb, "\n");
-        }
         curr = iter_bytecode_instructions(func, curr);
     }
     

@@ -10,6 +10,7 @@ struct Bytecode {
 OP(NOOP) \
 OP(DEBUG_BREAK) \
 OP(LOAD_FUNCTION_PTR) \
+OP(RETURN) \
 OP(BLOCK) \
 OP(LOAD) \
 OP(STORE) \
@@ -30,6 +31,7 @@ global const cstring bc_opcode_names[] = {
 };
 
 enum Bytecode_Type {
+    BytecodeType_void,
     BytecodeType_i32,
     BytecodeType_i64,
     BytecodeType_f32,
@@ -49,11 +51,27 @@ struct Bytecode_Function {
 enum Bytecode_Operand_Kind {
     BytecodeOperand_empty,
     
-    BytecodeOperand_const,
+    BytecodeOperand_const_i32,
+    BytecodeOperand_const_i64,
+    BytecodeOperand_const_f32,
+    BytecodeOperand_const_f64,
     BytecodeOperand_register,
     BytecodeOperand_stack,
     BytecodeOperand_memory,
 };
+
+const Bytecode_Operand_Kind bc_type_to_const_operand[] = {
+    BytecodeOperand_empty,
+    BytecodeOperand_const_i32,
+    BytecodeOperand_const_i64,
+    BytecodeOperand_const_f32,
+    BytecodeOperand_const_f64,
+};
+
+inline Bytecode_Operand_Kind
+get_const_operand_from_type(Bytecode_Type type) {
+    return bc_type_to_const_operand[type];
+}
 
 enum Bytecode_Memory_Kind {
     BytecodeMemory_read_only,
@@ -87,6 +105,7 @@ enum Bytecode_Instruction_Kind {
     BytecodeInstructionKind_None,
     
     BytecodeInstructionKind_Base,
+    BytecodeInstructionKind_Unary,
     BytecodeInstructionKind_Binary,
     BytecodeInstructionKind_Block,
 };
@@ -108,6 +127,12 @@ struct Bytecode_Instruction {
 };
 
 global Bytecode_Instruction bc_empty = {};
+
+struct Bytecode_Unary {
+    Bytecode_Instruction_Base;
+    
+    Bytecode_Operand first;
+};
 
 struct Bytecode_Binary {
     Bytecode_Instruction_Base;
@@ -132,6 +157,10 @@ iter_bytecode_instructions(Bytecode_Function* func, Bytecode_Instruction* iter) 
         
         iter = (Bytecode_Instruction*) ((u8*) func + func->first_insn);
         return iter;
+    }
+    
+    if (!iter->next_insn) {
+        return &bc_empty;
     }
     
     iter = (Bytecode_Instruction*) ((u8*) iter + iter->next_insn);

@@ -332,7 +332,7 @@ string_builder_push(String_Builder* sb, Type* type) {
         
         case TypeKind_Function: {
             string_builder_push(sb, type->Function.return_type);
-            string_builder_push(sb, " ");
+            string_builder_push(sb, "\n");
             if (type->Function.ident > 0) {
                 string_builder_push(sb, vars_load_string(type->Function.ident));
             }

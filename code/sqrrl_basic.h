@@ -988,3 +988,24 @@ push_leb128_s32(Buffer* buf, s32 num) {
         buf->curr_used++;
     }
 }
+
+void
+push_leb128_s64(Buffer* buf, s64 num) {
+    bool cont = true;
+    while (cont) {
+        u8 byte = num & 0x7F;
+        num = num >> 7;
+        bool sign_bit = (byte & 0x40) > 0;
+        
+        if ((num == 0 && !sign_bit) ||
+            (num == -1 && sign_bit)) {
+            cont = false;
+        } else {
+            byte |= 0x80;
+        }
+        
+        assert(buf->curr_used + 1 < buf->size);
+        *((u8*) (buf->data + buf->curr_used)) = byte;
+        buf->curr_used++;
+    }
+}

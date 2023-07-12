@@ -1462,6 +1462,66 @@ convert_procedure_to_intermediate_code(Compilation_Unit* cu, bool insert_debug_b
 }
 #endif
 
+Ic_Raw_Type
+convert_bytecode_type_to_x64(Bytecode_Type type) {
+    switch (type) {
+        case BytecodeType_i32: return IC_S32;
+        case BytecodeType_i64: return IC_S64;
+        case BytecodeType_f32: return IC_F32;
+        case BytecodeType_f64: return IC_F64;
+    }
+    return 0;
+}
+
+Ic_Arg
+convert_bytecode_operand_to_x64(Bytecode_Operand op, Bytecode_Type type) {
+    Ic_Raw_Type rt = convert_bytecode_type_to_x64(type);
+    Ic_Arg result = {};
+    switch (op.kind) {
+        case BytecodeOperand_const_i32: {
+            result.type = IC_DISP | rt;
+            result.disp = op.const_i32; 
+        } break;
+        
+        case BytecodeOperand_const_i64: {
+            result.type = IC_DISP | rt;
+            result.disp = op.const_i64; 
+        } break;
+        
+        case BytecodeOperand_const_f32: {
+            //result.t = IC_DISP | rt;
+            //result.d = op.const_i32;
+            unimplemented;
+        } break;
+        
+        case BytecodeOperand_const_f64: {
+            //result.t = IC_DISP | rt;
+            //result.d = op.const_i32;
+            unimplemented;
+        } break;
+        
+        case BytecodeOperand_register: {
+            // TODO(Alexander): allocate register
+            result.type = IC_REG | rt;
+            result.reg = X64_RAX;
+        } break;
+        
+        case BytecodeOperand_stack: {
+            result.type = IC_STK | rt;
+            result.reg = X64_RSP; 
+            result.disp = op.stack_offset + 8;
+        } break;
+        
+        case BytecodeOperand_memory: {
+            result.type = IC_RIP_DISP32 | rt;
+            result.reg = X64_RIP;
+            result.disp = op.memory_offset;
+        } break;
+    }
+    
+    return result;
+}
+
 
 void
 convert_bytecode_function_to_x64_machine_code(Buffer* buf, Bytecode_Function* func) {
@@ -1495,20 +1555,32 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytec
         } break;
         
         case BC_RETURN: {
-            Ic_Type t = 0; 
-            s64 r = 0, d = 0;
+            Ic_Arg val = convert_bytecode_operand_to_x64(bc_unary_first(insn), insn->type);
+            assert(val.type);
             
-            Bytecode_Operand val = ((Bytecode_Unary*) insn)->first;
-            switch (val.kind) {
-                case BytecodeOperand_const_i32: {
-                    t = IC_DISP, d = val.const_i32; 
-                } break;
-            }
-            
-            if (t) {
-                x64_mov(buf, IC_REG, X64_RAX, 0, t, r, d, rip);
-            }
+            x64_mov(buf, 
+                    IC_REG | val.raw_type, X64_RAX, 0,
+                    val.type, val.reg, val.disp, rip);
             // TODO: jump to the end of the function
+        } break;
+        
+        case BC_STORE: {
+            Ic_Arg dest = convert_bytecode_operand_to_x64(bc_binary_first(insn), insn->type);
+            Ic_Arg src = convert_bytecode_operand_to_x64(bc_binary_second(insn), insn->type);
+            
+            x64_mov(buf, 
+                    dest.type, dest.reg, dest.disp,
+                    src.type, src.reg, src.disp, rip);
+        } break;
+        
+        case BC_ADD: {
+            Ic_Arg first = convert_bytecode_operand_to_x64(bc_binary_first(insn), insn->type);
+            Ic_Arg second = convert_bytecode_operand_to_x64(bc_binary_second(insn), insn->type);
+            
+            x64_binary(buf, 
+                       first.type, first.reg, first.disp,
+                       second.type, second.reg, second.disp,
+                       0, 0, rip);
         } break;
     }
 }

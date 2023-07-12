@@ -10,10 +10,22 @@ struct Bytecode {
 OP(NOOP) \
 OP(DEBUG_BREAK) \
 OP(LOAD_FUNCTION_PTR) \
+OP(CALL) \
 OP(RETURN) \
 OP(BLOCK) \
 OP(LOAD) \
 OP(STORE) \
+OP(WRAP_I64) \
+OP(EXTEND_S8) \
+OP(EXTEND_S16) \
+OP(EXTEND_S32) \
+OP(EXTEND_U8) \
+OP(EXTEND_U16) \
+OP(EXTEND_U32) \
+OP(CONVERT_S2F) \
+OP(CONVERT_F2S) \
+OP(CONVERT_F32) \
+OP(REINTERPRET_F2S) \
 OP(ADD) \
 OP(SUB) \
 
@@ -38,8 +50,15 @@ enum Bytecode_Type {
     BytecodeType_f64
 };
 
+struct Stack_Entry {
+    u32 size;
+    u32 align;
+};
+
 struct Bytecode_Function {
     u32 type_index;
+    
+    array(Stack_Entry)* stack;
     
     u32 ret_count;
     u32 arg_count;
@@ -81,7 +100,6 @@ enum Bytecode_Memory_Kind {
 // TODO: maybe we want to ecode the kind and type as part of the instruction?
 struct Bytecode_Operand {
     Bytecode_Operand_Kind kind;
-    Bytecode_Type type;
     union {
         s32 const_i32;
         s64 const_i64;
@@ -115,6 +133,7 @@ enum Bytecode_Instruction_Kind {
 #define Bytecode_Instruction_Base \
 Bytecode_Operator opcode; \
 Bytecode_Instruction_Kind kind; \
+Bytecode_Type type; \
 u32 next_insn; \
 cstring comment
 
@@ -156,6 +175,10 @@ struct Bytecode_Block {
     
     u32 label_index;
 };
+
+#define bc_unary_first(insn) (((Bytecode_Unary*) insn)->first)
+#define bc_binary_first(insn) (((Bytecode_Binary*) insn)->first)
+#define bc_binary_second(insn) (((Bytecode_Binary*) insn)->second)
 
 inline Bytecode_Instruction*
 iter_bytecode_instructions(Bytecode_Function* func, Bytecode_Instruction* iter) {

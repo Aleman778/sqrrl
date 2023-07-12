@@ -73,7 +73,6 @@ global const X64_Reg float_arg_registers_ccall_windows[] {
 #define MODRM_INDIRECT_DISP8 0x40
 #define MODRM_INDIRECT_DISP32 0x80
 
-
 inline void
 x64_rex(Buffer* buf, u8 flags) {
     push_u8(buf, REX_PATTERN | flags);
@@ -99,6 +98,13 @@ void convert_bytecode_function_to_x64_machine_code(Buffer* buf, Bytecode_Functio
 void convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, 
                                                Buffer* buf, 
                                                Bytecode_Instruction* insn);
+
+
+inline void
+x64_binary(Buffer* buf,
+           Ic_Type t1, s64 r1, s64 d1, 
+           Ic_Type t2, s64 r2, s64 d2,
+           u8 reg_field, u8 opcode, s64 rip);
 
 
 #if 0

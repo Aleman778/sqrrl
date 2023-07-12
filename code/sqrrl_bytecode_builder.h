@@ -1,15 +1,9 @@
 
-struct Stack_Entry {
-    u32 size;
-    u32 align;
-};
-
 struct Bytecode_Builder {
     Memory_Arena arena;
     
     array(string_id)* function_names;
     array(Bytecode_Instruction*)* labels;
-    array(Stack_Entry)* stack;
     
     map(string_id, Bytecode_Operand)* locals;
     map(string_id, Bytecode_Operand)* globals;
@@ -99,9 +93,9 @@ alignof(Bytecode_##T), \
 __FILE__ ":" S2(__LINE__));
 
 inline void
-add_store_insn(Bytecode_Builder* bc, Bytecode_Operand dest, Bytecode_Operand src) {
-    assert(src.type == dest.type);
+add_store_insn(Bytecode_Builder* bc, Bytecode_Type type, Bytecode_Operand dest, Bytecode_Operand src) {
     Bytecode_Binary* result = add_insn_t(bc, BC_STORE, Binary);
+    result->type = type;
     result->first = dest;
     result->second = src;
 }
@@ -109,22 +103,21 @@ add_store_insn(Bytecode_Builder* bc, Bytecode_Operand dest, Bytecode_Operand src
 #define push_bytecode_stack_t(bc, T) push_bytecode_stack(bc, (u32) sizeof(T), (u32) alignof(T));
 
 inline Bytecode_Operand
-push_bytecode_register(Bytecode_Builder* bc, Bytecode_Type type) {
+push_bytecode_register(Bytecode_Builder* bc) {
     Bytecode_Operand result = {};
     result.kind = BytecodeOperand_register;
-    result.type = type;
     result.register_index = bc->next_register_index++;
     return result;
 }
 
 inline Bytecode_Operand
 push_bytecode_stack(Bytecode_Builder* bc, u32 size, u32 align) {
+    assert(bc->curr_function && "need to start a new function first");
     Bytecode_Operand result = {};
     result.kind = BytecodeOperand_stack;
-    result.type = BytecodeType_i64;
-    result.stack_index = (u32) array_count(bc->stack);
+    result.stack_index = (u32) array_count(bc->curr_function->stack);
     Stack_Entry stk = { size, align };
-    array_push(bc->stack, stk);
+    array_push(bc->curr_function->stack, stk);
     return result;
 }
 
@@ -141,7 +134,6 @@ push_bytecode_memory(Bytecode_Builder* bc, Bytecode_Memory_Kind kind, smm size, 
     
     Bytecode_Operand result = {};
     result.kind = BytecodeOperand_memory;
-    result.type = BytecodeType_i64;
     result.memory_offset = offset;
     result.memory_kind = kind;
     return result;

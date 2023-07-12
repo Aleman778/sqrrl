@@ -34,23 +34,6 @@ wasm_push_valtype(Buffer* buf, Bytecode_Type type) {
     }
 }
 
-void
-wasm_mov(Buffer* buf,
-         Ic_Type t1, s64 r1, s64 d1,
-         Ic_Type t2, s64 r2, s64 d2, s64 rip) {
-    
-    
-    switch (t1 & IC_TF_MASK) {
-        case IC_REG: {
-            
-            if (t2 & IC_DISP) {
-                push_u8(buf, 0x41); // i32.const
-                push_leb128_s32(buf, (s32) d2);
-            }
-        } break;
-    }
-}
-
 s64
 convert_bytecode_function_to_wasm(Buffer* buf, Bytecode_Function* func, s64 rip) {
     Bytecode_Instruction* curr = iter_bytecode_instructions(func, 0);
@@ -62,18 +45,62 @@ convert_bytecode_function_to_wasm(Buffer* buf, Bytecode_Function* func, s64 rip)
     return rip;
 }
 
+void
+wasm_push_value(Buffer* buf, Bytecode_Operand op) {
+    switch (op.kind) {
+        case BytecodeOperand_const_i32: {
+            push_u8(buf, 0x41); // i32.const
+            push_leb128_s32(buf, op.const_i32);
+        } break;
+        
+        case BytecodeOperand_const_i64: {
+            push_u8(buf, 0x42); // i64.const
+            push_leb128_s64(buf, op.const_i64);
+        } break;
+        
+        case BytecodeOperand_stack: {
+            push_u8(buf, 0x20); // local.get
+            push_leb128_u32(buf, op.stack_index);
+        } break;
+    }
+}
+
 s64
 convert_bytecode_insn_to_wasm(Buffer* buf, Bytecode_Instruction* insn, s64 rip) {
     switch (insn->opcode) {
         case BC_RETURN: {
-            Bytecode_Operand val = ((Bytecode_Unary*) insn)->first;
-            switch (val.kind) {
-                case BytecodeOperand_const_i32: {
-                    push_u8(buf, 0x41); // i32.const
-                    push_leb128_s32(buf, (s32) val.const_i32);
+            wasm_push_value(buf, bc_unary_first(insn));
+            
+            push_u8(buf, 0x0F); // return
+        } break;
+        
+        case BC_STORE: {
+            wasm_push_value(buf, bc_binary_second(insn));
+            
+            Bytecode_Operand dest = bc_binary_first(insn);
+            switch (dest.kind) {
+                case BytecodeOperand_stack: {
+                    push_u8(buf, 0x21); // local.set
+                    push_leb128_u32(buf, dest.stack_index);
                 } break;
             }
-            push_u8(buf, 0x0F); // return
+        } break;
+        
+        case BC_ADD: {
+            wasm_push_value(buf, bc_binary_first(insn));
+            wasm_push_value(buf, bc_binary_second(insn));
+            
+            if (insn->type == BytecodeType_i32) {
+                push_u8(buf, 0x6A); // i32.add
+            } else {
+                push_u8(buf, 0x7C); // i64.add
+            }
+        } break;
+        
+        case BC_WRAP_I64: {
+            assert(insn->type == BytecodeType_i32);
+            wasm_push_value(buf, bc_binary_second(insn));
+            push_u8(buf, 0xA7); // i32.wrap_i64
         } break;
     }
     
@@ -291,8 +318,12 @@ convert_to_wasm_module(Bytecode* bytecode, s64 stk_usage, Buffer* buf) {
         
         smm function_start = buf->curr_used;
         push_u32(buf, 0); // reserve space for size
-        push_leb128_u32(buf, 0); // number of locals
-        //push_leb128_u32(buf, 0); // TODO: add locals
+        push_leb128_u32(buf, (u32) array_count(func->stack)); // number of locals
+        
+        for_array_v(func->stack, stack, stack_index) {
+            push_leb128_u32(buf, 1); 
+            wasm_push_valtype(buf, stack.size == 4 ? BytecodeType_i32 : BytecodeType_i64);
+        }
         
         rip = convert_bytecode_function_to_wasm(buf, func, rip);
         //if (type->Function.return_type) {

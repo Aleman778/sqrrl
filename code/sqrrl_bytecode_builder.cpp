@@ -20,8 +20,8 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                     Bytecode_Binary* insn = add_insn_t(bc, BC_LOAD_FUNCTION_PTR, Binary);
                     // TODO(Alexander): need to give each compilation unit a unique ID at start!!!
                     // TODO(Alexander): function pointer type?
-                    insn->first = push_bytecode_register(bc);
-                    insn->second = {}; // type->Function.unit;
+                    //insn->first = push_bytecode_register(bc);
+                    //insn->second = {}; // type->Function.unit;
                     unimplemented;
                     
                 } else {
@@ -67,9 +67,9 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 result = push_bytecode_stack_t(bc, string);
                 
                 // Assign the 
-                add_store_insn(bc, BytecodeType_i64, result, str_data);
+                add_mov_insn(bc, BytecodeType_i64, result, str_data);
                 
-                Bytecode_Binary* store_count = add_insn_t(bc, BC_STORE, Binary);
+                Bytecode_Binary* store_count = add_insn_t(bc, BC_MOV, Binary);
                 store_count->first = result;
                 store_count->first.stack_offset += 8;
                 store_count->second = result;
@@ -95,19 +95,74 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
         
         case Ast_Binary_Expr: {
             // TODO: add correct opcode
-            Bytecode_Type result_type = to_bytecode_type(expr->type);
+            Type* type = expr->type;
+            Bytecode_Type result_type = to_bytecode_type(type);
             Bytecode_Operand first = convert_expression_to_bytecode(bc, expr->Binary_Expr.first);
+            
+            Bytecode_Operand tmp_register = {};
             if (first.kind != BytecodeOperand_register) {
-                Bytecode_Operand tmp = push_bytecode_register(bc);
-                add_store_insn(bc, result_type, tmp, first);
+                Bytecode_Operand tmp = add_bytecode_register(bc);
+                add_mov_insn(bc, result_type, tmp, first);
                 first = tmp;
+                tmp_register = tmp;
             }
             
-            Bytecode_Binary* insn = add_insn_t(bc, BC_ADD, Binary);
+            Operator op = expr->Binary_Expr.op;
+            bool is_assign = operator_is_assign(op);
+            if (is_assign) {
+                switch (op) {
+                    case Op_Assign:             op = Op_None; break;
+                    case Op_Add_Assign:         op = Op_Add; break;
+                    case Op_Subtract_Assign:    op = Op_Subtract; break;
+                    case Op_Multiply_Assign:    op = Op_Multiply; break;
+                    case Op_Divide_Assign:      op = Op_Divide; break;
+                    case Op_Modulo_Assign:      op = Op_Modulo; break;
+                    case Op_Bitwise_And_Assign: op = Op_Bitwise_And; break;
+                    case Op_Bitwise_Or_Assign:  op = Op_Bitwise_Or; break;
+                    case Op_Bitwise_Xor_Assign: op = Op_Bitwise_Xor; break;
+                    case Op_Shift_Left_Assign:  op = Op_Shift_Left; break;
+                    case Op_Shift_Right_Assign: op = Op_Shift_Right; break;
+                    
+                    default: assert(0 && "invalid assign op");
+                }
+            }
+            
+            bool is_signed = !(type->kind == TypeKind_Basic && 
+                               type->Basic.flags & BasicFlag_Unsigned);
+            Bytecode_Operator opcode = BC_NOOP;
+            switch (op) {
+                case Op_Add:            opcode = BC_ADD; break;
+                case Op_Subtract:       opcode = BC_SUB; break;
+                case Op_Multiply:       opcode = BC_MUL; break;
+                case Op_Divide:         opcode = is_signed ? BC_IDIV : BC_DIV; break;
+                case Op_Modulo:         opcode = is_signed ? BC_IMOD : BC_MOD; break;
+                case Op_Bitwise_And:    opcode = BC_AND; break;
+                case Op_Bitwise_Or:     opcode = BC_OR; break;
+                case Op_Bitwise_Xor:    opcode = BC_XOR; break;
+                case Op_Shift_Left:     opcode = BC_SHL; break;
+                case Op_Shift_Right:    opcode = BC_SHR; break;
+                case Op_Equals:         opcode = BC_SET_EQ; break;
+                case Op_Not_Equals:     opcode = BC_SET_NEQ; break;
+                case Op_Greater_Than:   opcode = BC_SET_GT; break;
+                case Op_Greater_Equals: opcode = BC_SET_GE; break;
+                case Op_Less_Than:      opcode = BC_SET_LT; break;
+                case Op_Less_Equals:    opcode = BC_SET_LE; break;
+                case Op_None: break;
+                
+                default: unimplemented;
+            }
+            
+            Bytecode_Operand second = convert_expression_to_bytecode(bc, expr->Binary_Expr.second);
+            
+            Bytecode_Binary* insn = add_insn_t(bc, opcode, Binary);
             insn->type = result_type;
             insn->first = first;
-            insn->second = convert_expression_to_bytecode(bc, expr->Binary_Expr.second);
+            insn->second = second;
             result = insn->first;
+            
+            if (tmp_register.kind) {
+                drop_bytecode_register(bc, tmp_register.register_index);
+            }
         } break;
         
         case Ast_Call_Expr: {
@@ -169,7 +224,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                         if (t_dest->size < t_src->size) {
                             Bytecode_Binary* insn = add_insn_t(bc, BC_NOOP, Binary);
                             insn->type = dest_type;
-                            insn->first = push_bytecode_register(bc);
+                            //insn->first = push_bytecode_register(bc);
                             insn->second = src;
                             result = insn->first;
                             
@@ -182,7 +237,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                         } else if (t_dest->size > t_src->size) {
                             Bytecode_Binary* insn = add_insn_t(bc, BC_NOOP, Binary);
                             insn->type = dest_type;
-                            insn->first = push_bytecode_register(bc);
+                            //insn->first = push_bytecode_register(bc);
                             insn->second = src;
                             result = insn->first;
                             
@@ -254,7 +309,7 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
                 map_put(bc->locals, ident, dest);
                 
                 if (src.kind) {
-                    add_store_insn(bc, to_bytecode_type(type), dest, src);
+                    add_mov_insn(bc, to_bytecode_type(type), dest, src);
                 }
             }
         } break;
@@ -371,6 +426,7 @@ add_bytecode_insn(Bytecode_Builder* bc,
         bc->curr_insn->next_insn = (u32) ((u8*) insn - (u8*) bc->curr_insn);
     }
     bc->curr_insn = insn;
+    bc->curr_function->insn_count++;
     
     return insn;
 }
@@ -399,7 +455,11 @@ string_builder_dump_bytecode_operand(String_Builder* sb, Bytecode_Operand op) {
         } break;
         
         case BytecodeOperand_stack: {
-            string_builder_push_format(sb, " stack[%]", f_u32(op.stack_index));
+            if (op.stack_offset == 0) {
+                string_builder_push_format(sb, " stack[s%]", f_u32(op.stack_index));
+            } else {
+                string_builder_push_format(sb, " stack[s% + %]", f_u32(op.stack_index), f_int(op.stack_offset));
+            }
         } break;
     }
     
@@ -407,6 +467,9 @@ string_builder_dump_bytecode_operand(String_Builder* sb, Bytecode_Operand op) {
 
 void
 string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode_Instruction* insn) {
+    if (insn->type) {
+        string_builder_push_format(sb, "%.", f_cstring(bc_type_names[insn->type]));
+    }
     switch (insn->kind) {
         case BytecodeInstructionKind_None: break;
         

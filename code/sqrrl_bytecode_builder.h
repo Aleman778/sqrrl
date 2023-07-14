@@ -4,6 +4,7 @@ struct Bytecode_Builder {
     
     array(string_id)* function_names;
     array(Bytecode_Instruction*)* labels;
+    array(Bytecode_Operand*)* register_stack;
     
     map(string_id, Bytecode_Operand)* locals;
     map(string_id, Bytecode_Operand)* globals;
@@ -93,8 +94,8 @@ alignof(Bytecode_##T), \
 __FILE__ ":" S2(__LINE__));
 
 inline void
-add_store_insn(Bytecode_Builder* bc, Bytecode_Type type, Bytecode_Operand dest, Bytecode_Operand src) {
-    Bytecode_Binary* result = add_insn_t(bc, BC_STORE, Binary);
+add_mov_insn(Bytecode_Builder* bc, Bytecode_Type type, Bytecode_Operand dest, Bytecode_Operand src) {
+    Bytecode_Binary* result = add_insn_t(bc, BC_MOV, Binary);
     result->type = type;
     result->first = dest;
     result->second = src;
@@ -103,11 +104,20 @@ add_store_insn(Bytecode_Builder* bc, Bytecode_Type type, Bytecode_Operand dest, 
 #define push_bytecode_stack_t(bc, T) push_bytecode_stack(bc, (u32) sizeof(T), (u32) alignof(T));
 
 inline Bytecode_Operand
-push_bytecode_register(Bytecode_Builder* bc) {
+add_bytecode_register(Bytecode_Builder* bc) {
+    assert(bc->curr_function);
     Bytecode_Operand result = {};
     result.kind = BytecodeOperand_register;
-    result.register_index = bc->next_register_index++;
+    result.register_index = (u32) array_count(bc->curr_function->register_lifetimes);
+    array_push(bc->curr_function->register_lifetimes, bc->curr_function->insn_count);
     return result;
+}
+
+inline void
+drop_bytecode_register(Bytecode_Builder* bc, u32 register_index) {
+    assert(bc->curr_function);
+    assert(register_index < array_count(bc->curr_function->register_lifetimes) && "unknown register");
+    bc->curr_function->register_lifetimes[register_index] = bc->curr_function->insn_count;
 }
 
 inline Bytecode_Operand

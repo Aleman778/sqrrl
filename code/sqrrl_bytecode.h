@@ -13,8 +13,7 @@ OP(LOAD_FUNCTION_PTR) \
 OP(CALL) \
 OP(RETURN) \
 OP(BLOCK) \
-OP(LOAD) \
-OP(STORE) \
+OP(MOV) \
 OP(WRAP_I64) \
 OP(EXTEND_S8) \
 OP(EXTEND_S16) \
@@ -28,6 +27,24 @@ OP(CONVERT_F32) \
 OP(REINTERPRET_F2S) \
 OP(ADD) \
 OP(SUB) \
+OP(MUL) \
+OP(IDIV) \
+OP(DIV) \
+OP(IMOD) \
+OP(MOD) \
+OP(AND) \
+OP(OR) \
+OP(XOR) \
+OP(SHL) \
+OP(SAR) \
+OP(SHR) \
+OP(SET_EQ) \
+OP(SET_GT) \
+OP(SET_GE) \
+OP(SET_LT) \
+OP(SET_LE) \
+OP(SET_NEQ) \
+
 
 
 enum Bytecode_Operator {
@@ -50,6 +67,10 @@ enum Bytecode_Type {
     BytecodeType_f64
 };
 
+global const cstring bc_type_names[] = {
+    "", "i32", "i64", "f32", "f64"
+};
+
 struct Stack_Entry {
     u32 size;
     u32 align;
@@ -58,6 +79,9 @@ struct Stack_Entry {
 struct Bytecode_Function {
     u32 type_index;
     
+    u32 insn_count;
+    
+    array(u32)* register_lifetimes;
     array(Stack_Entry)* stack;
     
     u32 ret_count;
@@ -110,7 +134,7 @@ struct Bytecode_Operand {
         
         struct {
             u32 stack_index;
-            u32 stack_offset;
+            s32 stack_offset;
         };
         
         struct {

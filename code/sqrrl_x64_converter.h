@@ -20,6 +20,8 @@ enum {
     X64_R15,
     X64_RIP,
     
+    X64_GPR_COUNT = 16,
+    
     X64_XMM0 = 0,
     X64_XMM1 = 1,
     X64_XMM2 = 2,
@@ -68,7 +70,6 @@ global const X64_Reg float_arg_registers_ccall_windows[] {
 #define REX_FLAG_B bit(0)
 #define REX_FLAG_64_BIT REX_FLAG_W
 
-
 #define MODRM_DIRECT 0xC0
 #define MODRM_INDIRECT_DISP8 0x40
 #define MODRM_INDIRECT_DISP32 0x80
@@ -82,17 +83,66 @@ inline void x64_mov(Buffer* buf,
                     Ic_Type t1, s64 r1, s64 d1, 
                     Ic_Type t2, s64 r2, s64 d2, s64 rip);
 
+void x64_movsx(Buffer* buf,
+               Ic_Type t1, s64 r1, s64 d1,
+               Ic_Type t2, s64 r2, s64 d2, s64 rip);
+
 inline void x64_add(Buffer* buf, 
                     Ic_Type t1, s64 r1, s64 d1, 
                     Ic_Type t2, s64 r2, s64 d2, 
                     Ic_Type t3, s64 r3, s64 d3,
                     u8 reg_field, u8 opcode, s64 rip);
 
-struct X64_Assembler {
-    array(s32)* rbp_offsets;
-    s32 curr_rbp_offset;
-    
+struct X64_Register {
+    u32 virtual_index;
+    Ic_Raw_Type raw_type;
+    bool is_allocated;
 };
+
+struct X64_Assembler {
+    s32* stack_offsets;
+    s32 stack_usage;
+    
+    u32 curr_bytecode_insn_index;
+    
+    X64_Register gpr_registers[X64_GPR_COUNT];
+    Ic_Arg* virtual_registers;
+};
+
+inline void
+x64_spill_register(X64_Assembler* x64, Buffer* buf, X64_Reg reg) {
+    if (x64->gpr_registers[reg].is_allocated) {
+        Ic_Raw_Type rt = x64->gpr_registers[reg].raw_type;
+        Ic_Arg stk = {};
+        stk.type = IC_STK | rt;
+        stk.reg = X64_RSP;
+        stk.disp = x64->stack_usage;
+        x64->stack_usage += 8; // TODO(Alexander): proper stack allocation (use size and alignment)
+        
+        x64_mov(buf, stk.type, stk.reg, stk.disp, IC_REG | rt, reg, 0, 0);
+        x64->gpr_registers[reg].is_allocated = false;
+        
+        u32 virtual_index = x64->gpr_registers[reg].virtual_index;
+        x64->virtual_registers[virtual_index] = stk;
+    }
+}
+
+inline Ic_Arg
+x64_alloc_register(X64_Assembler* x64, Buffer* buf, u32 virtual_index, X64_Reg reg, Ic_Raw_Type raw_type) {
+    x64_spill_register(x64, buf, reg);
+    
+    Ic_Arg result = {};
+    result.type = IC_REG | raw_type;
+    result.reg = reg;
+    result.disp = x64->stack_usage;
+    
+    x64->gpr_registers[reg].is_allocated = true;
+    x64->gpr_registers[reg].virtual_index = virtual_index;
+    x64->gpr_registers[reg].raw_type = raw_type;
+    
+    x64->virtual_registers[virtual_index] = result;
+    return result;
+}
 
 void convert_bytecode_function_to_x64_machine_code(Buffer* buf, Bytecode_Function* func);
 void convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, 
@@ -105,6 +155,12 @@ x64_binary(Buffer* buf,
            Ic_Type t1, s64 r1, s64 d1, 
            Ic_Type t2, s64 r2, s64 d2,
            u8 reg_field, u8 opcode, s64 rip);
+
+inline void x64_binary(Buffer* buf, Bytecode_Binary* binary, u8 reg_field, u8 opcode, s64 rip);
+inline void x64_shr(X64_Assembler* x64, Buffer* buf, Bytecode_Binary* binary, u8 reg_field, s64 rip);
+inline void x64_mul(X64_Assembler* x64, Buffer* buf, Bytecode_Binary* binary, s64 rip);
+inline void x64_div(X64_Assembler* x64, Buffer* buf, Bytecode_Binary* binary, bool remainder, s64 rip);
+void x64_modrm(Buffer* buf, Ic_Type t, s64 d, s64 r, s64 rm, s64 rip);
 
 
 #if 0

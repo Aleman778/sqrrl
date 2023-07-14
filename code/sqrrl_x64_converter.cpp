@@ -1474,7 +1474,7 @@ convert_bytecode_type_to_x64(Bytecode_Type type) {
 }
 
 Ic_Arg
-convert_bytecode_operand_to_x64(Bytecode_Operand op, Bytecode_Type type) {
+convert_bytecode_operand_to_x64(X64_Assembler* x64, Bytecode_Operand op, Bytecode_Type type) {
     Ic_Raw_Type rt = convert_bytecode_type_to_x64(type);
     Ic_Arg result = {};
     switch (op.kind) {
@@ -1501,15 +1501,14 @@ convert_bytecode_operand_to_x64(Bytecode_Operand op, Bytecode_Type type) {
         } break;
         
         case BytecodeOperand_register: {
-            // TODO(Alexander): allocate register
-            result.type = IC_REG | rt;
-            result.reg = X64_RAX;
+            result = x64->virtual_registers[op.register_index];
+            assert(result.type && "register not allocated");
         } break;
         
         case BytecodeOperand_stack: {
             result.type = IC_STK | rt;
             result.reg = X64_RSP; 
-            result.disp = op.stack_offset + 8;
+            result.disp = op.stack_offset + x64->stack_offsets[op.stack_index];
         } break;
         
         case BytecodeOperand_memory: {
@@ -1527,22 +1526,52 @@ void
 convert_bytecode_function_to_x64_machine_code(Buffer* buf, Bytecode_Function* func) {
     X64_Assembler x64 = {};
     
+    x64.virtual_registers = (Ic_Arg*) calloc(array_count(func->register_lifetimes), sizeof(Ic_Arg));
     // Setup argument stack
     //for (int i = 0; i < func->arg_count; i++) {
     //array_push(rbp_offsets)
     //}
     
+    // Prologue
+    x64_rex(buf, REX_FLAG_64_BIT); // sub rsp, stack_usage
+    push_u8(buf, 0x81);
+    x64_modrm(buf, IC_REG | IC_S64, 0, 5, X64_RSP, 0);
+    u32* stack_usage = (u32*) (buf->data + buf->curr_used);
+    push_u32(buf, 0);
+    
+    // Local stack
+    x64.stack_offsets = (s32*) calloc(array_count(func->stack), sizeof(s32));
+    for (int i = 0; i < array_count(func->stack); i++) {
+        Stack_Entry stk = func->stack[i];
+        x64.stack_usage = (s32) align_forward(x64.stack_usage, stk.align);
+        x64.stack_offsets[i] = x64.stack_usage;
+        x64.stack_usage += stk.size;
+    }
     
     Bytecode_Instruction* curr = iter_bytecode_instructions(func, 0);
+    x64.curr_bytecode_insn_index = 0;
     while (curr->kind) {
         convert_bytecode_insn_to_x64_machine_code(&x64, buf, curr);
         curr = iter_bytecode_instructions(func, curr);
+        x64.curr_bytecode_insn_index++;
     }
     
+    // Align stack by 16-bytes (excluding 8 bytes for return address)
+    x64.stack_usage += 8;
+    x64.stack_usage = (u32) align_forward(x64.stack_usage, 16);
+    //x64->stk_locals = cu->stk_usage - (cu->stk_args);
+    x64.stack_usage -= 8;
     
+    // Epilogue
+    x64_rex(buf, REX_FLAG_64_BIT); // add rsp, stack_usage
+    push_u8(buf, 0x81);
+    x64_modrm(buf, IC_REG | IC_S64, 0, 0, X64_RSP, 0);
+    push_u32(buf, x64.stack_usage);
+    *stack_usage = x64.stack_usage;
     push_u8(buf, 0xC3); // RET near
+    
+    free(x64.virtual_registers);
 }
-
 
 void 
 convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytecode_Instruction* insn) {
@@ -1555,7 +1584,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytec
         } break;
         
         case BC_RETURN: {
-            Ic_Arg val = convert_bytecode_operand_to_x64(bc_unary_first(insn), insn->type);
+            Ic_Arg val = convert_bytecode_operand_to_x64(x64, bc_unary_first(insn), insn->type);
             assert(val.type);
             
             x64_mov(buf, 
@@ -1564,9 +1593,19 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytec
             // TODO: jump to the end of the function
         } break;
         
-        case BC_STORE: {
-            Ic_Arg dest = convert_bytecode_operand_to_x64(bc_binary_first(insn), insn->type);
-            Ic_Arg src = convert_bytecode_operand_to_x64(bc_binary_second(insn), insn->type);
+        case BC_MOV: {
+            Bytecode_Operand first = bc_binary_first(insn);
+            
+            if (first.kind == BytecodeOperand_register) {
+                // Allocate register
+                // TODO(Alexander): for now RAX is the only register we allocate
+                
+                Ic_Raw_Type rt = convert_bytecode_type_to_x64(insn->type);
+                x64_alloc_register(x64, buf, first.register_index, X64_RAX, rt);
+            }
+            
+            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, first, insn->type);
+            Ic_Arg src = convert_bytecode_operand_to_x64(x64, bc_binary_second(insn), insn->type);
             
             x64_mov(buf, 
                     dest.type, dest.reg, dest.disp,
@@ -1574,13 +1613,88 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytec
         } break;
         
         case BC_ADD: {
-            Ic_Arg first = convert_bytecode_operand_to_x64(bc_binary_first(insn), insn->type);
-            Ic_Arg second = convert_bytecode_operand_to_x64(bc_binary_second(insn), insn->type);
-            
-            x64_binary(buf, 
+            Ic_Arg first = convert_bytecode_operand_to_x64(x64, bc_binary_first(insn), insn->type);
+            Ic_Arg second = convert_bytecode_operand_to_x64(x64, bc_binary_second(insn), insn->type);
+            x64_binary(buf,
                        first.type, first.reg, first.disp,
                        second.type, second.reg, second.disp,
                        0, 0, rip);
+        } break;
+        
+        case BC_SUB: {
+            Ic_Arg first = convert_bytecode_operand_to_x64(x64, bc_binary_first(insn), insn->type);
+            Ic_Arg second = convert_bytecode_operand_to_x64(x64, bc_binary_second(insn), insn->type);
+            x64_binary(buf,
+                       first.type, first.reg, first.disp,
+                       second.type, second.reg, second.disp,
+                       5, 0x28, rip);
+        } break;
+        
+        case BC_AND: {
+            Ic_Arg first = convert_bytecode_operand_to_x64(x64, bc_binary_first(insn), insn->type);
+            Ic_Arg second = convert_bytecode_operand_to_x64(x64, bc_binary_second(insn), insn->type);
+            x64_binary(buf,
+                       first.type, first.reg, first.disp,
+                       second.type, second.reg, second.disp,
+                       4, 0x20, rip);
+        } break;
+        
+        case BC_OR: {
+            Ic_Arg first = convert_bytecode_operand_to_x64(x64, bc_binary_first(insn), insn->type);
+            Ic_Arg second = convert_bytecode_operand_to_x64(x64, bc_binary_second(insn), insn->type);
+            x64_binary(buf,
+                       first.type, first.reg, first.disp,
+                       second.type, second.reg, second.disp,
+                       1, 0x8, rip);
+        } break;
+        
+        case BC_XOR: {
+            Ic_Arg first = convert_bytecode_operand_to_x64(x64, bc_binary_first(insn), insn->type);
+            Ic_Arg second = convert_bytecode_operand_to_x64(x64, bc_binary_second(insn), insn->type);
+            x64_binary(buf,
+                       first.type, first.reg, first.disp,
+                       second.type, second.reg, second.disp,
+                       6, 0x30, rip);
+        } break;
+        
+        case BC_SHL: {
+            x64_shr(x64, buf, (Bytecode_Binary*) insn, 4, rip);
+        } break;
+        
+        case BC_SHR: {
+            x64_shr(x64, buf, (Bytecode_Binary*) insn, 5, rip);
+        } break;
+        
+        case BC_SAR: {
+            x64_shr(x64, buf, (Bytecode_Binary*) insn, 7, rip);
+        } break;
+        
+        case BC_MUL: {
+            x64_mul(x64, buf, (Bytecode_Binary*) insn, rip);
+        } break;
+        
+        case BC_IDIV:
+        case BC_DIV: {
+            x64_div(x64, buf, (Bytecode_Binary*) insn, false, rip);
+        } break;
+        
+        case BC_IMOD:
+        case BC_MOD: {
+            x64_div(x64, buf, (Bytecode_Binary*) insn, true, rip);
+        } break;
+        
+        case BC_WRAP_I64: {
+            // noop
+        } break;
+        
+        case BC_EXTEND_S8: {
+            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, bc_binary_first(insn), insn->type);
+            Ic_Arg src = convert_bytecode_operand_to_x64(x64, bc_binary_second(insn), insn->type);
+            src.type = (IC_TF_MASK & src.type) | IC_S8;
+            
+            x64_movsx(buf, 
+                      dest.type, dest.reg, dest.disp,
+                      src.type, src.reg, src.disp, rip);
         } break;
     }
 }
@@ -1747,33 +1861,6 @@ x64_binary(Buffer* buf,
     }
 }
 
-
-inline void
-x64_add(Buffer* buf, 
-        Ic_Type t1, s64 r1, s64 d1, 
-        Ic_Type t2, s64 r2, s64 d2, 
-        Ic_Type t3, s64 r3, s64 d3, 
-        u8 reg_field, u8 opcode, s64 rip) {
-    
-    assert(t1 & IC_REG);
-    
-    s64 tmpr = -1;
-    if (!(t2 & IC_REG) && t1 != t3 && r1 != r3) {
-        x64_mov(buf, t1, r1, d1, t2, r2, d2, rip);
-    } else  {
-        x64_mov(buf, t1, X64_RCX, 0, t2, r2, d2, rip);
-        tmpr = r1;
-        r1 = X64_RCX;
-    }
-    
-    x64_binary(buf, t1, r1, d1, t3, r3, d3, reg_field, opcode, rip);
-    
-    if (tmpr != -1) {
-        x64_mov(buf, t1, tmpr, 0, t1, X64_RCX, 0, rip);
-        tmpr = -1;
-    }
-}
-
 void
 x64_zero(Buffer* buf, s64 r) {
     // REX.W + 33 /r 	XOR r64, r/m64 	RM
@@ -1888,6 +1975,42 @@ x64_mov(Buffer* buf,
 }
 
 void
+x64_movsx(Buffer* buf,
+          Ic_Type t1, s64 r1, s64 d1,
+          Ic_Type t2, s64 r2, s64 d2, s64 rip) {
+    if (t1 & IC_T16) {
+        push_u8(buf, X64_OP_SIZE_PREFIX);
+    }
+    
+    if (t1 & IC_T64) {
+        x64_rex(buf, REX_FLAG_W);
+    }
+    
+    switch (t2 & IC_RT_SIZE_MASK) {
+        case IC_T8: {
+            assert(t1 & (IC_T64 | IC_T32 | IC_T16));
+            // 0F BE /r 	MOVSX r16, r/m8 	RM
+            // 0F BE /r 	MOVSX r32, r/m8 	RM
+            // REX.W + 0F BE /r 	MOVSX r64, r/m8 	RM
+            push_u16(buf, 0xBE0F);
+        } break;
+        
+        case IC_T16: {
+            assert(t1 & (IC_T64 | IC_T32));
+            // 0F BF /r 	MOVSX r32, r/m16 	RM
+            push_u16(buf, 0xBF0F);
+        } break;
+        
+        case IC_T32: {
+            assert(t1 & IC_T64);
+            // REX.W + 63 /r 	MOVSXD r64, r/m32 	RM
+            push_u8(buf, 0x63);
+        } break;
+    }
+    x64_modrm(buf, t2, d2, r1, r2, rip);
+}
+
+void
 x64_fmov(Buffer* buf,
          Ic_Type t1, s64 r1, s64 d1,
          Ic_Type t2, s64 r2, s64 d2, s64 rip) {
@@ -1930,122 +2053,114 @@ x64_fmov(Buffer* buf,
 }
 
 inline void
-x64_mul(Buffer* buf, s64 rip) {
-#if 0
-    assert(buf->dest.type & IC_REG);
+x64_mul(X64_Assembler* x64, Buffer* buf, Bytecode_Binary* binary, s64 rip) {
+    Ic_Arg first = convert_bytecode_operand_to_x64(x64, binary->first, binary->type);
+    Ic_Arg second = convert_bytecode_operand_to_x64(x64, binary->second, binary->type);
     
-    if (buf->src0.type & IC_DISP && buf->src1.type & IC_DISP) {
-        buf->src0.disp = buf->src0.disp * buf->src1.disp;
-        x64_mov(buf, 
-                buf->dest.type, buf->dest.reg, buf->dest.disp, 
-                buf->src0.type, buf->src0.reg, buf->src0.disp, rip);
-        
-        return;
-    }
+    assert(first.type & IC_REG); // TODO(Alexander): we can allow stack/ memory later
     
-    if (buf->src0.type & IC_DISP) {
-        Ic_Arg tmp = buf->src0;
-        buf->src0 = buf->src1;
-        buf->src1 = tmp;
-    }
-    
-    if (buf->src1.type & IC_DISP) {
+    if (second.type & IC_DISP) {
         // 69 /r id 	IMUL r32, r/m32, imm32 	RMI
-        if (buf->dest.type & IC_T64) {
+        if (first.type & IC_T64) {
             x64_rex(buf, REX_FLAG_64_BIT);
         }
         
         push_u8(buf, 0x69);
-        x64_modrm(buf, buf->src0.type, buf->src0.disp, buf->dest.reg, buf->src0.reg, rip + 4);
-        assert(buf->src1.disp >= S32_MIN && buf->src1.disp <= S32_MAX && "cannot fit in imm32");
-        push_u32(buf, (u32) buf->src1.disp);
+        x64_modrm(buf, first.type, first.disp, first.reg, first.reg, rip + 4);
+        assert(second.disp >= S32_MIN && second.disp <= S32_MAX && "cannot fit in imm32");
+        push_u32(buf, (u32) second.disp);
     } else {
-        Ic_Type t1 = buf->src0.type;
-        s64 r1 = buf->src0.reg;
-        s64 d1 = buf->src0.disp;
+        Ic_Type t1 = first.type;
+        s64 r1 = first.reg;
+        s64 d1 = first.disp;
         
-        Ic_Type t2 = buf->src1.type;
-        s64 r2 = buf->src1.reg;
-        s64 d2 = buf->src1.disp;
+        Ic_Type t2 = second.type;
+        s64 r2 = second.reg;
+        s64 d2 = second.disp;
         
         if (t1 & IC_STK_RIP) {
             // NOTE(Alexander): swap the order of mul
-            if (t2 & IC_STK || r2 != buf->dest.reg) {
-                x64_mov(buf, buf->dest.type, buf->dest.reg, buf->dest.disp, t2, r2, d2, rip);
+            if (t2 & IC_STK || r2 != first.reg) {
+                x64_mov(buf, first.type, first.reg, first.disp, t2, r2, d2, rip);
             }
             t2 = t1;
             r2 = r1;
             d2 = d1;
             
-            t1 = buf->dest.type;
-            r1 = buf->dest.reg;
-            d1 = buf->dest.disp;
+            t1 = first.type;
+            r1 = first.reg;
+            d1 = first.disp;
         }
         
         // 0F AF /r 	IMUL r32, r/m32
         push_u16(buf, 0xAF0F);
         x64_modrm(buf, t2, d2, r1, r2, rip);
     }
-#endif
-    unimplemented;
 }
 
 inline void
-x64_div(Buffer* buf, bool remainder, s64 rip) {
-#if 0
-    x64_mov(buf, buf->src1.raw_type + IC_REG, X64_RCX, 0, buf->src1.type, buf->src1.reg, buf->src1.disp, rip);
-    x64_mov(buf, buf->src0.raw_type + IC_REG, X64_RAX, 0, buf->src0.type, buf->src0.reg, buf->src0.disp, rip);
-    if (buf->src0.type & IC_T64) {
+x64_div(X64_Assembler* x64, Buffer* buf, Bytecode_Binary* binary, bool remainder, s64 rip) {
+    x64_spill_register(x64, buf, X64_RAX);
+    x64_spill_register(x64, buf, X64_RDX);
+    x64_spill_register(x64, buf, X64_RCX);
+    
+    Ic_Arg first = convert_bytecode_operand_to_x64(x64, binary->first, binary->type);
+    Ic_Arg second = convert_bytecode_operand_to_x64(x64, binary->second, binary->type);
+    
+    x64_mov(buf, second.raw_type + IC_REG, X64_RCX, 0, second.type, second.reg, second.disp, rip);
+    x64_mov(buf, first.raw_type + IC_REG, X64_RAX, 0, first.type, first.reg, first.disp, rip);
+    if (first.type & IC_T64) {
         x64_rex(buf, REX_FLAG_64_BIT);
     }
     
-    if (buf->src0.type & IC_SINT) {
+    if (first.type & IC_SINT) {
         push_u8(buf, 0x99); // CDQ
     } else {
         x64_zero(buf, X64_RDX);
     }
     
-    // F7 /6 	DIV r/m32 	M
-    if (buf->src0.type & IC_T64) {
+    // F7 /6  	DIV r/m32 	M
+    // F7 /7 	IDIV r/m32 	M
+    if (first.type & IC_T64) {
         x64_rex(buf, REX_FLAG_64_BIT);
     }
     push_u8(buf, 0xF7);
-    push_u8(buf, ((buf->src0.type & IC_UINT) ? 0xF0 : 0xF8) | (u8) X64_RCX);
+    push_u8(buf, ((first.type & IC_UINT) ? 0xF0 : 0xF8) | (u8) X64_RCX);
     
     s64 dest_reg = remainder ? X64_RDX : X64_RAX;
-    x64_mov(buf, buf->dest.type, buf->dest.reg, buf->dest.disp, IC_REG, dest_reg, 0, rip);
-#endif
-    unimplemented;
+    x64_mov(buf, first.type, first.reg, first.disp, IC_REG, dest_reg, 0, rip);
 }
 
 inline void
-x64_float_binary(Buffer* buf, u8 opcode, s64 rip, s64 prefix_opcode=-1) {
-#if 0
-    Ic_Type t1 = buf->src0.type, t2 = buf->src1.type;
-    s64 r1 = buf->src0.reg, r2 = buf->src1.reg;
-    s64 d1 = buf->src0.disp, d2 = buf->src1.disp;
+x64_float_binary(X64_Assembler* x64, Buffer* buf, Bytecode_Binary* binary, u8 opcode, s64 rip, s64 prefix_opcode=-1) {
+    Ic_Arg first = convert_bytecode_operand_to_x64(x64, binary->first, binary->type);
+    Ic_Arg second = convert_bytecode_operand_to_x64(x64, binary->second, binary->type);
+    
+    Ic_Type t1 = first.type, t2 = second.type;
+    s64 r1 = first.reg, r2 = second.reg;
+    s64 d1 = first.disp, d2 = second.disp;
     assert(t1 & IC_FLOAT);
     // NOTE(Alexander): assumes destination to be a register
-    //assert(buf->dest.type & IC_REG);
+    //assert(first.type & IC_REG);
     
     // Make sure first argument is a register
     if (t1 & IC_DISP_STK_RIP) {
-        if (t2 & IC_REG && buf->dest.reg == r2) {
-            x64_fmov(buf, buf->dest.type, X64_XMM5, 0, t2, r2, d2, rip);
-            t2 = buf->dest.type;
+        if (t2 & IC_REG && first.reg == r2) {
+            x64_fmov(buf, first.type, X64_XMM5, 0, t2, r2, d2, rip);
+            t2 = first.type;
             r2 = X64_XMM5;
         }
-        x64_fmov(buf, buf->dest.type, buf->dest.reg, buf->dest.disp, 
+        x64_fmov(buf, first.type, first.reg, first.disp, 
                  t1, r1, d1, rip);
         
-        t1 = buf->dest.type;
-        r1 = buf->dest.reg;
-        d1 = buf->dest.disp;
+        t1 = first.type;
+        r1 = first.reg;
+        d1 = first.disp;
     }
     
-    //t1 = buf->dest.type;
-    //r1 = buf->dest.reg;
-    //d1 = buf->dest.disp;
+    //t1 = first.type;
+    //r1 = first.reg;
+    //d1 = first.disp;
     
     
     // F3 0F 5E /r DIVSS xmm1, xmm2/m32
@@ -2060,12 +2175,10 @@ x64_float_binary(Buffer* buf, u8 opcode, s64 rip, s64 prefix_opcode=-1) {
     push_u8(buf, opcode);
     x64_modrm(buf, t2, d2, r1, r2, rip);
     
-    if (!(buf->dest.type == t1 && buf->dest.reg == r1)) {
+    if (!(first.type == t1 && first.reg == r1)) {
         // TODO(Alexander): check displacement too, if both are STK
-        x64_fmov(buf, buf->dest.type, buf->dest.reg, buf->dest.disp, t1, r1, d1, rip);
+        x64_fmov(buf, first.type, first.reg, first.disp, t1, r1, d1, rip);
     }
-#endif
-    unimplemented;
 }
 
 // TODO(Alexander): we can simplify these conversion functions into a single function
@@ -2181,29 +2294,27 @@ x64_string_op(Buffer* buf,
 }
 
 inline void
-x64_shr(Buffer* buf, 
-        Ic_Type t1, s64 r1, s64 d1, 
-        Ic_Type t2, s64 r2, s64 d2, 
-        Ic_Type t3, s64 r3, s64 d3, 
-        u8 sar_reg_field, u8 shr_reg_field, s64 rip) {
+x64_shr(X64_Assembler* x64, Buffer* buf, Bytecode_Binary* binary, u8 reg_field, s64 rip) {
+    Ic_Arg first = convert_bytecode_operand_to_x64(x64, binary->first, binary->type);
+    Ic_Arg second = convert_bytecode_operand_to_x64(x64, binary->second, binary->type);
     
-    u8 reg_field = (t2 & IC_SINT) ? sar_reg_field : shr_reg_field;
-    
-    // TODO(Alexander): non immediate right-hand side
-    x64_mov(buf, t1, r1, d1, t2, r2, d2, rip);
-    
-    if (t3 & IC_DISP) {
+    if (second.type & IC_DISP) {
         // C1 /7 ib 	SAR r/m32, imm8 	MI (signed)
         // C1 /5 ib 	SHR r/m32, imm8 	MI (unsigned)
         push_u8(buf, 0xC1);
-        x64_modrm(buf, t1, d1, reg_field, r1, rip);
-        push_u8(buf, (u8) d3);
-    } else { 
+        x64_modrm(buf, first.type, first.disp, reg_field, first.reg, rip);
+        push_u8(buf, (u8) second.disp);
+    } else {
+        if (!(second.type & IC_REG && second.reg == X64_RCX)) {
+            x64_mov(buf, 
+                    first.type, first.reg, first.disp, 
+                    second.type, second.reg, second.disp, rip);
+        }
         
         // D3 /7 	SAR r/m32, CL 	MC (signed)
         // D3 /5 	SHR r/m16, CL     MC (unsigned)
-        push_u8(buf, 0xC1);
-        x64_modrm(buf, t1, d1, reg_field, r1, rip);
+        push_u8(buf, 0xD3);
+        x64_modrm(buf, first.type, first.disp, reg_field, first.reg, rip);
     }
 }
 

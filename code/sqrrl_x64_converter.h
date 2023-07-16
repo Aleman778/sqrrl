@@ -99,9 +99,18 @@ struct X64_Register {
     bool is_allocated;
 };
 
+struct X64_Relocation {
+    s32* from_ptr;
+    Bytecode_Function* target;
+};
+
 struct X64_Assembler {
+    Bytecode* bytecode;
     s32* stack_offsets;
     s32 stack_usage;
+    s32 arg_stack_usage;
+    
+    array(X64_Relocation)* relocations;
     
     u32 curr_bytecode_insn_index;
     
@@ -144,7 +153,9 @@ x64_alloc_register(X64_Assembler* x64, Buffer* buf, u32 virtual_index, X64_Reg r
     return result;
 }
 
-void convert_bytecode_function_to_x64_machine_code(Buffer* buf, Bytecode_Function* func);
+void convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64,
+                                                   Bytecode_Function* func,
+                                                   Buffer* buf);
 void convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, 
                                                Buffer* buf, 
                                                Bytecode_Instruction* insn);
@@ -261,17 +272,6 @@ inline bool
 x64_is_scalar_type(int size) {
     return size == 1 || size == 2 || size == 4 || size == 8;
 }
-
-inline int
-intrin_index_of_first_set_bit(u32 value) {
-    unsigned long result = 0;
-    // TODO(Alexander): MSVC intrinsics, make compiler agnostic
-    if (_BitScanForward(&result, value)) {
-        return result;
-    }
-    return -1;
-}
-
 
 enum X64_Jump_Opcode {
     X64_JMP,

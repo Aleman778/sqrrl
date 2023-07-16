@@ -4,6 +4,7 @@ struct Bytecode_Function;
 struct Bytecode {
     
     array(Bytecode_Function*)* functions;
+    array(string_id)* function_names;
 };
 
 #define DEF_BYTECODE_OPERATORS \
@@ -77,18 +78,17 @@ struct Stack_Entry {
 };
 
 struct Bytecode_Function {
-    u32 type_index;
-    
-    u32 insn_count;
-    
     array(u32)* register_lifetimes;
     array(Stack_Entry)* stack;
+    u8* code_ptr;
     
-    u32 ret_count;
+    u32 type_index;
+    u32 insn_count;
     u32 arg_count;
-    // followed by Bytecode_Type, returns, args and lastly instructions
+    u32 ret_count;
+    u32 first_insn; // relative pointer to first instruction
     
-    u32 first_insn; // relative pointer to first basic block
+    // followed by Bytecode_Type, function arguments then return types and lastly instructions
 };
 
 enum Bytecode_Operand_Kind {

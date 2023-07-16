@@ -174,8 +174,27 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             
             Bytecode_Function* func = target_cu->bc_func;
             
-            Bytecode_Call* insn = add_insn_t(bc, BC_CALL, Call);
+            umm insn_size = sizeof(Bytecode_Call) + sizeof(Bytecode_Operand)*(func->ret_count +
+                                                                              func->arg_count);
+            umm insn_align = max(alignof(Bytecode_Call), alignof(Bytecode_Operand));
+            Bytecode_Call* insn = (Bytecode_Call*) add_bytecode_insn(bc, BC_CALL, 
+                                                                     BytecodeInstructionKind_Call, 
+                                                                     insn_size, insn_align,
+                                                                     __FILE__ ":" S2(__LINE__));
             insn->func_index = func->type_index;
+            
+            Bytecode_Operand* curr_operand = (Bytecode_Operand*) (insn + 1);
+            for_compound(expr->Call_Expr.args, arg) {
+                *curr_operand++ = convert_expression_to_bytecode(bc, arg);
+            }
+            // TODO(Alexander): add default args
+            
+            // TODO(Alexander): multiple args
+            if (is_valid_type(type->Function.return_type)) {
+                insn->type = to_bytecode_type(type->Function.return_type);
+                result = add_bytecode_register(bc);
+                *curr_operand++ = result;
+            }
             
         } break;
         
@@ -325,6 +344,9 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
                 Bytecode_Operand result = convert_expression_to_bytecode(bc, stmt->Return_Stmt.expr);
                 Bytecode_Unary* insn = add_insn_t(bc, BC_RETURN, Unary);
                 insn->first = result;
+                if (result.kind == BytecodeOperand_register) {
+                    drop_bytecode_register(bc, result.register_index);
+                }
             }
         } break;
         
@@ -378,11 +400,6 @@ begin_bytecode_function(Bytecode_Builder* bc, Type* type) {
     func->arg_count = arg_count;
     
     Bytecode_Type* curr_type = (Bytecode_Type*) (func + 1);
-    if (ret_count > 0) {
-        assert(ret_count == 1 && "TODO: multiple arguments");
-        *curr_type++ = to_bytecode_type(type->Function.return_type);
-    }
-    
     for (int i = 0; i < arg_count; i++) {
         string_id arg_ident = type->Function.arg_idents[i];
         Type* arg_type = type->Function.arg_types[i];
@@ -392,10 +409,16 @@ begin_bytecode_function(Bytecode_Builder* bc, Type* type) {
         map_put(bc->locals, arg_ident, arg);
     }
     
+    if (ret_count > 0) {
+        assert(ret_count == 1 && "TODO: multiple arguments");
+        *curr_type++ = to_bytecode_type(type->Function.return_type);
+    }
+    
     array_push(bc->bytecode.functions, func);
-    array_push(bc->function_names, type->Function.ident);
+    array_push(bc->bytecode.function_names, type->Function.ident);
     
     bc->curr_function = func;
+    bc->curr_insn = 0;
     return func;
 }
 
@@ -435,79 +458,130 @@ void
 string_builder_dump_bytecode_operand(String_Builder* sb, Bytecode_Operand op) {
     switch (op.kind) {
         case BytecodeOperand_const_i32: {
-            string_builder_push_format(sb, " %", f_int(op.const_i32));
+            string_builder_push_format(sb, "%", f_int(op.const_i32));
         } break;
         
         case BytecodeOperand_const_i64: {
-            string_builder_push_format(sb, " %", f_s64(op.const_i64));
+            string_builder_push_format(sb, "%", f_s64(op.const_i64));
         } break;
         
         case BytecodeOperand_const_f32: {
-            string_builder_push_format(sb, " %", f_float(op.const_f32));
+            string_builder_push_format(sb, "%", f_float(op.const_f32));
         } break;
         
         case BytecodeOperand_const_f64: {
-            string_builder_push_format(sb, " %", f_float(op.const_f64));
+            string_builder_push_format(sb, "%", f_float(op.const_f64));
         } break;
         
         case BytecodeOperand_register: {
-            string_builder_push_format(sb, " r%", f_u32(op.register_index));
+            string_builder_push_format(sb, "r%", f_u32(op.register_index));
         } break;
         
         case BytecodeOperand_stack: {
             if (op.stack_offset == 0) {
-                string_builder_push_format(sb, " stack[s%]", f_u32(op.stack_index));
+                string_builder_push_format(sb, "stack[s%]", f_u32(op.stack_index));
             } else {
-                string_builder_push_format(sb, " stack[s% + %]", f_u32(op.stack_index), f_int(op.stack_offset));
+                string_builder_push_format(sb, "stack[s% + %]", f_u32(op.stack_index), f_int(op.stack_offset));
             }
         } break;
     }
     
 }
 
-void
-string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode_Instruction* insn) {
+inline void
+string_builder_dump_bytecode_function_name(String_Builder* sb, Bytecode* bc, Bytecode_Function* func) {
+    string_id ident = 0;
+    if (bc->function_names) {
+        ident = bc->function_names[func->type_index];
+    }
+    if (ident) {
+        string_builder_push_format(sb, "%", f_var(ident));
+    } else {
+        string_builder_push_format(sb, "func%", f_int(func->type_index));
+    }
+}
+
+inline void
+string_builder_dump_bytecode_opcode(String_Builder* sb, Bytecode_Instruction* insn) {
     if (insn->type) {
         string_builder_push_format(sb, "%.", f_cstring(bc_type_names[insn->type]));
     }
+    string_builder_push(sb, bc_opcode_names[insn->opcode]);
+    string_builder_push_format(sb, " ");
+}
+
+void
+string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Instruction* insn) {
     switch (insn->kind) {
         case BytecodeInstructionKind_None: break;
         
         case BytecodeInstructionKind_Base: {
-            string_builder_push(sb, bc_opcode_names[insn->opcode]);
+            string_builder_dump_bytecode_opcode(sb, insn);
         } break;
         
         case BytecodeInstructionKind_Unary: {
-            string_builder_push(sb, bc_opcode_names[insn->opcode]);
+            string_builder_dump_bytecode_opcode(sb, insn);
             string_builder_dump_bytecode_operand(sb, ((Bytecode_Unary*) insn)->first);
         } break;
         
         case BytecodeInstructionKind_Binary: {
-            string_builder_push(sb, bc_opcode_names[insn->opcode]);
+            string_builder_dump_bytecode_opcode(sb, insn);
             string_builder_dump_bytecode_operand(sb, ((Bytecode_Binary*) insn)->first);
             string_builder_push(sb, ",");
             string_builder_dump_bytecode_operand(sb, ((Bytecode_Binary*) insn)->second);
+        } break;
+        
+        case BytecodeInstructionKind_Call: {
+            Bytecode_Call* call = (Bytecode_Call*) insn;
+            
+            Bytecode_Function* func = bc->functions[call->func_index];
+            Bytecode_Operand* args = (Bytecode_Operand*) (call + 1);
+            
+            
+            if (func->ret_count == 1) {
+                // TODO(Alexander): multiple returns
+                string_builder_dump_bytecode_operand(sb, args[func->arg_count]);
+                string_builder_push(sb, " = ");
+            }
+            
+            string_builder_dump_bytecode_opcode(sb, insn);
+            string_builder_dump_bytecode_function_name(sb, bc, func);
+            string_builder_push(sb, "(");
+            
+            for (u32 i = 0; i < call->func_index; i++) {
+                string_builder_dump_bytecode_operand(sb, args[i]);
+                if (i + 1 < call->func_index) {
+                    string_builder_push(sb, " ");
+                }
+            }
+            string_builder_push(sb, ")");
         } break;
     }
 }
 
 void
-string_builder_dump_bytecode(String_Builder* sb, Bytecode_Function* func, Type* type) {
+string_builder_dump_bytecode(String_Builder* sb, Bytecode* bc, Bytecode_Function* func) {
     if (!func) return;
     
-    if (type) {
-        string_builder_push_format(sb, "\n% {", f_type(type));
-    } else {
-        string_builder_push_format(sb, "func (t%) {", f_u32(func->type_index));
+    Bytecode_Type* types = (Bytecode_Type*) (func + 1);
+    if (func->ret_count == 1) {
+        // TODO(Alexander): multiple returns
+        string_builder_push(sb, bc_type_names[types[func->arg_count]]);
+        string_builder_push(sb, " ");
     }
-    // TODO: add function params!
+    string_builder_dump_bytecode_function_name(sb, bc, func);
+    string_builder_push(sb, "(");
+    for (u32 i = 0; i < func->arg_count; i++) {
+        string_builder_push(sb, bc_type_names[types[i]]);
+    }
+    string_builder_push(sb, ") {");
     
     int bb_index = 0;
     
     Bytecode_Instruction* curr = iter_bytecode_instructions(func, 0);
     while (curr->kind) {
         string_builder_push(sb, "\n    ");
-        string_builder_dump_bytecode_insn(sb, curr);
+        string_builder_dump_bytecode_insn(sb, bc, curr);
         curr = iter_bytecode_instructions(func, curr);
     }
     
@@ -515,13 +589,11 @@ string_builder_dump_bytecode(String_Builder* sb, Bytecode_Function* func, Type* 
 }
 
 void
-dump_bytecode(Compilation_Unit* cu) {
-    if (!cu->bc_func) {
-        return;
-    }
-    
+dump_bytecode(Bytecode* bc) {
     String_Builder sb = {};
-    string_builder_dump_bytecode(&sb, cu->bc_func, cu->ast->type);
+    for_array_v(bc->functions, func, _) {
+        string_builder_dump_bytecode(&sb, bc, func);
+    }
     string s = string_builder_to_string_nocopy(&sb);
     pln("%", f_string(s));
     string_builder_free(&sb);

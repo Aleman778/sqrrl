@@ -2,7 +2,6 @@
 struct Bytecode_Builder {
     Memory_Arena arena;
     
-    array(string_id)* function_names;
     array(Bytecode_Instruction*)* labels;
     array(Bytecode_Operand*)* register_stack;
     
@@ -149,6 +148,6 @@ push_bytecode_memory(Bytecode_Builder* bc, Bytecode_Memory_Kind kind, smm size, 
     return result;
 }
 
-void string_bc_dump_bytecode_insn(String_Builder* sb, Bytecode_Instruction* insn);
-void string_bc_dump_bytecode(String_Builder* sb, Bytecode_Function* func, Type* type=0);
-void dump_bytecode(Compilation_Unit* cu);
+void string_bc_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Instruction* insn);
+void string_bc_dump_bytecode(String_Builder* sb, Bytecode* bc, Bytecode_Function* func, Type* type=0);
+void dump_bytecode(Bytecode* bc);

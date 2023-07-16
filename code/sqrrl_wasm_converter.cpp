@@ -277,10 +277,8 @@ convert_to_wasm_module(Bytecode* bytecode, s64 stk_usage, Buffer* buf) {
         
         push_u8(buf, 0x60); // functype tag
         
-        Bytecode_Type* ret_types = (Bytecode_Type*) (func + 1);
-        
         // arguments
-        Bytecode_Type* arg_types = ret_types + func->ret_count;
+        Bytecode_Type* arg_types = (Bytecode_Type*) (func + 1);
         push_leb128_u32(buf, func->arg_count);
         for (u32 i = 0; i < func->arg_count; i++) {
             wasm_push_valtype(buf, arg_types[i]);
@@ -288,6 +286,7 @@ convert_to_wasm_module(Bytecode* bytecode, s64 stk_usage, Buffer* buf) {
         
         // return values
         // TODO: multiple return types
+        Bytecode_Type* ret_types = arg_types + func->arg_count;
         push_leb128_u32(buf, func->ret_count);
         for (u32 i = 0; i < func->ret_count; i++) {
             wasm_push_valtype(buf, ret_types[i]);

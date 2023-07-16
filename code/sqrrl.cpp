@@ -355,7 +355,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         if (flag_print_bc || (cu->ast && cu->ast->type && 
                               cu->ast->type->kind == TypeKind_Function &&
                               cu->ast->type->Function.dump_bytecode)) {
-            string_builder_dump_bytecode(&sb, cu->bc_func, cu->ast->type);
+            string_builder_dump_bytecode(&sb, &bytecode_builder.bytecode, cu->bc_func);
         }
     }
     //
@@ -368,8 +368,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     switch (target_backend) {
         case Backend_X64: {
-            
-            
             Type* main_func_return_type = main_cu->ast->type;
             if (main_func_return_type && main_func_return_type->kind == TypeKind_Function) {
                 main_func_return_type = main_func_return_type->Function.return_type;
@@ -381,14 +379,26 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             buf.data = (u8*) asm_buffer;
             buf.size = asm_size;
             
+            X64_Assembler x64 = {};
+            x64.bytecode = &bytecode_builder.bytecode;
+            
             for_array(ast_file.units, cu, _4) {
                 if (cu->bc_func) {
                     if (cu == main_cu) {
                         asm_buffer_main = (u8*) asm_buffer + buf.curr_used;
                     }
                     
-                    convert_bytecode_function_to_x64_machine_code(&buf, cu->bc_func);
+                    convert_bytecode_function_to_x64_machine_code(&x64, cu->bc_func, &buf);
                 }
+            }
+            
+            for_array_v(x64.relocations, reloc, _5) {
+                assert(reloc.target);
+                s32 rel_ptr = (s32) (reloc.target->code_ptr - ((u8*) reloc.from_ptr + 4));
+                pln("target = %", f_u64_HEX(reloc.target->code_ptr));
+                pln("from ptr = %", f_u64_HEX(reloc.from_ptr));
+                pln("rel ptr = %", f_int(rel_ptr));
+                *reloc.from_ptr = rel_ptr;
             }
             
             

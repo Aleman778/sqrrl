@@ -1523,10 +1523,17 @@ convert_bytecode_operand_to_x64(X64_Assembler* x64, Bytecode_Operand op, Bytecod
 
 
 void
-convert_bytecode_function_to_x64_machine_code(Buffer* buf, Bytecode_Function* func) {
-    X64_Assembler x64 = {};
+convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Function* func, Buffer* buf) {
+    func->code_ptr = buf->data + buf->curr_used;
     
-    x64.virtual_registers = (Ic_Arg*) calloc(array_count(func->register_lifetimes), sizeof(Ic_Arg));
+    int register_count = (int) array_count(func->register_lifetimes);
+    pln("register_count = %", f_int(register_count));
+    if (register_count > 0) {
+        x64->virtual_registers = (Ic_Arg*) calloc(register_count, sizeof(Ic_Arg));
+    }
+    
+    memset(&x64->gpr_registers, 0, sizeof(x64->gpr_registers));
+    
     // Setup argument stack
     //for (int i = 0; i < func->arg_count; i++) {
     //array_push(rbp_offsets)
@@ -1540,37 +1547,41 @@ convert_bytecode_function_to_x64_machine_code(Buffer* buf, Bytecode_Function* fu
     push_u32(buf, 0);
     
     // Local stack
-    x64.stack_offsets = (s32*) calloc(array_count(func->stack), sizeof(s32));
+    x64->stack_offsets = (s32*) calloc(array_count(func->stack), sizeof(s32));
     for (int i = 0; i < array_count(func->stack); i++) {
         Stack_Entry stk = func->stack[i];
-        x64.stack_usage = (s32) align_forward(x64.stack_usage, stk.align);
-        x64.stack_offsets[i] = x64.stack_usage;
-        x64.stack_usage += stk.size;
+        x64->stack_usage = (s32) align_forward(x64->stack_usage, stk.align);
+        x64->stack_offsets[i] = x64->stack_usage;
+        x64->stack_usage += stk.size;
     }
     
     Bytecode_Instruction* curr = iter_bytecode_instructions(func, 0);
-    x64.curr_bytecode_insn_index = 0;
+    x64->curr_bytecode_insn_index = 0;
     while (curr->kind) {
-        convert_bytecode_insn_to_x64_machine_code(&x64, buf, curr);
+        convert_bytecode_insn_to_x64_machine_code(x64, buf, curr);
         curr = iter_bytecode_instructions(func, curr);
-        x64.curr_bytecode_insn_index++;
+        x64->curr_bytecode_insn_index++;
     }
     
     // Align stack by 16-bytes (excluding 8 bytes for return address)
-    x64.stack_usage += 8;
-    x64.stack_usage = (u32) align_forward(x64.stack_usage, 16);
+    x64->stack_usage += 8;
+    x64->stack_usage = (u32) align_forward(x64->stack_usage, 16);
     //x64->stk_locals = cu->stk_usage - (cu->stk_args);
-    x64.stack_usage -= 8;
+    x64->stack_usage -= 8;
     
     // Epilogue
     x64_rex(buf, REX_FLAG_64_BIT); // add rsp, stack_usage
     push_u8(buf, 0x81);
     x64_modrm(buf, IC_REG | IC_S64, 0, 0, X64_RSP, 0);
-    push_u32(buf, x64.stack_usage);
-    *stack_usage = x64.stack_usage;
+    push_u32(buf, x64->stack_usage);
+    *stack_usage = x64->stack_usage;
     push_u8(buf, 0xC3); // RET near
     
-    free(x64.virtual_registers);
+    // Cleanup
+    if (x64->virtual_registers) {
+        free(x64->virtual_registers);
+        x64->virtual_registers = 0;
+    }
 }
 
 void 
@@ -1581,6 +1592,64 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytec
     switch (insn->opcode) {
         case BC_DEBUG_BREAK: {
             push_u8(buf, 0xCC);
+        } break;
+        
+        case BC_CALL: {
+            Bytecode_Call* call = (Bytecode_Call*) insn;
+            Bytecode_Operand* args = (Bytecode_Operand*) (call + 1);
+            Bytecode_Function* func = x64->bytecode->functions[call->func_index];
+            Bytecode_Type* arg_types = (Bytecode_Type*) (func + 1);
+            
+            
+            for (int i = (int) func->arg_count - 1; i >= 0; i--) {
+                Ic_Arg arg = convert_bytecode_operand_to_x64(x64, args[i], arg_types[i]);
+                if (i < 4) {
+                    // TODO(Alexander): spill float regs too
+                    X64_Reg reg;
+                    if (arg.type & IC_FLOAT) {
+                        reg = float_arg_registers_ccall_windows[i];
+                    } else {
+                        reg = int_arg_registers_ccall_windows[i];
+                    }
+                    x64_spill_register(x64, buf, reg);
+                    x64_mov(buf, 
+                            IC_REG & arg.raw_type, reg, 0,
+                            arg.type, arg.reg, arg.disp, rip);
+                    
+                } else {
+                    x64_mov(buf, 
+                            IC_STK & arg.raw_type, X64_RSP, x64->stack_usage + i*8,
+                            arg.type, arg.reg, arg.disp, rip);
+                }
+            }
+            x64->arg_stack_usage = max(x64->arg_stack_usage, ((s32) func->arg_count-4)*8);
+            
+            if (func->ret_count > 0) {
+                Ic_Raw_Type rt = convert_bytecode_type_to_x64(insn->type);
+                x64_alloc_register(x64, buf, args[func->arg_count].register_index, X64_RAX, rt);
+            }
+            
+            // Direct function call
+            
+            // E8 cd 	CALL rel32 	D
+            push_u8(buf, 0xE8);
+            X64_Relocation reloc = {};
+            reloc.from_ptr = (s32*) (buf->data + buf->curr_used);
+            reloc.target = func;
+            array_push(x64->relocations, reloc);
+            push_u32(buf, 0);
+            
+            //} else {
+            // Indirect function call from pointer
+            
+            //if (call->ptr.type & IC_DISP) {
+            //x64_mov_rax_u64(ic, (u64) call->ptr.disp);
+            //}
+            
+            // FF /2 	CALL r/m64 	M 	
+            //push_u8(buf, 0xFF);
+            //x64_modrm(ic, IC_REG + IC_S64, 0, 2, X64_RAX, rip);
+            //}
         } break;
         
         case BC_RETURN: {
@@ -1888,7 +1957,7 @@ x64_mov(Buffer* buf,
             if (t2 & IC_DISP) {
                 if (d2 == 0) {
                     x64_zero(buf, r1);
-                } else if ((u64) d2 > U32_MAX) {
+                } else if (d2 < S32_MIN || d2 > S32_MAX) {
                     // REX.W + B8+ rd io 	MOV r64, imm64 	OI
                     x64_rex(buf, REX_FLAG_W | (r1&8)>>3);
                     push_u8(buf, 0xB8+((u8)r1&7));
@@ -1917,7 +1986,7 @@ x64_mov(Buffer* buf,
         case IC_STK:
         case IC_RIP_DISP32: {
             if (t2 & IC_DISP) {
-                if ((u64) d2 > U32_MAX) {
+                if (d2 < S32_MIN || d2 > S32_MAX) {
                     x64_mov_rax_u64(buf, d2);
                     x64_mov(buf, t1, r1, d1, IC_T64 + IC_REG, X64_RAX, 0, rip);
                 } else {
@@ -2247,20 +2316,6 @@ x64_lea(Buffer* buf, s64 r1, s64 r2, s64 d2, s64 rip) {
 global s64 global_asm_buffer = 0;
 
 #if 0
-void
-x64_jump(Buffer* buf, Ic_Basbuf_Block* bb, s64 rip) {
-    if (bb && bb->addr != IC_INVALID_ADDR) {
-        // TODO(Alexander): add support for short jumps
-        assert(bb->addr >= S32_MIN && bb->addr <= S32_MAX && "cannot fit addr in rel32");
-        if (global_asm_buffer) {
-            s64 d = global_asm_buffer +bb->addr;
-            //pln("%, align 8 = %, align 4 = %", f_u64_HEX(d), f_bool(d % 8 == 0), f_bool(d % 4 == 0));
-        }
-        push_u32(buf, (s32) (bb->addr - rip - buf->code_count - 4));
-    } else {
-        push_u32(buf, (s32) 0);
-    }
-}
 #endif
 
 void

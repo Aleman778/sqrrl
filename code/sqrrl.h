@@ -23,6 +23,7 @@ sqrrl_free(void* data) {
 
 #include "sqrrl_basic.h"
 #include "sqrrl_platform.h"
+#include "sqrrl_intrinsics.h"
 #include "sqrrl_vars.h"
 #include "sqrrl_source.h"
 #include "sqrrl_tokenizer.h"

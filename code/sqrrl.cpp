@@ -28,6 +28,8 @@ typedef f32 asm_f32_main(void);
 enum Backend_Type {
     Backend_X64,
     Backend_WASM,
+    
+    Backend_Count,
 };
 
 int // NOTE(alexander): this is called by the platform layer
@@ -165,6 +167,25 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
     Preprocessor preprocessor = {};
+    
+    {
+        string zero = string_lit("0");
+        string one = string_lit("1");
+        Preprocessor_Macro define_target = {};
+        define_target.is_integral = true;
+        define_target.is_valid = true;
+        string_id ident;
+        ident = vars_save_cstring("BUILD_TARGET_X64");
+        define_target.integral = target_backend == Backend_X64;
+        define_target.source = target_backend == Backend_X64 ? one : zero;
+        map_put(preprocessor.macros, ident, define_target);
+        
+        ident = vars_save_cstring("BUILD_TARGET_WASM");
+        define_target.integral = target_backend == Backend_WASM;
+        define_target.source = target_backend == Backend_WASM ? one : zero;
+        map_put(preprocessor.macros, ident, define_target);
+    }
+    
     
     string preprocessed_source = preprocess_file(&preprocessor, 
                                                  file.source, file.abspath, file.extension, file.index);
@@ -356,12 +377,15 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                               cu->ast->type->kind == TypeKind_Function &&
                               cu->ast->type->Function.dump_bytecode)) {
             string_builder_dump_bytecode(&sb, &bytecode_builder.bytecode, cu->bc_func);
+            if (cu->bc_func) {
+                string_builder_push(&sb, "\n");
+            }
         }
     }
     //
     if (sb.data) {
         string s = string_builder_to_string_nocopy(&sb);
-        pln("\nIntermediate code:\n%", f_string(s));
+        pln("\nBytecode:\n%", f_string(s));
         string_builder_free(&sb);
     }
     
@@ -540,6 +564,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             DEBUG_write(wasm_file, buffer.data, (u32) buffer.curr_used);
             DEBUG_close_file(wasm_file);
             
+            pln("\nRunning: `wasm2wat simple.wasm`:");
+            fflush(stdout);
             system("wasm2wat simple.wasm");
             
             pln("\nWrote executable: simple.wasm");

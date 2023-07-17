@@ -17,6 +17,9 @@ OP(CALL) \
 OP(RETURN) \
 OP(BLOCK) \
 OP(MOV) \
+OP(MOV_8) \
+OP(MOV_16) \
+OP(MOV_32) \
 OP(WRAP_I64) \
 OP(EXTEND_S8) \
 OP(EXTEND_S16) \
@@ -62,7 +65,7 @@ global const cstring bc_opcode_names[] = {
 #undef OP
 };
 
-enum Bytecode_Type {
+enum Bytecode_Type : u8 {
     BytecodeType_void,
     BytecodeType_i32,
     BytecodeType_i64,

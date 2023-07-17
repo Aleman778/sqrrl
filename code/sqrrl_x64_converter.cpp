@@ -1473,8 +1473,34 @@ convert_bytecode_type_to_x64(Bytecode_Type type) {
     return 0;
 }
 
+Ic_Raw_Type
+convert_bytecode_type_to_x64(Bytecode_Type type, int size) {
+    switch (type) {
+        case BytecodeType_i32: 
+        case BytecodeType_i64: {
+            switch (size) {
+                case 1: return IC_S8;
+                case 2: return IC_S16;
+                case 4: return IC_S32;
+                case 8: return IC_S64;
+                default: unimplemented;
+            }
+        } break;
+        
+        case BytecodeType_f32: 
+        case BytecodeType_f64: {
+            switch (size) {
+                case 4: return IC_F32;
+                case 8: return IC_F64;
+                default: unimplemented;
+            }
+        } break;
+    }
+    return 0;
+}
+
 Ic_Arg
-convert_bytecode_operand_to_x64(X64_Assembler* x64, Bytecode_Operand op, Bytecode_Type type) {
+convert_bytecode_operand_to_x64(X64_Assembler* x64, Buffer* buf, Bytecode_Operand op, Bytecode_Type type) {
     Ic_Raw_Type rt = convert_bytecode_type_to_x64(type);
     Ic_Arg result = {};
     switch (op.kind) {
@@ -1502,6 +1528,10 @@ convert_bytecode_operand_to_x64(X64_Assembler* x64, Bytecode_Operand op, Bytecod
         
         case BytecodeOperand_register: {
             result = x64->virtual_registers[op.register_index];
+            if (!result.type) {
+                // TODO(Alexander): only allocaing RAX for now!
+                result = x64_alloc_register(x64, buf, op.register_index, X64_RAX, rt);
+            }
             assert(result.type && "register not allocated");
         } break;
         
@@ -1554,7 +1584,7 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     for (int  arg_index = (int) func->arg_count - 1; arg_index >= 0; arg_index--) {
         if (arg_index < 4) {
             Bytecode_Type arg_type = arg_types[arg_index];
-            Ic_Raw_Type rt = convert_bytecode_type_to_x64(arg_type);
+            Ic_Raw_Type rt = convert_bytecode_type_to_x64(arg_type, func->stack[arg_index].size);
             X64_Reg reg;
             if (rt & IC_FLOAT) {
                 reg = float_arg_registers_ccall_windows[arg_index];
@@ -1617,7 +1647,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytec
             
             
             for (int i = (int) func->arg_count - 1; i >= 0; i--) {
-                Ic_Arg arg = convert_bytecode_operand_to_x64(x64, args[i], arg_types[i]);
+                Ic_Arg arg = convert_bytecode_operand_to_x64(x64, buf, args[i], arg_types[i]);
                 if (i < 4) {
                     // TODO(Alexander): spill float regs too
                     X64_Reg reg;
@@ -1668,7 +1698,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytec
         } break;
         
         case BC_RETURN: {
-            Ic_Arg val = convert_bytecode_operand_to_x64(x64, bc_unary_first(insn), insn->type);
+            Ic_Arg val = convert_bytecode_operand_to_x64(x64, buf, bc_unary_first(insn), insn->type);
             assert(val.type);
             
             x64_mov(buf, 
@@ -1679,17 +1709,20 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytec
         
         case BC_MOV: {
             Bytecode_Operand first = bc_binary_first(insn);
+            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
+            Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
             
-            if (first.kind == BytecodeOperand_register) {
-                // Allocate register
-                // TODO(Alexander): for now RAX is the only register we allocate
-                
-                Ic_Raw_Type rt = convert_bytecode_type_to_x64(insn->type);
-                x64_alloc_register(x64, buf, first.register_index, X64_RAX, rt);
-            }
-            
-            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, first, insn->type);
-            Ic_Arg src = convert_bytecode_operand_to_x64(x64, bc_binary_second(insn), insn->type);
+            x64_mov(buf, 
+                    dest.type, dest.reg, dest.disp,
+                    src.type, src.reg, src.disp, rip);
+        } break;
+        
+        case BC_MOV_8: {
+            Bytecode_Operand first = bc_binary_first(insn);
+            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
+            Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
+            dest.type = (IC_TF_MASK & dest.type) | IC_S8;
+            src.type = (IC_TF_MASK & src.type) | IC_S8;
             
             x64_mov(buf, 
                     dest.type, dest.reg, dest.disp,
@@ -1697,8 +1730,8 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytec
         } break;
         
         case BC_ADD: {
-            Ic_Arg first = convert_bytecode_operand_to_x64(x64, bc_binary_first(insn), insn->type);
-            Ic_Arg second = convert_bytecode_operand_to_x64(x64, bc_binary_second(insn), insn->type);
+            Ic_Arg first = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
+            Ic_Arg second = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
             x64_binary(buf,
                        first.type, first.reg, first.disp,
                        second.type, second.reg, second.disp,
@@ -1706,8 +1739,8 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytec
         } break;
         
         case BC_SUB: {
-            Ic_Arg first = convert_bytecode_operand_to_x64(x64, bc_binary_first(insn), insn->type);
-            Ic_Arg second = convert_bytecode_operand_to_x64(x64, bc_binary_second(insn), insn->type);
+            Ic_Arg first = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
+            Ic_Arg second = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
             x64_binary(buf,
                        first.type, first.reg, first.disp,
                        second.type, second.reg, second.disp,
@@ -1715,8 +1748,8 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytec
         } break;
         
         case BC_AND: {
-            Ic_Arg first = convert_bytecode_operand_to_x64(x64, bc_binary_first(insn), insn->type);
-            Ic_Arg second = convert_bytecode_operand_to_x64(x64, bc_binary_second(insn), insn->type);
+            Ic_Arg first = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
+            Ic_Arg second = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
             x64_binary(buf,
                        first.type, first.reg, first.disp,
                        second.type, second.reg, second.disp,
@@ -1724,8 +1757,8 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytec
         } break;
         
         case BC_OR: {
-            Ic_Arg first = convert_bytecode_operand_to_x64(x64, bc_binary_first(insn), insn->type);
-            Ic_Arg second = convert_bytecode_operand_to_x64(x64, bc_binary_second(insn), insn->type);
+            Ic_Arg first = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
+            Ic_Arg second = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
             x64_binary(buf,
                        first.type, first.reg, first.disp,
                        second.type, second.reg, second.disp,
@@ -1733,8 +1766,8 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytec
         } break;
         
         case BC_XOR: {
-            Ic_Arg first = convert_bytecode_operand_to_x64(x64, bc_binary_first(insn), insn->type);
-            Ic_Arg second = convert_bytecode_operand_to_x64(x64, bc_binary_second(insn), insn->type);
+            Ic_Arg first = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
+            Ic_Arg second = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
             x64_binary(buf,
                        first.type, first.reg, first.disp,
                        second.type, second.reg, second.disp,
@@ -1771,14 +1804,30 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytec
             // noop
         } break;
         
+        
+        case BC_EXTEND_U8: {
+            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
+            Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
+            src.type = (IC_TF_MASK & src.type) | IC_U8;
+            
+            x64_movzx(buf, 
+                      dest.type, dest.reg, dest.disp,
+                      src.type, src.reg, src.disp, rip);
+        } break;
+        
         case BC_EXTEND_S8: {
-            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, bc_binary_first(insn), insn->type);
-            Ic_Arg src = convert_bytecode_operand_to_x64(x64, bc_binary_second(insn), insn->type);
+            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
+            Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
             src.type = (IC_TF_MASK & src.type) | IC_S8;
             
             x64_movsx(buf, 
                       dest.type, dest.reg, dest.disp,
                       src.type, src.reg, src.disp, rip);
+        } break;
+        
+        
+        default: {
+            unimplemented;
         } break;
     }
 }
@@ -2058,6 +2107,35 @@ x64_mov(Buffer* buf,
     }
 }
 
+
+void
+x64_movzx(Buffer* buf,
+          Ic_Type t1, s64 r1, s64 d1,
+          Ic_Type t2, s64 r2, s64 d2, s64 rip) {
+    if (t2 & IC_T8) {
+        if (r1 & 8) {
+            x64_rex(buf, REX_FLAG_R);
+        }
+        push_u16(buf, 0xB60F);
+        x64_modrm(buf, t2, d2, r1, r2, rip);
+        
+    } else if (t2 & IC_T16) {
+        if (r1 & 8) {
+            x64_rex(buf, REX_FLAG_R);
+        }
+        push_u16(buf, 0xB70F);
+        x64_modrm(buf, t2, d2, r1, r2, rip);
+        
+    } else {
+        assert(t1 & IC_T64 && t2 & IC_T32);
+        t1 = (t1 & IC_TF_MASK) | (t2 & IC_RT_MASK);
+        
+        x64_mov(buf,
+                t1, r1, d1,
+                t2, r2, d2, rip);
+    }
+}
+
 void
 x64_movsx(Buffer* buf,
           Ic_Type t1, s64 r1, s64 d1,
@@ -2138,8 +2216,8 @@ x64_fmov(Buffer* buf,
 
 inline void
 x64_mul(X64_Assembler* x64, Buffer* buf, Bytecode_Binary* binary, s64 rip) {
-    Ic_Arg first = convert_bytecode_operand_to_x64(x64, binary->first, binary->type);
-    Ic_Arg second = convert_bytecode_operand_to_x64(x64, binary->second, binary->type);
+    Ic_Arg first = convert_bytecode_operand_to_x64(x64, buf, binary->first, binary->type);
+    Ic_Arg second = convert_bytecode_operand_to_x64(x64, buf, binary->second, binary->type);
     
     assert(first.type & IC_REG); // TODO(Alexander): we can allow stack/ memory later
     
@@ -2188,8 +2266,8 @@ x64_div(X64_Assembler* x64, Buffer* buf, Bytecode_Binary* binary, bool remainder
     x64_spill_register(x64, buf, X64_RDX);
     x64_spill_register(x64, buf, X64_RCX);
     
-    Ic_Arg first = convert_bytecode_operand_to_x64(x64, binary->first, binary->type);
-    Ic_Arg second = convert_bytecode_operand_to_x64(x64, binary->second, binary->type);
+    Ic_Arg first = convert_bytecode_operand_to_x64(x64, buf, binary->first, binary->type);
+    Ic_Arg second = convert_bytecode_operand_to_x64(x64, buf, binary->second, binary->type);
     
     x64_mov(buf, second.raw_type + IC_REG, X64_RCX, 0, second.type, second.reg, second.disp, rip);
     x64_mov(buf, first.raw_type + IC_REG, X64_RAX, 0, first.type, first.reg, first.disp, rip);
@@ -2217,8 +2295,8 @@ x64_div(X64_Assembler* x64, Buffer* buf, Bytecode_Binary* binary, bool remainder
 
 inline void
 x64_float_binary(X64_Assembler* x64, Buffer* buf, Bytecode_Binary* binary, u8 opcode, s64 rip, s64 prefix_opcode=-1) {
-    Ic_Arg first = convert_bytecode_operand_to_x64(x64, binary->first, binary->type);
-    Ic_Arg second = convert_bytecode_operand_to_x64(x64, binary->second, binary->type);
+    Ic_Arg first = convert_bytecode_operand_to_x64(x64, buf, binary->first, binary->type);
+    Ic_Arg second = convert_bytecode_operand_to_x64(x64, buf, binary->second, binary->type);
     
     Ic_Type t1 = first.type, t2 = second.type;
     s64 r1 = first.reg, r2 = second.reg;
@@ -2365,8 +2443,8 @@ x64_string_op(Buffer* buf,
 
 inline void
 x64_shr(X64_Assembler* x64, Buffer* buf, Bytecode_Binary* binary, u8 reg_field, s64 rip) {
-    Ic_Arg first = convert_bytecode_operand_to_x64(x64, binary->first, binary->type);
-    Ic_Arg second = convert_bytecode_operand_to_x64(x64, binary->second, binary->type);
+    Ic_Arg first = convert_bytecode_operand_to_x64(x64, buf, binary->first, binary->type);
+    Ic_Arg second = convert_bytecode_operand_to_x64(x64, buf, binary->second, binary->type);
     
     if (second.type & IC_DISP) {
         // C1 /7 ib 	SAR r/m32, imm8 	MI (signed)

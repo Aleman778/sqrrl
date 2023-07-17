@@ -67,7 +67,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 result = push_bytecode_stack_t(bc, string);
                 
                 // Assign the 
-                add_mov_insn(bc, BytecodeType_i64, result, str_data);
+                add_mov_insn(bc, t_s64, result, str_data);
                 
                 Bytecode_Binary* store_count = add_insn_t(bc, BC_MOV, Binary);
                 store_count->first = result;
@@ -96,13 +96,12 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
         case Ast_Binary_Expr: {
             // TODO: add correct opcode
             Type* type = expr->type;
-            Bytecode_Type result_type = to_bytecode_type(type);
             Bytecode_Operand first = convert_expression_to_bytecode(bc, expr->Binary_Expr.first);
             
             Bytecode_Operand tmp_register = {};
             if (first.kind != BytecodeOperand_register) {
                 Bytecode_Operand tmp = add_bytecode_register(bc);
-                add_mov_insn(bc, result_type, tmp, first);
+                add_mov_insn(bc, type, tmp, first);
                 first = tmp;
                 tmp_register = tmp;
             }
@@ -155,7 +154,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             Bytecode_Operand second = convert_expression_to_bytecode(bc, expr->Binary_Expr.second);
             
             Bytecode_Binary* insn = add_insn_t(bc, opcode, Binary);
-            insn->type = result_type;
+            insn->type  = to_bytecode_type(type);
             insn->first = first;
             insn->second = second;
             result = insn->first;
@@ -243,7 +242,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                         if (t_dest->size < t_src->size) {
                             Bytecode_Binary* insn = add_insn_t(bc, BC_NOOP, Binary);
                             insn->type = dest_type;
-                            //insn->first = push_bytecode_register(bc);
+                            insn->first = add_bytecode_register(bc);
                             insn->second = src;
                             result = insn->first;
                             
@@ -256,7 +255,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                         } else if (t_dest->size > t_src->size) {
                             Bytecode_Binary* insn = add_insn_t(bc, BC_NOOP, Binary);
                             insn->type = dest_type;
-                            //insn->first = push_bytecode_register(bc);
+                            insn->first = add_bytecode_register(bc);
                             insn->second = src;
                             result = insn->first;
                             
@@ -328,7 +327,7 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
                 map_put(bc->locals, ident, dest);
                 
                 if (src.kind) {
-                    add_mov_insn(bc, to_bytecode_type(type), dest, src);
+                    add_mov_insn(bc, type, dest, src);
                 }
             }
         } break;
@@ -531,7 +530,7 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
         case BytecodeInstructionKind_Binary: {
             string_builder_dump_bytecode_opcode(sb, insn);
             string_builder_dump_bytecode_operand(sb, ((Bytecode_Binary*) insn)->first);
-            string_builder_push(sb, ",");
+            string_builder_push(sb, ", ");
             string_builder_dump_bytecode_operand(sb, ((Bytecode_Binary*) insn)->second);
         } break;
         
@@ -577,6 +576,9 @@ string_builder_dump_bytecode(String_Builder* sb, Bytecode* bc, Bytecode_Function
     string_builder_push(sb, "(");
     for (u32 i = 0; i < func->arg_count; i++) {
         string_builder_push(sb, bc_type_names[types[i]]);
+        if (i + 1 < func->arg_count) {
+            string_builder_push(sb, ", ");
+        }
     }
     string_builder_push(sb, ") {");
     

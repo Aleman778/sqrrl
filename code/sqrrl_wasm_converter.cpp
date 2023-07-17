@@ -134,10 +134,63 @@ convert_bytecode_insn_to_wasm(Buffer* buf, Bytecode* bc, Bytecode_Instruction* i
             push_u8(buf, opcodes[insn->type - 1]);
         } break;
         
+        case BC_AND: {
+            wasm_push_value(buf, bc_binary_first(insn));
+            wasm_push_value(buf, bc_binary_second(insn));
+            const u8 opcodes[] = { 0x71, 0x83 };
+            push_u8(buf, opcodes[insn->type - 1]);
+        } break;
+        
+        case BC_OR: {
+            wasm_push_value(buf, bc_binary_first(insn));
+            wasm_push_value(buf, bc_binary_second(insn));
+            const u8 opcodes[] = { 0x72, 0x84 };
+            push_u8(buf, opcodes[insn->type - 1]);
+        } break;
+        
+        case BC_XOR: {
+            wasm_push_value(buf, bc_binary_first(insn));
+            wasm_push_value(buf, bc_binary_second(insn));
+            const u8 opcodes[] = { 0x73, 0x85 };
+            push_u8(buf, opcodes[insn->type - 1]);
+        } break;
+        
+        case BC_SHL: {
+            wasm_push_value(buf, bc_binary_first(insn));
+            wasm_push_value(buf, bc_binary_second(insn));
+            const u8 opcodes[] = { 0x74, 0x86 };
+            push_u8(buf, opcodes[insn->type - 1]);
+        } break;
+        
+        case BC_SAR: {
+            wasm_push_value(buf, bc_binary_first(insn));
+            wasm_push_value(buf, bc_binary_second(insn));
+            const u8 opcodes[] = { 0x75, 0x87 };
+            push_u8(buf, opcodes[insn->type - 1]);
+        } break;
+        
+        case BC_SHR: {
+            wasm_push_value(buf, bc_binary_first(insn));
+            wasm_push_value(buf, bc_binary_second(insn));
+            const u8 opcodes[] = { 0x76, 0x88 };
+            push_u8(buf, opcodes[insn->type - 1]);
+        } break;
+        
         case BC_WRAP_I64: {
             assert(insn->type == BytecodeType_i32);
             wasm_push_value(buf, bc_binary_second(insn));
             push_u8(buf, 0xA7); // i32.wrap_i64
+        } break;
+        
+        case BC_EXTEND_U8: {
+            Bytecode_Operand mask = {};
+            mask.kind = insn->type == BytecodeType_i32 ? 
+                BytecodeOperand_const_i32 : BytecodeOperand_const_i64;
+            mask.const_i64 = 0xFF;
+            wasm_push_value(buf, bc_binary_second(insn));
+            wasm_push_value(buf, mask);
+            const u8 opcodes[] = { 0x71, 0x83 };
+            push_u8(buf, opcodes[insn->type - 1]); // and x, 0xFF
         } break;
         
         case BC_EXTEND_S8: {
@@ -235,7 +288,7 @@ DEBUG_wasm_end(WASM_Debug* debug, Buffer* buf) {
     String_Builder sb = {};
     int left_panel_width = 15;
     
-    string_builder_push_format(&sb, "\nWASM (% bytes):\n\n", f_umm(buf->curr_used));
+    string_builder_push_format(&sb, "\nWASM (% bytes):\n", f_umm(buf->curr_used));
     
     string_builder_pad_string(&sb, "Signature: ", left_panel_width);
     print_bytes(&sb, buf->data, 8);
@@ -297,7 +350,6 @@ convert_to_wasm_module(Bytecode* bc, s64 stk_usage, Buffer* buf) {
     for_array_v(bc->functions, func, _1) {
         
         smm first_byte = buf->curr_used;
-        pln("Compiling function ID=%:", f_int(_1));
         
         push_u8(buf, 0x60); // functype tag
         
@@ -316,7 +368,8 @@ convert_to_wasm_module(Bytecode* bc, s64 stk_usage, Buffer* buf) {
             wasm_push_valtype(buf, ret_types[i]);
         }
         
-#if 1
+#if 0
+        pln("Compiling function ID=%:", f_int(_1));
         for (smm byte_index = first_byte; byte_index < buf->curr_used; byte_index++) {
             u8 byte = buf->data[byte_index];
             if (byte > 0xF) {

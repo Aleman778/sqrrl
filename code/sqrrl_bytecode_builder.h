@@ -93,9 +93,19 @@ alignof(Bytecode_##T), \
 __FILE__ ":" S2(__LINE__));
 
 inline void
-add_mov_insn(Bytecode_Builder* bc, Bytecode_Type type, Bytecode_Operand dest, Bytecode_Operand src) {
-    Bytecode_Binary* result = add_insn_t(bc, BC_MOV, Binary);
-    result->type = type;
+add_mov_insn(Bytecode_Builder* bc, Type* type, Bytecode_Operand dest, Bytecode_Operand src) {
+    Bytecode_Operator opcode = BC_MOV;
+    Bytecode_Type bc_type = to_bytecode_type(type);
+    switch (type->size) {
+        case 1: opcode = BC_MOV_8; break;
+        case 2: opcode = BC_MOV_16; break;
+        case 4: { 
+            opcode = (bc_type == BytecodeType_i64 || 
+                      bc_type == BytecodeType_f64) ? BC_MOV_32 : BC_MOV; 
+        } break;
+    }
+    Bytecode_Binary* result = add_insn_t(bc, opcode, Binary);
+    result->type = bc_type;
     result->first = dest;
     result->second = src;
 }

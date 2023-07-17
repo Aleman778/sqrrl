@@ -2021,7 +2021,7 @@ x64_mov(Buffer* buf,
             if (t2 & IC_DISP) {
                 if (d2 == 0) {
                     x64_zero(buf, r1);
-                } else if (d2 < S32_MIN || d2 > S32_MAX) {
+                } else if (t1 & IC_T64 || d2 < S32_MIN || d2 > S32_MAX) {
                     // REX.W + B8+ rd io 	MOV r64, imm64 	OI
                     x64_rex(buf, REX_FLAG_W | (r1&8)>>3);
                     push_u8(buf, 0xB8+((u8)r1&7));

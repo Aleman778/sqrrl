@@ -5,6 +5,8 @@ struct Bytecode {
     
     array(Bytecode_Function*)* functions;
     array(string_id)* function_names;
+    
+    int entry_func_index;
 };
 
 #define DEF_BYTECODE_OPERATORS \

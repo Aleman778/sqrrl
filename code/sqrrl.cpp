@@ -338,7 +338,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             if (type->kind == TypeKind_Function) {
                 bool is_main = cu->ident == Sym_main;
                 cu->bc_func = convert_function_to_bytecode(&bytecode_builder, cu, 
-                                                           is_debugger_present && is_main);
+                                                           is_main, is_debugger_present && is_main);
                 
                 if (is_main) {
                     main_cu = cu;
@@ -395,12 +395,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             for_array_v(x64.relocations, reloc, _5) {
                 assert(reloc.target);
                 s32 rel_ptr = (s32) (reloc.target->code_ptr - ((u8*) reloc.from_ptr + 4));
-                pln("target = %", f_u64_HEX(reloc.target->code_ptr));
-                pln("from ptr = %", f_u64_HEX(reloc.from_ptr));
-                pln("rel ptr = %", f_int(rel_ptr));
                 *reloc.from_ptr = rel_ptr;
             }
-            
             
 #if 1
             pln("\nX64 Machine Code (% bytes):", f_umm(buf.curr_used));

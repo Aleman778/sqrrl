@@ -185,7 +185,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             
             Bytecode_Operand* curr_operand = (Bytecode_Operand*) (insn + 1);
             for_compound(expr->Call_Expr.args, arg) {
-                *curr_operand++ = convert_expression_to_bytecode(bc, arg);
+                *curr_operand++ = convert_expression_to_bytecode(bc, arg->Argument.assign);
             }
             // TODO(Alexander): add default args
             
@@ -359,7 +359,8 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
 
 
 Bytecode_Function*
-convert_function_to_bytecode(Bytecode_Builder* bc, Compilation_Unit* cu, bool insert_debug_break) {
+convert_function_to_bytecode(Bytecode_Builder* bc, Compilation_Unit* cu,
+                             bool is_main, bool insert_debug_break) {
     assert(cu->ast->type->kind == TypeKind_Function);
     assert(cu->ast->kind == Ast_Decl_Stmt);
     
@@ -372,6 +373,9 @@ convert_function_to_bytecode(Bytecode_Builder* bc, Compilation_Unit* cu, bool in
     
     
     Bytecode_Function* func = begin_bytecode_function(bc, type);
+    if (is_main) {
+        bc->bytecode.entry_func_index = func->type_index;
+    }
     
     if (insert_debug_break) {
         add_insn(bc, BC_DEBUG_BREAK);
@@ -398,6 +402,8 @@ begin_bytecode_function(Bytecode_Builder* bc, Type* type) {
     func->type_index = bc->next_type_index++;
     func->ret_count = ret_count;
     func->arg_count = arg_count;
+    bc->curr_function = func;
+    bc->curr_insn = 0;
     
     Bytecode_Type* curr_type = (Bytecode_Type*) (func + 1);
     for (int i = 0; i < arg_count; i++) {
@@ -417,8 +423,6 @@ begin_bytecode_function(Bytecode_Builder* bc, Type* type) {
     array_push(bc->bytecode.functions, func);
     array_push(bc->bytecode.function_names, type->Function.ident);
     
-    bc->curr_function = func;
-    bc->curr_insn = 0;
     return func;
 }
 

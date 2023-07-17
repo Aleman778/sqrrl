@@ -34,17 +34,6 @@ wasm_push_valtype(Buffer* buf, Bytecode_Type type) {
     }
 }
 
-s64
-convert_bytecode_function_to_wasm(Buffer* buf, Bytecode_Function* func, s64 rip) {
-    Bytecode_Instruction* curr = iter_bytecode_instructions(func, 0);
-    while (curr->kind) {
-        rip = convert_bytecode_insn_to_wasm(buf, curr, rip);
-        curr = iter_bytecode_instructions(func, curr);
-    }
-    
-    return rip;
-}
-
 void
 wasm_push_value(Buffer* buf, Bytecode_Operand op) {
     switch (op.kind) {
@@ -58,6 +47,16 @@ wasm_push_value(Buffer* buf, Bytecode_Operand op) {
             push_leb128_s64(buf, op.const_i64);
         } break;
         
+        case BytecodeOperand_const_f32: {
+            push_u8(buf, 0x43); // i32.const
+            push_u32(buf, op.const_i32);
+        } break;
+        
+        case BytecodeOperand_const_f64: {
+            push_u8(buf, 0x44); // i64.const
+            push_u64(buf, op.const_i64);
+        } break;
+        
         case BytecodeOperand_stack: {
             push_u8(buf, 0x20); // local.get
             push_leb128_u32(buf, op.stack_index);
@@ -66,8 +65,22 @@ wasm_push_value(Buffer* buf, Bytecode_Operand op) {
 }
 
 s64
-convert_bytecode_insn_to_wasm(Buffer* buf, Bytecode_Instruction* insn, s64 rip) {
+convert_bytecode_insn_to_wasm(Buffer* buf, Bytecode* bc, Bytecode_Instruction* insn, s64 rip) {
     switch (insn->opcode) {
+        case BC_CALL: {
+            Bytecode_Call* call = (Bytecode_Call*) insn;
+            Bytecode_Operand* args = (Bytecode_Operand*) (call + 1);
+            Bytecode_Function* func = bc->functions[call->func_index];
+            Bytecode_Type* arg_types = (Bytecode_Type*) (func + 1);
+            
+            for (int i = 0; i < (int) func->arg_count; i++) {
+                wasm_push_value(buf, args[i]);
+            }
+            
+            push_u8(buf, 0x10);
+            push_leb128_u32(buf, func->type_index);
+        } break;
+        
         case BC_RETURN: {
             wasm_push_value(buf, bc_unary_first(insn));
             
@@ -132,6 +145,17 @@ convert_bytecode_insn_to_wasm(Buffer* buf, Bytecode_Instruction* insn, s64 rip) 
             wasm_push_value(buf, bc_binary_second(insn));
             push_u8(buf, 0xC0); // i32.extend_s8
         } break;
+    }
+    
+    return rip;
+}
+
+s64
+convert_bytecode_function_to_wasm(Buffer* buf, Bytecode* bc, Bytecode_Function* func, s64 rip) {
+    Bytecode_Instruction* curr = iter_bytecode_instructions(func, 0);
+    while (curr->kind) {
+        rip = convert_bytecode_insn_to_wasm(buf, bc, curr, rip);
+        curr = iter_bytecode_instructions(func, curr);
     }
     
     return rip;
@@ -254,7 +278,7 @@ wasm_set_vec_size(Buffer* buf, smm vec_first_byte) {
 
 
 void
-convert_to_wasm_module(Bytecode* bytecode, s64 stk_usage, Buffer* buf) {
+convert_to_wasm_module(Bytecode* bc, s64 stk_usage, Buffer* buf) {
     
     // Define module
     push_u32(buf, 0x6D736100); // Signature (.asm)
@@ -268,9 +292,9 @@ convert_to_wasm_module(Bytecode* bytecode, s64 stk_usage, Buffer* buf) {
     smm type_section_start = buf->curr_used;
     push_u32(buf, 0); // reserve space for the size
     
-    u32 num_types = (u32) array_count(bytecode->functions);
+    u32 num_types = (u32) array_count(bc->functions);
     push_leb128_u32(buf, num_types); // number of types
-    for_array_v(bytecode->functions, func, _1) {
+    for_array_v(bc->functions, func, _1) {
         
         smm first_byte = buf->curr_used;
         pln("Compiling function ID=%:", f_int(_1));
@@ -320,9 +344,13 @@ convert_to_wasm_module(Bytecode* bytecode, s64 stk_usage, Buffer* buf) {
     // Function section (3)
     DEBUG_wasm_begin_section(&debug, WASMSection_Function, buf);
     push_u8(buf, WASMSection_Function);
-    push_leb128_u32(buf, 2); // section size
-    push_leb128_u32(buf, 1); // number of function
-    push_leb128_u32(buf, 0); // typeidx (funcidx[0] = typeidx[0])
+    smm function_section_start = buf->curr_used;
+    push_u32(buf, 0); // reserve space for the size
+    push_leb128_u32(buf, (u32) array_count(bc->functions));
+    for (int i = 0; i < array_count(bc->functions); i++) {
+        push_leb128_u32(buf, i); // typeidx (funcidx[i] = typeidx[i])
+    }
+    wasm_set_vec_size(buf, function_section_start);
     
     // Export section (7)
     DEBUG_wasm_begin_section(&debug, WASMSection_Export, buf);
@@ -333,17 +361,17 @@ convert_to_wasm_module(Bytecode* bytecode, s64 stk_usage, Buffer* buf) {
     // - export[0] (for funcidx 1)
     wasm_push_string(buf, string_lit("helloworld")); // name of export
     push_u8(buf, 0x00); // 0x00 = funcidx
-    push_leb128_u32(buf, 0); // funcidx
+    push_leb128_u32(buf, bc->entry_func_index); // funcidx of entrypoint
     
     // Code section (10)
     DEBUG_wasm_begin_section(&debug, WASMSection_Code, buf);
     push_u8(buf, WASMSection_Code);
     smm code_section_start = buf->curr_used;
     push_u32(buf, 0); // reserve space for the size
-    push_leb128_u32(buf, 1); // number of functions
+    push_leb128_u32(buf, (u32) array_count(bc->functions));
     
     s64 rip = 0;
-    for_array_v(bytecode->functions, func, _2) {
+    for_array_v(bc->functions, func, _2) {
         
         smm function_start = buf->curr_used;
         push_u32(buf, 0); // reserve space for size
@@ -354,7 +382,7 @@ convert_to_wasm_module(Bytecode* bytecode, s64 stk_usage, Buffer* buf) {
             wasm_push_valtype(buf, stack.size <= 4 ? BytecodeType_i32 : BytecodeType_i64);
         }
         
-        rip = convert_bytecode_function_to_wasm(buf, func, rip);
+        rip = convert_bytecode_function_to_wasm(buf, bc, func, rip);
         //if (type->Function.return_type) {
         // TODO(Alexander): should we only call return on functions with return type?
         //push_u8(buf, 0x0F); // return

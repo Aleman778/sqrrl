@@ -1527,17 +1527,11 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     func->code_ptr = buf->data + buf->curr_used;
     
     int register_count = (int) array_count(func->register_lifetimes);
-    pln("register_count = %", f_int(register_count));
     if (register_count > 0) {
         x64->virtual_registers = (Ic_Arg*) calloc(register_count, sizeof(Ic_Arg));
     }
     
     memset(&x64->gpr_registers, 0, sizeof(x64->gpr_registers));
-    
-    // Setup argument stack
-    //for (int i = 0; i < func->arg_count; i++) {
-    //array_push(rbp_offsets)
-    //}
     
     // Prologue
     x64_rex(buf, REX_FLAG_64_BIT); // sub rsp, stack_usage
@@ -1554,6 +1548,27 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
         x64->stack_offsets[i] = x64->stack_usage;
         x64->stack_usage += stk.size;
     }
+    
+    // Save HOME registers (TODO: move this it's windows calling only)
+    Bytecode_Type* arg_types = (Bytecode_Type*) (func + 1);
+    for (int  arg_index = (int) func->arg_count - 1; arg_index >= 0; arg_index--) {
+        if (arg_index < 4) {
+            Bytecode_Type arg_type = arg_types[arg_index];
+            Ic_Raw_Type rt = convert_bytecode_type_to_x64(arg_type);
+            X64_Reg reg;
+            if (rt & IC_FLOAT) {
+                reg = float_arg_registers_ccall_windows[arg_index];
+            } else {
+                reg = int_arg_registers_ccall_windows[arg_index];
+            }
+            x64_mov(buf,
+                    IC_STK | rt, X64_RSP, x64->stack_offsets[arg_index],
+                    IC_REG | rt, reg, 0, 0);
+        }
+    }
+    
+    // TODO(Alexander): handle multiple returns
+    
     
     Bytecode_Instruction* curr = iter_bytecode_instructions(func, 0);
     x64->curr_bytecode_insn_index = 0;
@@ -1613,12 +1628,12 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytec
                     }
                     x64_spill_register(x64, buf, reg);
                     x64_mov(buf, 
-                            IC_REG & arg.raw_type, reg, 0,
+                            IC_REG | arg.raw_type, reg, 0,
                             arg.type, arg.reg, arg.disp, rip);
                     
                 } else {
                     x64_mov(buf, 
-                            IC_STK & arg.raw_type, X64_RSP, x64->stack_usage + i*8,
+                            IC_STK | arg.raw_type, X64_RSP, x64->stack_usage + i*8,
                             arg.type, arg.reg, arg.disp, rip);
                 }
             }

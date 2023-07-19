@@ -198,6 +198,18 @@ convert_bytecode_insn_to_wasm(Buffer* buf, Bytecode* bc, Bytecode_Instruction* i
             wasm_push_value(buf, bc_binary_second(insn));
             push_u8(buf, 0xC0); // i32.extend_s8
         } break;
+        
+        case BC_CONVERT_F32_S: {
+            wasm_push_value(buf, bc_binary_second(insn));
+            const u8 opcodes[] = { 0xA8, 0xAF };
+            push_u8(buf, opcodes[insn->type - 1]);
+        } break;
+        
+        case BC_CONVERT_F64_S: {
+            wasm_push_value(buf, bc_binary_second(insn));
+            const u8 opcodes[] = { 0xAA, 0xB0 };
+            push_u8(buf, opcodes[insn->type - 1]);
+        } break;
     }
     
     return rip;
@@ -432,7 +444,7 @@ convert_to_wasm_module(Bytecode* bc, s64 stk_usage, Buffer* buf) {
         
         for_array_v(func->stack, stack, stack_index) {
             push_leb128_u32(buf, 1); 
-            wasm_push_valtype(buf, stack.size <= 4 ? BytecodeType_i32 : BytecodeType_i64);
+            wasm_push_valtype(buf, stack.type);
         }
         
         rip = convert_bytecode_function_to_wasm(buf, bc, func, rip);

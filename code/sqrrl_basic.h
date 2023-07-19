@@ -99,12 +99,13 @@ DEBUG_log_backtrace();
 #if BUILD_DEBUG
 void
 __assert(cstring expression, cstring file, smm line) {
+    // Flush the standard streams make sure we get all debug data
+    fflush(stdout);
+    fflush(stderr);
+    
     // TODO(Alexander): improve assertion printing.
     fprintf(stderr, "%s:%zd: Assertion failed: %s\n", file, line, expression);
     DEBUG_log_backtrace();
-    
-    // Flush the standard streams make sure we get all debug data
-    fflush(stderr);
     
     *(int *)0 = 0; // NOTE(Alexander): purposefully trap the program
 }

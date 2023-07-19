@@ -221,55 +221,99 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             result = src;
             
             if (t_dest->kind == TypeKind_Basic && t_src->kind == TypeKind_Basic) {
-                if (t_src->Basic.flags & BasicFlag_Integer) {
-                    if (t_dest->Basic.flags & BasicFlag_Boolean) {
+                if (t_dest->Basic.flags & BasicFlag_Boolean &&
+                    t_src->Basic.flags & BasicFlag_Integer) {
 #if 0 
-                        result = ic_reg(IC_U8);
-                        
-                        Ic_Basic_Block* bb_else = ic_basic_block();
-                        Ic_Basic_Block* bb_exit = ic_basic_block();
-                        
-                        convert_ic_to_conditional_jump(cu, cu->ic_last, src, bb_else);
-                        ic_mov(cu, result, ic_imm(IC_U8, 1));
-                        ic_jump(cu, IC_JMP, bb_exit);
-                        ic_label(cu, bb_else);
-                        ic_mov(cu, result, ic_imm(IC_U8, 0));
-                        ic_label(cu, bb_exit);
+                    result = ic_reg(IC_U8);
+                    
+                    Ic_Basic_Block* bb_else = ic_basic_block();
+                    Ic_Basic_Block* bb_exit = ic_basic_block();
+                    
+                    convert_ic_to_conditional_jump(cu, cu->ic_last, src, bb_else);
+                    ic_mov(cu, result, ic_imm(IC_U8, 1));
+                    ic_jump(cu, IC_JMP, bb_exit);
+                    ic_label(cu, bb_else);
+                    ic_mov(cu, result, ic_imm(IC_U8, 0));
+                    ic_label(cu, bb_exit);
 #endif
-                        unimplemented;
+                    unimplemented;
+                    
+                } else if (t_dest->Basic.flags & BasicFlag_Integer &&
+                           t_src->Basic.flags & BasicFlag_Integer) {
+                    
+                    if (t_dest->size < t_src->size) {
+                        Bytecode_Binary* insn = add_insn_t(bc, BC_NOOP, Binary);
+                        insn->type = dest_type;
+                        insn->first = add_bytecode_register(bc);
+                        insn->second = src;
+                        result = insn->first;
                         
-                    } else if (t_dest->Basic.flags & BasicFlag_Integer) {
-                        if (t_dest->size < t_src->size) {
-                            Bytecode_Binary* insn = add_insn_t(bc, BC_NOOP, Binary);
-                            insn->type = dest_type;
-                            insn->first = add_bytecode_register(bc);
-                            insn->second = src;
-                            result = insn->first;
-                            
-                            switch (t_src->Basic.kind) {
-                                case Basic_s64: 
-                                case Basic_u64: insn->opcode = BC_WRAP_I64; break;
-                                default: unimplemented;
-                            }
-                            
-                        } else if (t_dest->size > t_src->size) {
-                            Bytecode_Binary* insn = add_insn_t(bc, BC_NOOP, Binary);
-                            insn->type = dest_type;
-                            insn->first = add_bytecode_register(bc);
-                            insn->second = src;
-                            result = insn->first;
-                            
-                            switch (t_src->Basic.kind) {
-                                case Basic_s8: insn->opcode = BC_EXTEND_S8; break;
-                                case Basic_s16: insn->opcode = BC_EXTEND_S16; break;
-                                case Basic_s32: insn->opcode = BC_EXTEND_S32; break;
-                                case Basic_u8: insn->opcode = BC_EXTEND_U8; break;
-                                case Basic_u16: insn->opcode = BC_EXTEND_U16; break;
-                                case Basic_u32: insn->opcode = BC_EXTEND_U32; break;
-                                default: unimplemented;
-                            }
+                        switch (t_src->Basic.kind) {
+                            case Basic_s64: 
+                            case Basic_u64: insn->opcode = BC_WRAP_I64; break;
+                            default: unimplemented;
                         }
-                    } break;
+                        
+                    } else if (t_dest->size > t_src->size) {
+                        Bytecode_Binary* insn = add_insn_t(bc, BC_NOOP, Binary);
+                        insn->type = dest_type;
+                        insn->first = add_bytecode_register(bc);
+                        insn->second = src;
+                        result = insn->first;
+                        
+                        switch (t_src->Basic.kind) {
+                            case Basic_s8: insn->opcode = BC_EXTEND_S8; break;
+                            case Basic_s16: insn->opcode = BC_EXTEND_S16; break;
+                            case Basic_s32: insn->opcode = BC_EXTEND_S32; break;
+                            case Basic_u8: insn->opcode = BC_EXTEND_U8; break;
+                            case Basic_u16: insn->opcode = BC_EXTEND_U16; break;
+                            case Basic_u32: insn->opcode = BC_EXTEND_U32; break;
+                            default: unimplemented;
+                        }
+                    }
+                    
+                } else if (t_dest->Basic.flags & BasicFlag_Integer &&
+                           t_src->Basic.flags & BasicFlag_Floating) {
+                    Bytecode_Binary* insn;
+                    bool is_unsigned = t_dest->Basic.flags & BasicFlag_Unsigned;
+                    if (t_src->Basic.kind == Basic_f32) {
+                        insn = add_insn_t(bc, is_unsigned ? BC_CONVERT_F32_U : BC_CONVERT_F32_S, Binary);
+                    } else {
+                        insn = add_insn_t(bc, is_unsigned ? BC_CONVERT_F64_U : BC_CONVERT_F64_S, Binary);
+                    }
+                    
+                    insn->type = dest_type;
+                    insn->first = add_bytecode_register(bc);
+                    insn->second = src;
+                    result = insn->first;
+                    
+                } else if (t_dest->Basic.flags & BasicFlag_Floating &&
+                           t_src->Basic.flags & BasicFlag_Integer) {
+                    Bytecode_Binary* insn = add_insn_t(bc, BC_NOOP, Binary);
+                    switch (t_src->Basic.kind) {
+                        case Basic_s8:
+                        case Basic_s16:
+                        case Basic_s32: insn->opcode = BC_CONVERT_S32; break;
+                        case Basic_s64: insn->opcode = BC_CONVERT_S64; break;
+                        case Basic_u8: 
+                        case Basic_u16: 
+                        case Basic_u32: insn->opcode = BC_CONVERT_U32; break;
+                        case Basic_u64: insn->opcode = BC_CONVERT_U64; break;
+                        default: unimplemented;
+                    }
+                    
+                    insn->type = dest_type;
+                    insn->first = add_bytecode_register(bc);
+                    insn->second = src;
+                    result = insn->first;
+                    
+                } else if (t_dest->Basic.flags & BasicFlag_Floating &&
+                           t_src->Basic.flags & BasicFlag_Floating) {
+                    Bytecode_Binary* insn = add_insn_t(bc, BC_CONVERT_F2F, Binary);
+                    insn->type = dest_type;
+                    insn->first = add_bytecode_register(bc);
+                    insn->second = src;
+                    result = insn->first;
                     
                 } else {
                     unimplemented;
@@ -322,7 +366,7 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
                     dest = push_bytecode_memory(bc, BytecodeMemory_read_write, 
                                                 type->size, type->align);
                 } else {
-                    dest = push_bytecode_stack(bc, type->size, type->align);
+                    dest = push_bytecode_stack(bc, type);
                 }
                 map_put(bc->locals, ident, dest);
                 
@@ -384,6 +428,38 @@ convert_function_to_bytecode(Bytecode_Builder* bc, Compilation_Unit* cu,
     
     end_bytecode_function(bc);
     
+    int insn_index = 0;
+    Bytecode_Instruction* it = iter_bytecode_instructions(func, 0);
+    while (it->kind) {
+        switch (it->kind) {
+            
+            case BytecodeInstructionKind_Unary: {
+                Bytecode_Operand op = bc_unary_first(it);
+                if (op.kind == BytecodeOperand_register) {
+                    func->register_lifetimes[op.register_index] = insn_index;
+                }
+            } break;
+            
+            case BytecodeInstructionKind_Binary: {
+                Bytecode_Operand op = bc_binary_first(it);
+                if (op.kind == BytecodeOperand_register) {
+                    func->register_lifetimes[op.register_index] = insn_index;
+                }
+                op = bc_binary_second(it);
+                if (op.kind == BytecodeOperand_register) {
+                    func->register_lifetimes[op.register_index] = insn_index;
+                }
+            } break;
+        }
+        
+        insn_index++;
+        it = iter_bytecode_instructions(func, it);
+    }
+    
+    for (int i = 0; i < (int) array_count(func->register_lifetimes); i++) {
+        pln("r% = %", f_int(i), f_int(func->register_lifetimes[i]));
+    }
+    
     return func;
 }
 
@@ -410,7 +486,7 @@ begin_bytecode_function(Bytecode_Builder* bc, Type* type) {
         Type* arg_type = type->Function.arg_types[i];
         *curr_type++ = to_bytecode_type(arg_type);
         
-        Bytecode_Operand arg = push_bytecode_stack(bc, arg_type->size, arg_type->align);
+        Bytecode_Operand arg = push_bytecode_stack(bc, arg_type);
         map_put(bc->locals, arg_ident, arg);
     }
     
@@ -540,20 +616,19 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
             Bytecode_Function* func = bc->functions[call->func_index];
             Bytecode_Operand* args = (Bytecode_Operand*) (call + 1);
             
-            
+            string_builder_dump_bytecode_opcode(sb, insn);
             if (func->ret_count == 1) {
                 // TODO(Alexander): multiple returns
                 string_builder_dump_bytecode_operand(sb, args[func->arg_count]);
-                string_builder_push(sb, " = ");
+                string_builder_push(sb, ", ");
             }
             
-            string_builder_dump_bytecode_opcode(sb, insn);
             string_builder_dump_bytecode_function_name(sb, bc, func);
             string_builder_push(sb, "(");
             
-            for (u32 i = 0; i < call->func_index; i++) {
+            for (u32 i = 0; i < func->arg_count; i++) {
                 string_builder_dump_bytecode_operand(sb, args[i]);
-                if (i + 1 < call->func_index) {
+                if (i + 1 < func->arg_count) {
                     string_builder_push(sb, " ");
                 }
             }

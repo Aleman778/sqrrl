@@ -32,11 +32,30 @@ enum Backend_Type {
     Backend_Count,
 };
 
+enum Compiler_Task {
+    CompilerTask_Run,
+    CompilerTask_Build,
+};
+
+int
+test_arith_f32(f32 y) {
+    f32 x = y / 2.0f + y*y - 64.0f;
+    return (int) x;
+}
+
+int
+test_arith_i32(int y) {
+    int x = y / 2 + y*y - 56;
+    return x;
+}
+
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm), bool is_debugger_present) {
     
+    pln("test  = %", f_int(test_arith_i32(-16)));
     
+    Compiler_Task compiler_task = CompilerTask_Run;
     Backend_Type target_backend = Backend_X64;
     
     {
@@ -405,6 +424,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             
             X64_Assembler x64 = {};
             x64.bytecode = &bytecode_builder.bytecode;
+            x64.data_packer = &data_packer;
+            x64.use_absolute_ptrs = compiler_task == CompilerTask_Run;
             
             for_array(ast_file.units, cu, _4) {
                 if (cu->bc_func) {
@@ -439,117 +460,116 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             printf("\n\n");
 #endif
             
-#if 1
-            // NOTE(Alexander): Run machine code
-            asm_make_executable(buf.data, buf.curr_used);
-            //DEBUG_add_debug_symbols(&ast_file, (u8*) asm_buffer);
-            
-            if (working_directory.data) {
-                cstring dir = string_to_cstring(working_directory);
-                DEBUG_set_current_directory(dir);
-                cstring_free(dir);
-            }
-            
-            if (main_func_return_type == t_s32) {
-                asm_main* func = (asm_main*) asm_buffer_main;
-                int jit_exit_code = (int) func();
-                pln("\nJIT exited with code: %", f_int(jit_exit_code));
-            } else if (main_func_return_type == t_f32) {
-                asm_f32_main* func = (asm_f32_main*) asm_buffer_main;
-                f32 jit_exit_code = (f32) func();
-                pln("\nJIT exited with code: %", f_float(jit_exit_code));
-            } else {
-                asm_main* func = (asm_main*) asm_buffer_main;
-                func();
-                pln("\nJIT exited with code: 0");
-            }
-#endif
-            
-            
-#if 0
-            // Compute the actual stack displacement for each Ic_Arg
-            for_array(ast_file.units, cu, _3) {
-                Intermediate_Code* ic = cu->ic_first;
-                while (ic) {
-                    
-                    // TODO: robustness we need a better way to know what the instruction data is!
-                    if (ic->opcode >= IC_NEG && ic->opcode <= IC_SETNE) {
-                        if (ic->dest.type & IC_STK) {
-                            ic->dest.disp = compute_stk_displacement(cu, ic->dest);
-                        }
-                        if (ic->src0.type & IC_STK) {
-                            ic->src0.disp = compute_stk_displacement(cu, ic->src0);
-                        }
-                        if (ic->src1.type & IC_STK) {
-                            ic->src1.disp = compute_stk_displacement(cu, ic->src1);
-                        }
-                    }
-                    
-                    ic = ic->next;
-                }
-            }
-            
-            return 0;
-            
-            // Convert to X64 machine code
-            s64 rip = 0;
-            for_array(ast_file.units, cu, _5) {
-                unimplemented;
-                //rip = convert_to_x64_machine_code(cu->first, 0, 0, 0, rip);
-            }
-            
-            // NOTE(Alexander): Build initial PE executable
-            Memory_Arena build_arena = {};
-            PE_Executable pe_executable = convert_to_pe_executable(&build_arena,
-                                                                   (u8*) asm_buffer, (u32) rip,
-                                                                   &tcx.import_table,
-                                                                   &data_packer,
-                                                                   asm_buffer_main);
-            
-            
-            // TODO(Alexander): the PE section_alignment is hardcoded as 0x1000
-            for_array(ast_file.units, cu, _6) {
-                Intermediate_Code* ic = cu->ic_first;
+            if (compiler_task == CompilerTask_Run) {
+                // NOTE(Alexander): Run machine code
+                asm_make_executable(buf.data, buf.curr_used);
+                //DEBUG_add_debug_symbols(&ast_file, (u8*) asm_buffer);
                 
-                while (ic) {
-                    // TODO: we should have instruction type or something?
-                    if (ic->opcode >= IC_NEG && ic->opcode <= IC_SETNE) {
-                        ic->dest = patch_rip_relative_address(&pe_executable, ic->dest);
-                        ic->src0 = patch_rip_relative_address(&pe_executable, ic->src0);
-                        ic->src1 = patch_rip_relative_address(&pe_executable, ic->src1);
-                    } else if (ic->opcode == IC_JMP_INDIRECT) {
-                        ic->src0 = patch_rip_relative_address(&pe_executable, ic->src0);
-                    }
-                    ic = ic->next;
+                if (working_directory.data) {
+                    cstring dir = string_to_cstring(working_directory);
+                    DEBUG_set_current_directory(dir);
+                    cstring_free(dir);
                 }
-            }
-            
-            global_asm_buffer = (s64) asm_buffer;
-            s64 rip2 = 0;
-            for_array(ast_file.units, cu, _7) {
-                rip2 = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage,
-                                                   (u8*) asm_buffer, 0, (s64) asm_size, rip2);
-            }
-            assert(rip == rip2);
-            
-            //asm_make_executable(asm_buffer, asm_size);
-            //asm_main* func = (asm_main*) asm_buffer;
-            //int jit_exit_code = (int) func();
-            //pln("JIT exited with code: %", f_int(jit_exit_code));
-            
-            // NOTE(Alexander): write the PE executable to file
-            cstring exe_filename = string_to_cstring(output_filename);
-            File_Handle exe_file = DEBUG_open_file_for_writing(exe_filename);
-            cstring_free(exe_filename);
-            write_pe_executable_to_file(exe_file, &pe_executable);
-            DEBUG_close_file(exe_file);
-            pln("\nWrote executable: %", f_string(output_filename));
-            
-            //Read_File_Result exe_data = DEBUG_read_entire_file("simple.exe");
-            //pe_dump_executable(create_string(exe_data.contents_size, (u8*) exe_data.contents));
-            
-            
+                
+                if (main_func_return_type == t_s32) {
+                    asm_main* func = (asm_main*) asm_buffer_main;
+                    int jit_exit_code = (int) func();
+                    pln("\nJIT exited with code: %", f_int(jit_exit_code));
+                } else if (main_func_return_type == t_f32) {
+                    asm_f32_main* func = (asm_f32_main*) asm_buffer_main;
+                    f32 jit_exit_code = (f32) func();
+                    pln("\nJIT exited with code: %", f_float(jit_exit_code));
+                } else {
+                    asm_main* func = (asm_main*) asm_buffer_main;
+                    func();
+                    pln("\nJIT exited with code: 0");
+                }
+                
+            } else if (compiler_task == CompilerTask_Build) {
+                
+#if 0
+                // Compute the actual stack displacement for each Ic_Arg
+                for_array(ast_file.units, cu, _6) {
+                    Intermediate_Code* ic = cu->ic_first;
+                    while (ic) {
+                        
+                        // TODO: robustness we need a better way to know what the instruction data is!
+                        if (ic->opcode >= IC_NEG && ic->opcode <= IC_SETNE) {
+                            if (ic->dest.type & IC_STK) {
+                                ic->dest.disp = compute_stk_displacement(cu, ic->dest);
+                            }
+                            if (ic->src0.type & IC_STK) {
+                                ic->src0.disp = compute_stk_displacement(cu, ic->src0);
+                            }
+                            if (ic->src1.type & IC_STK) {
+                                ic->src1.disp = compute_stk_displacement(cu, ic->src1);
+                            }
+                        }
+                        
+                        ic = ic->next;
+                    }
+                }
+                
+                return 0;
+                
+                // Convert to X64 machine code
+                s64 rip = 0;
+                for_array(ast_file.units, cu, _7) {
+                    unimplemented;
+                    //rip = convert_to_x64_machine_code(cu->first, 0, 0, 0, rip);
+                }
+                
+                // NOTE(Alexander): Build initial PE executable
+                Memory_Arena build_arena = {};
+                PE_Executable pe_executable = convert_to_pe_executable(&build_arena,
+                                                                       (u8*) asm_buffer, (u32) rip,
+                                                                       &tcx.import_table,
+                                                                       &data_packer,
+                                                                       asm_buffer_main);
+                
+                
+                // TODO(Alexander): the PE section_alignment is hardcoded as 0x1000
+                for_array(ast_file.units, cu, _8) {
+                    Intermediate_Code* ic = cu->ic_first;
+                    
+                    while (ic) {
+                        // TODO: we should have instruction type or something?
+                        if (ic->opcode >= IC_NEG && ic->opcode <= IC_SETNE) {
+                            ic->dest = patch_rip_relative_address(&pe_executable, ic->dest);
+                            ic->src0 = patch_rip_relative_address(&pe_executable, ic->src0);
+                            ic->src1 = patch_rip_relative_address(&pe_executable, ic->src1);
+                        } else if (ic->opcode == IC_JMP_INDIRECT) {
+                            ic->src0 = patch_rip_relative_address(&pe_executable, ic->src0);
+                        }
+                        ic = ic->next;
+                    }
+                }
+                
+                global_asm_buffer = (s64) asm_buffer;
+                s64 rip2 = 0;
+                for_array(ast_file.units, cu, _9) {
+                    rip2 = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage,
+                                                       (u8*) asm_buffer, 0, (s64) asm_size, rip2);
+                }
+                assert(rip == rip2);
+                
+                //asm_make_executable(asm_buffer, asm_size);
+                //asm_main* func = (asm_main*) asm_buffer;
+                //int jit_exit_code = (int) func();
+                //pln("JIT exited with code: %", f_int(jit_exit_code));
+                
+                // NOTE(Alexander): write the PE executable to file
+                cstring exe_filename = string_to_cstring(output_filename);
+                File_Handle exe_file = DEBUG_open_file_for_writing(exe_filename);
+                cstring_free(exe_filename);
+                write_pe_executable_to_file(exe_file, &pe_executable);
+                DEBUG_close_file(exe_file);
+                pln("\nWrote executable: %", f_string(output_filename));
+                
+                //Read_File_Result exe_data = DEBUG_read_entire_file("simple.exe");
+                //pe_dump_executable(create_string(exe_data.contents_size, (u8*) exe_data.contents));
 #endif
+            }
         } break;
         
         case Backend_WASM: {

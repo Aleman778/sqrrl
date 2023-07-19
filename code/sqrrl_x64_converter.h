@@ -1,7 +1,7 @@
 
 Ic_Opcode x64_intrin_rdtsc = IC_RDTSC;
 
-enum {
+enum X64_Reg {
     X64_RAX,
     X64_RCX,
     X64_RDX,
@@ -18,28 +18,28 @@ enum {
     X64_R13,
     X64_R14,
     X64_R15,
+    
+    X64_XMM0,
+    X64_XMM1,
+    X64_XMM2,
+    X64_XMM3,
+    X64_XMM4,
+    X64_XMM5,
+    X64_XMM6,
+    X64_XMM7,
+    X64_XMM8,
+    X64_XMM9,
+    X64_XMM10,
+    X64_XMM11,
+    X64_XMM12,
+    X64_XMM13,
+    X64_XMM14,
+    X64_XMM15,
+    
     X64_RIP,
     
-    X64_GPR_COUNT = 16,
-    
-    X64_XMM0 = 0,
-    X64_XMM1 = 1,
-    X64_XMM2 = 2,
-    X64_XMM3 = 3,
-    X64_XMM4 = 4,
-    X64_XMM5 = 5,
-    X64_XMM6 = 6,
-    X64_XMM7 = 7,
-    X64_XMM8 = 8,
-    X64_XMM9 = 9,
-    X64_XMM10 = 10,
-    X64_XMM11 = 11,
-    X64_XMM12 = 12,
-    X64_XMM13 = 13,
-    X64_XMM14 = 14,
-    X64_XMM15 = 15,
+    X64_REG_COUNT,
 };
-typedef u8 X64_Reg;
 
 global const cstring int_register_names[] {
     "RAX", "RCX", "RDX", "RBX", "RSP", "RBP", "RSI", "RDI",
@@ -79,9 +79,13 @@ x64_rex(Buffer* buf, u8 flags) {
     push_u8(buf, REX_PATTERN | flags);
 }
 
-inline void x64_mov(Buffer* buf,
-                    Ic_Type t1, s64 r1, s64 d1, 
-                    Ic_Type t2, s64 r2, s64 d2, s64 rip);
+void x64_mov(Buffer* buf,
+             Ic_Type t1, s64 r1, s64 d1, 
+             Ic_Type t2, s64 r2, s64 d2, s64 rip);
+
+void x64_fmov(Buffer* buf,
+              Ic_Type t1, s64 r1, s64 d1,
+              Ic_Type t2, s64 r2, s64 d2, s64 rip);
 
 void x64_movzx(Buffer* buf,
                Ic_Type t1, s64 r1, s64 d1,
@@ -96,6 +100,10 @@ inline void x64_add(Buffer* buf,
                     Ic_Type t2, s64 r2, s64 d2, 
                     Ic_Type t3, s64 r3, s64 d3,
                     u8 reg_field, u8 opcode, s64 rip);
+
+inline void x64_convert_float_to_int_type(Buffer* buf, 
+                                          Ic_Type t1, s64 r1, s64 d1, 
+                                          Ic_Type t2, s64 r2, s64 d2, s64 rip);
 
 struct X64_Register {
     u32 virtual_index;
@@ -114,28 +122,36 @@ struct X64_Assembler {
     s32 stack_usage;
     s32 arg_stack_usage;
     
+    Data_Packer* data_packer;
+    
     array(X64_Relocation)* relocations;
     
     u32 curr_bytecode_insn_index;
     
-    X64_Register gpr_registers[X64_GPR_COUNT];
+    X64_Register registers[X64_REG_COUNT];
     Ic_Arg* virtual_registers;
+    
+    bool use_absolute_ptrs;
 };
 
 inline void
 x64_spill_register(X64_Assembler* x64, Buffer* buf, X64_Reg reg) {
-    if (x64->gpr_registers[reg].is_allocated) {
-        Ic_Raw_Type rt = x64->gpr_registers[reg].raw_type;
+    if (x64->registers[reg].is_allocated) {
+        Ic_Raw_Type rt = x64->registers[reg].raw_type;
         Ic_Arg stk = {};
         stk.type = IC_STK | rt;
         stk.reg = X64_RSP;
         stk.disp = x64->stack_usage;
         x64->stack_usage += 8; // TODO(Alexander): proper stack allocation (use size and alignment)
         
-        x64_mov(buf, stk.type, stk.reg, stk.disp, IC_REG | rt, reg, 0, 0);
-        x64->gpr_registers[reg].is_allocated = false;
+        if (rt & IC_FLOAT) {
+            x64_fmov(buf, stk.type, stk.reg, stk.disp, IC_REG | rt, reg, 0, 0);
+        } else {
+            x64_mov(buf, stk.type, stk.reg, stk.disp, IC_REG | rt, reg, 0, 0);
+        }
+        x64->registers[reg].is_allocated = false;
         
-        u32 virtual_index = x64->gpr_registers[reg].virtual_index;
+        u32 virtual_index = x64->registers[reg].virtual_index;
         x64->virtual_registers[virtual_index] = stk;
     }
 }
@@ -146,12 +162,12 @@ x64_alloc_register(X64_Assembler* x64, Buffer* buf, u32 virtual_index, X64_Reg r
     
     Ic_Arg result = {};
     result.type = IC_REG | raw_type;
-    result.reg = reg;
+    result.reg = (u8) reg;
     result.disp = x64->stack_usage;
     
-    x64->gpr_registers[reg].is_allocated = true;
-    x64->gpr_registers[reg].virtual_index = virtual_index;
-    x64->gpr_registers[reg].raw_type = raw_type;
+    x64->registers[reg].is_allocated = true;
+    x64->registers[reg].virtual_index = virtual_index;
+    x64->registers[reg].raw_type = raw_type;
     
     x64->virtual_registers[virtual_index] = result;
     return result;
@@ -172,10 +188,11 @@ x64_binary(Buffer* buf,
            u8 reg_field, u8 opcode, s64 rip);
 
 inline void x64_binary(Buffer* buf, Bytecode_Binary* binary, u8 reg_field, u8 opcode, s64 rip);
+inline void x64_float_binary(X64_Assembler* x64, Buffer* buf, Bytecode_Binary* binary, u8 opcode, s64 rip, s64 prefix_opcode=-1);
 inline void x64_shr(X64_Assembler* x64, Buffer* buf, Bytecode_Binary* binary, u8 reg_field, s64 rip);
 inline void x64_mul(X64_Assembler* x64, Buffer* buf, Bytecode_Binary* binary, s64 rip);
 inline void x64_div(X64_Assembler* x64, Buffer* buf, Bytecode_Binary* binary, bool remainder, s64 rip);
-void x64_modrm(Buffer* buf, Ic_Type t, s64 d, s64 r, s64 rm, s64 rip);
+inline void x64_modrm(Buffer* buf, Ic_Type t, s64 d, s64 r, s64 rm, s64 rip);
 
 
 #if 0

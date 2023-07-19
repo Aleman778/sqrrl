@@ -27,10 +27,16 @@ OP(EXTEND_S32) \
 OP(EXTEND_U8) \
 OP(EXTEND_U16) \
 OP(EXTEND_U32) \
-OP(CONVERT_S2F) \
-OP(CONVERT_F2S) \
-OP(CONVERT_F32) \
-OP(REINTERPRET_F2S) \
+OP(CONVERT_S32) \
+OP(CONVERT_U32) \
+OP(CONVERT_S64) \
+OP(CONVERT_U64) \
+OP(CONVERT_F32_S) \
+OP(CONVERT_F32_U) \
+OP(CONVERT_F64_S) \
+OP(CONVERT_F64_U) \
+OP(CONVERT_F2F) \
+OP(REINTERPRET_F2I) \
 OP(ADD) \
 OP(SUB) \
 OP(MUL) \
@@ -80,6 +86,7 @@ global const cstring bc_type_names[] = {
 struct Stack_Entry {
     u32 size;
     u32 align;
+    Bytecode_Type type;
 };
 
 struct Bytecode_Function {

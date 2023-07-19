@@ -44,7 +44,7 @@ to_bytecode_type(Type* type) {
                 case Basic_cstring:  return BytecodeType_i64;
                 
                 case Basic_f32: return BytecodeType_f32;
-                case Basic_f64: return BytecodeType_i64;
+                case Basic_f64: return BytecodeType_f64;
                 
                 default: unimplemented; break;
             }
@@ -110,8 +110,6 @@ add_mov_insn(Bytecode_Builder* bc, Type* type, Bytecode_Operand dest, Bytecode_O
     result->second = src;
 }
 
-#define push_bytecode_stack_t(bc, T) push_bytecode_stack(bc, (u32) sizeof(T), (u32) alignof(T));
-
 inline Bytecode_Operand
 add_bytecode_register(Bytecode_Builder* bc) {
     assert(bc->curr_function);
@@ -129,13 +127,19 @@ drop_bytecode_register(Bytecode_Builder* bc, u32 register_index) {
     bc->curr_function->register_lifetimes[register_index] = bc->curr_function->insn_count;
 }
 
+#define push_bytecode_stack_t(bc, T) \
+_push_bytecode_stack(bc, (u32) sizeof(T), (u32) alignof(T), BytecodeType_i64)
+
+#define push_bytecode_stack(bc, type) \
+_push_bytecode_stack(bc, (u32) type->size, (u32) type->align, to_bytecode_type(type))
+
 inline Bytecode_Operand
-push_bytecode_stack(Bytecode_Builder* bc, u32 size, u32 align) {
+_push_bytecode_stack(Bytecode_Builder* bc, u32 size, u32 align, Bytecode_Type type) {
     assert(bc->curr_function && "need to start a new function first");
     Bytecode_Operand result = {};
     result.kind = BytecodeOperand_stack;
     result.stack_index = (u32) array_count(bc->curr_function->stack);
-    Stack_Entry stk = { size, align };
+    Stack_Entry stk = { size, align, type };
     array_push(bc->curr_function->stack, stk);
     return result;
 }

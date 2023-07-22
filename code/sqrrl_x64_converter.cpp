@@ -1570,7 +1570,7 @@ convert_bytecode_operand_to_x64(X64_Assembler* x64, Buffer* buf, Bytecode_Operan
 
 void
 convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Function* func, Buffer* buf) {
-    func->code_ptr = buf->data + buf->curr_used;
+    func->x64_machine_code_ptr = buf->data + buf->curr_used;
     
     int register_count = (int) array_count(func->register_lifetimes);
     if (register_count > 0) {
@@ -1621,7 +1621,7 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     Bytecode_Instruction* curr = iter_bytecode_instructions(func, 0);
     x64->curr_bytecode_insn_index = 0;
     while (curr->kind) {
-        convert_bytecode_insn_to_x64_machine_code(x64, buf, curr);
+        convert_bytecode_insn_to_x64_machine_code(x64, buf, func, curr);
         curr = iter_bytecode_instructions(func, curr);
         x64->curr_bytecode_insn_index++;
     }
@@ -1648,7 +1648,9 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
 }
 
 void 
-convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytecode_Instruction* insn) {
+convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, 
+                                          Bytecode_Function* func, 
+                                          Bytecode_Instruction* insn) {
     s64 rip = 0;
     
     const int flag_floating = bit(31);
@@ -1667,17 +1669,16 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytec
         case BC_CALL: {
             Bytecode_Call* call = (Bytecode_Call*) insn;
             Bytecode_Operand* args = (Bytecode_Operand*) (call + 1);
-            Bytecode_Function* func = x64->bytecode->functions[call->func_index];
-            Bytecode_Type* arg_types = (Bytecode_Type*) (func + 1);
+            Bytecode_Function* target = x64->bytecode->functions[call->func_index];
+            Bytecode_Type* arg_types = (Bytecode_Type*) (target + 1);
             
             
-            for (int i = (int) func->arg_count - 1; i >= 0; i--) {
+            for (int i = (int) target->arg_count - 1; i >= 0; i--) {
                 Ic_Arg arg = convert_bytecode_operand_to_x64(x64, buf, args[i], arg_types[i]);
                 if (i < 4) {
                     // TODO(Alexander): spill float regs too
                     if (arg.type & IC_FLOAT) {
                         X64_Reg reg = float_arg_registers_ccall_windows[i];
-                        pln("%", f_int(reg));
                         x64_spill_register(x64, buf, reg);
                         x64_fmov(buf, 
                                  IC_REG | arg.raw_type, reg, 0,
@@ -1696,11 +1697,11 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytec
                             arg.type, arg.reg, arg.disp, rip);
                 }
             }
-            x64->arg_stack_usage = max(x64->arg_stack_usage, ((s32) func->arg_count-4)*8);
+            x64->arg_stack_usage = max(x64->arg_stack_usage, ((s32) target->arg_count-4)*8);
             
-            if (func->ret_count > 0) {
+            if (target->ret_count > 0) {
                 Ic_Raw_Type rt = convert_bytecode_type_to_x64(insn->type);
-                x64_alloc_register(x64, buf, args[func->arg_count].register_index, X64_RAX, rt);
+                x64_alloc_register(x64, buf, args[target->arg_count].register_index, X64_RAX, rt);
             }
             
             // Direct function call
@@ -1709,7 +1710,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytec
             push_u8(buf, 0xE8);
             X64_Relocation reloc = {};
             reloc.from_ptr = (s32*) (buf->data + buf->curr_used);
-            reloc.target = func;
+            reloc.target = &target->x64_machine_code_ptr;
             array_push(x64->relocations, reloc);
             push_u32(buf, 0);
             
@@ -1733,7 +1734,14 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytec
             x64_mov(buf, 
                     IC_REG | val.raw_type, X64_RAX, 0,
                     val.type, val.reg, val.disp, rip);
-            // TODO: jump to the end of the function
+            
+            Bytecode_Block* next_insn = (Bytecode_Block*) iter_bytecode_instructions(func, insn);
+            
+            if (!(next_insn->opcode == BC_BLOCK && next_insn->label_index == 0)) {
+                // jump to end of function
+                push_u8(buf, 0xE9);
+                x64_push_rel32(x64, buf, func, 0);
+            }
         } break;
         
         case BC_MOV: {
@@ -1802,18 +1810,18 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytec
             x64_float_binary(x64, buf, (Bytecode_Binary*) insn, 0x59, rip);
         } break;
         
-        case BC_IDIV:
-        case BC_DIV: {
+        case BC_DIV_S:
+        case BC_DIV_U: {
             x64_div(x64, buf, (Bytecode_Binary*) insn, false, rip);
         } break;
         
-        case BC_IDIV | flag_floating:
-        case BC_DIV | flag_floating: {
+        case BC_DIV_S | flag_floating:
+        case BC_DIV_U | flag_floating: {
             x64_float_binary(x64, buf, (Bytecode_Binary*) insn, 0x5E, rip);
         } break;
         
-        case BC_IMOD:
-        case BC_MOD: {
+        case BC_MOD_S:
+        case BC_MOD_U: {
             x64_div(x64, buf, (Bytecode_Binary*) insn, true, rip);
         } break;
         
@@ -1892,8 +1900,51 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bytec
                                           src.type, src.reg, src.disp, rip);
         } break;
         
+        case BC_EQ:
+        case BC_NEQ:
+        case BC_GT_S:
+        case BC_GT_U:
+        case BC_GE_S:
+        case BC_GE_U:
+        case BC_LT_S:
+        case BC_LT_U:
+        case BC_LE_S:
+        case BC_LE_U: {
+            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
+            Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
+            
+            // cmp
+            x64_binary(buf,
+                       dest.type, dest.reg, dest.disp,
+                       src.type, src.reg, src.disp, 7, 0x38, rip);
+            
+            Bytecode_Branch* branch = (Bytecode_Branch*) ((u8*) insn + insn->next_insn);
+            if (branch->opcode == BC_BRANCH) {
+                // jcc
+                push_u16(buf, x64_jcc_opcodes[BC_NEQ - insn->opcode]);
+                x64_push_rel32(x64, buf, func, branch->label_index);
+            } else {
+                // setcc
+                push_u24(buf, x64_setcc_opcodes[insn->opcode - BC_EQ]); 
+            }
+        } break;
+        
+        case BC_BRANCH: {
+            // NOTE(Alexander): conditional branch is handled by operations above
+            Bytecode_Branch* branch = (Bytecode_Branch*) insn;
+            if (!branch->cond.kind) {
+                push_u8(buf, 0xE9);
+                x64_push_rel32(x64, buf, func, 0);
+            }
+        } break;
+        
+        case BC_BLOCK: {
+            ((Bytecode_Block*) insn)->x64_machine_code_ptr = buf->data + buf->curr_used;
+            pln("BLOCK: % -> %", f_u64_HEX(insn), f_u64_HEX(&((Bytecode_Block*) insn)->x64_machine_code_ptr));
+        } break;
+        
         default: {
-            unimplemented;
+            assert(0 && "invalid bytecode instruction");
         } break;
     }
 }
@@ -1913,8 +1964,8 @@ x64_rip_relative(Buffer* buf, s64 r, s64 data, s64 rip) {
     //reloc.from_ptr = (u32*) (buf->data + buf->curr_used);
     //reloc.target = 
     
-    u8* code_ptr = buf->data + buf->curr_used;
-    s64 disp = data - (s64) code_ptr - 4;
+    u8* x64_machine_code_ptr = buf->data + buf->curr_used;
+    s64 disp = data - (s64) x64_machine_code_ptr - 4;
     
     push_u32(buf, (u32) disp);
 }
@@ -2491,7 +2542,21 @@ x64_lea(Buffer* buf, s64 r1, s64 r2, s64 d2, s64 rip) {
         x64_modrm(buf, IC_STK, d2, r1&7, r2, rip);
     }
 }
-global s64 global_asm_buffer = 0;
+
+
+void
+x64_push_rel32(X64_Assembler* x64, Buffer* buf, Bytecode_Function* func, u32 label_index) {
+    u32 target_offset = func->labels[label_index];
+    Bytecode_Block* target = (Bytecode_Block*) ((u8*) func + target_offset);
+    pln("target_offset: %", f_u32(target_offset));
+    X64_Relocation reloc = {};
+    reloc.from_ptr = (s32*) (buf->data + buf->curr_used);
+    reloc.target = &target->x64_machine_code_ptr;
+    pln("TARGET: % -> %", f_u64_HEX(target), f_u64_HEX(reloc.target));
+    array_push(x64->relocations, reloc);
+    push_u32(buf, 0);
+}
+
 
 #if 0
 #endif
@@ -2916,7 +2981,7 @@ convert_to_x64_machine_code(Buffer* buf, s64 stk_usage, u8* buffer, s64 buffer_o
             case IC_JLE:
             case IC_JNE: {
                 push_u16(buf, x64_jcc_opcodes[ic->opcode - IC_JA]);
-                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip);
+                x64_jump(ic, (Ic_Basic_Block*) ic->data, rip)
             } break;
             
             case IC_JMP_INDIRECT: {

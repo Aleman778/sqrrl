@@ -439,7 +439,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             
             for_array_v(x64.relocations, reloc, _5) {
                 assert(reloc.target);
-                s32 rel_ptr = (s32) (reloc.target->code_ptr - ((u8*) reloc.from_ptr + 4));
+                s32 rel_ptr = (s32) (*reloc.target - ((u8*) reloc.from_ptr + 4));
+                pln("% - % = %", f_u64_HEX(*reloc.target), f_u64_HEX((u8*) reloc.from_ptr + 4), f_int(rel_ptr));
                 *reloc.from_ptr = rel_ptr;
             }
             
@@ -583,12 +584,11 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             File_Handle wasm_file = DEBUG_open_file_for_writing("simple.wasm");
             DEBUG_write(wasm_file, buffer.data, (u32) buffer.curr_used);
             DEBUG_close_file(wasm_file);
+            pln("\nWrote executable: simple.wasm");
             
             pln("\nRunning: `wasm2wat simple.wasm`:");
             fflush(stdout);
             system("wasm2wat simple.wasm");
-            
-            pln("\nWrote executable: simple.wasm");
         } break;
     }
     

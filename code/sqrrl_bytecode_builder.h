@@ -92,8 +92,10 @@ sizeof(Bytecode_##T), \
 alignof(Bytecode_##T), \
 __FILE__ ":" S2(__LINE__));
 
+#define add_mov_insn(bc, type, dest, src) _add_mov_insn(bc, type, dest, src, __FILE__ ":" S2(__LINE__))
+
 inline void
-add_mov_insn(Bytecode_Builder* bc, Type* type, Bytecode_Operand dest, Bytecode_Operand src) {
+_add_mov_insn(Bytecode_Builder* bc, Type* type, Bytecode_Operand dest, Bytecode_Operand src, cstring comment) {
     Bytecode_Operator opcode = BC_MOV;
     Bytecode_Type bc_type = to_bytecode_type(type);
     switch (type->size) {
@@ -108,6 +110,7 @@ add_mov_insn(Bytecode_Builder* bc, Type* type, Bytecode_Operand dest, Bytecode_O
     result->type = bc_type;
     result->first = dest;
     result->second = src;
+    result->comment = comment;
 }
 
 inline Bytecode_Operand
@@ -160,6 +163,16 @@ push_bytecode_memory(Bytecode_Builder* bc, Bytecode_Memory_Kind kind, smm size, 
     result.memory_offset = offset;
     result.memory_kind = kind;
     return result;
+}
+
+inline u32
+push_basic_block(Bytecode_Builder* bc) {
+    Bytecode_Block* block = add_insn_t(bc, BC_BLOCK, Block);
+    u32 byte_offset = ((u32) arena_relative_pointer(&bc->arena, block) - 
+                       bc->curr_function->relative_ptr);
+    block->label_index = (u32) array_count(bc->curr_function->labels);
+    array_push(bc->curr_function->labels, byte_offset);
+    return block->label_index;
 }
 
 void string_bc_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Instruction* insn);

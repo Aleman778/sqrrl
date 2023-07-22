@@ -23,6 +23,37 @@ const cstring wasm_section_names[] = {
     "export", "start", "element", "code", "data", "data count", "count"
 };
 
+const u8 wasm_binary_opcodes[] = {
+    /*
+i32,  i64,  f32,  f64*/
+    0x6A, 0x7C, 0x92, 0xA0, // BC_ADD
+    0x6B, 0x7D, 0x93, 0xA1, // BC_SUB
+    0x6C, 0x7E, 0x94, 0xA2, // BC_MUL
+    0x6D, 0x7F, 0x00, 0x00, // BC_DIV_S
+    0x6E, 0x80, 0x95, 0xA3, // BC_DIV_U
+    0x6F, 0x81, 0x00, 0x00, // BC_MOD_S
+    0x70, 0x82, 0x00, 0x00, // BC_MOD_U
+    0x71, 0x83, 0x00, 0x00, // BC_AND
+    0x72, 0x84, 0x00, 0x00, // BC_OR
+    0x73, 0x85, 0x00, 0x00, // BC_XOR
+    0x74, 0x86, 0x00, 0x00, // BC_SHL
+    0x75, 0x87, 0x00, 0x00, // BC_SAR
+    0x76, 0x88, 0x00, 0x00, // BC_SHR
+};
+
+const u8 wasm_comparator_opcodes[] = {
+    0x46, 0x51, 0x5B, 0x61, // BC_EQ
+    0x4A, 0x55, 0x00, 0x00, // BC_GT_S
+    0x4B, 0x56, 0x5E, 0x64, // BC_GT_U
+    0x4E, 0x59, 0x00, 0x00, // BC_GE_S
+    0x4F, 0x5A, 0x60, 0x66, // BC_GE_U
+    0x49, 0x54, 0x5D, 0x63, // BC_LT_U
+    0x48, 0x53, 0x00, 0x00, // BC_LT_S
+    0x4D, 0x58, 0x5F, 0x65, // BC_LE_U
+    0x4C, 0x57, 0x00, 0x00, // BC_LE_S
+    0x47, 0x52, 0x5C, 0x62, // BC_NEQ
+};
+
 void
 wasm_push_valtype(Buffer* buf, Bytecode_Type type) {
     switch (type) {
@@ -64,27 +95,71 @@ wasm_push_value(Buffer* buf, Bytecode_Operand op) {
     }
 }
 
-s64
-convert_bytecode_insn_to_wasm(Buffer* buf, Bytecode* bc, Bytecode_Instruction* insn, s64 rip) {
+int
+convert_bytecode_insn_to_wasm(Buffer* buf, Bytecode* bc, Bytecode_Function* func, Bytecode_Instruction* insn, int block_depth) {
     switch (insn->opcode) {
         case BC_CALL: {
             Bytecode_Call* call = (Bytecode_Call*) insn;
             Bytecode_Operand* args = (Bytecode_Operand*) (call + 1);
-            Bytecode_Function* func = bc->functions[call->func_index];
-            Bytecode_Type* arg_types = (Bytecode_Type*) (func + 1);
+            Bytecode_Function* call_func = bc->functions[call->func_index];
+            Bytecode_Type* arg_types = (Bytecode_Type*) (call_func + 1);
             
-            for (int i = 0; i < (int) func->arg_count; i++) {
+            for (int i = 0; i < (int) call_func->arg_count; i++) {
                 wasm_push_value(buf, args[i]);
             }
             
             push_u8(buf, 0x10);
-            push_leb128_u32(buf, func->type_index);
+            push_leb128_u32(buf, call_func->type_index);
         } break;
         
         case BC_RETURN: {
             wasm_push_value(buf, bc_unary_first(insn));
             
             push_u8(buf, 0x0F); // return
+        } break;
+        
+        case BC_BRANCH: {
+            //u32 target_offset = func->labels[label_index];
+            //Bytecode_Block* target = (Bytecode_Block*) ((u8*) func + target_offset);
+            //wasm_push_valtype(buf, BytecodeType_i32); // empty blocktype
+            
+            //push_u8(buf, 0x01);
+            
+            //push_u8(buf, 0x41);
+            //push_leb128_s32(buf, 10);
+            
+            push_u8(buf, 0x0D);
+            //Bytecode_Branch* branch = (Bytecode_Branch*) insn;
+            //if (branch->cond.kind) {
+            //wasm_push_value(buf, branch->cond);
+            //push_u8(buf, 0x0D); // br_if
+            //} else {
+            //push_u8(buf, 0x0C); // br
+            //}
+            push_leb128_u32(buf, 0);
+        } break;
+        
+        case BC_BLOCK: {
+            if (((Bytecode_Block*) insn)->label_index != 0) {
+                Bytecode_Block* block = (Bytecode_Block*) insn;
+                int next_block_depth = block->wasm.blocks;
+                int new_blocks = next_block_depth - block_depth;
+                block_depth = next_block_depth;
+                pln("new_blocks = %", f_int(new_blocks));
+                
+                // end previous blocks
+                for (int i = 0; i < -new_blocks; i++) {
+                    push_u8(buf, 0x0B);
+                    pln("END_BLOCK");
+                }
+                
+                // create new blocks
+                for (int i = 0; i < new_blocks; i++) {
+                    push_u8(buf, 0x02);
+                    push_u8(buf, 0x40);
+                    pln("BLOCK");
+                }
+            }
         } break;
         
         case BC_MOV: {
@@ -99,81 +174,48 @@ convert_bytecode_insn_to_wasm(Buffer* buf, Bytecode* bc, Bytecode_Instruction* i
             }
         } break;
         
-        case BC_ADD: {
-            wasm_push_value(buf, bc_binary_first(insn));
-            wasm_push_value(buf, bc_binary_second(insn));
-            const u8 opcodes[] = { 0x6A, 0x7C, 0x92, 0xA0 };
-            push_u8(buf, opcodes[insn->type - 1]);
-        } break;
-        
-        case BC_SUB: {
-            wasm_push_value(buf, bc_binary_first(insn));
-            wasm_push_value(buf, bc_binary_second(insn));
-            const u8 opcodes[] = { 0x6B, 0x7D, 0x93, 0xA1 };
-            push_u8(buf, opcodes[insn->type - 1]);
-        } break;
-        
-        case BC_MUL: {
-            wasm_push_value(buf, bc_binary_first(insn));
-            wasm_push_value(buf, bc_binary_second(insn));
-            const u8 opcodes[] = { 0x6C, 0x7E, 0x94, 0xA2 };
-            push_u8(buf, opcodes[insn->type - 1]);
-        } break;
-        
-        case BC_IDIV: {
-            wasm_push_value(buf, bc_binary_first(insn));
-            wasm_push_value(buf, bc_binary_second(insn));
-            const u8 opcodes[] = { 0x6D, 0x7F, 0x95, 0xA3 };
-            push_u8(buf, opcodes[insn->type - 1]);
-        } break;
-        
-        case BC_DIV: {
-            wasm_push_value(buf, bc_binary_first(insn));
-            wasm_push_value(buf, bc_binary_second(insn));
-            const u8 opcodes[] = { 0x6E, 0x80, 0x96, 0xA4 };
-            push_u8(buf, opcodes[insn->type - 1]);
-        } break;
-        
-        case BC_AND: {
-            wasm_push_value(buf, bc_binary_first(insn));
-            wasm_push_value(buf, bc_binary_second(insn));
-            const u8 opcodes[] = { 0x71, 0x83 };
-            push_u8(buf, opcodes[insn->type - 1]);
-        } break;
-        
-        case BC_OR: {
-            wasm_push_value(buf, bc_binary_first(insn));
-            wasm_push_value(buf, bc_binary_second(insn));
-            const u8 opcodes[] = { 0x72, 0x84 };
-            push_u8(buf, opcodes[insn->type - 1]);
-        } break;
-        
-        case BC_XOR: {
-            wasm_push_value(buf, bc_binary_first(insn));
-            wasm_push_value(buf, bc_binary_second(insn));
-            const u8 opcodes[] = { 0x73, 0x85 };
-            push_u8(buf, opcodes[insn->type - 1]);
-        } break;
-        
-        case BC_SHL: {
-            wasm_push_value(buf, bc_binary_first(insn));
-            wasm_push_value(buf, bc_binary_second(insn));
-            const u8 opcodes[] = { 0x74, 0x86 };
-            push_u8(buf, opcodes[insn->type - 1]);
-        } break;
-        
-        case BC_SAR: {
-            wasm_push_value(buf, bc_binary_first(insn));
-            wasm_push_value(buf, bc_binary_second(insn));
-            const u8 opcodes[] = { 0x75, 0x87 };
-            push_u8(buf, opcodes[insn->type - 1]);
-        } break;
-        
+        case BC_ADD:
+        case BC_SUB:
+        case BC_MUL:
+        case BC_DIV_S:
+        case BC_DIV_U:
+        case BC_MOD_S:
+        case BC_MOD_U:
+        case BC_AND:
+        case BC_OR:
+        case BC_XOR:
+        case BC_SHL:
+        case BC_SAR:
         case BC_SHR: {
             wasm_push_value(buf, bc_binary_first(insn));
             wasm_push_value(buf, bc_binary_second(insn));
-            const u8 opcodes[] = { 0x76, 0x88 };
-            push_u8(buf, opcodes[insn->type - 1]);
+            push_u8(buf, wasm_binary_opcodes[(insn->opcode - BC_ADD)*4 + insn->type - 1]);
+        } break;
+        
+        case BC_EQ:
+        case BC_GT_S:
+        case BC_GT_U:
+        case BC_GE_S:
+        case BC_GE_U:
+        case BC_LT_U:
+        case BC_LT_S:
+        case BC_LE_U:
+        case BC_LE_S:
+        case BC_NEQ: {
+            wasm_push_value(buf, bc_binary_first(insn));
+            wasm_push_value(buf, bc_binary_second(insn));
+            
+            Bytecode_Branch* branch = (Bytecode_Branch*) ((u8*) insn + insn->next_insn);
+            int opcode_index;
+            if (branch->opcode == BC_BRANCH) {
+                // Invert the condition for the branch
+                int op = BC_NEQ - insn->opcode;
+                opcode_index = (BC_NEQ - insn->opcode)*4 + insn->type - 1;
+            } else {
+                opcode_index = (insn->opcode - BC_EQ)*4 + insn->type - 1;
+            }
+            
+            push_u8(buf, wasm_comparator_opcodes[opcode_index]);
         } break;
         
         case BC_WRAP_I64: {
@@ -212,18 +254,57 @@ convert_bytecode_insn_to_wasm(Buffer* buf, Bytecode* bc, Bytecode_Instruction* i
         } break;
     }
     
-    return rip;
+    return block_depth;
 }
 
-s64
-convert_bytecode_function_to_wasm(Buffer* buf, Bytecode* bc, Bytecode_Function* func, s64 rip) {
-    Bytecode_Instruction* curr = iter_bytecode_instructions(func, 0);
-    while (curr->kind) {
-        rip = convert_bytecode_insn_to_wasm(buf, bc, curr, rip);
-        curr = iter_bytecode_instructions(func, curr);
-    }
+void
+wasm_analyze_control_flow(Bytecode_Function* func) {
+    u32* curr_block = &func->wasm.blocks;
+    u32 curr_block_offset = 0;
     
-    return rip;
+    for_bc_insn(func, insn) {
+        if (insn->opcode == BC_BRANCH) {
+            *curr_block = *curr_block + 1;
+            u32 target = func->labels[((Bytecode_Branch*) insn)->label_index];
+            if (target >= curr_block_offset) {
+                // block (forward jump)
+                for_array_v(func->labels, offset, _) {
+                    if (offset > curr_block_offset && target > offset) {
+                        Bytecode_Block* block = (Bytecode_Block*) ((u8*) func + offset);
+                        block->wasm.blocks++;
+                    }
+                }
+            } else {
+                // loop (backward jump)
+                unimplemented;
+            }
+            
+        } else if (insn->opcode == BC_BLOCK) {
+            Bytecode_Block* prev_block = (Bytecode_Block*) ((u8*) func + curr_block_offset);
+            pln("BLOCK %: blocks = %", 
+                f_int(curr_block_offset == 0 ? 0 : prev_block->label_index),
+                f_int(*curr_block));
+            
+            curr_block = &((Bytecode_Block*) insn)->wasm.blocks;
+            curr_block_offset = func->labels[((Bytecode_Block*) insn)->label_index];
+        }
+    }
+}
+
+void
+convert_bytecode_function_to_wasm(Buffer* buf, Bytecode* bc, Bytecode_Function* func) {
+    wasm_analyze_control_flow(func);
+    
+    int block_depth = func->wasm.blocks;
+    for (int i = 0; i < block_depth; i++) {
+        // block
+        push_u8(buf, 0x02);
+        push_u8(buf, 0x40);
+        pln("BLOCK");
+    }
+    for_bc_insn(func, insn) {
+        block_depth = convert_bytecode_insn_to_wasm(buf, bc, func, insn, block_depth);
+    }
 }
 
 void
@@ -435,7 +516,6 @@ convert_to_wasm_module(Bytecode* bc, s64 stk_usage, Buffer* buf) {
     push_u32(buf, 0); // reserve space for the size
     push_leb128_u32(buf, (u32) array_count(bc->functions));
     
-    s64 rip = 0;
     for_array_v(bc->functions, func, _2) {
         
         smm function_start = buf->curr_used;
@@ -447,7 +527,8 @@ convert_to_wasm_module(Bytecode* bc, s64 stk_usage, Buffer* buf) {
             wasm_push_valtype(buf, stack.type);
         }
         
-        rip = convert_bytecode_function_to_wasm(buf, bc, func, rip);
+        convert_bytecode_function_to_wasm(buf, bc, func);
+        
         //if (type->Function.return_type) {
         // TODO(Alexander): should we only call return on functions with return type?
         //push_u8(buf, 0x0F); // return

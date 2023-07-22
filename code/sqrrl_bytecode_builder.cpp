@@ -95,7 +95,8 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
         
         case Ast_Binary_Expr: {
             // TODO: add correct opcode
-            Type* type = expr->type;
+            Type* result_type = expr->type;
+            Type* type = expr->Binary_Expr.first->type;
             Bytecode_Operand first = convert_expression_to_bytecode(bc, expr->Binary_Expr.first);
             
             Bytecode_Operand tmp_register = {};
@@ -127,25 +128,25 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             }
             
             bool is_signed = !(type->kind == TypeKind_Basic && 
-                               type->Basic.flags & BasicFlag_Unsigned);
+                               type->Basic.flags & (BasicFlag_Unsigned | BasicFlag_Floating));
             Bytecode_Operator opcode = BC_NOOP;
             switch (op) {
                 case Op_Add:            opcode = BC_ADD; break;
                 case Op_Subtract:       opcode = BC_SUB; break;
                 case Op_Multiply:       opcode = BC_MUL; break;
-                case Op_Divide:         opcode = is_signed ? BC_IDIV : BC_DIV; break;
-                case Op_Modulo:         opcode = is_signed ? BC_IMOD : BC_MOD; break;
+                case Op_Divide:         opcode = is_signed ? BC_DIV_S : BC_DIV_U; break;
+                case Op_Modulo:         opcode = is_signed ? BC_MOD_S : BC_MOD_U; break;
                 case Op_Bitwise_And:    opcode = BC_AND; break;
                 case Op_Bitwise_Or:     opcode = BC_OR; break;
                 case Op_Bitwise_Xor:    opcode = BC_XOR; break;
                 case Op_Shift_Left:     opcode = BC_SHL; break;
                 case Op_Shift_Right:    opcode = BC_SHR; break;
-                case Op_Equals:         opcode = BC_SET_EQ; break;
-                case Op_Not_Equals:     opcode = BC_SET_NEQ; break;
-                case Op_Greater_Than:   opcode = BC_SET_GT; break;
-                case Op_Greater_Equals: opcode = BC_SET_GE; break;
-                case Op_Less_Than:      opcode = BC_SET_LT; break;
-                case Op_Less_Equals:    opcode = BC_SET_LE; break;
+                case Op_Equals:         opcode = BC_EQ; break;
+                case Op_Not_Equals:     opcode = BC_NEQ; break;
+                case Op_Greater_Than:   opcode = is_signed ? BC_GT_S : BC_GT_U; break;
+                case Op_Greater_Equals: opcode = is_signed ? BC_GE_S : BC_GE_U; break;
+                case Op_Less_Than:      opcode = is_signed ? BC_LT_S : BC_LT_U; break;
+                case Op_Less_Equals:    opcode = is_signed ? BC_LE_S : BC_LE_U; break;
                 case Op_None: break;
                 
                 default: unimplemented;
@@ -154,7 +155,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             Bytecode_Operand second = convert_expression_to_bytecode(bc, expr->Binary_Expr.second);
             
             Bytecode_Binary* insn = add_insn_t(bc, opcode, Binary);
-            insn->type  = to_bytecode_type(type);
+            insn->type  = to_bytecode_type(result_type);
             insn->first = first;
             insn->second = second;
             result = insn->first;
@@ -382,6 +383,32 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
             }
         } break;
         
+        case Ast_If_Stmt: {
+            Bytecode_Operand cond = convert_expression_to_bytecode(bc, stmt->If_Stmt.cond);
+            Bytecode_Branch* if_branch = add_insn_t(bc, BC_BRANCH, Branch);
+            Bytecode_Branch* else_branch = 0;
+            if_branch->cond = cond;
+            u32 else_label = 0;
+            
+            // Then case
+            push_basic_block(bc);
+            convert_statement_to_bytecode(bc, stmt->If_Stmt.then_block, break_label, continue_label);
+            
+            if (is_valid_ast(stmt->If_Stmt.else_block)) {
+                // Else case
+                else_branch = add_insn_t(bc, BC_BRANCH, Branch);
+                else_label= push_basic_block(bc);
+                convert_statement_to_bytecode(bc, stmt->If_Stmt.then_block, break_label, continue_label);
+            }
+            
+            u32 exit_label = push_basic_block(bc);
+            
+            if_branch->label_index = else_branch ? else_label : exit_label;
+            if (else_branch) {
+                else_branch->label_index = exit_label;
+            }
+        } break;
+        
         case Ast_Return_Stmt: {
             if (is_valid_ast(stmt->Return_Stmt.expr)) {
                 Bytecode_Operand result = convert_expression_to_bytecode(bc, stmt->Return_Stmt.expr);
@@ -474,11 +501,15 @@ begin_bytecode_function(Bytecode_Builder* bc, Type* type) {
     
     Bytecode_Function* func = (Bytecode_Function*) arena_push_size(&bc->arena, size, 
                                                                    alignof(Bytecode_Function));
+    func->relative_ptr = (u32) arena_relative_pointer(&bc->arena, func);
     func->type_index = bc->next_type_index++;
     func->ret_count = ret_count;
     func->arg_count = arg_count;
     bc->curr_function = func;
     bc->curr_insn = 0;
+    
+    // Return will always have label index 0, byte_offset is defined later.
+    array_push(func->labels, 0);
     
     Bytecode_Type* curr_type = (Bytecode_Type*) (func + 1);
     for (int i = 0; i < arg_count; i++) {
@@ -503,6 +534,15 @@ begin_bytecode_function(Bytecode_Builder* bc, Type* type) {
 
 void
 end_bytecode_function(Bytecode_Builder* bc) {
+    assert(bc->curr_function && "must begin a function before ending one");
+    
+    // Add block at the end
+    Bytecode_Block* block = add_insn_t(bc, BC_BLOCK, Block);
+    u32 byte_offset = ((u32) arena_relative_pointer(&bc->arena, block) - 
+                       bc->curr_function->relative_ptr);
+    block->label_index = 0;
+    bc->curr_function->labels[0] = byte_offset;
+    
     bc->curr_function = 0;
 }
 
@@ -634,6 +674,25 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
             }
             string_builder_push(sb, ")");
         } break;
+        
+        case BytecodeInstructionKind_Block: {
+            string_builder_push_format(sb, "\nBasic Block %:",
+                                       f_u32(((Bytecode_Block*) insn)->label_index));
+        } break;
+        
+        case BytecodeInstructionKind_Branch: {
+            string_builder_dump_bytecode_opcode(sb, insn);
+            string_builder_push_format(sb, "%", f_u32(((Bytecode_Branch*) insn)->label_index));
+            
+            if (((Bytecode_Branch*) insn)->cond.kind) {
+                string_builder_push(sb, ", ");
+                string_builder_dump_bytecode_operand(sb, ((Bytecode_Branch*) insn)->cond);
+            }
+        } break;
+    }
+    
+    if (insn->comment) {
+        string_builder_push_format(sb, " // %", f_cstring(insn->comment));
     }
 }
 

@@ -16,6 +16,7 @@ OP(LOAD_FUNCTION_PTR) \
 OP(CALL) \
 OP(RETURN) \
 OP(BLOCK) \
+OP(BRANCH) \
 OP(MOV) \
 OP(MOV_8) \
 OP(MOV_16) \
@@ -40,23 +41,26 @@ OP(REINTERPRET_F2I) \
 OP(ADD) \
 OP(SUB) \
 OP(MUL) \
-OP(IDIV) \
-OP(DIV) \
-OP(IMOD) \
-OP(MOD) \
+OP(DIV_S) \
+OP(DIV_U) \
+OP(MOD_S) \
+OP(MOD_U) \
 OP(AND) \
 OP(OR) \
 OP(XOR) \
 OP(SHL) \
 OP(SAR) \
 OP(SHR) \
-OP(SET_EQ) \
-OP(SET_GT) \
-OP(SET_GE) \
-OP(SET_LT) \
-OP(SET_LE) \
-OP(SET_NEQ) \
-
+OP(EQ) \
+OP(GT_S) \
+OP(GT_U) \
+OP(GE_S) \
+OP(GE_U) \
+OP(LT_U) \
+OP(LT_S) \
+OP(LE_U) \
+OP(LE_S) \
+OP(NEQ)
 
 
 enum Bytecode_Operator {
@@ -90,14 +94,26 @@ struct Stack_Entry {
 };
 
 struct Bytecode_Function {
+    array(u32)* labels;
     array(u32)* register_lifetimes;
     array(Stack_Entry)* stack;
-    u8* code_ptr;
     
+    // Used by backends
+    union {
+        u8* x64_machine_code_ptr;
+        struct {
+            u32 blocks;
+            u32 loops;
+        } wasm;
+    };
+    
+    u32 relative_ptr;
     u32 type_index;
     u32 insn_count;
+    
     u32 arg_count;
     u32 ret_count;
+    
     u32 first_insn; // relative pointer to first instruction
     
     // followed by Bytecode_Type, function arguments then return types and lastly instructions
@@ -164,6 +180,7 @@ enum Bytecode_Instruction_Kind {
     BytecodeInstructionKind_Binary,
     BytecodeInstructionKind_Call,
     BytecodeInstructionKind_Block,
+    BytecodeInstructionKind_Branch,
 };
 
 #define Bytecode_Instruction_Base \
@@ -205,11 +222,28 @@ struct Bytecode_Call {
     // argument operands followed by return operands
 };
 
-// NOTE(Alexander): this is basically a label instruction
 struct Bytecode_Block {
     Bytecode_Instruction_Base;
     
     u32 label_index;
+    
+    // Used by backends
+    union {
+        u8* x64_machine_code_ptr;
+        struct {
+            u32 blocks;
+            u32 loops;
+        } wasm;
+    };
+};
+
+struct Bytecode_Branch {
+    Bytecode_Instruction_Base;
+    
+    Bytecode_Operand cond;
+    
+    u32 label_index;
+    // TODO(Alexander): maybe have a true and false label?
 };
 
 #define bc_unary_first(insn) (((Bytecode_Unary*) insn)->first)
@@ -234,3 +268,8 @@ iter_bytecode_instructions(Bytecode_Function* func, Bytecode_Instruction* iter) 
     iter = (Bytecode_Instruction*) ((u8*) iter + iter->next_insn);
     return iter;
 }
+
+#define for_bc_insn(func, insn) \
+for (Bytecode_Instruction* insn = iter_bytecode_instructions(func, 0); \
+insn->kind; \
+insn = iter_bytecode_instructions(func, insn))

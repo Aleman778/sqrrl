@@ -41,16 +41,43 @@ enum X64_Reg {
     X64_REG_COUNT,
 };
 
-global const cstring int_register_names[] {
+global const cstring register_names[] {
     "RAX", "RCX", "RDX", "RBX", "RSP", "RBP", "RSI", "RDI",
-    "R8",  "R9",  "R10", "R11", "R12", "R13", "R14", "R15"
-};
-
-global const cstring float_register_names[] {
+    "R8",  "R9",  "R10", "R11", "R12", "R13", "R14", "R15",
     "XMM0", "XMM1", "XMM2", "XMM3", "XMM4", "XMM5", 
     "XMM6", "XMM7", "XMM8", "XMM9", "XMM10", "XMM11", 
     "XMM12", "XMM13", "XMM14", "XMM15",
 };
+
+struct X64_Register {
+    u32 virtual_index;
+    Ic_Raw_Type raw_type;
+    bool is_allocated;
+};
+
+struct X64_Relocation {
+    s32* from_ptr;
+    u8** target;
+};
+
+struct X64_Assembler {
+    Bytecode* bytecode;
+    s32* stack_offsets;
+    s32 stack_usage;
+    s32 arg_stack_usage;
+    
+    Data_Packer* data_packer;
+    
+    array(X64_Relocation)* relocations;
+    
+    u32 curr_bytecode_insn_index;
+    
+    X64_Register registers[X64_REG_COUNT];
+    Ic_Arg* virtual_registers;
+    
+    bool use_absolute_ptrs;
+};
+
 
 global const X64_Reg int_arg_registers_ccall_windows[] {
     X64_RCX, X64_RDX, X64_R8, X64_R9
@@ -73,6 +100,15 @@ global const X64_Reg float_arg_registers_ccall_windows[] {
 #define MODRM_DIRECT 0xC0
 #define MODRM_INDIRECT_DISP8 0x40
 #define MODRM_INDIRECT_DISP32 0x80
+
+global const u32 x64_setcc_opcodes[] = {
+    0xC0940F, 0xC0950F, 0xC0970F, 0xC0930F, 0xC0920F,
+    0xC0960F, 0xC09F0F, 0xC09D0F, 0xC09C0F, 0xC09E0F
+};
+
+global const u16 x64_jcc_opcodes[] = {
+    0x840F, 0x8F0F, 0x870F, 0x8D0F, 0x830F, 0x820F, 0x8C0F, 0x860F, 0x8E0F, 0x850F
+};
 
 inline void
 x64_rex(Buffer* buf, u8 flags) {
@@ -105,34 +141,7 @@ inline void x64_convert_float_to_int_type(Buffer* buf,
                                           Ic_Type t1, s64 r1, s64 d1, 
                                           Ic_Type t2, s64 r2, s64 d2, s64 rip);
 
-struct X64_Register {
-    u32 virtual_index;
-    Ic_Raw_Type raw_type;
-    bool is_allocated;
-};
-
-struct X64_Relocation {
-    s32* from_ptr;
-    Bytecode_Function* target;
-};
-
-struct X64_Assembler {
-    Bytecode* bytecode;
-    s32* stack_offsets;
-    s32 stack_usage;
-    s32 arg_stack_usage;
-    
-    Data_Packer* data_packer;
-    
-    array(X64_Relocation)* relocations;
-    
-    u32 curr_bytecode_insn_index;
-    
-    X64_Register registers[X64_REG_COUNT];
-    Ic_Arg* virtual_registers;
-    
-    bool use_absolute_ptrs;
-};
+void x64_push_rel32(X64_Assembler* x64, Buffer* buf, Bytecode_Function* func, u32 label_index);
 
 inline void
 x64_spill_register(X64_Assembler* x64, Buffer* buf, X64_Reg reg) {
@@ -177,7 +186,8 @@ void convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64,
                                                    Bytecode_Function* func,
                                                    Buffer* buf);
 void convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, 
-                                               Buffer* buf, 
+                                               Buffer* buf,
+                                               Bytecode_Function* func,
                                                Bytecode_Instruction* insn);
 
 
@@ -335,17 +345,6 @@ global const X64_Jump_Opcode ic_jmp_to_x64_jmp[] = {
 #undef IC_JMP
 #undef IC
 };
-
-
-u32 x64_setcc_opcodes[] = {
-    0xC0970F, 0xC0930F, 0xC0920F, 0xC0960F, 0xC0940F, 
-    0xC09F0F, 0xC09D0F, 0xC09C0F, 0xC09E0F, 0xC0950F
-};
-
-u16 x64_jcc_opcodes[] = {
-    0x870F, 0x830F, 0x820F, 0x860F, 0x840F, 0x8F0F, 0x8D0F, 0x8C0F, 0x8E0F, 0x850F,
-};
-
 
 global const u8 x64_jmp_opcodes[] = {
     // Short jump

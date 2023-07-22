@@ -796,7 +796,9 @@ arena_grow(Memory_Arena* arena, umm block_size = 0) {
     arena->prev_used = 0;
 }
 
-
+// NOTE(Alexander): the absolute_ptr has to be the most recent allocation
+// returned from arena_push_size/_struct, if old allocation is used then
+// it can potentially be wrong due newer memory blocks being created.
 inline umm
 arena_relative_pointer(Memory_Arena* arena, void* absolute_ptr) {
     if (!arena->current_block) return 0;

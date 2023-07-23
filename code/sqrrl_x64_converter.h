@@ -190,6 +190,8 @@ void convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64,
                                                Bytecode_Function* func,
                                                Bytecode_Instruction* insn);
 
+inline void
+x64_unary(Buffer* buf, Ic_Type t, s64 r, s64 d, u8 opcode, u8 reg_field, s64 rip);
 
 inline void
 x64_binary(Buffer* buf,

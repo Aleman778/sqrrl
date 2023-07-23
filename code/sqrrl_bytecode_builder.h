@@ -175,6 +175,22 @@ push_basic_block(Bytecode_Builder* bc) {
     return block->label_index;
 }
 
+inline u32
+reserve_label(Bytecode_Builder* bc) {
+    int result = (u32) array_count(bc->curr_function->labels);
+    array_push(bc->curr_function->labels, 0);
+    return result;
+}
+
+inline void
+push_basic_block(Bytecode_Builder* bc, u32 label_index) {
+    Bytecode_Block* block = add_insn_t(bc, BC_BLOCK, Block);
+    u32 byte_offset = ((u32) arena_relative_pointer(&bc->arena, block) - 
+                       bc->curr_function->relative_ptr);
+    block->label_index = label_index;
+    bc->curr_function->labels[label_index] = byte_offset;
+}
+
 void string_bc_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Instruction* insn);
 void string_bc_dump_bytecode(String_Builder* sb, Bytecode* bc, Bytecode_Function* func, Type* type=0);
 void dump_bytecode(Bytecode* bc);

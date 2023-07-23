@@ -93,22 +93,61 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             }
         } break;
         
+        case Ast_Unary_Expr: {
+            Type* type = expr->type;
+            Operator op = expr->Unary_Expr.op;
+            Bytecode_Operand first = convert_expression_to_bytecode(bc, expr->Unary_Expr.first);
+            
+            Bytecode_Operator opcode = BC_NOOP;
+            switch (op) {
+                case Op_Negate:  opcode = BC_NEG; break;
+                //case Op_Logical_Not: opcode = BC_NOT; break;
+                case Op_Bitwise_Not: opcode = BC_NOT; break;
+                case Op_Address_Of: opcode = BC_ADDR_OF; break;
+                case Op_Dereference: opcode = BC_DEREF; break;
+                case Op_Pre_Increment: opcode = BC_INC; break;
+                case Op_Pre_Decrement: opcode = BC_DEC; break;
+                
+                case Op_Post_Increment: {
+                    result = add_bytecode_register(bc);
+                    add_mov_insn(bc, type, result, first);
+                    opcode = BC_INC;
+                } break;
+                
+                case Op_Post_Decrement: {
+                    result = add_bytecode_register(bc);
+                    add_mov_insn(bc, type, result, first);
+                    opcode = BC_DEC;
+                } break;
+            }
+            
+            Bytecode_Unary* insn = add_insn_t(bc, opcode, Unary);
+            insn->type  = to_bytecode_type(type);
+            insn->first = first;
+            
+            if (!result.kind) {
+                result = insn->first;
+            }
+        } break;
+        
         case Ast_Binary_Expr: {
-            // TODO: add correct opcode
+            // TODO(Alexander): operator overloading
+            // TODO(Alexander): add proper AND/ OR logical operator
+            Operator op = expr->Binary_Expr.op;
+            bool is_assign = operator_is_assign(op);
+            
             Type* result_type = expr->type;
             Type* type = expr->Binary_Expr.first->type;
             Bytecode_Operand first = convert_expression_to_bytecode(bc, expr->Binary_Expr.first);
             
             Bytecode_Operand tmp_register = {};
-            if (first.kind != BytecodeOperand_register) {
+            if (first.kind != BytecodeOperand_register && !is_assign) {
                 Bytecode_Operand tmp = add_bytecode_register(bc);
                 add_mov_insn(bc, type, tmp, first);
                 first = tmp;
                 tmp_register = tmp;
             }
             
-            Operator op = expr->Binary_Expr.op;
-            bool is_assign = operator_is_assign(op);
             if (is_assign) {
                 switch (op) {
                     case Op_Assign:             op = Op_None; break;
@@ -409,6 +448,39 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
             }
         } break;
         
+        case Ast_For_Stmt: {
+            Bytecode_Operand cond = {};
+            
+            // init
+            convert_statement_to_bytecode(bc, stmt->For_Stmt.init, 0, 0);
+            
+            u32 enter_label = push_basic_block(bc);
+            u32 block_label = reserve_label(bc);
+            continue_label = reserve_label(bc);
+            break_label = reserve_label(bc);
+            
+            // condition
+            if (is_valid_ast(stmt->For_Stmt.cond)) {
+                cond = convert_expression_to_bytecode(bc, stmt->For_Stmt.cond);
+                Bytecode_Branch* break_branch = add_insn_t(bc, BC_BRANCH, Branch);
+                break_branch->label_index = break_label;
+                break_branch->cond = cond;
+            }
+            
+            // block
+            push_basic_block(bc, block_label);
+            convert_statement_to_bytecode(bc, stmt->For_Stmt.block, break_label, continue_label);
+            
+            // update
+            push_basic_block(bc, continue_label);
+            convert_expression_to_bytecode(bc, stmt->For_Stmt.update);
+            Bytecode_Branch* branch = add_insn_t(bc, BC_BRANCH, Branch);
+            branch->label_index = enter_label;
+            
+            // exit
+            push_basic_block(bc, break_label);
+        } break;
+        
         case Ast_Return_Stmt: {
             if (is_valid_ast(stmt->Return_Stmt.expr)) {
                 Bytecode_Operand result = convert_expression_to_bytecode(bc, stmt->Return_Stmt.expr);
@@ -631,6 +703,8 @@ string_builder_dump_bytecode_opcode(String_Builder* sb, Bytecode_Instruction* in
 
 void
 string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Instruction* insn) {
+    smm from_byte = sb->curr_used;
+    
     switch (insn->kind) {
         case BytecodeInstructionKind_None: break;
         
@@ -676,8 +750,11 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
         } break;
         
         case BytecodeInstructionKind_Block: {
-            string_builder_push_format(sb, "\nBasic Block %:",
-                                       f_u32(((Bytecode_Block*) insn)->label_index));
+            u32 label_index = ((Bytecode_Block*) insn)->label_index;
+            if (label_index > 0) {
+                from_byte = sb->curr_used + 5;
+                string_builder_push_format(sb, "\nBasic Block %:", f_u32(label_index));
+            }
         } break;
         
         case BytecodeInstructionKind_Branch: {
@@ -692,6 +769,7 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
     }
     
     if (insn->comment) {
+        string_builder_pad(sb, from_byte, 25);
         string_builder_push_format(sb, " // %", f_cstring(insn->comment));
     }
 }

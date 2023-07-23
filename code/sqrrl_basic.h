@@ -471,6 +471,21 @@ string_builder_push(String_Builder* sb, cstring str) {
     string_builder_push(sb, string_lit(str));
 }
 
+void
+string_builder_pad(String_Builder* sb, smm from_byte, smm width) {
+    smm used = sb->curr_used - from_byte;
+    for (smm i = used; i < width; i++) {
+        string_builder_push(sb, " ");
+    }
+}
+
+void
+string_builder_pad_string(String_Builder* sb, cstring str, smm width) { 
+    smm start = sb->curr_used;
+    string_builder_push(sb, str);
+    string_builder_pad(sb, start, width);
+}
+
 void string_builder_push_format(String_Builder* sb, cstring format...);
 void string_builder_push_cformat(String_Builder* sb, cstring format...);
 

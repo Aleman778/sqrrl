@@ -1776,6 +1776,11 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                     src.type, src.reg, src.disp, rip);
         } break;
         
+        case BC_INC: {
+            Ic_Arg first = convert_bytecode_operand_to_x64(x64, buf, bc_unary_first(insn), insn->type);
+            x64_unary(buf, first.type, first.reg, first.disp, 0xFF, 0, rip);
+        } break;
+        
         case BC_ADD: {
             Ic_Arg first = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
             Ic_Arg second = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
@@ -1934,7 +1939,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             Bytecode_Branch* branch = (Bytecode_Branch*) insn;
             if (!branch->cond.kind) {
                 push_u8(buf, 0xE9);
-                x64_push_rel32(x64, buf, func, 0);
+                x64_push_rel32(x64, buf, func, branch->label_index);
             }
         } break;
         
@@ -1997,21 +2002,12 @@ x64_modrm(Buffer* buf, Ic_Type t, s64 d, s64 r, s64 rm, s64 rip) {
 
 inline void
 x64_unary(Buffer* buf, Ic_Type t, s64 r, s64 d, u8 opcode, u8 reg_field, s64 rip) {
-#if 0
-    if (ic->dest.type & IC_REG) {
-        x64_mov(buf, ic->dest.type, ic->dest.reg, ic->dest.disp, t, r, d, rip);
-        t = ic->dest.type;
-        r = ic->dest.reg;
-        d = ic->dest.disp;
-    }
     if (t & IC_T64) {
         x64_rex(buf, REX_FLAG_64_BIT);
     }
     // F7 /3 	NEG r/m32 	M
     push_u8(buf, opcode);
     x64_modrm(buf, t, d, reg_field, r, rip);
-#endif
-    unimplemented;
 }
 
 inline void
@@ -2548,11 +2544,9 @@ void
 x64_push_rel32(X64_Assembler* x64, Buffer* buf, Bytecode_Function* func, u32 label_index) {
     u32 target_offset = func->labels[label_index];
     Bytecode_Block* target = (Bytecode_Block*) ((u8*) func + target_offset);
-    pln("target_offset: %", f_u32(target_offset));
     X64_Relocation reloc = {};
     reloc.from_ptr = (s32*) (buf->data + buf->curr_used);
     reloc.target = &target->x64_machine_code_ptr;
-    pln("TARGET: % -> %", f_u64_HEX(target), f_u64_HEX(reloc.target));
     array_push(x64->relocations, reloc);
     push_u32(buf, 0);
 }

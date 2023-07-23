@@ -397,8 +397,8 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
             if (is_valid_ast(stmt->If_Stmt.else_block)) {
                 // Else case
                 else_branch = add_insn_t(bc, BC_BRANCH, Branch);
-                else_label= push_basic_block(bc);
-                convert_statement_to_bytecode(bc, stmt->If_Stmt.then_block, break_label, continue_label);
+                else_label = push_basic_block(bc);
+                convert_statement_to_bytecode(bc, stmt->If_Stmt.else_block, break_label, continue_label);
             }
             
             u32 exit_label = push_basic_block(bc);

@@ -114,28 +114,19 @@ convert_bytecode_insn_to_wasm(Buffer* buf, Bytecode* bc, Bytecode_Function* func
         
         case BC_RETURN: {
             wasm_push_value(buf, bc_unary_first(insn));
-            
             push_u8(buf, 0x0F); // return
+            //push_u8(buf, 0x0C); // br
+            //push_leb128_u32(buf, (u32) block_depth);
         } break;
         
         case BC_BRANCH: {
-            //u32 target_offset = func->labels[label_index];
-            //Bytecode_Block* target = (Bytecode_Block*) ((u8*) func + target_offset);
-            //wasm_push_valtype(buf, BytecodeType_i32); // empty blocktype
-            
-            //push_u8(buf, 0x01);
-            
-            //push_u8(buf, 0x41);
-            //push_leb128_s32(buf, 10);
-            
-            push_u8(buf, 0x0D);
-            //Bytecode_Branch* branch = (Bytecode_Branch*) insn;
-            //if (branch->cond.kind) {
-            //wasm_push_value(buf, branch->cond);
-            //push_u8(buf, 0x0D); // br_if
-            //} else {
-            //push_u8(buf, 0x0C); // br
-            //}
+            Bytecode_Branch* branch = (Bytecode_Branch*) insn;
+            if (branch->cond.kind) {
+                wasm_push_value(buf, branch->cond);
+                push_u8(buf, 0x0D); // br_if
+            } else {
+                push_u8(buf, 0x0C); // br
+            }
             push_leb128_u32(buf, 0);
         } break;
         
@@ -264,12 +255,13 @@ wasm_analyze_control_flow(Bytecode_Function* func) {
     
     for_bc_insn(func, insn) {
         if (insn->opcode == BC_BRANCH) {
-            *curr_block = *curr_block + 1;
             u32 target = func->labels[((Bytecode_Branch*) insn)->label_index];
             if (target >= curr_block_offset) {
                 // block (forward jump)
-                for_array_v(func->labels, offset, _) {
-                    if (offset > curr_block_offset && target > offset) {
+                for_array_v(func->labels, offset, index) {
+                    if (index == 0) {
+                        func->wasm.blocks++;
+                    } else if (target > offset) {
                         Bytecode_Block* block = (Bytecode_Block*) ((u8*) func + offset);
                         block->wasm.blocks++;
                     }
@@ -305,6 +297,16 @@ convert_bytecode_function_to_wasm(Buffer* buf, Bytecode* bc, Bytecode_Function* 
     for_bc_insn(func, insn) {
         block_depth = convert_bytecode_insn_to_wasm(buf, bc, func, insn, block_depth);
     }
+    
+    if (func->ret_count == 1) {
+        // TODO(Alexander): multiple returns
+        Bytecode_Type* return_types = (Bytecode_Type*) (func + 1);
+        
+        Bytecode_Operand op = {};
+        op.kind = get_const_operand_from_type(return_types[0]);
+        wasm_push_value(buf, op);
+    }
+    push_u8(buf, 0x0F); // return
 }
 
 void
@@ -528,11 +530,6 @@ convert_to_wasm_module(Bytecode* bc, s64 stk_usage, Buffer* buf) {
         }
         
         convert_bytecode_function_to_wasm(buf, bc, func);
-        
-        //if (type->Function.return_type) {
-        // TODO(Alexander): should we only call return on functions with return type?
-        //push_u8(buf, 0x0F); // return
-        //}
         
         push_u8(buf, 0x0B); // end marker
         

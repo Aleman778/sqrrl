@@ -96,7 +96,7 @@ wasm_push_value(Buffer* buf, Bytecode_Operand op) {
 }
 
 int
-convert_bytecode_insn_to_wasm(Buffer* buf, Bytecode* bc, Bytecode_Function* func, Bytecode_Instruction* insn, int block_depth) {
+convert_bytecode_insn_to_wasm(Buffer* buf, Bytecode* bc, Bytecode_Function* func, Bytecode_Instruction* insn, u32 block_depth) {
     switch (insn->opcode) {
         case BC_CALL: {
             Bytecode_Call* call = (Bytecode_Call*) insn;
@@ -119,6 +119,23 @@ convert_bytecode_insn_to_wasm(Buffer* buf, Bytecode* bc, Bytecode_Function* func
             //push_leb128_u32(buf, (u32) block_depth);
         } break;
         
+        case BC_BLOCK: {
+            push_u8(buf, 0x02);
+            push_u8(buf, 0x40);
+            block_depth++;
+        } break;
+        
+        case BC_LOOP: {
+            push_u8(buf, 0x03);
+            push_u8(buf, 0x40);
+            block_depth++;
+        } break;
+        
+        case BC_END: {
+            push_u8(buf, 0x0B);
+            block_depth--;
+        } break;
+        
         case BC_BRANCH: {
             Bytecode_Branch* branch = (Bytecode_Branch*) insn;
             if (branch->cond.kind) {
@@ -128,16 +145,11 @@ convert_bytecode_insn_to_wasm(Buffer* buf, Bytecode* bc, Bytecode_Function* func
                 push_u8(buf, 0x0C); // br
             }
             
-            u32 offset = func->labels[branch->label_index];
-            Bytecode_Block* block = (Bytecode_Block*) ((u8*) func + offset);
-            int label_index = block_depth - (block->wasm.blocks + block->wasm.loops);
-            if ((u8*) block > (u8*) branch && label_index > 0) {
-                label_index--;
-            }
-            
-            push_leb128_u32(buf, label_index);
+            assert(branch->label_index <= block_depth);
+            push_leb128_u32(buf, block_depth - branch->label_index);
         } break;
         
+#if 0
         case BC_BLOCK: {
             if (((Bytecode_Block*) insn)->label_index != 0) {
                 Bytecode_Block* block = (Bytecode_Block*) insn;
@@ -167,6 +179,7 @@ convert_bytecode_insn_to_wasm(Buffer* buf, Bytecode* bc, Bytecode_Function* func
                 block_depth = next_block_depth;
             }
         } break;
+#endif
         
         case BC_MOV: {
             wasm_push_value(buf, bc_binary_second(insn));
@@ -287,67 +300,17 @@ convert_bytecode_insn_to_wasm(Buffer* buf, Bytecode* bc, Bytecode_Function* func
     return block_depth;
 }
 
-void
-wasm_analyze_control_flow(Bytecode_Function* func) {
-    u32 curr_block_offset = 0;
-    
-    for_bc_insn(func, insn) {
-        if (insn->opcode == BC_BRANCH) {
-            u32 target = func->labels[((Bytecode_Branch*) insn)->label_index];
-            if (target > curr_block_offset) {
-                // block (forward jump)
-                for_array_v(func->labels, offset, index) {
-                    if (index == 0) {
-                        func->wasm.blocks++;
-                    } else if (offset < target) {
-                        Bytecode_Block* block = (Bytecode_Block*) ((u8*) func + offset);
-                        block->wasm.blocks++;
-                    }
-                }
-                
-            } else {
-                // loop (backward jump)
-                for_array_v(func->labels, offset, index) {
-                    if (offset >= target && offset <= curr_block_offset) {
-                        Bytecode_Block* block = (Bytecode_Block*) ((u8*) func + offset);
-                        block->wasm.loops++;
-                    }
-                }
-            }
-            
-        } else if (insn->opcode == BC_BLOCK) {
-            curr_block_offset = func->labels[((Bytecode_Block*) insn)->label_index];
-        }
-    }
-    
-    pln("BLOCK 0: blocks %", f_int(func->wasm.blocks + func->wasm.loops));
-    for_bc_insn(func, insn) {
-        if (insn->opcode == BC_BLOCK) {
-            Bytecode_Block* block = (Bytecode_Block*) insn;
-            if (block->label_index > 0) {
-                pln("BLOCK %: blocks = %", 
-                    f_int(block->label_index),
-                    f_int(block->wasm.blocks + block->wasm.loops));
-            }
-            
-        }
-    }
-}
+struct WASM_Block {
+    u32 begin;
+    u32 end;
+    u32 label_index;
+    bool is_loop;
+};
 
 void
 convert_bytecode_function_to_wasm(Buffer* buf, Bytecode* bc, Bytecode_Function* func) {
-    wasm_analyze_control_flow(func);
     
-    int block_depth = 0;
-    for (int i = 0; i < (int) func->wasm.blocks; i++) {
-        // block
-        push_u8(buf, 0x02);
-        push_u8(buf, 0x40);
-        pln("BLOCK");
-        block_depth++;
-    }
-    
-    
+    u32 block_depth = 0;
     for_bc_insn(func, insn) {
         block_depth = convert_bytecode_insn_to_wasm(buf, bc, func, insn, block_depth);
     }
@@ -565,6 +528,7 @@ convert_to_wasm_module(Bytecode* bc, s64 stk_usage, Buffer* buf) {
             push_leb128_u32(buf, 1); 
             wasm_push_valtype(buf, stack.type);
         }
+        
         
         convert_bytecode_function_to_wasm(buf, bc, func);
         

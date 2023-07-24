@@ -16,6 +16,8 @@ OP(LOAD_FUNCTION_PTR) \
 OP(CALL) \
 OP(RETURN) \
 OP(BLOCK) \
+OP(LOOP) \
+OP(END) \
 OP(BRANCH) \
 OP(MOV) \
 OP(MOV_8) \
@@ -100,22 +102,15 @@ struct Stack_Entry {
 };
 
 struct Bytecode_Function {
-    array(u32)* labels;
     array(u32)* register_lifetimes;
     array(Stack_Entry)* stack;
     
-    // Used by backends
-    union {
-        u8* x64_machine_code_ptr;
-        struct {
-            u32 blocks;
-            u32 loops;
-        } wasm;
-    };
-    
     u32 relative_ptr;
+    
     u32 type_index;
+    
     u32 insn_count;
+    u32 block_count;
     
     u32 arg_count;
     u32 ret_count;
@@ -232,15 +227,7 @@ struct Bytecode_Block {
     Bytecode_Instruction_Base;
     
     u32 label_index;
-    
-    // Used by backends
-    union {
-        u8* x64_machine_code_ptr;
-        struct {
-            u32 blocks;
-            u32 loops;
-        } wasm;
-    };
+    u32 end_insn;
 };
 
 struct Bytecode_Branch {

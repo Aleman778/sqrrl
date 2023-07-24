@@ -426,6 +426,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             x64.bytecode = &bytecode_builder.bytecode;
             x64.data_packer = &data_packer;
             x64.use_absolute_ptrs = compiler_task == CompilerTask_Run;
+            array_set_count(x64.functions, array_count(bytecode_builder.bytecode.functions));
             
             for_array(ast_file.units, cu, _4) {
                 if (cu->bc_func) {

@@ -60,6 +60,11 @@ struct X64_Relocation {
     u8** target;
 };
 
+struct X64_Block {
+    u32 label_index;
+    bool is_loop;
+};
+
 struct X64_Assembler {
     Bytecode* bytecode;
     s32* stack_offsets;
@@ -69,6 +74,10 @@ struct X64_Assembler {
     Data_Packer* data_packer;
     
     array(X64_Relocation)* relocations;
+    array(u8*)* functions;
+    array(u8*)* labels;
+    array(X64_Block)* block_stack;
+    u32 label_index;
     
     u32 curr_bytecode_insn_index;
     

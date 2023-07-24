@@ -1570,7 +1570,12 @@ convert_bytecode_operand_to_x64(X64_Assembler* x64, Buffer* buf, Bytecode_Operan
 
 void
 convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Function* func, Buffer* buf) {
-    func->x64_machine_code_ptr = buf->data + buf->curr_used;
+    
+    assert(array_count(x64->functions) > func->type_index && "allocate functions to x64");
+    
+    array_set_count(x64->labels, func->block_count + 1);
+    x64->label_index = 1; // NOTE(Alexander): treat label 0 as end of function
+    x64->functions[func->type_index] = buf->data + buf->curr_used;
     
     int register_count = (int) array_count(func->register_lifetimes);
     if (register_count > 0) {
@@ -1633,6 +1638,7 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     x64->stack_usage -= 8;
     
     // Epilogue
+    x64->labels[0] = buf->data + buf->curr_used;
     x64_rex(buf, REX_FLAG_64_BIT); // add rsp, stack_usage
     push_u8(buf, 0x81);
     x64_modrm(buf, IC_REG | IC_S64, 0, 0, X64_RSP, 0);
@@ -1710,7 +1716,8 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             push_u8(buf, 0xE8);
             X64_Relocation reloc = {};
             reloc.from_ptr = (s32*) (buf->data + buf->curr_used);
-            reloc.target = &target->x64_machine_code_ptr;
+            assert(array_count(x64->functions) > target->type_index);
+            reloc.target = &x64->functions[target->type_index];
             array_push(x64->relocations, reloc);
             push_u32(buf, 0);
             
@@ -1943,9 +1950,20 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             }
         } break;
         
+        case BC_LOOP:
         case BC_BLOCK: {
-            ((Bytecode_Block*) insn)->x64_machine_code_ptr = buf->data + buf->curr_used;
-            pln("BLOCK: % -> %", f_u64_HEX(insn), f_u64_HEX(&((Bytecode_Block*) insn)->x64_machine_code_ptr));
+            x64->labels[x64->label_index] = buf->data + buf->curr_used;
+            X64_Block block = {};
+            block.label_index = x64->label_index++;
+            block.is_loop = opcode == BC_LOOP;
+            array_push(x64->block_stack, block);
+        } break;
+        
+        case BC_END: {
+            X64_Block block = array_pop(x64->block_stack);
+            if (!block.is_loop) {
+                x64->labels[block.label_index] = buf->data + buf->curr_used;
+            }
         } break;
         
         default: {
@@ -2542,11 +2560,13 @@ x64_lea(Buffer* buf, s64 r1, s64 r2, s64 d2, s64 rip) {
 
 void
 x64_push_rel32(X64_Assembler* x64, Buffer* buf, Bytecode_Function* func, u32 label_index) {
-    u32 target_offset = func->labels[label_index];
-    Bytecode_Block* target = (Bytecode_Block*) ((u8*) func + target_offset);
+    if (label_index > 0) {
+        label_index = x64->block_stack[label_index - 1].label_index;
+    }
+    
     X64_Relocation reloc = {};
     reloc.from_ptr = (s32*) (buf->data + buf->curr_used);
-    reloc.target = &target->x64_machine_code_ptr;
+    reloc.target = &x64->labels[label_index];
     array_push(x64->relocations, reloc);
     push_u32(buf, 0);
 }

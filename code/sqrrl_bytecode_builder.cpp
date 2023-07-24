@@ -423,62 +423,60 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
         } break;
         
         case Ast_If_Stmt: {
+            begin_block(bc);
+            if (is_valid_ast(stmt->If_Stmt.else_block)) {
+                begin_block(bc);
+            }
+            
             Bytecode_Operand cond = convert_expression_to_bytecode(bc, stmt->If_Stmt.cond);
             Bytecode_Branch* if_branch = add_insn_t(bc, BC_BRANCH, Branch);
-            Bytecode_Branch* else_branch = 0;
             if_branch->cond = cond;
-            u32 else_label = 0;
+            if_branch->label_index = bc->block_depth;
+            
             
             // Then case
-            push_basic_block(bc);
             convert_statement_to_bytecode(bc, stmt->If_Stmt.then_block, break_label, continue_label);
             
             if (is_valid_ast(stmt->If_Stmt.else_block)) {
                 // Else case
-                else_branch = add_insn_t(bc, BC_BRANCH, Branch);
-                else_label = push_basic_block(bc);
+                Bytecode_Branch* else_branch = add_insn_t(bc, BC_BRANCH, Branch);
+                else_branch->label_index = bc->block_depth - 1;
+                
+                end_block(bc);
                 convert_statement_to_bytecode(bc, stmt->If_Stmt.else_block, break_label, continue_label);
             }
+            end_block(bc);
             
-            u32 exit_label = push_basic_block(bc);
-            
-            if_branch->label_index = else_branch ? else_label : exit_label;
-            if (else_branch) {
-                else_branch->label_index = exit_label;
-            }
         } break;
         
         case Ast_For_Stmt: {
-            Bytecode_Operand cond = {};
-            
             // init
             convert_statement_to_bytecode(bc, stmt->For_Stmt.init, 0, 0);
             
-            u32 enter_label = push_basic_block(bc);
-            u32 block_label = reserve_label(bc);
-            continue_label = reserve_label(bc);
-            break_label = reserve_label(bc);
+            begin_block(bc);
+            begin_block(bc, BC_LOOP);
             
-            // condition
+            // Condition
             if (is_valid_ast(stmt->For_Stmt.cond)) {
-                cond = convert_expression_to_bytecode(bc, stmt->For_Stmt.cond);
-                Bytecode_Branch* break_branch = add_insn_t(bc, BC_BRANCH, Branch);
-                break_branch->label_index = break_label;
-                break_branch->cond = cond;
+                Bytecode_Operand cond = convert_expression_to_bytecode(bc, stmt->For_Stmt.cond);
+                Bytecode_Branch* branch = add_insn_t(bc, BC_BRANCH, Branch);
+                branch->label_index = bc->block_depth - 1;
+                branch->cond = cond;
             }
             
-            // block
-            push_basic_block(bc, block_label);
-            convert_statement_to_bytecode(bc, stmt->For_Stmt.block, break_label, continue_label);
+            // Block
+            begin_block(bc);
+            convert_statement_to_bytecode(bc, stmt->For_Stmt.block, bc->block_depth - 2, bc->block_depth);
+            end_block(bc);
             
-            // update
-            push_basic_block(bc, continue_label);
+            // Update
             convert_expression_to_bytecode(bc, stmt->For_Stmt.update);
             Bytecode_Branch* branch = add_insn_t(bc, BC_BRANCH, Branch);
-            branch->label_index = enter_label;
+            branch->label_index = bc->block_depth;
             
-            // exit
-            push_basic_block(bc, break_label);
+            // Exit
+            end_block(bc);
+            end_block(bc);
         } break;
         
         case Ast_Return_Stmt: {
@@ -490,6 +488,16 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
                     drop_bytecode_register(bc, result.register_index);
                 }
             }
+        } break;
+        
+        case Ast_Break_Stmt: {
+            Bytecode_Branch* branch = add_insn_t(bc, BC_BRANCH, Branch);
+            branch->label_index = break_label;
+        } break;
+        
+        case Ast_Continue_Stmt: {
+            Bytecode_Branch* branch = add_insn_t(bc, BC_BRANCH, Branch);
+            branch->label_index = continue_label;
         } break;
         
         default: {
@@ -580,9 +588,6 @@ begin_bytecode_function(Bytecode_Builder* bc, Type* type) {
     bc->curr_function = func;
     bc->curr_insn = 0;
     
-    // Return will always have label index 0, byte_offset is defined later.
-    array_push(func->labels, 0);
-    
     Bytecode_Type* curr_type = (Bytecode_Type*) (func + 1);
     for (int i = 0; i < arg_count; i++) {
         string_id arg_ident = type->Function.arg_idents[i];
@@ -608,12 +613,14 @@ void
 end_bytecode_function(Bytecode_Builder* bc) {
     assert(bc->curr_function && "must begin a function before ending one");
     
+#if 0
     // Add block at the end
     Bytecode_Block* block = add_insn_t(bc, BC_BLOCK, Block);
     u32 byte_offset = ((u32) arena_relative_pointer(&bc->arena, block) - 
                        bc->curr_function->relative_ptr);
     block->label_index = 0;
     bc->curr_function->labels[0] = byte_offset;
+#endif
     
     bc->curr_function = 0;
 }

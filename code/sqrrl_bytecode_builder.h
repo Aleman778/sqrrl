@@ -2,7 +2,6 @@
 struct Bytecode_Builder {
     Memory_Arena arena;
     
-    array(Bytecode_Instruction*)* labels;
     array(Bytecode_Operand*)* register_stack;
     
     map(string_id, Bytecode_Operand)* locals;
@@ -15,6 +14,8 @@ struct Bytecode_Builder {
     Interp* interp;
     
     Bytecode bytecode;
+    
+    u32 block_depth;
     
     u32 next_type_index;
     u32 next_register_index;
@@ -165,30 +166,18 @@ push_bytecode_memory(Bytecode_Builder* bc, Bytecode_Memory_Kind kind, smm size, 
     return result;
 }
 
-inline u32
-push_basic_block(Bytecode_Builder* bc) {
-    Bytecode_Block* block = add_insn_t(bc, BC_BLOCK, Block);
-    u32 byte_offset = ((u32) arena_relative_pointer(&bc->arena, block) - 
-                       bc->curr_function->relative_ptr);
-    block->label_index = (u32) array_count(bc->curr_function->labels);
-    array_push(bc->curr_function->labels, byte_offset);
-    return block->label_index;
-}
-
-inline u32
-reserve_label(Bytecode_Builder* bc) {
-    int result = (u32) array_count(bc->curr_function->labels);
-    array_push(bc->curr_function->labels, 0);
-    return result;
+inline void
+begin_block(Bytecode_Builder* bc, Bytecode_Operator opcode=BC_BLOCK) {
+    add_insn(bc, opcode);
+    bc->curr_function->block_count++;
+    bc->block_depth++;
 }
 
 inline void
-push_basic_block(Bytecode_Builder* bc, u32 label_index) {
-    Bytecode_Block* block = add_insn_t(bc, BC_BLOCK, Block);
-    u32 byte_offset = ((u32) arena_relative_pointer(&bc->arena, block) - 
-                       bc->curr_function->relative_ptr);
-    block->label_index = label_index;
-    bc->curr_function->labels[label_index] = byte_offset;
+end_block(Bytecode_Builder* bc) {
+    assert(bc->block_depth > 0);
+    add_insn(bc, BC_END);
+    bc->block_depth--;
 }
 
 void string_bc_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Instruction* insn);

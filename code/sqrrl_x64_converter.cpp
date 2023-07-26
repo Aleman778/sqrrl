@@ -1504,39 +1504,44 @@ convert_bytecode_operand_to_x64(X64_Assembler* x64, Buffer* buf, Bytecode_Operan
     Ic_Raw_Type rt = convert_bytecode_type_to_x64(type);
     Ic_Arg result = {};
     switch (op.kind) {
-        case BytecodeOperand_const_i32: {
-            result.type = IC_DISP | rt;
-            result.disp = op.const_i32; 
-        } break;
-        
-        case BytecodeOperand_const_i64: {
-            result.type = IC_DISP | rt;
-            result.disp = op.const_i64; 
-        } break;
-        
-        case BytecodeOperand_const_f32: {
-            void* data = arena_push_struct(&x64->data_packer->rdata_arena, f32);
-            u32 relative_ptr = (u32) arena_relative_pointer(&x64->data_packer->rdata_arena, data);
-            *((f32*) data) = op.const_f32;
-            result.type = IC_RIP_DISP32 | rt;
-            if (x64->use_absolute_ptrs) {
-                result.disp = (s64) data;
-            } else {
-                result.data.disp = relative_ptr;
-                result.data.area = IcDataArea_Read_Only;
-            }
-        } break;
-        
-        case BytecodeOperand_const_f64: {
-            void* data = arena_push_struct(&x64->data_packer->rdata_arena, f64);
-            u32 relative_ptr = (u32) arena_relative_pointer(&x64->data_packer->rdata_arena, data);
-            *((f64*) data) = op.const_f64;
-            result.type = IC_RIP_DISP32 | rt;
-            if (x64->use_absolute_ptrs) {
-                result.disp = (s64) data;
-            } else {
-                result.data.disp = relative_ptr;
-                result.data.area = IcDataArea_Read_Only;
+        case BytecodeOperand_const: {
+            
+            switch (type) {
+                case BytecodeType_i32: {
+                    result.type = IC_DISP | rt;
+                    result.disp = op.const_i32; 
+                } break;
+                
+                case BytecodeType_i64: {
+                    result.type = IC_DISP | rt;
+                    result.disp = op.const_i64; 
+                } break;
+                
+                case BytecodeType_f32: {
+                    void* data = arena_push_struct(&x64->data_packer->rdata_arena, f32);
+                    u32 relative_ptr = (u32) arena_relative_pointer(&x64->data_packer->rdata_arena, data);
+                    *((f32*) data) = op.const_f32;
+                    result.type = IC_RIP_DISP32 | rt;
+                    if (x64->use_absolute_ptrs) {
+                        result.disp = (s64) data;
+                    } else {
+                        result.data.disp = relative_ptr;
+                        result.data.area = IcDataArea_Read_Only;
+                    }
+                } break;
+                
+                case BytecodeType_f64: {
+                    void* data = arena_push_struct(&x64->data_packer->rdata_arena, f64);
+                    u32 relative_ptr = (u32) arena_relative_pointer(&x64->data_packer->rdata_arena, data);
+                    *((f64*) data) = op.const_f64;
+                    result.type = IC_RIP_DISP32 | rt;
+                    if (x64->use_absolute_ptrs) {
+                        result.disp = (s64) data;
+                    } else {
+                        result.data.disp = relative_ptr;
+                        result.data.area = IcDataArea_Read_Only;
+                    }
+                } break;
             }
         } break;
         
@@ -1554,13 +1559,17 @@ convert_bytecode_operand_to_x64(X64_Assembler* x64, Buffer* buf, Bytecode_Operan
             result.type = IC_STK | rt;
             result.reg = X64_RSP; 
             
-            result.disp = op.stack_offset + x64->stack_offsets[op.stack_index];
+            result.disp = op.memory_offset + x64->stack_offsets[op.stack_index];
         } break;
         
         case BytecodeOperand_memory: {
             result.type = IC_RIP_DISP32 | rt;
             result.reg = X64_RIP;
             result.disp = op.memory_offset;
+        } break;
+        
+        default: {
+            unimplemented;
         } break;
     }
     
@@ -1647,6 +1656,8 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     push_u8(buf, 0xC3); // RET near
     
     // Cleanup
+    free(x64->stack_offsets);
+    x64->stack_offsets = 0;
     if (x64->virtual_registers) {
         free(x64->virtual_registers);
         x64->virtual_registers = 0;

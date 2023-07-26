@@ -123,27 +123,11 @@ struct Bytecode_Function {
 enum Bytecode_Operand_Kind {
     BytecodeOperand_empty,
     
-    BytecodeOperand_const_i32,
-    BytecodeOperand_const_i64,
-    BytecodeOperand_const_f32,
-    BytecodeOperand_const_f64,
+    BytecodeOperand_const,
     BytecodeOperand_register,
     BytecodeOperand_stack,
     BytecodeOperand_memory,
 };
-
-const Bytecode_Operand_Kind bc_type_to_const_operand[] = {
-    BytecodeOperand_empty,
-    BytecodeOperand_const_i32,
-    BytecodeOperand_const_i64,
-    BytecodeOperand_const_f32,
-    BytecodeOperand_const_f64,
-};
-
-inline Bytecode_Operand_Kind
-get_const_operand_from_type(Bytecode_Type type) {
-    return bc_type_to_const_operand[type];
-}
 
 enum Bytecode_Memory_Kind {
     BytecodeMemory_read_only,
@@ -161,14 +145,11 @@ struct Bytecode_Operand {
         
         u32 register_index;
         
-        struct {
-            u32 stack_index;
-            s32 stack_offset;
-        };
+        u32 stack_index;
         
         struct {
-            u32 memory_offset;
             Bytecode_Memory_Kind memory_kind;
+            s32 memory_offset;
         };
     };
 };

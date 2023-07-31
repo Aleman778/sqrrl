@@ -40,6 +40,8 @@ i32,  i64,  f32,  f64*/
 };
 
 const u8 wasm_comparator_opcodes[] = {
+    /*
+    i32,  i64,  f32,  f64*/
     0x46, 0x51, 0x5B, 0x61, // BC_EQ
     0x4A, 0x55, 0x00, 0x00, // BC_GT_S
     0x4B, 0x56, 0x5E, 0x64, // BC_GT_U
@@ -55,6 +57,9 @@ const u8 wasm_comparator_opcodes[] = {
 struct WASM_Assembler {
     u32* stack_offsets;
     u32 stack_usage;
+    
+    u32 tmp_local_i32;
+    u32 tmp_local_i64;
 };
 
 struct WASM_Block {

@@ -769,10 +769,11 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
             string_builder_dump_bytecode_function_name(sb, bc, func);
             string_builder_push(sb, "(");
             
+            Bytecode_Type* arg_types = (Bytecode_Type*) (func + 1);
             for (u32 i = 0; i < func->arg_count; i++) {
-                string_builder_dump_bytecode_operand(sb, args[i], insn->type);
+                string_builder_dump_bytecode_operand(sb, args[i], arg_types[i]);
                 if (i + 1 < func->arg_count) {
-                    string_builder_push(sb, " ");
+                    string_builder_push(sb, ", ");
                 }
             }
             string_builder_push(sb, ")");

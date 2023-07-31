@@ -75,7 +75,7 @@ struct X64_Assembler {
     
     array(X64_Relocation)* relocations;
     array(u8*)* functions;
-    array(u8*)* labels;
+    u8** labels;
     array(X64_Block)* block_stack;
     u32 label_index;
     

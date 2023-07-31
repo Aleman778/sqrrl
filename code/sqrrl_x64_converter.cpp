@@ -1482,8 +1482,7 @@ convert_bytecode_type_to_x64(Bytecode_Type type, int size) {
                 case 1: return IC_S8;
                 case 2: return IC_S16;
                 case 4: return IC_S32;
-                case 8: return IC_S64;
-                default: unimplemented;
+                default: return IC_S64;
             }
         } break;
         
@@ -1582,7 +1581,7 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     
     assert(array_count(x64->functions) > func->type_index && "allocate functions to x64");
     
-    array_set_count(x64->labels, func->block_count + 1);
+    x64->labels = (u8**) calloc(func->block_count + 1, sizeof(u8*));
     x64->label_index = 1; // NOTE(Alexander): treat label 0 as end of function
     x64->functions[func->type_index] = buf->data + buf->curr_used;
     
@@ -1632,9 +1631,8 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     // TODO(Alexander): handle multiple returns
     
     
-    Bytecode_Instruction* curr = iter_bytecode_instructions(func, 0);
     x64->curr_bytecode_insn_index = 0;
-    while (curr->kind) {
+    for_bc_insn(func, curr) {
         convert_bytecode_insn_to_x64_machine_code(x64, buf, func, curr);
         curr = iter_bytecode_instructions(func, curr);
         x64->curr_bytecode_insn_index++;
@@ -1656,7 +1654,6 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     push_u8(buf, 0xC3); // RET near
     
     // Cleanup
-    free(x64->stack_offsets);
     x64->stack_offsets = 0;
     if (x64->virtual_registers) {
         free(x64->virtual_registers);
@@ -1746,7 +1743,10 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_RETURN: {
-            Ic_Arg val = convert_bytecode_operand_to_x64(x64, buf, bc_unary_first(insn), insn->type);
+            Bytecode_Type* args = (Bytecode_Type*) (func + 1);
+            
+            Ic_Arg val = convert_bytecode_operand_to_x64(x64, buf, bc_unary_first(insn), 
+                                                         args[func->arg_count]);
             assert(val.type);
             
             x64_mov(buf, 

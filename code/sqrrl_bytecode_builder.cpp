@@ -1,4 +1,42 @@
 
+#define convert_assign_to_intermediate_code(bc, type, dest, src, store_inplace) \
+_convert_assign_to_intermediate_code(bc, type, dest, src, store_inplace, __FILE__ ":" S2(__LINE__))
+
+void
+_convert_assign_to_intermediate_code(Bytecode_Builder* bc, Type* type, 
+                                     Bytecode_Operand dest, Bytecode_Operand src,
+                                     bool store_inplace, cstring comment=0) {
+    
+    
+    if (type->size > 8) {
+        if (store_inplace) {
+            if (src.kind) {
+                Bytecode_Memory* insn = add_insn_t(bc, BC_MEMORY_COPY, Memory);
+                insn->comment = comment;
+                insn->dest = dest;
+                insn->src = src;
+                insn->size = type->size;
+                
+            } else {
+                Bytecode_Memory* insn = add_insn_t(bc, BC_MEMORY_SET, Memory);
+                insn->comment = comment;
+                insn->dest = dest;
+                insn->value  = 0;
+                insn->size = type->size;
+            }
+        } else {
+            assert(dest.kind);
+            //_ic_lea(bc, dest, src, comment);
+        }
+    } else {
+        if (!src.kind) {
+            src.kind = BytecodeOperand_const;
+            src.const_i64 = 0;
+        }
+        _add_mov_insn(bc, type, dest, src, comment);
+    }
+}
+
 Bytecode_Operand
 convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
     Bytecode_Operand result = {};
@@ -213,11 +251,26 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             
             Compilation_Unit* target_cu = type->Function.unit;
             assert(target_cu && target_cu->bc_func);
-            
             Bytecode_Function* func = target_cu->bc_func;
             
-            umm insn_size = sizeof(Bytecode_Call) + sizeof(Bytecode_Operand)*(func->ret_count +
-                                                                              func->arg_count);
+            array(Bytecode_Operand)* arg_operands = 0;
+            for_compound(expr->Call_Expr.args, arg) {
+                Bytecode_Operand op = convert_expression_to_bytecode(bc, arg->Argument.assign);
+                Type* arg_type = arg->Argument.assign->type;
+                if (arg_type->size > 8) {
+                    Bytecode_Binary* arg_insn = add_insn_t(bc, BC_ADDR_OF, Binary);
+                    arg_insn->type = to_bytecode_type(arg_type);
+                    arg_insn->first = add_bytecode_register(bc);
+                    arg_insn->second = op;
+                    op = arg_insn->first;
+                }
+                // TODO(Alexander): add default args
+                
+                array_push(arg_operands, op);
+            }
+            
+            umm arg_size = sizeof(Bytecode_Operand)*(func->ret_count + func->arg_count);
+            umm insn_size = sizeof(Bytecode_Call) + arg_size;
             umm insn_align = max(alignof(Bytecode_Call), alignof(Bytecode_Operand));
             Bytecode_Call* insn = (Bytecode_Call*) add_bytecode_insn(bc, BC_CALL, 
                                                                      BytecodeInstructionKind_Call, 
@@ -225,17 +278,16 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                                                                      __FILE__ ":" S2(__LINE__));
             insn->func_index = func->type_index;
             
-            Bytecode_Operand* curr_operand = (Bytecode_Operand*) (insn + 1);
-            for_compound(expr->Call_Expr.args, arg) {
-                *curr_operand++ = convert_expression_to_bytecode(bc, arg->Argument.assign);
-            }
-            // TODO(Alexander): add default args
-            
             // TODO(Alexander): multiple args
             if (is_valid_type(type->Function.return_type)) {
                 insn->type = to_bytecode_type(type->Function.return_type);
                 result = add_bytecode_register(bc);
-                *curr_operand++ = result;
+                array_push(arg_operands, result);
+            }
+            
+            if (arg_operands) {
+                memcpy((Bytecode_Operand*) (insn + 1), arg_operands, arg_size);
+                array_free(arg_operands);
             }
             
         } break;

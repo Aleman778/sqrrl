@@ -24,6 +24,8 @@ OP(MOV_8) \
 OP(MOV_16) \
 OP(MOV_32) \
 OP(WRAP_I64) \
+OP(MEMORY_COPY) \
+OP(MEMORY_SET) \
 OP(EXTEND_S8) \
 OP(EXTEND_S16) \
 OP(EXTEND_S32) \
@@ -163,6 +165,7 @@ enum Bytecode_Instruction_Kind {
     BytecodeInstructionKind_Call,
     BytecodeInstructionKind_Block,
     BytecodeInstructionKind_Branch,
+    BytecodeInstructionKind_Memory,
 };
 
 #define Bytecode_Instruction_Base \
@@ -190,12 +193,17 @@ struct Bytecode_Unary {
     Bytecode_Operand first;
 };
 
+#define bc_unary_first(insn) (((Bytecode_Unary*) insn)->first)
+
 struct Bytecode_Binary {
     Bytecode_Instruction_Base;
     
     Bytecode_Operand first;
     Bytecode_Operand second;
 };
+
+#define bc_binary_first(insn) (((Bytecode_Binary*) insn)->first)
+#define bc_binary_second(insn) (((Bytecode_Binary*) insn)->second)
 
 struct Bytecode_Call {
     Bytecode_Instruction_Base;
@@ -220,9 +228,17 @@ struct Bytecode_Branch {
     // TODO(Alexander): maybe have a true and false label?
 };
 
-#define bc_unary_first(insn) (((Bytecode_Unary*) insn)->first)
-#define bc_binary_first(insn) (((Bytecode_Binary*) insn)->first)
-#define bc_binary_second(insn) (((Bytecode_Binary*) insn)->second)
+struct Bytecode_Memory {
+    Bytecode_Instruction_Base;
+    
+    Bytecode_Operand dest;
+    union {
+        Bytecode_Operand src;
+        u8 value;
+    };
+    s32 size;
+    // TODO(Alexander): maybe have a true and false label?
+};
 
 inline Bytecode_Instruction*
 iter_bytecode_instructions(Bytecode_Function* func, Bytecode_Instruction* iter) {

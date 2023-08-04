@@ -1,12 +1,10 @@
 
-
-
 #if 0
 #define convert_assign_to_intermediate_code(cu, type, dest, src, store_inplace) \
 _convert_assign_to_intermediate_code(cu, type, dest, src, store_inplace, __FILE__ ":" S2(__LINE__))
 
 void
-_convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg dest, Ic_Arg src,
+_convert_assign_to_intermediate_code(Buffer* buf, Type* type, Ic_Arg dest, Ic_Arg src,
                                      bool store_inplace, cstring comment=0) {
     
     
@@ -15,13 +13,13 @@ _convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg de
             assert(dest.type & IC_STK_RIP);
             
             if (src.type) {
-                Intermediate_Code* ic = ic_add_insn(cu, IC_MEMCPY, comment);
-                ic->dest = dest;
-                ic->src0 = src;
-                ic->src1 = ic_imm(0, type->size);
+                x64_string_op(buf, 
+                              dest.type, dest.reg, dest.disp, 
+                              src.type, src.reg, src.disp,
+                              type->size, 0xA4F3, rip, X64_RSI);
                 
             } else {
-                Intermediate_Code* ic = ic_add_insn(cu, IC_MEMSET, comment);
+                Bytecode_Memory* ic = ic_add_insn(cu, IC_MEMORY_SET, comment);
                 ic->dest = dest;
                 ic->src0 = ic_imm(IC_U8, 0);
                 ic->src1 = ic_imm(0, type->size);
@@ -39,14 +37,7 @@ _convert_assign_to_intermediate_code(Compilation_Unit* cu, Type* type, Ic_Arg de
                 _ic_mov(cu, dest, src, comment);
             }
         } else {
-            if (dest.type & IC_FLOAT) {
-                Intermediate_Code* ic = ic_add_insn(cu, IC_FXOR, comment);
-                ic->dest = dest;
-                ic->src0 = ic_reg(dest.raw_type, X64_XMM0);
-                ic->src1 = ic_reg(dest.raw_type, X64_XMM0);
-            } else {
-                _ic_mov(cu, dest, ic_imm(dest.raw_type, 0), comment);
-            }
+            _ic_mov(cu, dest, ic_imm(dest.raw_type, 0), comment);
         }
     }
 }
@@ -1700,11 +1691,11 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                     } else {
                         X64_Reg reg = int_arg_registers_ccall_windows[i];
                         x64_spill_register(x64, buf, reg);
+                        
                         x64_mov(buf, 
                                 IC_REG | arg.raw_type, reg, 0,
                                 arg.type, arg.reg, arg.disp, rip);
                     }
-                    
                 } else {
                     x64_mov(buf, 
                             IC_STK | arg.raw_type, X64_RSP, x64->stack_usage + i*8,
@@ -1797,6 +1788,17 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         case BC_INC: {
             Ic_Arg first = convert_bytecode_operand_to_x64(x64, buf, bc_unary_first(insn), insn->type);
             x64_unary(buf, first.type, first.reg, first.disp, 0xFF, 0, rip);
+        } break;
+        
+        case BC_ADDR_OF: {
+            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
+            Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
+            assert(dest.type & IC_REG);
+            if (src.type & IC_RIP_DISP32) {
+                x64_lea(buf, dest.reg, X64_RIP, src.disp, rip);
+            } else {
+                x64_lea(buf, dest.reg, src.reg, src.disp, rip);
+            }
         } break;
         
         case BC_ADD: {
@@ -2553,8 +2555,7 @@ x64_convert_float_to_int_type(Buffer* buf,
     x64_modrm(buf, t2, d2, r1, r2, rip);
 }
 
-
-void
+inline void
 x64_lea(Buffer* buf, s64 r1, s64 r2, s64 d2, s64 rip) {
     // REX.W + 8D /r 	LEA r64,m 	RM
     x64_rex(buf, REX_FLAG_W|((u8)r1&8)>>1);
@@ -2581,10 +2582,6 @@ x64_push_rel32(X64_Assembler* x64, Buffer* buf, Bytecode_Function* func, u32 lab
     array_push(x64->relocations, reloc);
     push_u32(buf, 0);
 }
-
-
-#if 0
-#endif
 
 void
 x64_string_op(Buffer* buf, 

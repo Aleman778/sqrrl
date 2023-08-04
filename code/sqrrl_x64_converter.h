@@ -140,6 +140,8 @@ void x64_movsx(Buffer* buf,
                Ic_Type t1, s64 r1, s64 d1,
                Ic_Type t2, s64 r2, s64 d2, s64 rip);
 
+inline void x64_lea(Buffer* buf, s64 r1, s64 r2, s64 d2, s64 rip);
+
 inline void x64_add(Buffer* buf, 
                     Ic_Type t1, s64 r1, s64 d1, 
                     Ic_Type t2, s64 r2, s64 d2, 

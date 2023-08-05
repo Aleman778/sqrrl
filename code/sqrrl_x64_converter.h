@@ -152,6 +152,11 @@ inline void x64_convert_float_to_int_type(Buffer* buf,
                                           Ic_Type t1, s64 r1, s64 d1, 
                                           Ic_Type t2, s64 r2, s64 d2, s64 rip);
 
+inline void x64_string_op(X64_Assembler* x64, Buffer* buf,
+                          Ic_Type destt, s64 destr, s64 destd, 
+                          Ic_Type srct, s64 srcr, s64 srcd, 
+                          s64 count, u16 opcode, s64 rip, s64 src_int_reg=X64_RAX);
+
 void x64_push_rel32(X64_Assembler* x64, Buffer* buf, Bytecode_Function* func, u32 label_index);
 
 inline void

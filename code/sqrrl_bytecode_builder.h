@@ -132,18 +132,15 @@ drop_bytecode_register(Bytecode_Builder* bc, u32 register_index) {
 }
 
 #define push_bytecode_stack_t(bc, T) \
-_push_bytecode_stack(bc, (u32) sizeof(T), (u32) alignof(T), BytecodeType_i64)
-
-#define push_bytecode_stack(bc, type) \
-_push_bytecode_stack(bc, (u32) type->size, (u32) type->align, to_bytecode_type(type))
+push_bytecode_stack(bc, (u32) sizeof(T), (u32) alignof(T))
 
 inline Bytecode_Operand
-_push_bytecode_stack(Bytecode_Builder* bc, u32 size, u32 align, Bytecode_Type type) {
+push_bytecode_stack(Bytecode_Builder* bc, u32 size, u32 align) {
     assert(bc->curr_function && "need to start a new function first");
     Bytecode_Operand result = {};
     result.kind = BytecodeOperand_stack;
     result.stack_index = (u32) array_count(bc->curr_function->stack);
-    Stack_Entry stk = { size, align, type };
+    Stack_Entry stk = { size, align };
     array_push(bc->curr_function->stack, stk);
     return result;
 }

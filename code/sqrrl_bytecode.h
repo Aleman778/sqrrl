@@ -100,7 +100,6 @@ global const cstring bc_type_names[] = {
 struct Stack_Entry {
     u32 size;
     u32 align;
-    Bytecode_Type type;
 };
 
 struct Bytecode_Function {

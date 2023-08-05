@@ -475,7 +475,7 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
                     dest = push_bytecode_memory(bc, BytecodeMemory_read_write, 
                                                 type->size, type->align);
                 } else {
-                    dest = push_bytecode_stack(bc, type);
+                    dest = push_bytecode_stack(bc, type->size, type->align);
                 }
                 map_put(bc->locals, ident, dest);
                 
@@ -662,14 +662,46 @@ begin_bytecode_function(Bytecode_Builder* bc, Type* type) {
         string_id arg_ident = type->Function.arg_idents[i];
         Type* arg_type = type->Function.arg_types[i];
         *curr_type++ = to_bytecode_type(arg_type);
+#if 0
+        if (arg_type->size > 8) {
+            // pass via pointer
+            arg_type = t_void_ptr;
+        }
+#endif
         
-        Bytecode_Operand arg = push_bytecode_stack(bc, arg_type);
+        Bytecode_Operand arg = push_bytecode_stack(bc, arg_type->size, arg_type->align);
         map_put(bc->locals, arg_ident, arg);
     }
     
+#if 0
+    // TODO(Alexander): maybe calling convention should take care of this?
+    // Push larger types to the stack separately
+    for (int i = 0; i < arg_count; i++) {
+        Type* arg_type = type->Function.arg_types[i];
+        
+        if (arg_type->size > 8) {
+            string_id arg_ident = type->Function.arg_idents[i];
+            
+            Bytecode_Operand src = map_get(bc->locals, arg_ident);
+            Bytecode_Operand tmp = add_bytecode_register(bc);
+            add_mov_insn(bc, t_void_ptr, tmp, src);
+            
+            Bytecode_Memory* cpy = add_insn_t(bc, BC_MEMORY_COPY, Memory);
+            cpy->dest = push_bytecode_stack(bc, arg_type);
+            cpy->src = tmp;
+            cpy->size = arg_type->size;
+            map_put(bc->locals, arg_ident, cpy->dest);
+            drop_bytecode_register(bc, tmp.register_index);
+        }
+    }
+#endif
+    
     if (ret_count > 0) {
-        assert(ret_count == 1 && "TODO: multiple arguments");
+        assert(ret_count == 1 && "TODO: multiple returns");
         *curr_type++ = to_bytecode_type(type->Function.return_type);
+        push_bytecode_stack(bc, 
+                            type->Function.return_type->size,
+                            type->Function.return_type->align);
     }
     
     array_push(bc->bytecode.functions, func);
@@ -847,6 +879,14 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
                 string_builder_push(sb, ", ");
                 string_builder_dump_bytecode_operand(sb, ((Bytecode_Branch*) insn)->cond, insn->type);
             }
+        } break;
+        
+        case BytecodeInstructionKind_Memory: {
+            string_builder_dump_bytecode_opcode(sb, insn);
+            string_builder_dump_bytecode_operand(sb, ((Bytecode_Memory*) insn)->dest, insn->type);
+            string_builder_push(sb, ", ");
+            string_builder_dump_bytecode_operand(sb, ((Bytecode_Memory*) insn)->src, insn->type);
+            string_builder_push_format(sb, ", %", f_int(((Bytecode_Memory*) insn)->size));
         } break;
     }
     

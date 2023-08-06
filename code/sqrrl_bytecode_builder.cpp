@@ -662,39 +662,10 @@ begin_bytecode_function(Bytecode_Builder* bc, Type* type) {
         string_id arg_ident = type->Function.arg_idents[i];
         Type* arg_type = type->Function.arg_types[i];
         *curr_type++ = to_bytecode_type(arg_type);
-#if 0
-        if (arg_type->size > 8) {
-            // pass via pointer
-            arg_type = t_void_ptr;
-        }
-#endif
         
         Bytecode_Operand arg = push_bytecode_stack(bc, arg_type->size, arg_type->align);
         map_put(bc->locals, arg_ident, arg);
     }
-    
-#if 0
-    // TODO(Alexander): maybe calling convention should take care of this?
-    // Push larger types to the stack separately
-    for (int i = 0; i < arg_count; i++) {
-        Type* arg_type = type->Function.arg_types[i];
-        
-        if (arg_type->size > 8) {
-            string_id arg_ident = type->Function.arg_idents[i];
-            
-            Bytecode_Operand src = map_get(bc->locals, arg_ident);
-            Bytecode_Operand tmp = add_bytecode_register(bc);
-            add_mov_insn(bc, t_void_ptr, tmp, src);
-            
-            Bytecode_Memory* cpy = add_insn_t(bc, BC_MEMORY_COPY, Memory);
-            cpy->dest = push_bytecode_stack(bc, arg_type);
-            cpy->src = tmp;
-            cpy->size = arg_type->size;
-            map_put(bc->locals, arg_ident, cpy->dest);
-            drop_bytecode_register(bc, tmp.register_index);
-        }
-    }
-#endif
     
     if (ret_count > 0) {
         assert(ret_count == 1 && "TODO: multiple returns");
@@ -713,16 +684,6 @@ begin_bytecode_function(Bytecode_Builder* bc, Type* type) {
 void
 end_bytecode_function(Bytecode_Builder* bc) {
     assert(bc->curr_function && "must begin a function before ending one");
-    
-#if 0
-    // Add block at the end
-    Bytecode_Block* block = add_insn_t(bc, BC_BLOCK, Block);
-    u32 byte_offset = ((u32) arena_relative_pointer(&bc->arena, block) - 
-                       bc->curr_function->relative_ptr);
-    block->label_index = 0;
-    bc->curr_function->labels[0] = byte_offset;
-#endif
-    
     bc->curr_function = 0;
 }
 

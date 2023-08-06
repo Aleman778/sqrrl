@@ -222,6 +222,16 @@ inline void x64_mul(X64_Assembler* x64, Buffer* buf, Bytecode_Binary* binary, s6
 inline void x64_div(X64_Assembler* x64, Buffer* buf, Bytecode_Binary* binary, bool remainder, s64 rip);
 inline void x64_modrm(Buffer* buf, Ic_Type t, s64 d, s64 r, s64 rm, s64 rip);
 
+inline Ic_Arg
+ic_stk(Ic_Raw_Type raw_type, s64 disp, Ic_Stk_Area area=IcStkArea_None, u8 reg=X64_RSP) {
+    Ic_Arg result = {};
+    result.type = raw_type + IC_STK;
+    result.reg = reg;
+    result.stk.area = area;
+    result.stk.disp = safe_truncate_s64(disp);
+    return result;
+}
+
 
 #if 0
 struct X64_Arg_Copy {
@@ -257,16 +267,6 @@ compute_stk_displacement(Compilation_Unit* cu, Ic_Arg arg) {
     }
     
     return 0;
-}
-
-inline Ic_Arg
-ic_stk(Ic_Raw_Type raw_type, s64 disp, Ic_Stk_Area area=IcStkArea_None, u8 reg=X64_RSP) {
-    Ic_Arg result = {};
-    result.type = raw_type + IC_STK;
-    result.reg = reg;
-    result.stk.area = area;
-    result.stk.disp = safe_truncate_s64(disp);
-    return result;
 }
 
 inline Ic_Arg

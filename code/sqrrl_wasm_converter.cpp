@@ -143,6 +143,10 @@ wasm_store_value(WASM_Assembler* wasm, Buffer* buf, Bytecode_Operand dest, Bytec
 int
 convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, Bytecode_Function* func, Bytecode_Instruction* insn, u32 block_depth) {
     switch (insn->opcode) {
+        case BC_DEBUG_BREAK: {
+            // noop, doesn't exist in wasm AFAIK
+        } break;
+        
         case BC_CALL: {
             Bytecode_Call* call = (Bytecode_Call*) insn;
             Bytecode_Operand* args = (Bytecode_Operand*) (call + 1);
@@ -330,6 +334,19 @@ convert_bytecode_function_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* b
         wasm->stack_usage += stk.size;
     }
     
+    // Push parameters on the stack
+    Bytecode_Type* arg_types = (Bytecode_Type*) (func + 1);
+    for (u32 i = 0; i < func->arg_count; i++) {
+        Bytecode_Operand op = {};
+        op.kind = BytecodeOperand_stack;
+        op.stack_index = i;
+        
+        wasm_prepare_store(wasm, buf, op, op, arg_types[i]);
+        push_u8(buf, 0x20); // local.get
+        push_leb128_u32(buf, op.stack_index);
+        wasm_store_value(wasm, buf, op, arg_types[i], func->stack[i].size*8);
+    }
+    
     //Bytecode_Type* args = 
     //Bytecode_Operand dest = bc_binary_first(insn);
     //Bytecode_Operand src = bc_binary_second(insn);
@@ -344,11 +361,9 @@ convert_bytecode_function_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* b
     
     if (func->ret_count == 1) {
         // TODO(Alexander): multiple returns
-        Bytecode_Type* return_types = (Bytecode_Type*) (func + 1);
-        
         Bytecode_Operand op = {};
         op.kind = BytecodeOperand_const;
-        wasm_load_value(wasm, buf, op, return_types[0]);
+        wasm_load_value(wasm, buf, op, arg_types[func->arg_count]);
     }
     push_u8(buf, 0x0F); // return
     

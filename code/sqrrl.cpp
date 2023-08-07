@@ -37,23 +37,9 @@ enum Compiler_Task {
     CompilerTask_Build,
 };
 
-int
-test_arith_f32(f32 y) {
-    f32 x = y / 2.0f + y*y - 64.0f;
-    return (int) x;
-}
-
-int
-test_arith_i32(int y) {
-    int x = y / 2 + y*y - 56;
-    return x;
-}
-
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm), bool is_debugger_present) {
-    
-    pln("test  = %", f_int(test_arith_i32(-16)));
     
     Compiler_Task compiler_task = CompilerTask_Run;
     Backend_Type target_backend = Backend_X64;
@@ -426,7 +412,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             x64.bytecode = &bytecode_builder.bytecode;
             x64.data_packer = &data_packer;
             x64.use_absolute_ptrs = compiler_task == CompilerTask_Run;
-            array_set_count(x64.functions, array_count(bytecode_builder.bytecode.functions));
+            x64.functions = (X64_Function*) calloc(array_count(bytecode_builder.bytecode.functions), 
+                                                   sizeof(X64_Function));
             
             for_array(ast_file.units, cu, _4) {
                 if (cu->bc_func) {
@@ -438,12 +425,30 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 }
             }
             
+            smm used_before = buf.curr_used;
+            
+            // Second pass is needed to get correct stack and relative pointers
+            buf.curr_used = 0;
+            for_array(ast_file.units, cu, _5) {
+                if (cu->bc_func) {
+                    if (cu == main_cu) {
+                        asm_buffer_main = (u8*) asm_buffer + buf.curr_used;
+                    }
+                    
+                    convert_bytecode_function_to_x64_machine_code(&x64, cu->bc_func, &buf);
+                }
+            }
+            
+            assert(used_before == buf.curr_used && "code is not the same");
+            
+#if 0
             for_array_v(x64.relocations, reloc, _5) {
                 assert(reloc.target);
                 s32 rel_ptr = (s32) (*reloc.target - ((u8*) reloc.from_ptr + 4));
                 pln("% - % = %", f_u64_HEX(*reloc.target), f_u64_HEX((u8*) reloc.from_ptr + 4), f_int(rel_ptr));
                 *reloc.from_ptr = rel_ptr;
             }
+#endif
             
 #if 1
             pln("\nX64 Machine Code (% bytes):", f_umm(buf.curr_used));

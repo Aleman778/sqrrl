@@ -55,27 +55,29 @@ struct X64_Register {
     bool is_allocated;
 };
 
-struct X64_Relocation {
-    s32* from_ptr;
-    u8** target;
-};
-
 struct X64_Block {
     u32 label_index;
     bool is_loop;
 };
 
+struct X64_Function {
+    u8* code;
+    u8** labels;
+    
+    // last byte offset for each stack segment
+    s32 stack_args;
+    s32 stack_locals;
+    s32 stack;
+};
+
 struct X64_Assembler {
     Bytecode* bytecode;
-    s32* stack_offsets;
-    s32 stack_usage;
-    s32 arg_stack_usage;
+    u32* stack;
     
     Data_Packer* data_packer;
     
-    array(X64_Relocation)* relocations;
-    array(u8*)* functions;
-    u8** labels;
+    X64_Function* curr_function;
+    X64_Function* functions;
     array(X64_Block)* block_stack;
     u32 label_index;
     
@@ -166,8 +168,8 @@ x64_spill_register(X64_Assembler* x64, Buffer* buf, X64_Reg reg) {
         Ic_Arg stk = {};
         stk.type = IC_STK | rt;
         stk.reg = X64_RSP;
-        stk.disp = x64->stack_usage;
-        x64->stack_usage += 8; // TODO(Alexander): proper stack allocation (use size and alignment)
+        stk.disp = x64->curr_function->stack_locals;
+        x64->curr_function->stack_locals += 8; // TODO(Alexander): proper stack allocation (use size and alignment)
         
         if (rt & IC_FLOAT) {
             x64_fmov(buf, stk.type, stk.reg, stk.disp, IC_REG | rt, reg, 0, 0);
@@ -188,7 +190,6 @@ x64_alloc_register(X64_Assembler* x64, Buffer* buf, u32 virtual_index, X64_Reg r
     Ic_Arg result = {};
     result.type = IC_REG | raw_type;
     result.reg = (u8) reg;
-    result.disp = x64->stack_usage;
     
     x64->registers[reg].is_allocated = true;
     x64->registers[reg].virtual_index = virtual_index;

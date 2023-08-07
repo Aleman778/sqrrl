@@ -1,11 +1,11 @@
 
-#define convert_assign_to_intermediate_code(bc, type, dest, src, store_inplace) \
-_convert_assign_to_intermediate_code(bc, type, dest, src, store_inplace, __FILE__ ":" S2(__LINE__))
+#define convert_assign_to_bytecode(bc, type, dest, src, store_inplace) \
+_convert_assign_to_bytecode(bc, type, dest, src, store_inplace, __FILE__ ":" S2(__LINE__))
 
 void
-_convert_assign_to_intermediate_code(Bytecode_Builder* bc, Type* type, 
-                                     Bytecode_Operand dest, Bytecode_Operand src,
-                                     bool store_inplace, cstring comment=0) {
+_convert_assign_to_bytecode(Bytecode_Builder* bc, Type* type, 
+                            Bytecode_Operand dest, Bytecode_Operand src,
+                            bool store_inplace, cstring comment=0) {
     
     
     if (type->size > 8) {
@@ -26,6 +26,7 @@ _convert_assign_to_intermediate_code(Bytecode_Builder* bc, Type* type,
             }
         } else {
             assert(dest.kind);
+            unimplemented;
             //_ic_lea(bc, dest, src, comment);
         }
     } else {
@@ -206,7 +207,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             
             bool is_signed = !(type->kind == TypeKind_Basic && 
                                type->Basic.flags & (BasicFlag_Unsigned | BasicFlag_Floating));
-            Bytecode_Operator opcode;
+            Bytecode_Operator opcode = BC_NOOP;
             switch (op) {
                 case Op_Add:            opcode = BC_ADD; break;
                 case Op_Subtract:       opcode = BC_SUB; break;
@@ -224,10 +225,6 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 case Op_Greater_Equals: opcode = is_signed ? BC_GE_S : BC_GE_U; break;
                 case Op_Less_Than:      opcode = is_signed ? BC_LT_S : BC_LT_U; break;
                 case Op_Less_Equals:    opcode = is_signed ? BC_LE_S : BC_LE_U; break;
-                
-                default: {
-                    opcode = (result_type->size == 1) ? BC_MOV_8 : BC_MOV;
-                } break;
             }
             
             Bytecode_Operand second = convert_expression_to_bytecode(bc, expr->Binary_Expr.second);
@@ -238,6 +235,10 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 insn->first = first;
                 insn->second = second;
                 result = insn->first;
+            }
+            
+            if (is_assign) {
+                convert_assign_to_bytecode(bc, type, first, second, true);
             }
             
             if (allocate_tmp_register) {

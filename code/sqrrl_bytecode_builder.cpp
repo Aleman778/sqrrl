@@ -549,6 +549,27 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
             end_block(bc);
         } break;
         
+        case Ast_While_Stmt: {
+            begin_block(bc);
+            begin_block(bc, BC_LOOP);
+            
+            // Condition
+            if (is_valid_ast(stmt->While_Stmt.cond)) {
+                Bytecode_Operand cond = convert_expression_to_bytecode(bc, stmt->While_Stmt.cond);
+                Bytecode_Branch* branch = add_insn_t(bc, BC_BRANCH, Branch);
+                branch->label_index = bc->block_depth - 1;
+                branch->cond = cond;
+            }
+            
+            convert_statement_to_bytecode(bc, stmt->While_Stmt.block, bc->block_depth - 1, bc->block_depth);
+            Bytecode_Branch* branch = add_insn_t(bc, BC_BRANCH, Branch);
+            branch->label_index = bc->block_depth;
+            
+            // Exit
+            end_block(bc);
+            end_block(bc);
+        } break;
+        
         case Ast_Return_Stmt: {
             if (is_valid_ast(stmt->Return_Stmt.expr)) {
                 Bytecode_Operand result = convert_expression_to_bytecode(bc, stmt->Return_Stmt.expr);

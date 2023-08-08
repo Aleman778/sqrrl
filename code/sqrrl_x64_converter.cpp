@@ -2061,11 +2061,14 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         
         case BC_LOOP:
         case BC_BLOCK: {
-            x64->curr_function->labels[x64->label_index] = buf->data + buf->curr_used;
             X64_Block block = {};
             block.label_index = x64->label_index++;
             block.is_loop = opcode == BC_LOOP;
             array_push(x64->block_stack, block);
+            
+            if (block.is_loop) {
+                x64->curr_function->labels[block.label_index] = buf->data + buf->curr_used;
+            }
         } break;
         
         case BC_END: {
@@ -2681,8 +2684,8 @@ x64_push_rel32(X64_Assembler* x64, Buffer* buf, Bytecode_Function* func, u32 lab
         label_index = x64->block_stack[label_index - 1].label_index;
     }
     
-    push_u32(buf, (u32) ((buf->data + buf->curr_used) - 
-                         x64->curr_function->labels[label_index]));
+    push_u32(buf, (u32) (x64->curr_function->labels[label_index] - 
+                         (buf->data + buf->curr_used + 4)));
 }
 
 inline void

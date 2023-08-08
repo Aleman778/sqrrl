@@ -19,10 +19,12 @@ struct Bytecode_Builder {
     
     u32 next_type_index;
     u32 next_register_index;
+    
+    Bytecode_Type pointer_type;
 };
 
 Bytecode_Type
-to_bytecode_type(Type* type) {
+to_bytecode_type(Bytecode_Builder* bc, Type* type) {
     switch (type->kind) {
         case TypeKind_Basic: {
             
@@ -55,11 +57,11 @@ to_bytecode_type(Type* type) {
         case TypeKind_Union: // TODO(Alexander): should structs/ unions be a different type than 64-bit int?
         case TypeKind_Type:
         case TypeKind_Pointer: {
-            return BytecodeType_i64;
+            return (bc->pointer_type != BytecodeType_void) ? bc->pointer_type : BytecodeType_i64;
         } break;
         
         case TypeKind_Enum: {
-            return to_bytecode_type(type->Enum.type);
+            return to_bytecode_type(bc, type->Enum.type);
         } break;
         
         default: {
@@ -98,7 +100,7 @@ __FILE__ ":" S2(__LINE__));
 inline void
 _add_mov_insn(Bytecode_Builder* bc, Type* type, Bytecode_Operand dest, Bytecode_Operand src, cstring comment) {
     Bytecode_Operator opcode = BC_MOV;
-    Bytecode_Type bc_type = to_bytecode_type(type);
+    Bytecode_Type bc_type = to_bytecode_type(bc, type);
     switch (type->size) {
         case 1: opcode = BC_MOV_8; break;
         case 2: opcode = BC_MOV_16; break;

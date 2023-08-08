@@ -292,6 +292,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     Bytecode_Builder bytecode_builder = {};
     
+    if (target_backend == Backend_WASM) {
+        bytecode_builder.pointer_type = BytecodeType_i32;
+    }
+    
 #if 0
     // Start by pushing address lookup table for external libs
     for_map(tcx.import_table.libs, it) {

@@ -92,7 +92,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
         } break;
         
         case Ast_Value: {
-            Bytecode_Type result_type = to_bytecode_type(expr->type);
+            Bytecode_Type result_type = to_bytecode_type(bc, expr->type);
             
             if (is_integer(expr->Value) || is_floating(expr->Value)) {
                 result.kind = BytecodeOperand_const;
@@ -162,7 +162,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             }
             
             Bytecode_Unary* insn = add_insn_t(bc, opcode, Unary);
-            insn->type  = to_bytecode_type(type);
+            insn->type  = to_bytecode_type(bc, type);
             insn->first = first;
             
             if (!result.kind) {
@@ -231,7 +231,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             
             if (opcode != BC_NOOP) {
                 Bytecode_Binary* insn = add_insn_t(bc, opcode, Binary);
-                insn->type  = to_bytecode_type(result_type);
+                insn->type  = to_bytecode_type(bc, result_type);
                 insn->first = first;
                 insn->second = second;
                 result = insn->first;
@@ -260,7 +260,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 Type* arg_type = arg->Argument.assign->type;
                 if (arg_type->size > 8) {
                     Bytecode_Binary* arg_insn = add_insn_t(bc, BC_ADDR_OF, Binary);
-                    arg_insn->type = to_bytecode_type(arg_type);
+                    arg_insn->type = to_bytecode_type(bc, arg_type);
                     arg_insn->first = add_bytecode_register(bc);
                     arg_insn->second = op;
                     op = arg_insn->first;
@@ -281,7 +281,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             
             // TODO(Alexander): multiple args
             if (is_valid_type(type->Function.return_type)) {
-                insn->type = to_bytecode_type(type->Function.return_type);
+                insn->type = to_bytecode_type(bc, type->Function.return_type);
                 result = add_bytecode_register(bc);
                 array_push(arg_operands, result);
             }
@@ -312,7 +312,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 t_dest = t_dest->Enum.type;
             }
             
-            Bytecode_Type dest_type = to_bytecode_type(expr->type);
+            Bytecode_Type dest_type = to_bytecode_type(bc, expr->type);
             Bytecode_Operand src = convert_expression_to_bytecode(bc, expr->Cast_Expr.expr);
             result = src;
             
@@ -662,7 +662,7 @@ begin_bytecode_function(Bytecode_Builder* bc, Type* type) {
     for (int i = 0; i < arg_count; i++) {
         string_id arg_ident = type->Function.arg_idents[i];
         Type* arg_type = type->Function.arg_types[i];
-        *curr_type++ = to_bytecode_type(arg_type);
+        *curr_type++ = to_bytecode_type(bc, arg_type);
         
         Bytecode_Operand arg = push_bytecode_stack(bc, arg_type->size, arg_type->align);
         map_put(bc->locals, arg_ident, arg);
@@ -670,7 +670,7 @@ begin_bytecode_function(Bytecode_Builder* bc, Type* type) {
     
     if (ret_count > 0) {
         assert(ret_count == 1 && "TODO: multiple returns");
-        *curr_type++ = to_bytecode_type(type->Function.return_type);
+        *curr_type++ = to_bytecode_type(bc, type->Function.return_type);
         push_bytecode_stack(bc, 
                             type->Function.return_type->size,
                             type->Function.return_type->align);

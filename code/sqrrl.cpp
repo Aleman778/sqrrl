@@ -291,8 +291,14 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
     Bytecode_Builder bytecode_builder = {};
+    bytecode_builder.data_packer = &data_packer;
+    bytecode_builder.interp = &interp;
     
-    if (target_backend == Backend_WASM) {
+    
+    if (target_backend == Backend_X64) {
+        bytecode_builder.use_absolute_memory = compiler_task == CompilerTask_Run;
+        
+    } else if (target_backend == Backend_WASM) {
         bytecode_builder.pointer_type = BytecodeType_i32;
     }
     
@@ -589,7 +595,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             buffer.data = (u8*) asm_buffer;
             buffer.size = asm_size;
             
-            convert_to_wasm_module(&bytecode_builder.bytecode, 0, &buffer);
+            convert_to_wasm_module(&bytecode_builder.bytecode, &data_packer, 0, &buffer);
             
             File_Handle wasm_file = DEBUG_open_file_for_writing("simple.wasm");
             DEBUG_write(wasm_file, buffer.data, (u32) buffer.curr_used);

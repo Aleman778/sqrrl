@@ -209,7 +209,7 @@ format_sprintf(char* dst, umm dst_size, Format_Type type, va_list args) {
         
         case FormatType_u64_HEX: {
             u64 value = va_arg(args, u64);
-            result.count= snprintf(dst, dst_size, "%llX", value);
+            result.count= snprintf(dst, dst_size, "0x%llX", value);
         } break;
         
         case FormatType_smm: {

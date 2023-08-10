@@ -1555,7 +1555,14 @@ convert_bytecode_operand_to_x64(X64_Assembler* x64, Buffer* buf, Bytecode_Operan
         case BytecodeOperand_memory: {
             result.type = IC_RIP_DISP32 | rt;
             result.reg = X64_RIP;
-            result.disp = op.memory_offset;
+            
+            if (x64->use_absolute_ptrs) {
+                result.disp = (s64) op.memory_absolute;
+            } else {
+                result.data.disp = op.memory_offset;
+                result.data.area = (op.memory_kind == BytecodeMemory_read_only) ? 
+                    IcDataArea_Read_Only : IcDataArea_Globals;
+            }
         } break;
         
         default: {

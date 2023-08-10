@@ -771,6 +771,17 @@ string_builder_dump_bytecode_operand(String_Builder* sb, Bytecode_Operand op, By
                 string_builder_push_format(sb, "stack[s% + %]", f_u32(op.stack_index), f_int(op.memory_offset));
             }
         } break;
+        
+        case BytecodeOperand_memory: {
+            if (op.memory_kind == BytecodeMemory_absolute) {
+                string_builder_push_format(sb, "memory[%]", f_u64_HEX(op.memory_absolute));
+                
+            } else {
+                string_builder_push_format(sb, "memory[% + %]", 
+                                           f_cstring(bc_memory_kind_names[op.memory_kind]), 
+                                           f_u64_HEX(op.memory_offset));
+            }
+        } break;
     }
     
 }

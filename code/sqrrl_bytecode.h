@@ -131,9 +131,16 @@ enum Bytecode_Operand_Kind {
 };
 
 enum Bytecode_Memory_Kind {
+    BytecodeMemory_absolute,
+    
     BytecodeMemory_read_only,
     BytecodeMemory_read_write,
 };
+
+global cstring bc_memory_kind_names[] = { 
+    "", "rodata", "data"
+};
+
 
 // TODO: maybe we want to ecode the kind and type as part of the instruction?
 struct Bytecode_Operand {
@@ -150,7 +157,12 @@ struct Bytecode_Operand {
         
         struct {
             Bytecode_Memory_Kind memory_kind;
-            s32 memory_offset;
+            union {
+                s32 memory_offset;
+                
+                // TODO(Alexander): hack!!! we need a way to remove this later (needed for X64 JIT)
+                void* memory_absolute;
+            };
         };
     };
 };

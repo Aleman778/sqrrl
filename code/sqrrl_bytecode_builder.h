@@ -21,6 +21,7 @@ struct Bytecode_Builder {
     u32 next_register_index;
     
     Bytecode_Type pointer_type;
+    bool use_absolute_memory;
 };
 
 Bytecode_Type
@@ -160,8 +161,12 @@ push_bytecode_memory(Bytecode_Builder* bc, Bytecode_Memory_Kind kind, smm size, 
     
     Bytecode_Operand result = {};
     result.kind = BytecodeOperand_memory;
-    result.memory_offset = offset;
-    result.memory_kind = kind;
+    if (bc->use_absolute_memory) {
+        result.memory_absolute = data;
+    } else {
+        result.memory_offset = offset;
+        result.memory_kind = kind;
+    }
     return result;
 }
 

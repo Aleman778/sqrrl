@@ -765,6 +765,22 @@ allocate_memory_block(umm block_size) {
     return block;
 }
 
+void
+copy_memory_block_recursively(u8** dest, Memory_Block* src, umm* size) {
+    if (!src) return;
+    copy_memory_block_recursively(dest, src->prev_block, size);
+    memcpy(*dest, src->base, src->used);
+    *dest += src->used;
+    *size += src->used;
+}
+
+umm
+copy_memory_block(u8* dest, Memory_Block* src) {
+    umm size = 0;
+    copy_memory_block_recursively(&dest, src, &size);
+    return size;
+}
+
 inline void
 free_memory_blocks(Memory_Block* block) {
     if (!block) return;

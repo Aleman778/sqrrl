@@ -11,6 +11,37 @@ wasm_push_valtype(Buffer* buf, Bytecode_Type type) {
 }
 
 void
+wasm_push_load(Buffer* buf, Bytecode_Type type, u32 offset, int bitsize=0, int align_pow2=-1) {
+    switch (type) {
+        case BytecodeType_i32: {
+            if (bitsize == 8) {
+                push_u8(buf, 0x2C); // i32.load8_s
+                push_leb128_u32(buf, align_pow2 >= 0 ? align_pow2 : 0);
+                
+            } else {
+                push_u8(buf, 0x28); // i32.load
+                push_leb128_u32(buf, align_pow2 >= 0 ? align_pow2 : 2);
+            }
+        } break;
+        
+        case BytecodeType_i64: {
+            if (bitsize == 8) {
+                push_u8(buf, 0x30); // i64.load8_s
+                push_leb128_u32(buf, align_pow2 >= 0 ? align_pow2 : 0);
+                
+            } else {
+                push_u8(buf, 0x29); // i64.load
+                push_leb128_u32(buf, align_pow2 >= 0 ? align_pow2 : 2);
+            }
+        } break;
+        
+        default: unimplemented;
+    }
+    
+    push_leb128_u32(buf, offset);
+}
+
+void
 wasm_load_value(WASM_Assembler* wasm, Buffer* buf, Bytecode_Operand op, Bytecode_Type type, int bitsize=0) {
     switch (op.kind) {
         case BytecodeOperand_const: {
@@ -41,33 +72,7 @@ wasm_load_value(WASM_Assembler* wasm, Buffer* buf, Bytecode_Operand op, Bytecode
             push_u8(buf, 0x23); // global.get
             push_leb128_u32(buf, 0);
             
-            switch (type) {
-                case BytecodeType_i32: {
-                    if (bitsize == 8) {
-                        push_u8(buf, 0x2C); // i32.load8_s
-                        push_leb128_u32(buf, 0);
-                        
-                    } else {
-                        push_u8(buf, 0x28); // i32.load
-                        push_leb128_u32(buf, 2);
-                    }
-                } break;
-                
-                case BytecodeType_i64: {
-                    if (bitsize == 8) {
-                        push_u8(buf, 0x30); // i64.load8_s
-                        push_leb128_u32(buf, 0);
-                        
-                    } else {
-                        push_u8(buf, 0x29); // i64.load
-                        push_leb128_u32(buf, 2);
-                    }
-                } break;
-                
-                default: unimplemented;
-            }
-            
-            push_leb128_u32(buf, wasm->stack_offsets[op.stack_index] + op.memory_offset);
+            wasm_push_load(buf, type, wasm->stack_offsets[op.stack_index] + op.memory_offset, bitsize);
             
             //push_u8(buf, 0x20); // local.get
             //push_leb128_u32(buf, op.stack_index);
@@ -75,6 +80,12 @@ wasm_load_value(WASM_Assembler* wasm, Buffer* buf, Bytecode_Operand op, Bytecode
         
         case BytecodeOperand_register: {
             // noop
+        } break;
+        
+        case BytecodeOperand_memory: {
+            push_u8(buf, 0x41); // i32.const
+            push_leb128_u32(buf, 0);
+            wasm_push_load(buf, type, op.memory_offset, bitsize);
         } break;
         
         default: {
@@ -222,7 +233,7 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             }
             
             assert(branch->label_index <= block_depth);
-            push_leb128_u32(buf, block_depth - branch->label_index);
+            push_leb128_u32(buf, block_depth - branch->label_index - 1);
         } break;
         
         case BC_MOV: {
@@ -243,6 +254,8 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
         
         case BC_INC: {
             Bytecode_Operand first = bc_unary_first(insn);
+            
+            wasm_prepare_store(wasm, buf, first, {}, insn->type);
             wasm_load_value(wasm, buf, first, insn->type);
             Bytecode_Operand val = {};
             val.kind = BytecodeOperand_const;
@@ -558,7 +571,7 @@ wasm_set_vec_size(Buffer* buf, smm vec_first_byte) {
 
 
 void
-convert_to_wasm_module(Bytecode* bc, s64 stk_usage, Buffer* buf) {
+convert_to_wasm_module(Bytecode* bc, Data_Packer* data_packer, s64 stk_usage, Buffer* buf) {
     
     // Define module
     push_u32(buf, 0x6D736100); // Signature (.asm)
@@ -701,8 +714,36 @@ convert_to_wasm_module(Bytecode* bc, s64 stk_usage, Buffer* buf) {
         
         wasm_set_vec_size(buf, function_start);
     }
-    
     wasm_set_vec_size(buf, code_section_start);
+    
+    // Data section (11)
+    DEBUG_wasm_begin_section(&debug, WASMSection_Data, buf);
+    push_u8(buf, WASMSection_Data);
+    smm data_section_start = buf->curr_used;
+    push_u32(buf, 0); // reserve space for the size
+    push_leb128_u32(buf, 1); // num data segments
+    
+    // Segment 0 - rdata + data arenas
+    // TODO(Alexander): there probably isn't much point in separating these two
+    // since there is no memory overwrite protection supported.
+    push_u8(buf, 0); // active memory 0
+    push_u8(buf, 0x41); // i32.const
+    push_leb128_s32(buf, 0); // memory offset (expr)
+    push_u8(buf, 0x0B); // end
+    u32 memory_size = (u32) (arena_total_used(&data_packer->rdata_arena) +
+                             arena_total_used(&data_packer->data_arena));
+    push_leb128_u32(buf, memory_size); // size of memory
+    u8* dest = buf->data + buf->curr_used;
+    pln("used = %", f_u64_HEX(data_packer->data_arena.current_block->base));
+    u32 copied_size = (u32) copy_memory_block(dest, data_packer->rdata_arena.current_block);
+    dest = buf->data + buf->curr_used + copied_size;
+    copied_size += (u32) copy_memory_block(dest, data_packer->data_arena.current_block);
+    assert(memory_size == copied_size);
+    buf->curr_used += memory_size;
+    
+    
+    wasm_set_vec_size(buf, data_section_start);
+    
     
     DEBUG_wasm_end(&debug, buf);
 }

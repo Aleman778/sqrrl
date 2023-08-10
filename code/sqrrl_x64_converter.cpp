@@ -1993,9 +1993,14 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_WRAP_I64: {
+            Bytecode_Operand first = bc_binary_first(insn);
+            if (first.kind == BytecodeOperand_register) {
+                Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
+                x64->virtual_registers[first.register_index] = src;
+                
+            }
             // noop
         } break;
-        
         
         case BC_EXTEND_U8: {
             Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
@@ -2678,7 +2683,7 @@ x64_lea(Buffer* buf, s64 r1, s64 r2, s64 d2, s64 rip) {
     
     if (r2 == X64_RIP) {
         push_u8(buf, (u8) (r1&7)<<3 | (u8) X64_RBP);
-        push_u32(buf, (u32) (d2 - (rip + 4)));
+        push_u32(buf, (u32) (d2 - ((s64) (buf->data + buf->curr_used) + 4)));
     } else {
         x64_modrm(buf, IC_STK, d2, r1&7, r2, rip);
     }

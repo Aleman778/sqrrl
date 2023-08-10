@@ -106,7 +106,13 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 result = push_bytecode_stack_t(bc, string);
                 
                 // Assign the 
-                add_mov_insn(bc, t_s64, result, str_data);
+                
+                Bytecode_Binary* store_data = add_insn_t(bc, BC_ADDR_OF, Binary);
+                store_data->type = bc_pointer_type(bc);
+                store_data->first = add_bytecode_register(bc);
+                store_data->second = str_data;
+                add_mov_insn(bc, t_s64, result, store_data->first);
+                drop_bytecode_register(bc, store_data->first.register_index);
                 
                 Bytecode_Binary* store_count = add_insn_t(bc, BC_MOV, Binary);
                 store_count->type = BytecodeType_i64;
@@ -430,6 +436,13 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                     Struct_Field_Info info = get_field_info(&type->Struct_Like, ident);
                     result.memory_offset += (s32) info.offset;
                 } break;
+                
+                case TypeKind_Basic: {
+                    assert(type->Basic.kind == Basic_string && "unsupported type");
+                    if (ident == Sym_count) {
+                        result.memory_offset += 8;
+                    }
+                } break;
             }
         } break;
         
@@ -481,7 +494,7 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
                 map_put(bc->locals, ident, dest);
                 
                 if (src.kind) {
-                    add_mov_insn(bc, type, dest, src);
+                    convert_assign_to_bytecode(bc, type, dest, src, true);
                 }
             }
         } break;

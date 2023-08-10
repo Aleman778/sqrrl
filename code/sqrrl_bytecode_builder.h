@@ -25,6 +25,11 @@ struct Bytecode_Builder {
 };
 
 Bytecode_Type
+bc_pointer_type(Bytecode_Builder* bc) {
+    return (bc->pointer_type != BytecodeType_void) ? bc->pointer_type : BytecodeType_i64;
+}
+
+Bytecode_Type
 to_bytecode_type(Bytecode_Builder* bc, Type* type) {
     switch (type->kind) {
         case TypeKind_Basic: {

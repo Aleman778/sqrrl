@@ -2639,7 +2639,7 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool is_rhs_value
                 lossy = (lhs->Basic.flags & BasicFlag_String) == 0;
                 
             } else if (rhs->Basic.kind == Basic_cstring) {
-                lossy = rhs->Basic.kind != Basic_cstring;
+                lossy = lhs->Basic.kind != Basic_cstring;
             }
             
             

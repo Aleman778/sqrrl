@@ -48,9 +48,12 @@ to_bytecode_type(Bytecode_Builder* bc, Type* type) {
                 case Basic_s64: 
                 case Basic_u64: 
                 case Basic_smm: 
-                case Basic_umm: 
+                case Basic_umm: return BytecodeType_i64;
+                
                 case Basic_string:
-                case Basic_cstring:  return BytecodeType_i64;
+                case Basic_cstring: {
+                    return (bc->pointer_type != BytecodeType_void) ? bc->pointer_type : BytecodeType_i64;
+                } break;
                 
                 case Basic_f32: return BytecodeType_f32;
                 case Basic_f64: return BytecodeType_f64;

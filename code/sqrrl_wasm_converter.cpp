@@ -156,14 +156,23 @@ wasm_push_addr_of(WASM_Assembler* wasm, Buffer* buf, Bytecode_Operand op, Byteco
         type = BytecodeType_i32;
     }
     
-    push_u8(buf, 0x23); // global.get
-    push_leb128_u32(buf, 0);
-    if (type == BytecodeType_i64) {
-        push_u8(buf, 0xAD); // i64.extend_i32_u
+    if (op.kind == BytecodeOperand_stack) {
+        push_u8(buf, 0x23); // global.get
+        push_leb128_u32(buf, 0);
+        if (type == BytecodeType_i64) {
+            push_u8(buf, 0xAD); // i64.extend_i32_u
+        }
+        push_u8(buf, 0x41 + type - 1); // i32.const
+        push_leb128_s32(buf, wasm->stack_offsets[op.stack_index] + op.memory_offset);
+        push_u8(buf, wasm_binary_opcodes[type - 1]); // i32.add
+        
+    } else if (op.kind == BytecodeOperand_memory) {
+        push_u8(buf, 0x41 + type - 1); // i32.const
+        push_leb128_s32(buf, op.memory_offset);
+        
+    } else {
+        assert(0 && "ADDR_OF: invalid right-hand size argument");
     }
-    push_u8(buf, 0x41 + type - 1); // i32.const
-    push_leb128_s32(buf, wasm->stack_offsets[op.stack_index] + op.memory_offset);
-    push_u8(buf, wasm_binary_opcodes[type - 1]); // i32.add
 }
 
 int
@@ -267,7 +276,7 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
         } break;
         
         case BC_ADDR_OF: {
-            wasm_push_addr_of(wasm, buf, bc_unary_first(insn), insn->type);
+            wasm_push_addr_of(wasm, buf, bc_binary_second(insn), insn->type);
         } break;
         
         case BC_ADD:
@@ -734,7 +743,6 @@ convert_to_wasm_module(Bytecode* bc, Data_Packer* data_packer, s64 stk_usage, Bu
                              arena_total_used(&data_packer->data_arena));
     push_leb128_u32(buf, memory_size); // size of memory
     u8* dest = buf->data + buf->curr_used;
-    pln("used = %", f_u64_HEX(data_packer->data_arena.current_block->base));
     u32 copied_size = (u32) copy_memory_block(dest, data_packer->rdata_arena.current_block);
     dest = buf->data + buf->curr_used + copied_size;
     copied_size += (u32) copy_memory_block(dest, data_packer->data_arena.current_block);

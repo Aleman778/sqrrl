@@ -29,7 +29,17 @@ _convert_assign_to_bytecode(Bytecode_Builder* bc, Type* type,
             unimplemented;
             //_ic_lea(bc, dest, src, comment);
         }
+        
     } else {
+        if (type->kind == TypeKind_Basic && type->Basic.kind == Basic_cstring && 
+            src.kind == BytecodeOperand_memory) {
+            Bytecode_Binary* load_ptr = add_insn_t(bc, BC_ADDR_OF, Binary);
+            load_ptr->type = bc_pointer_type(bc);
+            load_ptr->first = add_bytecode_register(bc);
+            load_ptr->second = src;
+            src = load_ptr->first;
+        }
+        
         if (!src.kind) {
             src.kind = BytecodeOperand_const;
             src.const_i64 = 0;
@@ -111,7 +121,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 store_data->type = bc_pointer_type(bc);
                 store_data->first = add_bytecode_register(bc);
                 store_data->second = str_data;
-                add_mov_insn(bc, t_s64, result, store_data->first);
+                add_mov_insn(bc, t_void_ptr, result, store_data->first);
                 drop_bytecode_register(bc, store_data->first.register_index);
                 
                 Bytecode_Binary* store_count = add_insn_t(bc, BC_MOV, Binary);
@@ -417,6 +427,8 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                     insn->second = src;
                     result = insn->first;
                     
+                } else if (t_src->Basic.kind == Basic_cstring) {
+                    // noop
                 } else {
                     unimplemented;
                 }

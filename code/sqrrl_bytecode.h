@@ -106,6 +106,8 @@ struct Bytecode_Function {
     array(u32)* register_lifetimes;
     array(Stack_Entry)* stack;
     
+    void* external_code;
+    
     u32 relative_ptr;
     
     u32 type_index;

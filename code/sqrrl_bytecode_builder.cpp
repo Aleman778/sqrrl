@@ -154,35 +154,44 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             Operator op = expr->Unary_Expr.op;
             Bytecode_Operand first = convert_expression_to_bytecode(bc, expr->Unary_Expr.first);
             
-            Bytecode_Operator opcode = BC_NOOP;
-            switch (op) {
-                case Op_Negate:  opcode = BC_NEG; break;
-                //case Op_Logical_Not: opcode = BC_NOT; break;
-                case Op_Bitwise_Not: opcode = BC_NOT; break;
-                case Op_Address_Of: opcode = BC_ADDR_OF; break;
-                case Op_Dereference: opcode = BC_DEREF; break;
-                case Op_Pre_Increment: opcode = BC_INC; break;
-                case Op_Pre_Decrement: opcode = BC_DEC; break;
-                
-                case Op_Post_Increment: {
-                    result = add_bytecode_register(bc);
-                    add_mov_insn(bc, type, result, first);
-                    opcode = BC_INC;
-                } break;
-                
-                case Op_Post_Decrement: {
-                    result = add_bytecode_register(bc);
-                    add_mov_insn(bc, type, result, first);
-                    opcode = BC_DEC;
-                } break;
-            }
             
-            Bytecode_Unary* insn = add_insn_t(bc, opcode, Unary);
-            insn->type  = to_bytecode_type(bc, type);
-            insn->first = first;
-            
-            if (!result.kind) {
+            if (op == Op_Address_Of) {
+                Bytecode_Binary* insn = add_insn_t(bc, BC_ADDR_OF, Binary);
+                insn->type  = to_bytecode_type(bc, type);
+                insn->first = add_bytecode_register(bc);
+                insn->second = first;
                 result = insn->first;
+                
+            } else {
+                Bytecode_Operator opcode = BC_NOOP;
+                switch (op) {
+                    case Op_Negate:  opcode = BC_NEG; break;
+                    //case Op_Logical_Not: opcode = BC_NOT; break;
+                    case Op_Bitwise_Not: opcode = BC_NOT; break;
+                    case Op_Dereference: opcode = BC_DEREF; break;
+                    case Op_Pre_Increment: opcode = BC_INC; break;
+                    case Op_Pre_Decrement: opcode = BC_DEC; break;
+                    
+                    case Op_Post_Increment: {
+                        result = add_bytecode_register(bc);
+                        add_mov_insn(bc, type, result, first);
+                        opcode = BC_INC;
+                    } break;
+                    
+                    case Op_Post_Decrement: {
+                        result = add_bytecode_register(bc);
+                        add_mov_insn(bc, type, result, first);
+                        opcode = BC_DEC;
+                    } break;
+                }
+                
+                Bytecode_Unary* insn = add_insn_t(bc, opcode, Unary);
+                insn->type  = to_bytecode_type(bc, type);
+                insn->first = first;
+                
+                if (!result.kind) {
+                    result = insn->first;
+                }
             }
         } break;
         
@@ -630,27 +639,27 @@ convert_function_to_bytecode(Bytecode_Builder* bc, Compilation_Unit* cu,
     assert(cu->ast->type->kind == TypeKind_Function);
     assert(cu->ast->kind == Ast_Decl_Stmt);
     
-    // TODO: handle extern functions here
-    if (!cu->ast->Decl_Stmt.stmt) {
-        return 0;
-    }
-    
     Type* type = cu->ast->type;
     
-    
+    // Build the function
     Bytecode_Function* func = begin_bytecode_function(bc, type);
-    if (is_main) {
-        bc->bytecode.entry_func_index = func->type_index;
+    if (is_valid_ast(cu->ast->Decl_Stmt.stmt)) {
+        if (is_main) {
+            bc->bytecode.entry_func_index = func->type_index;
+        }
+        
+        if (insert_debug_break) {
+            add_insn(bc, BC_DEBUG_BREAK);
+        }
+        
+        convert_statement_to_bytecode(bc, cu->ast->Decl_Stmt.stmt, 0, 0);
+    } else {
+        func->external_code = type->Function.intrinsic;
     }
-    
-    if (insert_debug_break) {
-        add_insn(bc, BC_DEBUG_BREAK);
-    }
-    
-    convert_statement_to_bytecode(bc, cu->ast->Decl_Stmt.stmt, 0, 0);
-    
     end_bytecode_function(bc);
     
+    // Update function lifetimes
+    // TODO(Alexander): maybe this doesn't need to be done, if we make sure to drop registers manually
     int insn_index = 0;
     Bytecode_Instruction* it = iter_bytecode_instructions(func, 0);
     while (it->kind) {
@@ -677,10 +686,6 @@ convert_function_to_bytecode(Bytecode_Builder* bc, Compilation_Unit* cu,
         
         insn_index++;
         it = iter_bytecode_instructions(func, it);
-    }
-    
-    for (int i = 0; i < (int) array_count(func->register_lifetimes); i++) {
-        pln("r% = %", f_int(i), f_int(func->register_lifetimes[i]));
     }
     
     return func;
@@ -933,18 +938,30 @@ string_builder_dump_bytecode(String_Builder* sb, Bytecode* bc, Bytecode_Function
             string_builder_push(sb, ", ");
         }
     }
-    string_builder_push(sb, ") {");
     
     int bb_index = 0;
     
     Bytecode_Instruction* curr = iter_bytecode_instructions(func, 0);
+    bool has_insns = curr->kind;
+    if (has_insns) {
+        string_builder_push(sb, ") {");
+    } else {
+        if (func->external_code) {
+            string_builder_push_format(sb, ") = %;", f_u64_HEX(func->external_code));
+        } else {
+            string_builder_push(sb, ");");
+        }
+    }
+    
     while (curr->kind) {
         string_builder_push(sb, "\n    ");
         string_builder_dump_bytecode_insn(sb, bc, curr);
         curr = iter_bytecode_instructions(func, curr);
     }
     
-    string_builder_push(sb, "\n}");
+    if (has_insns) {
+        string_builder_push(sb, "\n}");
+    }
 }
 
 void

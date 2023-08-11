@@ -161,6 +161,8 @@ inline void x64_string_op(X64_Assembler* x64, Buffer* buf,
 
 void x64_push_rel32(X64_Assembler* x64, Buffer* buf, Bytecode_Function* func, u32 label_index);
 
+void x64_mov_rax_u64(Buffer* buf, u64 disp);
+
 inline void
 x64_spill_register(X64_Assembler* x64, Buffer* buf, X64_Reg reg) {
     if (x64->registers[reg].is_allocated) {

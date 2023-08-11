@@ -541,7 +541,7 @@ DEBUG_wasm_end(WASM_Debug* debug, Buffer* buf) {
     
     string_builder_push_format(&sb, "\nWASM (% bytes):\n", f_umm(buf->curr_used));
     
-    string_builder_pad_string(&sb, "Signature: ", left_panel_width);
+    string_builder_pad_string(&sb, "signature: ", left_panel_width);
     print_bytes(&sb, buf->data, 8);
     
     if (debug->marker_count > 0) {
@@ -639,18 +639,26 @@ convert_to_wasm_module(Bytecode* bc, Data_Packer* data_packer, s64 stk_usage, Bu
     // Import section (2)
     DEBUG_wasm_begin_section(&debug, WASMSection_Import, buf);
     push_u8(buf, WASMSection_Import);
-    push_leb128_u32(buf, 1); // section size
-    push_leb128_u32(buf, 0); // num imports: empty, for now
-    // TODO: implement imports
+    smm import_section_start = buf->curr_used;
+    push_u32(buf, 0); // reserve space for the size
+    push_leb128_u32(buf, 1); // num imports
+    // TODO(Alexander): imports are hardcoded for now
+    wasm_push_string(buf, string_lit("basic"));
+    wasm_push_string(buf, string_lit("print"));
+    push_u8(buf, 0x00); // importdesc:typeidx
+    push_leb128_u32(buf, 0);
+    wasm_set_vec_size(buf, import_section_start);
     
     // Function section (3)
     DEBUG_wasm_begin_section(&debug, WASMSection_Function, buf);
     push_u8(buf, WASMSection_Function);
     smm function_section_start = buf->curr_used;
     push_u32(buf, 0); // reserve space for the size
-    push_leb128_u32(buf, (u32) array_count(bc->functions));
+    push_leb128_u32(buf, (u32) array_count(bc->functions) - 1);
     for (int i = 0; i < array_count(bc->functions); i++) {
-        push_leb128_u32(buf, i); // typeidx (funcidx[i] = typeidx[i])
+        if (bc->functions[i]->insn_count) {
+            push_leb128_u32(buf, i); // typeidx (funcidx[i] = typeidx[i])
+        }
     }
     wasm_set_vec_size(buf, function_section_start);
     
@@ -678,24 +686,35 @@ convert_to_wasm_module(Bytecode* bc, Data_Packer* data_packer, s64 stk_usage, Bu
     // Export section (7)
     DEBUG_wasm_begin_section(&debug, WASMSection_Export, buf);
     push_u8(buf, WASMSection_Export);
-    push_leb128_u32(buf, 14); // section size
-    push_leb128_u32(buf, 1); // number of exports
+    smm export_section_start = buf->curr_used;
+    push_u32(buf, 0); // reserve space for the size
+    push_leb128_u32(buf, 2); // number of exports
     
     // - export[0] (for funcidx 1)
-    wasm_push_string(buf, string_lit("helloworld")); // name of export
+    wasm_push_string(buf, string_lit("main")); // name of export
     push_u8(buf, 0x00); // 0x00 = funcidx
     push_leb128_u32(buf, bc->entry_func_index); // funcidx of entrypoint
+    
+    // - export[1] (for memidx 0)
+    wasm_push_string(buf, string_lit("memory")); // name of export
+    push_u8(buf, 0x02); // 0x00 = memidx
+    push_leb128_u32(buf, 0); // main memidx
+    wasm_set_vec_size(buf, export_section_start);
     
     // Code section (10)
     DEBUG_wasm_begin_section(&debug, WASMSection_Code, buf);
     push_u8(buf, WASMSection_Code);
     smm code_section_start = buf->curr_used;
     push_u32(buf, 0); // reserve space for the size
-    push_leb128_u32(buf, (u32) array_count(bc->functions));
+    push_leb128_u32(buf, (u32) array_count(bc->functions) - 1);
     
     WASM_Assembler wasm = {};
     
     for_array_v(bc->functions, func, _2) {
+        // TODO(Alexander): we need a better way to tell what function is imported!
+        if (!func->first_insn) {
+            continue;
+        }
         
         smm function_start = buf->curr_used;
         push_u32(buf, 0); // reserve space for size

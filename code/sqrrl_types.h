@@ -279,7 +279,7 @@ convert_value_type_to_format_type(Value_Type type) {
 }
 
 void
-string_builder_push(String_Builder* sb, Type* type) {
+string_builder_push(String_Builder* sb, Type* type, bool multiline=false) {
     if (!type) {
         string_builder_push(sb, "null");
         return;
@@ -332,7 +332,7 @@ string_builder_push(String_Builder* sb, Type* type) {
         
         case TypeKind_Function: {
             string_builder_push(sb, type->Function.return_type);
-            string_builder_push(sb, "\n");
+            if (multiline) string_builder_push(sb, "\n");
             if (type->Function.ident > 0) {
                 string_builder_push(sb, vars_load_string(type->Function.ident));
             }

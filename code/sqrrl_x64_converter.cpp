@@ -1578,6 +1578,10 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     
     assert(x64->bytecode && x64->functions && x64->data_packer && "X64 assembler is not setup correctly");
     
+    if (!func->first_insn) {
+        return;
+    }
+    
     x64->curr_function = &x64->functions[func->type_index];
     x64->curr_function->code = buf->data + buf->curr_used;
     if (!x64->curr_function->labels) {
@@ -1639,6 +1643,7 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     
     // Setup local stack (excluding arguments and return values)
     int stack_locals = x64->curr_function->stack_args;
+    pln("start locals = %", f_u64_HEX(stack_locals));;
     for (int i = func->arg_count + func->ret_count; i < array_count(func->stack); i++) {
         Stack_Entry stk = func->stack[i];
         stack_locals = (s32) align_forward(stack_locals, stk.align);
@@ -1649,13 +1654,15 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     
     // TODO(Alexander): windows calling convention setup argument stack to be above our stack frame
     s32 stack_caller_args = x64->curr_function->stack;
+    pln("locals = %", f_u64_HEX(x64->curr_function->stack_locals));
+    pln("stack_caller_args = %", f_u64_HEX(stack_caller_args));
     if (func->ret_count == 1 && func->stack[func->arg_count].size > 8) {
-        x64->stack[func->arg_count] = stack_caller_args;
         stack_caller_args += 8;
+        x64->stack[func->arg_count] = stack_caller_args;
     }
     for (int i = 0; i < (int) func->arg_count; i++) {
-        x64->stack[i] = stack_caller_args;
         stack_caller_args += 8;
+        x64->stack[i] = stack_caller_args;
     }
     
     // Prologue
@@ -1689,17 +1696,21 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
         x64->curr_bytecode_insn_index++;
     }
     
-    // Compute stack size and align by 16-bytes (excluding 8 bytes for return address)
-    s32 stack_size = x64->curr_function->stack_locals + 8;
-    stack_size = (s32) align_forward(stack_size, 16) - 8;
-    *prologue_stack_size = stack_size;
-    x64->curr_function->stack = stack_size + 8;
+    if (x64->curr_function->stack == 0) {
+        // Compute stack size and align by 16-bytes (excluding 8 bytes for return address)
+        s32 stack_size = (x64->curr_function->stack_args +
+                          x64->curr_function->stack_locals + 8);
+        stack_size = (s32) align_forward(stack_size, 16) - 8;
+        x64->curr_function->stack = stack_size + 8;
+    }
     
     // Epilogue
     x64->curr_function->labels[0] = buf->data + buf->curr_used;
     x64_rex(buf, REX_FLAG_64_BIT); // add rsp, stack_usage
     push_u8(buf, 0x81);
     x64_modrm(buf, IC_REG | IC_S64, 0, 0, X64_RSP, 0);
+    s32 stack_size = x64->curr_function->stack;
+    *prologue_stack_size = stack_size;
     push_u32(buf, stack_size);
     push_u8(buf, 0xC3); // RET near
 }
@@ -1791,10 +1802,6 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                     x64_spill_register(x64, buf, X64_RAX);
                     x64->virtual_registers[return_virtual_register] = result;
                 }
-            } else {
-                if (target->ret_count > 0) {
-                    x64_alloc_register(x64, buf, return_virtual_register, X64_RAX, return_rt);
-                }
             }
             
             // NOTE(Alexander): make sure to allocate space for HOME registers even if they aren't used!
@@ -1803,23 +1810,27 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             stack_args = max(stack_args, 4*8); 
             x64->curr_function->stack_args = stack_args;
             
-            // Direct function call
-            // E8 cd 	CALL rel32 	D
-            push_u8(buf, 0xE8);
-            push_u32(buf, (u32) (x64->functions[call->func_index].code - 
-                                 (buf->data + buf->curr_used + 4)));
+            if (target->external_code) {
+                
+                // Indirect function call from pointer
+                x64_spill_register(x64, buf, X64_RAX);
+                x64_mov_rax_u64(buf, (u64) target->external_code);
+                
+                // FF /2 	CALL r/m64 	M 	
+                push_u8(buf, 0xFF);
+                x64_modrm(buf, IC_REG + IC_S64, 0, 2, X64_RAX, rip);
+            } else {
+                // Direct function call
+                // E8 cd 	CALL rel32 	D
+                push_u8(buf, 0xE8);
+                push_u32(buf, (u32) (x64->functions[call->func_index].code - 
+                                     (buf->data + buf->curr_used + 4)));
+                
+            }
             
-            //} else {
-            
-            // Indirect function call from pointer
-            //if (call->ptr.type & IC_DISP) {
-            //x64_mov_rax_u64(ic, (u64) call->ptr.disp);
-            //}
-            
-            // FF /2 	CALL r/m64 	M 	
-            //push_u8(buf, 0xFF);
-            //x64_modrm(ic, IC_REG + IC_S64, 0, 2, X64_RAX, rip);
-            //}
+            if (first_arg_index == 0 && target->ret_count > 0) {
+                x64_alloc_register(x64, buf, return_virtual_register, X64_RAX, return_rt);
+            }
         } break;
         
         case BC_RETURN: {

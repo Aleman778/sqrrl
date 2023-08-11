@@ -258,8 +258,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     if (type_check_ast_file(&tcx, &ast_file, &interp) != 0) {
         for_array(ast_file.units, cu, _) {
-            if (flag_print_ast || (cu->ast && cu->ast->kind == Ast_Decl_Stmt && 
-                                   cu->ast->type->kind == TypeKind_Function &&
+            if (!(cu->ast && cu->ast->kind == Ast_Decl_Stmt)) continue;
+            
+            if (flag_print_ast || (cu->ast->type->kind == TypeKind_Function &&
                                    cu->ast->type->Function.dump_ast)) {
                 print_ast(cu->ast, &tokenizer);
             }
@@ -270,8 +271,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
     for_array(ast_file.units, cu, _) {
-        if (flag_print_ast || (cu->ast && cu->ast->kind == Ast_Decl_Stmt && 
-                               cu->ast->type->kind == TypeKind_Function &&
+        if (!(cu->ast && cu->ast->kind == Ast_Decl_Stmt)) continue;
+        
+        if (flag_print_ast || (cu->ast->type->kind == TypeKind_Function &&
                                cu->ast->type->Function.dump_ast)) {
             print_ast(cu->ast, &tokenizer);
         }
@@ -481,6 +483,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 // NOTE(Alexander): Run machine code
                 asm_make_executable(buf.data, buf.curr_used);
                 //DEBUG_add_debug_symbols(&ast_file, (u8*) asm_buffer);
+                
+                fflush(stdout);
+                fflush(stderr);
                 
                 if (working_directory.data) {
                     cstring dir = string_to_cstring(working_directory);

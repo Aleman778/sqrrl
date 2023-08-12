@@ -86,6 +86,9 @@ struct X64_Assembler {
     X64_Register registers[X64_REG_COUNT];
     Ic_Arg* virtual_registers;
     
+    s64 read_write_data_offset;
+    s64 read_only_data_offset;
+    
     bool use_absolute_ptrs;
 };
 

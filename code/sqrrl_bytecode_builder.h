@@ -65,6 +65,8 @@ to_bytecode_type(Bytecode_Builder* bc, Type* type) {
         case TypeKind_Struct:
         case TypeKind_Union: // TODO(Alexander): should structs/ unions be a different type than 64-bit int?
         case TypeKind_Type:
+        case TypeKind_Array:
+        case TypeKind_Function:
         case TypeKind_Pointer: {
             return (bc->pointer_type != BytecodeType_void) ? bc->pointer_type : BytecodeType_i64;
         } break;
@@ -81,6 +83,10 @@ to_bytecode_type(Bytecode_Builder* bc, Type* type) {
     return BytecodeType_i32;
 }
 
+void 
+add_import_function(Bytecode_Builder* bc) {
+    
+}
 
 Bytecode_Function* begin_bytecode_function(Bytecode_Builder* bc, Type* type);
 void end_bytecode_function(Bytecode_Builder* bc);
@@ -163,6 +169,7 @@ push_bytecode_memory(Bytecode_Builder* bc, Bytecode_Memory_Kind kind, smm size, 
                            &bc->data_packer->data_arena);
     void* data = arena_push_size(arena, size, align);
     u32 offset = (s32) arena_relative_pointer(arena, data);
+    pln("bc data: %", f_u64_HEX(offset));
     if (init) {
         memcpy(data, init, size);
     }

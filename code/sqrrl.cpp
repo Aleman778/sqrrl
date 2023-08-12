@@ -25,23 +25,11 @@
 typedef int asm_main(void);
 typedef f32 asm_f32_main(void);
 
-enum Backend_Type {
-    Backend_X64,
-    Backend_WASM,
-    
-    Backend_Count,
-};
-
-enum Compiler_Task {
-    CompilerTask_Run,
-    CompilerTask_Build,
-};
-
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm), bool is_debugger_present) {
     
-    Compiler_Task compiler_task = CompilerTask_Run;
+    Compiler_Task compiler_task = CompilerTask_Build;//CompilerTask_Run;
     Backend_Type target_backend = Backend_X64;
     
     {
@@ -254,6 +242,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     // Typecheck the AST
     Interp interp = {};
     Type_Context tcx = {};
+    tcx.target_backend = target_backend;
     tcx.data_packer = &data_packer;
     
     if (type_check_ast_file(&tcx, &ast_file, &interp) != 0) {
@@ -304,71 +293,27 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         bytecode_builder.pointer_type = BytecodeType_i32;
     }
     
-#if 0
-    // Start by pushing address lookup table for external libs
+    // First create functions imported from libraries
     for_map(tcx.import_table.libs, it) {
-        
-        Exported_Data library = {};
         for_array(it->value.functions, function, function_index) {
-            if (function->type) {
-                
-                //pln("LIB(%): %", f_var(it->key), f_type(function->type));
-                
-                assert(function->type->kind == TypeKind_Function && 
-                       function->type->Function.unit);
-                
-                Compilation_Unit* cu = function->type->Function.unit;
-                
-                Ic_Basic_Block* bb_begin = ic_basic_block();
-                ic_label(cu, bb_begin);
-                
-                Exported_Data import_fn;
-                Ic_Data_Area data_area;
-                if (it->value.resolve_at_compile_time) {
-                    // Library function pointer is replaced by the loader
-                    import_fn = export_size(&data_packer, Read_Data_Section, 8, 8);
-                    data_area = IcDataArea_Read_Only;
-                } else {
-                    if (!library.data) {
-                        library = export_struct(&data_packer, Dynamic_Library, Data_Section);
-                    }
-                    Dynamic_Library* dynamic_library = (Dynamic_Library*) library.data;
-                    dynamic_library->count++;
-                    
-                    
-                    // Library function pointer is replaced by user at runtime
-                    import_fn = export_struct(&data_packer, Dynamic_Function, Data_Section);
-                    data_area = IcDataArea_Globals;
-                    
-                    if (!map_key_exists(x64_globals, it->key)) {
-                        push_relocation(&data_packer, library, import_fn);
-                        Ic_Arg ptr = ic_rip_disp32(cu, IC_U64, data_area, library.data, library.relative_ptr);
-                        map_put(x64_globals, it->key, ptr);
-                    }
-                    
-                    Dynamic_Function* dynamic_fn = (Dynamic_Function*) import_fn.data;
-                    Exported_Data fn_name = export_string(&data_packer, function->name);
-                    dynamic_fn->name = fn_name.str;
-                    push_relocation(&data_packer, add_offset(import_fn, 8), fn_name);
-                }
-                
-                // Jump to library function
-                Intermediate_Code* ic_jump = ic_add(cu, IC_JMP_INDIRECT);
-                //pln("-> %", f_var(cu->ident));
-                ic_jump->src0 = ic_rip_disp32(cu, IC_U64, data_area, import_fn.data, import_fn.relative_ptr);
-                cu->external_address = ic_jump->src0.data.disp;
+            Type* type = function->type;
+            assert(type && type->kind == TypeKind_Function);
+            
+            Bytecode_Function* func = begin_bytecode_function(&bytecode_builder, type);
+            func->is_imported = true;
+            func->code_ptr = type->Function.external_address;
+            if (type->Function.unit) {
+                type->Function.unit->bc_func = func;
             }
-        }
-        
-        if (it->value.resolve_at_compile_time) {
-            export_size(&data_packer, Read_Data_Section, 8, 8); // null entry
+            end_bytecode_function(&bytecode_builder);
         }
     }
-#endif
     
-    
+    // Build the bytecode
     Compilation_Unit* main_cu = 0;
     for_array(ast_file.units, cu, _2) {
+        if (cu->bc_func) continue;
+        
         cu->data_packer = &data_packer;
         cu->globals = x64_globals;
         if (cu->ast->kind == Ast_Decl_Stmt) {
@@ -388,24 +333,20 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     assert(main_cu && "no main function"); // TODO: turn this into an actual error
     
+    // Print the bytecode
     String_Builder sb = {};
     for_array(ast_file.units, cu, _3) {
         if (flag_print_bc || (cu->ast && cu->ast->type && 
                               cu->ast->type->kind == TypeKind_Function &&
                               cu->ast->type->Function.dump_bytecode)) {
             string_builder_dump_bytecode(&sb, &bytecode_builder.bytecode, cu->bc_func);
-            if (cu->bc_func) {
-                string_builder_push(&sb, "\n");
-            }
         }
     }
-    //
     if (sb.data) {
         string s = string_builder_to_string_nocopy(&sb);
         pln("\nBytecode:\n%", f_string(s));
         string_builder_free(&sb);
     }
-    
     
     switch (target_backend) {
         case Backend_X64: {
@@ -413,54 +354,15 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             if (main_func_return_type && main_func_return_type->kind == TypeKind_Function) {
                 main_func_return_type = main_func_return_type->Function.return_type;
             }
-            // TODO: find the main function
-            u8* asm_buffer_main = (u8*) asm_buffer;
             
             Buffer buf = {};
             buf.data = (u8*) asm_buffer;
             buf.size = asm_size;
             
-            X64_Assembler x64 = {};
-            x64.bytecode = &bytecode_builder.bytecode;
-            x64.data_packer = &data_packer;
-            x64.use_absolute_ptrs = compiler_task == CompilerTask_Run;
-            x64.functions = (X64_Function*) calloc(array_count(bytecode_builder.bytecode.functions), 
-                                                   sizeof(X64_Function));
-            
-            for_array(ast_file.units, cu, _4) {
-                if (cu->bc_func) {
-                    if (cu == main_cu) {
-                        asm_buffer_main = (u8*) asm_buffer + buf.curr_used;
-                    }
-                    
-                    convert_bytecode_function_to_x64_machine_code(&x64, cu->bc_func, &buf);
-                }
-            }
-            
-            smm used_before = buf.curr_used;
-            
-            // Second pass is needed to get correct stack and relative pointers
-            buf.curr_used = 0;
-            for_array(ast_file.units, cu, _5) {
-                if (cu->bc_func) {
-                    if (cu == main_cu) {
-                        asm_buffer_main = (u8*) asm_buffer + buf.curr_used;
-                    }
-                    
-                    convert_bytecode_function_to_x64_machine_code(&x64, cu->bc_func, &buf);
-                }
-            }
-            
-            assert(used_before == buf.curr_used && "code is not the same");
-            
-#if 0
-            for_array_v(x64.relocations, reloc, _5) {
-                assert(reloc.target);
-                s32 rel_ptr = (s32) (*reloc.target - ((u8*) reloc.from_ptr + 4));
-                pln("% - % = %", f_u64_HEX(*reloc.target), f_u64_HEX((u8*) reloc.from_ptr + 4), f_int(rel_ptr));
-                *reloc.from_ptr = rel_ptr;
-            }
-#endif
+            u8* asm_buffer_main = convert_bytecode_to_x64_machine_code(&bytecode_builder.bytecode, 
+                                                                       &buf, &data_packer, 
+                                                                       &tcx.import_table, 
+                                                                       compiler_task);
             
 #if 1
             pln("\nX64 Machine Code (% bytes):", f_umm(buf.curr_used));
@@ -506,6 +408,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     func();
                     pln("\nJIT exited with code: 0");
                 }
+
                 
             } else if (compiler_task == CompilerTask_Build) {
                 

@@ -641,12 +641,23 @@ convert_to_wasm_module(Bytecode* bc, Data_Packer* data_packer, s64 stk_usage, Bu
     push_u8(buf, WASMSection_Import);
     smm import_section_start = buf->curr_used;
     push_u32(buf, 0); // reserve space for the size
-    push_leb128_u32(buf, 1); // num imports
-    // TODO(Alexander): imports are hardcoded for now
-    wasm_push_string(buf, string_lit("basic"));
-    wasm_push_string(buf, string_lit("print"));
-    push_u8(buf, 0x00); // importdesc:typeidx
-    push_leb128_u32(buf, 0);
+    
+    // Calculate number of imports
+    u32 import_function_count = 0;
+    for (int i = 0; i < array_count(bc->functions); i++) {
+        if (bc->functions[i]->is_imported) import_function_count++;
+    }
+    push_leb128_u32(buf, import_function_count); // num imports
+    
+    for (int i = 0; i < array_count(bc->functions); i++) {
+        if (!bc->functions[i]->is_imported) continue;
+        
+        // TODO(Alexander): imports are hardcoded for now
+        wasm_push_string(buf, string_lit("basic"));
+        wasm_push_string(buf, string_lit("print"));
+        push_u8(buf, 0x00); // importdesc:typeidx
+        push_leb128_u32(buf, i);
+    }
     wasm_set_vec_size(buf, import_section_start);
     
     // Function section (3)
@@ -654,10 +665,17 @@ convert_to_wasm_module(Bytecode* bc, Data_Packer* data_packer, s64 stk_usage, Bu
     push_u8(buf, WASMSection_Function);
     smm function_section_start = buf->curr_used;
     push_u32(buf, 0); // reserve space for the size
-    push_leb128_u32(buf, (u32) array_count(bc->functions) - 1);
+    
+    // Count the number of functions that needs to be implemented
+    u32 actual_function_count = 0;
     for (int i = 0; i < array_count(bc->functions); i++) {
-        if (bc->functions[i]->insn_count) {
-            push_leb128_u32(buf, i); // typeidx (funcidx[i] = typeidx[i])
+        if (!bc->functions[i]->is_imported) actual_function_count++;
+    }
+    push_leb128_u32(buf, (u32) array_count(bc->functions) - 1);
+    
+    for (int i = 0; i < array_count(bc->functions); i++) {
+        if (!bc->functions[i]->is_imported) {
+            push_leb128_u32(buf, i); // typeidx (NOTE: assumes funcidx = typeidx)
         }
     }
     wasm_set_vec_size(buf, function_section_start);
@@ -712,7 +730,7 @@ convert_to_wasm_module(Bytecode* bc, Data_Packer* data_packer, s64 stk_usage, Bu
     
     for_array_v(bc->functions, func, _2) {
         // TODO(Alexander): we need a better way to tell what function is imported!
-        if (!func->first_insn) {
+        if (func->is_imported) {
             continue;
         }
         

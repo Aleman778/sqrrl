@@ -1,12 +1,22 @@
 
 struct Bytecode_Function;
 
+struct Bytecode_Import;
+
 struct Bytecode {
+    array(Bytecode_Import)* imports;
     
     array(Bytecode_Function*)* functions;
     array(string_id)* function_names;
     
     int entry_func_index;
+};
+
+struct Bytecode_Import {
+    string_id module;
+    string_id function;
+    
+    u32 rdata_offset;
 };
 
 #define DEF_BYTECODE_OPERATORS \
@@ -70,7 +80,8 @@ OP(LT_U) \
 OP(LT_S) \
 OP(LE_U) \
 OP(LE_S) \
-OP(NEQ)
+OP(NEQ) \
+OP(RDTSC)
 
 
 enum Bytecode_Operator {
@@ -106,7 +117,10 @@ struct Bytecode_Function {
     array(u32)* register_lifetimes;
     array(Stack_Entry)* stack;
     
-    void* external_code;
+    union {
+        void* code_ptr;
+        string_id intrinsic_id;
+    };
     
     u32 relative_ptr;
     
@@ -119,6 +133,9 @@ struct Bytecode_Function {
     u32 ret_count;
     
     u32 first_insn; // relative pointer to first instruction
+    
+    bool is_imported;
+    bool is_intrinsic;
     
     // followed by Bytecode_Type, function arguments then return types and lastly instructions
 };

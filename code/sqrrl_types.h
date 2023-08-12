@@ -141,10 +141,12 @@ struct Type_Function {
     Type* return_type;
     Calling_Convention cconv;
     Compilation_Unit* unit;
-    Value (*interp_intrinsic)(Interp*, array(Interp_Value)*); // TODO(Alexander): temporary intrinsic definition
-    void* intrinsic; // TODO: intrinsic is a bad name, used as normal function pointer too
+    void* external_address;
     string_id ident;
     s32 first_default_arg_index;
+    
+    b32 is_imported;
+    b32 is_intrinsic;
     b32 is_variadic;
     b32 dump_bytecode;
     b32 dump_ast;
@@ -332,7 +334,11 @@ string_builder_push(String_Builder* sb, Type* type, bool multiline=false) {
         
         case TypeKind_Function: {
             string_builder_push(sb, type->Function.return_type);
-            if (multiline) string_builder_push(sb, "\n");
+            if (multiline) {
+                string_builder_push(sb, "\n");
+            } else {
+                string_builder_push(sb, " ");
+            }
             if (type->Function.ident > 0) {
                 string_builder_push(sb, vars_load_string(type->Function.ident));
             }

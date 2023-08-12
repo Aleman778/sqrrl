@@ -279,6 +279,20 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             assert(target_cu && target_cu->bc_func);
             Bytecode_Function* func = target_cu->bc_func;
             
+            if (func->is_intrinsic) {
+                switch (func->intrinsic_id) {
+                    case Sym_rdtsc: {
+                        Bytecode_Unary* intrin = add_insn_t(bc, BC_RDTSC, Unary);
+                        intrin->type = BytecodeType_i64;
+                        intrin->first = add_bytecode_register(bc);
+                        result = intrin->first;
+                    } break;
+                }
+                
+                return result;
+            }
+            
+            
             array(Bytecode_Operand)* arg_operands = 0;
             for_compound(expr->Call_Expr.args, arg) {
                 Bytecode_Operand op = convert_expression_to_bytecode(bc, arg->Argument.assign);
@@ -639,23 +653,24 @@ convert_function_to_bytecode(Bytecode_Builder* bc, Compilation_Unit* cu,
     assert(cu->ast->type->kind == TypeKind_Function);
     assert(cu->ast->kind == Ast_Decl_Stmt);
     
+    if (!is_valid_ast(cu->ast->Decl_Stmt.stmt)) {
+        return 0;
+    }
+    
     Type* type = cu->ast->type;
     
     // Build the function
     Bytecode_Function* func = begin_bytecode_function(bc, type);
-    if (is_valid_ast(cu->ast->Decl_Stmt.stmt)) {
-        if (is_main) {
-            bc->bytecode.entry_func_index = func->type_index;
-        }
-        
-        if (insert_debug_break) {
-            add_insn(bc, BC_DEBUG_BREAK);
-        }
-        
-        convert_statement_to_bytecode(bc, cu->ast->Decl_Stmt.stmt, 0, 0);
-    } else {
-        func->external_code = type->Function.intrinsic;
+    if (is_main) {
+        bc->bytecode.entry_func_index = func->type_index;
     }
+    
+    if (insert_debug_break) {
+        add_insn(bc, BC_DEBUG_BREAK);
+    }
+    
+    convert_statement_to_bytecode(bc, cu->ast->Decl_Stmt.stmt, 0, 0);
+    
     end_bytecode_function(bc);
     
     // Update function lifetimes
@@ -924,11 +939,21 @@ void
 string_builder_dump_bytecode(String_Builder* sb, Bytecode* bc, Bytecode_Function* func) {
     if (!func) return;
     
+    if (func->is_intrinsic || func->is_imported) {
+        return;
+    }
+    
+    if (func->is_imported) {
+        string_builder_push(sb, "import ");
+    }
+    
     Bytecode_Type* types = (Bytecode_Type*) (func + 1);
     if (func->ret_count == 1) {
         // TODO(Alexander): multiple returns
         string_builder_push(sb, bc_type_names[types[func->arg_count]]);
         string_builder_push(sb, " ");
+    } else {
+        string_builder_push(sb, "void ");
     }
     string_builder_dump_bytecode_function_name(sb, bc, func);
     string_builder_push(sb, "(");
@@ -941,27 +966,28 @@ string_builder_dump_bytecode(String_Builder* sb, Bytecode* bc, Bytecode_Function
     
     int bb_index = 0;
     
-    Bytecode_Instruction* curr = iter_bytecode_instructions(func, 0);
-    bool has_insns = curr->kind;
-    if (has_insns) {
-        string_builder_push(sb, ") {");
-    } else {
-        if (func->external_code) {
-            string_builder_push_format(sb, ") = %;", f_u64_HEX(func->external_code));
+    if (func->is_imported) {
+        if (func->code_ptr) {
+            string_builder_push_format(sb, ") = %;", f_u64_HEX(func->code_ptr));
         } else {
             string_builder_push(sb, ");");
         }
+    } else {
+        string_builder_push(sb, ") {");
     }
     
+    Bytecode_Instruction* curr = iter_bytecode_instructions(func, 0);
     while (curr->kind) {
         string_builder_push(sb, "\n    ");
         string_builder_dump_bytecode_insn(sb, bc, curr);
         curr = iter_bytecode_instructions(func, curr);
     }
     
-    if (has_insns) {
+    if (!func->is_imported) {
         string_builder_push(sb, "\n}");
     }
+    
+    string_builder_push(sb, "\n");
 }
 
 void

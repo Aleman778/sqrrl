@@ -373,8 +373,9 @@ interp_function_call(Interp* interp, Ast* args, Type* function_type) {
                 // TODO(Alexander): this is not supposed to ever be the case, maybe assert instead!
                 // NOTE(Alexander): what about FFI?
                 
-                if (type->Function.intrinsic) {
-                    result.value = type->Function.interp_intrinsic(interp, variadic_arguments);
+                if (type->Function.is_imported) {
+                    unimplemented;
+                    //result.value = type->Function.interp_intrinsic(interp, variadic_arguments);
                 } else {
                     interp_error(interp,
                                  string_print("`%` function has no definition and is no intrinsic",

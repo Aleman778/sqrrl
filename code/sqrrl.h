@@ -17,6 +17,20 @@ sqrrl_free(void* data) {
 #define STBDS_FREE(c, p) sqrrl_free(p)
 #endif
 
+
+enum Backend_Type {
+    Backend_X64,
+    Backend_WASM,
+    
+    Backend_Count,
+};
+
+enum Compiler_Task {
+    CompilerTask_Run,
+    CompilerTask_Build,
+};
+
+
 // TODO(alexander): this will in the future be replaced with our own implementation
 #define STB_DS_IMPLEMENTATION
 #include "stb_ds.h" // TODO(alexander): implement this on our own!

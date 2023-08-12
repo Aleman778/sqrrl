@@ -1453,6 +1453,107 @@ convert_procedure_to_intermediate_code(Compilation_Unit* cu, bool insert_debug_b
 }
 #endif
 
+u8*
+x64_compile_pass(X64_Assembler* x64, Buffer* buf, 
+                 Compiler_Task compiler_task) {
+    
+    Bytecode* bc = x64->bytecode;
+    u8* asm_buffer_main = buf->data;
+    
+    for_array_v(bc->functions, func, func_index) {
+        if (compiler_task == CompilerTask_Build) {
+            if (func_index < array_count(bc->imports)) {
+                s64 jump_src = bc->imports[func_index].rdata_offset;
+                
+                // Indirect jump to library function
+                push_u8(buf, 0xFF); // FF /4 	JMP r/m64 	M
+                x64_modrm(buf, IC_RIP_DISP32, jump_src, 4, 0, 0);
+            }
+        }
+        
+        if (bc->entry_func_index == func_index) {
+            asm_buffer_main = buf->data + buf->curr_used;
+        }
+        
+        convert_bytecode_function_to_x64_machine_code(x64, func, buf);
+    }
+    
+    return asm_buffer_main;
+}
+
+u8*
+convert_bytecode_to_x64_machine_code(Bytecode* bc, Buffer* buf, 
+                                     Data_Packer* data_packer,
+                                     Library_Import_Table* import_table,
+                                     Compiler_Task compiler_task) {
+    u8* asm_buffer_main = buf->data;
+    
+    X64_Assembler x64 = {};
+    x64.bytecode = bc;
+    x64.data_packer = data_packer;
+    x64.use_absolute_ptrs = compiler_task == CompilerTask_Run;
+    x64.functions = (X64_Function*) calloc(array_count(bc->functions), 
+                                           sizeof(X64_Function));
+    
+    if (compiler_task == CompilerTask_Build) {
+        // Start by pushing address lookup table for external libs
+        string_id module = 0;
+        if (array_count(bc->imports) > 0) {
+            module = bc->imports[0].module;
+        }
+        Exported_Data library = {};
+        for_array(bc->imports, import, func_index) {
+            if (import->module != module) {
+                export_size(data_packer, Read_Data_Section, 8, 8); // null entry
+            }
+            module = import->module;
+            
+            // Library function pointer is replaced by the loader
+            Exported_Data import_fn = export_size(data_packer, Read_Data_Section, 8, 8);
+            import->rdata_offset = import_fn.relative_ptr;
+        }
+    }
+    
+    // First pass
+    asm_buffer_main = x64_compile_pass(&x64, buf, compiler_task);
+    smm used_before = buf->curr_used;
+    
+    Memory_Arena build_arena = {};
+    PE_Executable pe;
+    if (compiler_task == CompilerTask_Build) {
+        // NOTE(Alexander): Build initial PE executable
+        pe = convert_to_pe_executable(&build_arena,
+                                      buf->data, (u32) buf->curr_used,
+                                      import_table,
+                                      data_packer,
+                                      asm_buffer_main);
+        s64 base_address = pe.text_section->virtual_address;
+        x64.read_only_data_offset = (s64) buf->data + pe.rdata_section->virtual_address - base_address;
+        x64.read_write_data_offset = (s64) buf->data + (pe.data_section->virtual_address - base_address + 
+                                                        pe.global_data_offset);
+    }
+    
+    
+    // Second pass is needed to get correct stack and relative pointers
+    buf->curr_used = 0;
+    asm_buffer_main = x64_compile_pass(&x64, buf, compiler_task);
+    assert(used_before == buf->curr_used && "code is not the same");
+    
+    if (compiler_task == CompilerTask_Build) {
+        // NOTE(Alexander): write the PE executable to file
+        File_Handle exe_file = DEBUG_open_file_for_writing("simple.exe");
+        write_pe_executable_to_file(exe_file, &pe);
+        DEBUG_close_file(exe_file);
+        pln("\nWrote executable: simple.exe");
+        
+        //Read_File_Result exe_data = DEBUG_read_entire_file("simple.exe");
+        //pe_dump_executable(create_string(exe_data.contents_size, (u8*) exe_data.contents));
+    }
+    
+    return asm_buffer_main;
+}
+
+
 Ic_Raw_Type
 convert_bytecode_type_to_x64(Bytecode_Type type) {
     switch (type) {
@@ -1559,9 +1660,17 @@ convert_bytecode_operand_to_x64(X64_Assembler* x64, Buffer* buf, Bytecode_Operan
             if (x64->use_absolute_ptrs) {
                 result.disp = (s64) op.memory_absolute;
             } else {
-                result.data.disp = op.memory_offset;
-                result.data.area = (op.memory_kind == BytecodeMemory_read_only) ? 
-                    IcDataArea_Read_Only : IcDataArea_Globals;
+                switch (op.memory_kind) {
+                    case BytecodeMemory_read_write: {
+                        result.disp = (s64) x64->read_write_data_offset + op.memory_offset;
+                    } break;
+                    
+                    case BytecodeMemory_read_only: {
+                        result.disp = (s64) x64->read_only_data_offset + op.memory_offset;
+                        pln("%", f_u64_HEX(buf->data));
+                        pln("%", f_u64_HEX(result.disp));
+                    } break;
+                }
             }
         } break;
         
@@ -1575,10 +1684,9 @@ convert_bytecode_operand_to_x64(X64_Assembler* x64, Buffer* buf, Bytecode_Operan
 
 void
 convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Function* func, Buffer* buf) {
-    
     assert(x64->bytecode && x64->functions && x64->data_packer && "X64 assembler is not setup correctly");
     
-    if (!func->first_insn) {
+    if (func->is_imported || func->is_intrinsic) {
         return;
     }
     
@@ -1648,14 +1756,14 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
         Stack_Entry stk = func->stack[i];
         stack_locals = (s32) align_forward(stack_locals, stk.align);
         x64->stack[i] = stack_locals;
-        stack_locals+= stk.size;
+        stack_locals += stk.size;
     }
     x64->curr_function->stack_locals = stack_locals;
     
     // TODO(Alexander): windows calling convention setup argument stack to be above our stack frame
     s32 stack_caller_args = x64->curr_function->stack;
     pln("locals = %", f_u64_HEX(x64->curr_function->stack_locals));
-    pln("stack_caller_args = %", f_u64_HEX(stack_caller_args));
+    pln("stack_caller_args = %\n", f_u64_HEX(stack_caller_args));
     if (func->ret_count == 1 && func->stack[func->arg_count].size > 8) {
         stack_caller_args += 8;
         x64->stack[func->arg_count] = stack_caller_args;
@@ -1769,13 +1877,13 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                                 arg.type, arg.reg, arg.disp, rip);
                     }
                 } else {
+                    pln("%", f_u64_HEX(local_arg_stack_usage));
                     x64_mov(buf, 
-                            IC_STK | arg.raw_type, X64_RSP, local_arg_stack_usage,
+                            IC_STK | arg.raw_type, X64_RSP, local_arg_stack_usage + i*8,
                             arg.type, arg.reg, arg.disp, rip);
                 }
-                
-                local_arg_stack_usage += 8;
             }
+            local_arg_stack_usage += target->arg_count*8;
             
             
             Ic_Raw_Type return_rt = 0;
@@ -1810,11 +1918,11 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             stack_args = max(stack_args, 4*8); 
             x64->curr_function->stack_args = stack_args;
             
-            if (target->external_code) {
+            if (target->is_imported) {
                 
                 // Indirect function call from pointer
                 x64_spill_register(x64, buf, X64_RAX);
-                x64_mov_rax_u64(buf, (u64) target->external_code);
+                x64_mov_rax_u64(buf, (u64) target->code_ptr);
                 
                 // FF /2 	CALL r/m64 	M 	
                 push_u8(buf, 0xFF);
@@ -2110,6 +2218,28 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                           dest.type, dest.reg, dest.disp, 
                           src.type, src.reg, src.disp,
                           mem->size, 0xA4F3, rip, X64_RSI);
+        } break;
+        
+        case BC_RDTSC: {
+            Bytecode_Operand dest = bc_unary_first(insn);
+            assert(dest.kind == BytecodeOperand_register);
+            
+            Ic_Raw_Type rt = convert_bytecode_type_to_x64(insn->type);
+            x64_alloc_register(x64, buf, dest.register_index, X64_RAX, rt);
+            x64_spill_register(x64, buf, X64_RDX);
+            
+            push_u16(buf, 0x310F); // rdtsc edx:eax
+            
+            // REX.W + C1 /4 ib  -> shl rdx, 32
+            x64_rex(buf, REX_FLAG_W);
+            push_u8(buf, 0xC1);
+            x64_modrm(buf, IC_REG, 0, 4, X64_RDX, rip);
+            push_u8(buf, 32);
+            
+            // REX.W + 09 /r  -> or rax, rdx
+            x64_rex(buf, REX_FLAG_W);
+            push_u8(buf, 0x09);
+            x64_modrm(buf, IC_REG, 0, X64_RDX, X64_RAX, rip);
         } break;
         
         default: {

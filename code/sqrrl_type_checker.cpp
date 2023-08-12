@@ -999,6 +999,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             t_func->return_type = result;
             expr->type = result;
             
+#if 0
             // HACK(Alexander): for now print_format pushes the format type first then the value 
             if (function_type && t_func->intrinsic) {
                 void* intrinsic = t_func->intrinsic;
@@ -1038,6 +1039,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     expr->Exported_Data = export_type_info(tcx->data_packer, actual_type);
                 }
             }
+#endif
         } break;
         
         case Ast_Cast_Expr: {
@@ -2032,6 +2034,14 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                             library_function_name = attr.args[0].String;
                         } break;
                         
+                        case Sym_intrinsic: {
+                            if (attr.arg_count != 0) {
+                                attr.is_valid = false;
+                            }
+                            
+                            result.type->Function.is_intrinsic = true;
+                        } break;
+                        
                         case Sym_dump_bytecode: {
                             result.type->Function.dump_bytecode = true;
                         } break;
@@ -2065,18 +2075,40 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     
                     //pln("LIB: %, FUNC: %", f_string(library_name), f_string(library_function_name));
                     
-                    {
-                        cstring name = string_to_cstring(library_function_name);
-                        cstring library = string_to_cstring(library_name);
+                    switch (tcx->target_backend) {
+                        case Backend_X64: { 
+                            // Load function pointer from dynamic library
+                            cstring name = string_to_cstring(library_function_name);
+                            cstring library = string_to_cstring(library_name);
+                            
+                            func->external_address = DEBUG_get_external_procedure_address(library, name);
+                            if (!func->external_address) {
+                                if (report_error) {
+                                    type_error(tcx,
+                                               string_print("procedure `%` is not found in library `%`",
+                                                            f_string(library_function_name),
+                                                            f_string(library_name)),
+                                               ast->span);
+                                }
+                                result.type = 0;
+                                return result;
+                            }
+                            
+                            cstring_free(library);
+                            cstring_free(name);
+                        } break;
                         
-                        func->intrinsic = DEBUG_get_external_procedure_address(library, name);
+                        case Backend_WASM: {
+                            // noop
+                        } break;
                         
-                        cstring_free(library);
-                        cstring_free(name);
+                        default: unimplemented;
                     }
                 }
                 
                 if (dynamic_library_id) {
+                    verify(!func->external_address); // TODO: compiler error
+                    
                     // Linking dynamic library by user code
                     library_id = dynamic_library_id;
                     library_function_id = result.type->Function.ident;
@@ -2100,6 +2132,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 }
                 
                 if (library_id && library_function_id) {
+                    func->is_imported = true;
                     
                     // Compiler only sets up empty pointers that user code has to set.
                     Library_Imports import = map_get(tcx->import_table.libs, library_id);
@@ -2108,7 +2141,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     
                     Library_Function lib_func = {};
                     lib_func.name = library_function_id;
-                    lib_func.pointer = func->intrinsic;
+                    lib_func.pointer = func->external_address;
                     lib_func.type = result.type;
                     
                     //pln("cu: % ", f_var(result.type->Function.ident));
@@ -2117,16 +2150,6 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     map_put(tcx->import_table.libs, library_id, import);
                     
                     //pln("% = 0x%", f_cstring(name), f_u64_HEX(func->intrinsic));
-                    if (!func->intrinsic && !dynamic_library_id) {
-                        if (report_error) {
-                            type_error(tcx,
-                                       string_print("procedure `%` is not found in library `%`",
-                                                    f_string(library_function_name),
-                                                    f_string(library_name)),
-                                       ast->span);
-                        }
-                        result.type = 0;
-                    }
                 }
             }
         } break;
@@ -3211,6 +3234,7 @@ flush_stdout() {
 void
 DEBUG_setup_intrinsic_types(Type_Context* tcx) {
     
+#if 0
 #define _push_intrinsic(type, name, _is_variadic, interp_intrinsic_fp, intrinsic_fp, _return_type) \
 Type* type = arena_push_struct(&tcx->type_arena, Type); \
 { \
@@ -3286,6 +3310,7 @@ intrin_name->Function.first_default_arg_index++; \
     
     // Intrinsic syntax: u64 rdtsc()
     push_intrinsic(rdtsc, false, 0, &x64_intrin_rdtsc, t_u64);
+#endif
 }
 
 s32

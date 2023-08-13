@@ -145,6 +145,10 @@ struct Type_Function {
     string_id ident;
     s32 first_default_arg_index;
     
+    // TODO(Alexander): temporary intrinsic definition
+    Value (*interp_intrinsic)(Interp*, array(Interp_Value)*);
+    void* intrinsic;
+    
     b32 is_imported;
     b32 is_intrinsic;
     b32 is_variadic;

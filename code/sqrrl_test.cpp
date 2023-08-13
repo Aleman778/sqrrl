@@ -231,7 +231,7 @@ run_compiler_tests(string filename,
         if (is_bitflag_set(test->modes, TestExecutionMode_X64)) {
             u32 prev_num_failed = test->num_failed;
             
-            s64 offset = unit->bb_first->addr;
+            s64 offset = 0;//unit->bb_first->addr;
             //pln("Running `%` at memory location: 0x%", f_string(vars_load_string(test->ident)),
             //f_u64_HEX((u8*) asm_buffer + offset));
             asm_test* test_func = (asm_test*) ((u8*) asm_buffer + offset);

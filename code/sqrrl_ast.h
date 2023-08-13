@@ -326,31 +326,9 @@ struct Compilation_Unit {
     Value interp_result;
     string_id ident;
     
-    Bytecode_Function* bc_func;
+    Bytecode_Function* bytecode_function;
     
-    Ic_Arg ic_return;
-    Intermediate_Code* ic_first;
-    Intermediate_Code* ic_last;
-    Ic_Basic_Block* bb_first;
-    Ic_Basic_Block* bb_last;
-    Ic_Basic_Block* bb_return;
-    Ic_Basic_Block* bb_data;
-    int bb_index;
-    
-    // TODO(Alexander): move these to different place!
-    Data_Packer* data_packer;
-    Ic_Arg_Map* locals;
-    Ic_Arg_Map* globals;
-    
-    s64 external_address = 0;
-    s64 stk_args = 0;
-    s64 stk_locals = 0;
-    s64 stk_caller_args = 0;
-    array(Ic_Stk_Entry)* stk_entries;
-    s64 stk_usage;
-    u8 data_reg; // TODO(Alexander): hack temporary register allocation strategy
-    
-    bool use_absolute_ptrs;
+    s64 external_address;
 };
 
 struct Ast_File {

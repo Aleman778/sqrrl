@@ -72,6 +72,18 @@ wasm_tmp_local(WASM_Assembler* wasm, Buffer* buf, Bytecode_Type type) {
     }
 }
 
+u32
+wasm_memory_offset(WASM_Assembler* wasm, u32 offset, Bytecode_Memory_Kind kind) {
+    if (kind == BytecodeMemory_read_only) {
+        offset += wasm->rdata_offset;
+    } else if (kind == BytecodeMemory_read_write) {
+        offset += wasm->data_offset;
+    } else {
+        unimplemented;
+    }
+    return offset;
+}
+
 void
 wasm_load_value(WASM_Assembler* wasm, Buffer* buf, Bytecode_Operand op, Bytecode_Type type, int bitsize=0) {
     switch (op.kind) {
@@ -116,7 +128,9 @@ wasm_load_value(WASM_Assembler* wasm, Buffer* buf, Bytecode_Operand op, Bytecode
         case BytecodeOperand_memory: {
             push_u8(buf, 0x41); // i32.const
             push_leb128_u32(buf, 0);
-            wasm_push_load(buf, type, op.memory_offset, bitsize);
+            u32 offset = wasm_memory_offset(wasm, op.memory_offset, op.memory_kind);
+            pln("offset = %", f_u32(offset));
+            wasm_push_load(buf, type, offset, bitsize);
         } break;
         
         default: {
@@ -213,7 +227,8 @@ wasm_push_addr_of(WASM_Assembler* wasm, Buffer* buf, Bytecode_Operand op, Byteco
         
     } else if (op.kind == BytecodeOperand_memory) {
         push_u8(buf, 0x41 + type - 1); // i32.const
-        push_leb128_s32(buf, op.memory_offset);
+        u32 offset = wasm_memory_offset(wasm, op.memory_offset, op.memory_kind);
+        push_leb128_s32(buf, offset);
         
     } else {
         assert(0 && "ADDR_OF: invalid right-hand size argument");
@@ -324,6 +339,11 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             wasm_push_addr_of(wasm, buf, bc_binary_second(insn), insn->type);
         } break;
         
+        case BC_DEREF: {
+            wasm_load_value(wasm, buf, bc_binary_second(insn), BytecodeType_i32);
+            wasm_push_load(buf, insn->type, 0);
+        } break;
+        
         case BC_ADD:
         case BC_SUB:
         case BC_MUL:
@@ -420,12 +440,17 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             
             wasm_push_addr_of(wasm, buf, mem->dest, BytecodeType_i32);
             
-            
             if (mem->src.kind == BytecodeOperand_register) {
                 push_u8(buf, 0x20); // local.get
                 push_leb128_u32(buf, wasm->tmp_local_i32);
             }
-            wasm_load_value(wasm, buf, mem->src, BytecodeType_i32);
+            
+            if (mem->src.kind != BytecodeOperand_register) {
+                wasm_push_addr_of(wasm, buf, mem->src, BytecodeType_i32);
+            } else {
+                wasm_load_value(wasm, buf, mem->src, BytecodeType_i32);
+            }
+            
             push_u8(buf, 0x41); // i32.const
             push_leb128_s32(buf, mem->size);
             push_u32(buf, 0x00000AFC); // memory.copy
@@ -709,7 +734,8 @@ convert_to_wasm_module(Bytecode* bc, Data_Packer* data_packer, s64 stk_usage, Bu
     push_leb128_u32(buf, 1); // number of globals
     push_u16(buf, 0x017F); // mut i32
     push_u8(buf, 0x41); // i32.const
-    push_leb128_s32(buf, 1024); // stack space
+    u32 stack_size = kilobytes(32); // half a WASM page // TODO(Alexander): make configurable
+    push_leb128_s32(buf, stack_size); // stack space
     push_u8(buf, 0x0B); // end
     wasm_set_vec_size(buf, global_section_start);
     
@@ -739,6 +765,8 @@ convert_to_wasm_module(Bytecode* bc, Data_Packer* data_packer, s64 stk_usage, Bu
     push_leb128_u32(buf, function_count);
     
     WASM_Assembler wasm = {};
+    wasm.rdata_offset = stack_size;
+    wasm.data_offset = stack_size + (u32) arena_total_used(&data_packer->rdata_arena);
     
     for_array_v(bc->functions, func, _2) {
         if (func->is_imported) {
@@ -795,7 +823,7 @@ convert_to_wasm_module(Bytecode* bc, Data_Packer* data_packer, s64 stk_usage, Bu
     // since there is no memory overwrite protection supported.
     push_u8(buf, 0); // active memory 0
     push_u8(buf, 0x41); // i32.const
-    push_leb128_s32(buf, 0); // memory offset (expr)
+    push_leb128_s32(buf, wasm.rdata_offset); // memory offset (expr)
     push_u8(buf, 0x0B); // end
     u32 memory_size = (u32) (arena_total_used(&data_packer->rdata_arena) +
                              arena_total_used(&data_packer->data_arena));

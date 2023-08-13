@@ -59,6 +59,9 @@ struct WASM_Assembler {
     u32 stack_usage;
     u32 stack_num_locals;
     
+    u32 rdata_offset;
+    u32 data_offset;
+    
     u32 tmp_local_i32;
     u32 tmp_local_i64;
     u32 tmp_local_f32;

@@ -35,10 +35,15 @@ random_f32() {
 #define pln(...)
 #define print_format(...)
 #define debug_break() __debugbreak()
+#define array_count(a) (sizeof(a) / sizeof((a)[0]))
+
+#define local_persist static
 
 #else
 
 #include <basic.sq>
+
+#define array_count(a) (a).count
 
 #endif
 
@@ -183,7 +188,7 @@ union Game_Controller {
         Game_Button_State mouse_right;
     };
     Game_Button_State buttons[7];
-}
+};
 
 void
 win32_process_keyboard_message(Game_Button_State* new_state, bool is_down) {
@@ -293,7 +298,7 @@ main() {
             {
                 Game_Controller new_controller = {};
                 for (int button_index = 0; 
-                     button_index < new_controller.buttons.count; 
+                     button_index < array_count(new_controller.buttons);
                      button_index++) {
                     
                     new_controller.buttons[button_index].ended_down = 

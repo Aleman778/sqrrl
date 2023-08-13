@@ -299,12 +299,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             Type* type = function->type;
             assert(type && type->kind == TypeKind_Function);
             
-            Bytecode_Function* func = begin_bytecode_function(&bytecode_builder, type);
+            Bytecode_Function* func = add_bytecode_function(&bytecode_builder, type);
             func->is_imported = true;
             func->code_ptr = type->Function.external_address;
-            if (type->Function.unit) {
-                type->Function.unit->bc_func = func;
-            }
             
             Bytecode_Import import = {};
             import.module = it->key;
@@ -320,7 +317,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             }
             
             array_push(bytecode_builder.bytecode.imports, import);
-            end_bytecode_function(&bytecode_builder);
         }
         
         if (target_backend == Backend_X64 && compiler_task == CompilerTask_Build) {
@@ -328,37 +324,40 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         }
     }
     
-    // Build the bytecode
     Compilation_Unit* main_cu = 0;
     for_array(ast_file.units, cu, _2) {
-        if (cu->bc_func) continue;
-        
-        cu->data_packer = &data_packer;
-        cu->globals = x64_globals;
-        if (cu->ast->kind == Ast_Decl_Stmt) {
+        if (!cu->bytecode_function && cu->ast->kind == Ast_Decl_Stmt) {
             Type* type = cu->ast->type;
             if (type->kind == TypeKind_Function) {
-                bool is_main = cu->ident == Sym_main;
-                cu->bc_func = convert_function_to_bytecode(&bytecode_builder, cu->ast,
-                                                           is_main, is_debugger_present && is_main);
+                add_bytecode_function(&bytecode_builder, type);
                 
+                bool is_main = cu->ident == Sym_main;
                 if (is_main) {
                     main_cu = cu;
                 }
             }
         }
-        
-        x64_globals = cu->globals;
     }
     assert(main_cu && "no main function"); // TODO: turn this into an actual error
     
+    // Build the bytecode
+    for_array(ast_file.units, cu, _3) {
+        if (cu->bytecode_function) {
+            bool is_main = cu->ident == Sym_main;
+            convert_function_to_bytecode(&bytecode_builder, cu->bytecode_function, cu->ast,
+                                         is_main, is_debugger_present && is_main);
+        }
+    }
+    
     // Print the bytecode
     String_Builder sb = {};
-    for_array(ast_file.units, cu, _3) {
+    for_array(ast_file.units, cu, _4) {
         if (flag_print_bc || (cu->ast && cu->ast->type && 
                               cu->ast->type->kind == TypeKind_Function &&
                               cu->ast->type->Function.dump_bytecode)) {
-            string_builder_dump_bytecode(&sb, &bytecode_builder.bytecode, cu->bc_func);
+            
+            string_builder_dump_bytecode(&sb, &bytecode_builder.bytecode, 
+                                         cu->bytecode_function);
         }
     }
     if (sb.data) {

@@ -2007,6 +2007,20 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             }
         } break;
         
+        case BC_DEREF: {
+            Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
+            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
+            assert(dest.type & IC_REG);
+            
+            if (src.type & IC_REG) {
+                src.type = (src.type & IC_RT_MASK) | IC_STK;
+            }
+            
+            x64_mov(buf, 
+                    dest.type, dest.reg, dest.disp,
+                    src.type, src.reg, src.disp, rip);
+        } break;
+        
         case BC_ADD: {
             Ic_Arg first = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
             Ic_Arg second = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);

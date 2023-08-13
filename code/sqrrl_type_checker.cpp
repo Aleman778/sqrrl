@@ -999,7 +999,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             t_func->return_type = result;
             expr->type = result;
             
-#if 0
             // HACK(Alexander): for now print_format pushes the format type first then the value 
             if (function_type && t_func->intrinsic) {
                 void* intrinsic = t_func->intrinsic;
@@ -1039,7 +1038,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     expr->Exported_Data = export_type_info(tcx->data_packer, actual_type);
                 }
             }
-#endif
         } break;
         
         case Ast_Cast_Expr: {
@@ -3234,7 +3232,6 @@ flush_stdout() {
 void
 DEBUG_setup_intrinsic_types(Type_Context* tcx) {
     
-#if 0
 #define _push_intrinsic(type, name, _is_variadic, interp_intrinsic_fp, intrinsic_fp, _return_type) \
 Type* type = arena_push_struct(&tcx->type_arena, Type); \
 { \
@@ -3303,14 +3300,6 @@ intrin_name->Function.first_default_arg_index++; \
     
     push_intrinsic(type_of, false, 0, &type_of, t_type);
     push_intrinsic_arg(type_of, T, t_any);
-    
-    /******************************************************
-    /* X64 architecture specific intrinsics
-/******************************************************/
-    
-    // Intrinsic syntax: u64 rdtsc()
-    push_intrinsic(rdtsc, false, 0, &x64_intrin_rdtsc, t_u64);
-#endif
 }
 
 s32

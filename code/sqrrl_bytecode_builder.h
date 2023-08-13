@@ -88,8 +88,7 @@ add_import_function(Bytecode_Builder* bc) {
     
 }
 
-Bytecode_Function* begin_bytecode_function(Bytecode_Builder* bc, Type* type);
-void end_bytecode_function(Bytecode_Builder* bc);
+Bytecode_Function* add_bytecode_function(Bytecode_Builder* bc, Type* type);
 
 Bytecode_Instruction* add_bytecode_insn(Bytecode_Builder* bc, 
                                         Bytecode_Operator opcode, 

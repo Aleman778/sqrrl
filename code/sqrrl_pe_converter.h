@@ -401,7 +401,6 @@ struct PE_Executable {
     
     u8* text_data;
     u32 text_data_size;
-    u32 global_data_offset;
     
     Memory_Arena header_arena;
     Memory_Arena rdata_arena;

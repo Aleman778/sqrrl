@@ -169,7 +169,6 @@ push_bytecode_memory(Bytecode_Builder* bc, Bytecode_Memory_Kind kind, smm size, 
                            &bc->data_packer->data_arena);
     void* data = arena_push_size(arena, size, align);
     u32 offset = (s32) arena_relative_pointer(arena, data);
-    pln("bc data: %", f_u64_HEX(offset));
     if (init) {
         memcpy(data, init, size);
     }

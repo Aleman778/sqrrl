@@ -115,8 +115,6 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                                                                  expr->Value.data.str.data);
                 result = push_bytecode_stack_t(bc, string);
                 
-                // Assign the 
-                
                 Bytecode_Binary* store_data = add_insn_t(bc, BC_ADDR_OF, Binary);
                 store_data->type = bc_pointer_type(bc);
                 store_data->first = add_bytecode_register(bc);
@@ -648,16 +646,16 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
 
 
 Bytecode_Function*
-convert_function_to_bytecode(Bytecode_Builder* bc, Compilation_Unit* cu,
+convert_function_to_bytecode(Bytecode_Builder* bc, Ast* ast,
                              bool is_main, bool insert_debug_break) {
-    assert(cu->ast->type->kind == TypeKind_Function);
-    assert(cu->ast->kind == Ast_Decl_Stmt);
+    assert(ast->type->kind == TypeKind_Function);
+    assert(ast->kind == Ast_Decl_Stmt);
     
-    if (!is_valid_ast(cu->ast->Decl_Stmt.stmt)) {
+    if (!is_valid_ast(ast->Decl_Stmt.stmt)) {
         return 0;
     }
     
-    Type* type = cu->ast->type;
+    Type* type = ast->type;
     
     // Build the function
     Bytecode_Function* func = begin_bytecode_function(bc, type);
@@ -669,7 +667,7 @@ convert_function_to_bytecode(Bytecode_Builder* bc, Compilation_Unit* cu,
         add_insn(bc, BC_DEBUG_BREAK);
     }
     
-    convert_statement_to_bytecode(bc, cu->ast->Decl_Stmt.stmt, 0, 0);
+    convert_statement_to_bytecode(bc, ast->Decl_Stmt.stmt, 0, 0);
     
     end_bytecode_function(bc);
     

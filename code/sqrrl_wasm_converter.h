@@ -61,6 +61,8 @@ struct WASM_Assembler {
     
     u32 tmp_local_i32;
     u32 tmp_local_i64;
+    u32 tmp_local_f32;
+    u32 tmp_local_f64;
 };
 
 struct WASM_Block {

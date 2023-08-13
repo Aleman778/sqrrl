@@ -31,14 +31,45 @@ wasm_push_load(Buffer* buf, Bytecode_Type type, u32 offset, int bitsize=0, int a
                 
             } else {
                 push_u8(buf, 0x29); // i64.load
-                push_leb128_u32(buf, align_pow2 >= 0 ? align_pow2 : 2);
+                push_leb128_u32(buf, align_pow2 >= 0 ? align_pow2 : 3);
             }
+        } break;
+        
+        case BytecodeType_f32: {
+            push_u8(buf, 0x2A); // f32.load
+            push_leb128_u32(buf, align_pow2 >= 0 ? align_pow2 : 2);
+        } break;
+        
+        case BytecodeType_f64: {
+            push_u8(buf, 0x2B); // f64.load
+            push_leb128_u32(buf, align_pow2 >= 0 ? align_pow2 : 3);
         } break;
         
         default: unimplemented;
     }
     
     push_leb128_u32(buf, offset);
+}
+
+void
+wasm_tmp_local(WASM_Assembler* wasm, Buffer* buf, Bytecode_Type type) {
+    switch (type) {
+        case BytecodeType_i32: {
+            push_leb128_u32(buf, wasm->tmp_local_i32);
+        } break;
+        
+        case BytecodeType_i64: {
+            push_leb128_u32(buf, wasm->tmp_local_i64);
+        } break;
+        
+        case BytecodeType_f32: {
+            push_leb128_u32(buf, wasm->tmp_local_f32);
+        } break;
+        
+        case BytecodeType_f64: {
+            push_leb128_u32(buf, wasm->tmp_local_f64);
+        } break;
+    }
 }
 
 void
@@ -103,7 +134,7 @@ wasm_prepare_store(WASM_Assembler* wasm, Buffer* buf, Bytecode_Operand dest, Byt
             if (src.kind == BytecodeOperand_register) {
                 // src must be swapped with stack pointer
                 push_u8(buf, 0x21); // local.set
-                push_leb128_u32(buf, type == BytecodeType_i32 ? wasm->tmp_local_i32 : wasm->tmp_local_i64);
+                wasm_tmp_local(wasm, buf, type);
             }
             
             // Push stack pointer
@@ -113,7 +144,7 @@ wasm_prepare_store(WASM_Assembler* wasm, Buffer* buf, Bytecode_Operand dest, Byt
             if (src.kind == BytecodeOperand_register) {
                 // Push src on top of the stack
                 push_u8(buf, 0x20); // local.get
-                push_leb128_u32(buf, type == BytecodeType_i32 ? wasm->tmp_local_i32 : wasm->tmp_local_i64);
+                wasm_tmp_local(wasm, buf, type);
             }
         } break;
     }
@@ -140,8 +171,22 @@ wasm_store_value(WASM_Assembler* wasm, Buffer* buf, Bytecode_Operand dest, Bytec
                         push_leb128_u32(buf, 0);
                     } else {
                         push_u8(buf, 0x37); // i64.store
-                        push_leb128_u32(buf, 2);
+                        push_leb128_u32(buf, 3);
                     }
+                } break;
+                
+                case BytecodeType_f32: {
+                    push_u8(buf, 0x38); // f32.store
+                    push_leb128_u32(buf, 2);
+                } break;
+                
+                case BytecodeType_f64: {
+                    push_u8(buf, 0x39); // f64.store
+                    push_leb128_u32(buf, 3);
+                } break;
+                
+                default: {
+                    unimplemented;
                 } break;
             }
             
@@ -207,7 +252,7 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             }
             
             push_u8(buf, 0x21); // local.set
-            push_leb128_u32(buf, type == BytecodeType_i32 ? wasm->tmp_local_i32 : wasm->tmp_local_i64);
+            wasm_tmp_local(wasm, buf, type);
             // TODO(Alexander): float support to above
             
             //push_u8(buf, 0x0F); // return
@@ -483,8 +528,7 @@ convert_bytecode_function_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* b
         // TODO(Alexander): multiple returns
         Bytecode_Type type = arg_types[func->arg_count];
         push_u8(buf, 0x20); // local.get
-        push_leb128_u32(buf, type == BytecodeType_i32 ? wasm->tmp_local_i32 : wasm->tmp_local_i64);
-        // TODO(Alexander): float support to above
+        wasm_tmp_local(wasm, buf, type);
     }
     
     
@@ -616,23 +660,6 @@ convert_to_wasm_module(Bytecode* bc, Data_Packer* data_packer, s64 stk_usage, Bu
         for (u32 i = 0; i < func->ret_count; i++) {
             wasm_push_valtype(buf, ret_types[i]);
         }
-        
-#if 0
-        pln("Compiling function ID=%:", f_int(_1));
-        for (smm byte_index = first_byte; byte_index < buf->curr_used; byte_index++) {
-            u8 byte = buf->data[byte_index];
-            if (byte > 0xF) {
-                printf("%hhX ", byte);
-            } else {
-                printf("0%hhX ", byte);
-            }
-            
-            if ((byte_index - first_byte) % 40 == 39) {
-                printf("\n");
-            }
-        }
-        printf("\n\n");
-#endif
     }
     wasm_set_vec_size(buf, type_section_start);
     
@@ -641,42 +668,27 @@ convert_to_wasm_module(Bytecode* bc, Data_Packer* data_packer, s64 stk_usage, Bu
     push_u8(buf, WASMSection_Import);
     smm import_section_start = buf->curr_used;
     push_u32(buf, 0); // reserve space for the size
-    
-    // Calculate number of imports
-    u32 import_function_count = 0;
-    for (int i = 0; i < array_count(bc->functions); i++) {
-        if (bc->functions[i]->is_imported) import_function_count++;
-    }
-    push_leb128_u32(buf, import_function_count); // num imports
-    
-    for (int i = 0; i < array_count(bc->functions); i++) {
-        if (!bc->functions[i]->is_imported) continue;
-        
+    push_leb128_u32(buf, (u32) array_count(bc->imports)); // num imports
+    for (int i = 0; i < array_count(bc->imports); i++) {
+        pln("%::%", f_var(bc->imports[i].module), f_var(bc->imports[i].function));
         // TODO(Alexander): imports are hardcoded for now
-        wasm_push_string(buf, string_lit("basic"));
-        wasm_push_string(buf, string_lit("print"));
+        wasm_push_string(buf, vars_load_string(bc->imports[i].module));
+        wasm_push_string(buf, vars_load_string(bc->imports[i].function));
         push_u8(buf, 0x00); // importdesc:typeidx
         push_leb128_u32(buf, i);
     }
     wasm_set_vec_size(buf, import_section_start);
     
     // Function section (3)
+    u32 function_count = (u32) (array_count(bc->functions) - array_count(bc->imports));
     DEBUG_wasm_begin_section(&debug, WASMSection_Function, buf);
     push_u8(buf, WASMSection_Function);
     smm function_section_start = buf->curr_used;
     push_u32(buf, 0); // reserve space for the size
-    
-    // Count the number of functions that needs to be implemented
-    u32 actual_function_count = 0;
-    for (int i = 0; i < array_count(bc->functions); i++) {
-        if (!bc->functions[i]->is_imported) actual_function_count++;
-    }
-    push_leb128_u32(buf, (u32) array_count(bc->functions) - 1);
-    
-    for (int i = 0; i < array_count(bc->functions); i++) {
-        if (!bc->functions[i]->is_imported) {
-            push_leb128_u32(buf, i); // typeidx (NOTE: assumes funcidx = typeidx)
-        }
+    push_leb128_u32(buf, function_count);
+    pln("% - %", f_int(array_count(bc->functions)), f_int(array_count(bc->imports)));
+    for (int i = (int) array_count(bc->imports); i < array_count(bc->functions); i++) {
+        push_leb128_u32(buf, i); // typeidx (NOTE: assumes funcidx = typeidx)
     }
     wasm_set_vec_size(buf, function_section_start);
     
@@ -724,22 +736,23 @@ convert_to_wasm_module(Bytecode* bc, Data_Packer* data_packer, s64 stk_usage, Bu
     push_u8(buf, WASMSection_Code);
     smm code_section_start = buf->curr_used;
     push_u32(buf, 0); // reserve space for the size
-    push_leb128_u32(buf, (u32) array_count(bc->functions) - 1);
+    push_leb128_u32(buf, function_count);
     
     WASM_Assembler wasm = {};
     
     for_array_v(bc->functions, func, _2) {
-        // TODO(Alexander): we need a better way to tell what function is imported!
         if (func->is_imported) {
             continue;
         }
+        
+        pln("building func ID=%", f_int(func->type_index));
         
         smm function_start = buf->curr_used;
         push_u32(buf, 0); // reserve space for size
         
         // TODO(Alexander): hack, use tmp locals can be used for reordering the operand stack
         //push_leb128_u32(buf, (u32) array_count(func->stack)); // number of locals
-        push_leb128_u32(buf, 2); // number of locals
+        push_leb128_u32(buf, 4); // number of locals
         
         //for_array_v(func->stack, stack, stack_index) {
         //push_leb128_u32(buf, 1); 
@@ -753,6 +766,14 @@ convert_to_wasm_module(Bytecode* bc, Data_Packer* data_packer, s64 stk_usage, Bu
         push_leb128_u32(buf, 1); 
         wasm_push_valtype(buf, BytecodeType_i64);
         wasm.tmp_local_i64 = func->arg_count + 1;
+        
+        push_leb128_u32(buf, 1); 
+        wasm_push_valtype(buf, BytecodeType_f32);
+        wasm.tmp_local_f32 = func->arg_count + 2;
+        
+        push_leb128_u32(buf, 1); 
+        wasm_push_valtype(buf, BytecodeType_f64);
+        wasm.tmp_local_f64 = func->arg_count + 3;
         
         convert_bytecode_function_to_wasm(&wasm, buf, bc, func);
         

@@ -305,7 +305,26 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             if (type->Function.unit) {
                 type->Function.unit->bc_func = func;
             }
+            
+            Bytecode_Import import = {};
+            import.module = it->key;
+            import.function = function->name;
+            
+            // TODO(Alexander): hack this doesn't really belong here
+            // but this is needed for now to make this data appear first in the rdata section.
+            if (target_backend == Backend_X64 && compiler_task == CompilerTask_Build) {
+                // Start by pushing address lookup table for external libs
+                // NOTE(Alexander): library function pointer is replaced by the loader
+                Exported_Data import_fn = export_size(&data_packer, Read_Data_Section, 8, 8);
+                import.rdata_offset = import_fn.relative_ptr;
+            }
+            
+            array_push(bytecode_builder.bytecode.imports, import);
             end_bytecode_function(&bytecode_builder);
+        }
+        
+        if (target_backend == Backend_X64 && compiler_task == CompilerTask_Build) {
+            export_size(&data_packer, Read_Data_Section, 8, 8); // null entry
         }
     }
     
@@ -320,7 +339,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             Type* type = cu->ast->type;
             if (type->kind == TypeKind_Function) {
                 bool is_main = cu->ident == Sym_main;
-                cu->bc_func = convert_function_to_bytecode(&bytecode_builder, cu, 
+                cu->bc_func = convert_function_to_bytecode(&bytecode_builder, cu->ast,
                                                            is_main, is_debugger_present && is_main);
                 
                 if (is_main) {

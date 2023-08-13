@@ -1,6 +1,5 @@
 
  enum Section {
-    Code_Section,
     Read_Data_Section,
     Data_Section,
     

@@ -1495,28 +1495,10 @@ convert_bytecode_to_x64_machine_code(Bytecode* bc, Buffer* buf,
     x64.functions = (X64_Function*) calloc(array_count(bc->functions), 
                                            sizeof(X64_Function));
     
-    if (compiler_task == CompilerTask_Build) {
-        // Start by pushing address lookup table for external libs
-        string_id module = 0;
-        if (array_count(bc->imports) > 0) {
-            module = bc->imports[0].module;
-        }
-        Exported_Data library = {};
-        for_array(bc->imports, import, func_index) {
-            if (import->module != module) {
-                export_size(data_packer, Read_Data_Section, 8, 8); // null entry
-            }
-            module = import->module;
-            
-            // Library function pointer is replaced by the loader
-            Exported_Data import_fn = export_size(data_packer, Read_Data_Section, 8, 8);
-            import->rdata_offset = import_fn.relative_ptr;
-        }
-    }
-    
     // First pass
     asm_buffer_main = x64_compile_pass(&x64, buf, compiler_task);
     smm used_before = buf->curr_used;
+    
     
     Memory_Arena build_arena = {};
     PE_Executable pe;
@@ -1528,9 +1510,14 @@ convert_bytecode_to_x64_machine_code(Bytecode* bc, Buffer* buf,
                                       data_packer,
                                       asm_buffer_main);
         s64 base_address = pe.text_section->virtual_address;
-        x64.read_only_data_offset = (s64) buf->data + pe.rdata_section->virtual_address - base_address;
-        x64.read_write_data_offset = (s64) buf->data + (pe.data_section->virtual_address - base_address + 
-                                                        pe.global_data_offset);
+        if (pe.rdata_section) {
+            x64.read_only_data_offset = (s64) buf->data + (pe.rdata_section->virtual_address - 
+                                                           base_address);
+        }
+        if (pe.data_section) {
+            x64.read_write_data_offset = (s64) buf->data + (pe.data_section->virtual_address - 
+                                                            base_address);
+        }
     }
     
     
@@ -1667,8 +1654,6 @@ convert_bytecode_operand_to_x64(X64_Assembler* x64, Buffer* buf, Bytecode_Operan
                     
                     case BytecodeMemory_read_only: {
                         result.disp = (s64) x64->read_only_data_offset + op.memory_offset;
-                        pln("%", f_u64_HEX(buf->data));
-                        pln("%", f_u64_HEX(result.disp));
                     } break;
                 }
             }
@@ -1751,7 +1736,7 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     
     // Setup local stack (excluding arguments and return values)
     int stack_locals = x64->curr_function->stack_args;
-    pln("start locals = %", f_u64_HEX(stack_locals));;
+    //pln("start locals = %", f_u64_HEX(stack_locals));;
     for (int i = func->arg_count + func->ret_count; i < array_count(func->stack); i++) {
         Stack_Entry stk = func->stack[i];
         stack_locals = (s32) align_forward(stack_locals, stk.align);
@@ -1762,8 +1747,8 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     
     // TODO(Alexander): windows calling convention setup argument stack to be above our stack frame
     s32 stack_caller_args = x64->curr_function->stack;
-    pln("locals = %", f_u64_HEX(x64->curr_function->stack_locals));
-    pln("stack_caller_args = %\n", f_u64_HEX(stack_caller_args));
+    //pln("locals = %", f_u64_HEX(x64->curr_function->stack_locals));
+    //pln("stack_caller_args = %\n", f_u64_HEX(stack_caller_args));
     if (func->ret_count == 1 && func->stack[func->arg_count].size > 8) {
         stack_caller_args += 8;
         x64->stack[func->arg_count] = stack_caller_args;
@@ -1877,7 +1862,6 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                                 arg.type, arg.reg, arg.disp, rip);
                     }
                 } else {
-                    pln("%", f_u64_HEX(local_arg_stack_usage));
                     x64_mov(buf, 
                             IC_STK | arg.raw_type, X64_RSP, local_arg_stack_usage + i*8,
                             arg.type, arg.reg, arg.disp, rip);

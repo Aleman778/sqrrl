@@ -711,7 +711,6 @@ convert_to_wasm_module(Bytecode* bc, Data_Packer* data_packer, s64 stk_usage, Bu
     smm function_section_start = buf->curr_used;
     push_u32(buf, 0); // reserve space for the size
     push_leb128_u32(buf, function_count);
-    pln("% - %", f_int(array_count(bc->functions)), f_int(array_count(bc->imports)));
     for (int i = (int) array_count(bc->imports); i < array_count(bc->functions); i++) {
         push_leb128_u32(buf, i); // typeidx (NOTE: assumes funcidx = typeidx)
     }
@@ -772,8 +771,6 @@ convert_to_wasm_module(Bytecode* bc, Data_Packer* data_packer, s64 stk_usage, Bu
         if (func->is_imported) {
             continue;
         }
-        
-        pln("building func ID=%", f_int(func->type_index));
         
         smm function_start = buf->curr_used;
         push_u32(buf, 0); // reserve space for size

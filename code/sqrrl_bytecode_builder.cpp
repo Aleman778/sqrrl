@@ -258,9 +258,8 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 insn->first = first;
                 insn->second = second;
                 result = insn->first;
-            }
-            
-            if (is_assign) {
+                
+            } else if (is_assign) {
                 convert_assign_to_bytecode(bc, type, first, second, true);
             }
             
@@ -509,6 +508,35 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                     
                 } else if (t_src->Basic.kind == Basic_cstring) {
                     // noop
+                    
+                } else {
+                    unimplemented;
+                }
+                
+            } else if (t_dest->kind == TypeKind_Array && 
+                       t_src->kind == TypeKind_Array) {
+                
+                if (t_src->Array.capacity > 0) {
+                    if (t_dest->Array.capacity == 0) {
+                        // convert inplace array to "wide"-pointer array
+                        // TODO(Alexander): we can improve this by e.g. clearing it and 
+                        // also passing multiple values as arguments
+                        result = push_bytecode_stack(bc, 16, 8);
+                        
+                        Bytecode_Binary* copy_ptr = add_insn_t(bc, BC_ADDR_OF, Binary);
+                        copy_ptr->type = bc_pointer_type(bc);
+                        copy_ptr->first = add_bytecode_register(bc);
+                        copy_ptr->second = src;
+                        add_mov_insn(bc, t_void_ptr, result, copy_ptr->first);
+                        
+                        Bytecode_Binary* store_count = add_insn_t(bc, BC_MOV, Binary);
+                        store_count->type = BytecodeType_i64;
+                        store_count->first = result;
+                        store_count->first.memory_offset += 8;
+                        store_count->second.kind = BytecodeOperand_const;
+                        store_count->second.const_i64 = t_src->Array.capacity;
+                        // TODO(Alexander): set capacity if dynamic array
+                    }
                 } else {
                     unimplemented;
                 }
@@ -529,8 +557,10 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                     result.memory_offset += (s32) info.offset;
                 } break;
                 
+                case TypeKind_Array:
                 case TypeKind_Basic: {
-                    assert(type->Basic.kind == Basic_string && "unsupported type");
+                    assert(type->kind == TypeKind_Array ||
+                           type->Basic.kind == Basic_string && "unsupported type");
                     if (ident == Sym_count) {
                         result.memory_offset += 8;
                     }
@@ -546,54 +576,46 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             Bytecode_Operand index = convert_expression_to_bytecode(bc, expr->Index_Expr.index);
             
             result = convert_expression_to_bytecode(bc, expr->Index_Expr.array);
-            if (array_type->kind == TypeKind_Array && array_type->Array.is_inplace) {
+            if (array_type->kind == TypeKind_Array && array_type->Array.is_inplace &&
+                index.kind == BytecodeOperand_const) {
                 assert(result.kind == BytecodeOperand_stack ||
                        result.kind == BytecodeOperand_memory);
-                
-                switch (index.kind) {
-                    case BytecodeOperand_const: {
-                        result.memory_offset += index.const_i32*type->size;
-                    } break;
-                    
-                    default: {
-                        if (type->size > 1) {
-                            Bytecode_Operand tmp = add_bytecode_register(bc);
-                            add_mov_insn(bc, index_type, tmp, index);
-                            index = tmp;
-                            
-                            Bytecode_Binary* mul_index = add_insn_t(bc, BC_MUL, Binary);
-                            mul_index->type = to_bytecode_type(bc, index_type);
-                            mul_index->first = index;
-                            mul_index->second.kind = BytecodeOperand_const;
-                            mul_index->second.const_i64 = type->size;
-                        }
-                        
-                        Bytecode_Binary* array_ptr = add_insn_t(bc, BC_ADDR_OF, Binary);
-                        array_ptr->type = bc_pointer_type(bc);
-                        array_ptr->first = add_bytecode_register(bc);
-                        array_ptr->second = result;
-                        result = array_ptr->first;
-                        
-                        array_ptr = add_insn_t(bc, BC_ADD, Binary);
-                        array_ptr->type = bc_pointer_type(bc);
-                        array_ptr->first = result;
-                        array_ptr->second = index;
-                        result = array_ptr->first;
-                        
-                        array_ptr = add_insn_t(bc, BC_DEREF, Binary);
-                        array_ptr->type = to_bytecode_type(bc, type);
-                        array_ptr->first = add_bytecode_register(bc);
-                        array_ptr->second = result;
-                        result = array_ptr->first;
-                    } break;
-                }
-            } else {
-                
+                result.memory_offset += index.const_i32*type->size;
+                return result;
             }
             
+            // TODO(Alexander): this is a bit hacky, later this should be a single instruction
+            if (index.kind != BytecodeOperand_const && type->size > 1) {
+                Bytecode_Operand tmp = add_bytecode_register(bc);
+                add_mov_insn(bc, index_type, tmp, index);
+                index = tmp;
+                
+                Bytecode_Binary* mul_index = add_insn_t(bc, BC_MUL, Binary);
+                mul_index->type = to_bytecode_type(bc, index_type);
+                mul_index->first = index;
+                mul_index->second.kind = BytecodeOperand_const;
+                mul_index->second.const_i64 = type->size;
+            }
             
+            Bytecode_Operator opcode = (array_type->kind == TypeKind_Array && 
+                                        array_type->Array.is_inplace) ? BC_ADDR_OF : BC_MOV;
+            Bytecode_Binary* array_ptr = add_insn_t(bc, opcode, Binary);
+            array_ptr->type = bc_pointer_type(bc);
+            array_ptr->first = add_bytecode_register(bc);
+            array_ptr->second = result;
+            result = array_ptr->first;
             
+            array_ptr = add_insn_t(bc, BC_ADD, Binary);
+            array_ptr->type = bc_pointer_type(bc);
+            array_ptr->first = result;
+            array_ptr->second = index;
+            result = array_ptr->first;
             
+            array_ptr = add_insn_t(bc, BC_DEREF, Binary);
+            array_ptr->type = to_bytecode_type(bc, type);
+            array_ptr->first = add_bytecode_register(bc);
+            array_ptr->second = result;
+            result = array_ptr->first;
         } break;
         
         case Ast_Paren_Expr: {
@@ -776,6 +798,7 @@ convert_function_to_bytecode(Bytecode_Builder* bc, Bytecode_Function* func, Ast*
     
     // Build the function
     bc->curr_function = func;
+    bc->curr_insn = 0;
     if (is_main) {
         bc->bytecode.entry_func_index = func->type_index;
     }
@@ -834,6 +857,7 @@ add_bytecode_function(Bytecode_Builder* bc, Type* type) {
     func->type_index = bc->next_type_index++;
     func->ret_count = ret_count;
     func->arg_count = arg_count;
+    
     bc->curr_function = func;
     bc->curr_insn = 0;
     

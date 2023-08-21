@@ -1997,9 +1997,10 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_ADDR_OF: {
-            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
             Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
+            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
             assert(dest.type & IC_REG);
+            
             if (src.type & IC_RIP_DISP32) {
                 x64_lea(buf, dest.reg, X64_RIP, src.disp, rip);
             } else {
@@ -2133,6 +2134,16 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
             Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
             src.type = (IC_TF_MASK & src.type) | IC_S8;
+            
+            x64_movsx(buf, 
+                      dest.type, dest.reg, dest.disp,
+                      src.type, src.reg, src.disp, rip);
+        } break;
+        
+        case BC_EXTEND_S32: {
+            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
+            Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
+            src.type = (IC_TF_MASK & src.type) | IC_S32;
             
             x64_movsx(buf, 
                       dest.type, dest.reg, dest.disp,

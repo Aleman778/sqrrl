@@ -591,10 +591,11 @@ main() {
         if (is_key_pressed(KEY_ESCAPE)) {
             mouse_lock = false;
         }
+        
+        f32 max_walk_speed = 0.24f;
         if (mouse_lock) {
             set_mouse_position(screen_size*0.5);
             
-            f32 max_walk_speed = 0.05f;
             if (is_key_down(KEY_SHIFT)) {
                 max_walk_speed *= 2.0f;
             }
@@ -652,15 +653,40 @@ main() {
         // Update player movement
         //
         f32 curr_speed = length(vec3(velocity.x, 0.0f, velocity.z));
-        f32 curr_angle = atan(velocity.x / velocity.z);
         const f32 max_speed = 3.0f;
-        if (curr_speed >= max_speed) {
-            walk_speed = -0.05f * curr_angle;// * sign();
+        if (walk_speed != 0.0f) {
+            pln("walk_speed = %", walk_speed);
         }
-        pln("walk_speed = %", walk_speed);
         
-        acceleration.x -= walk_speed*cos(walk_angle);
-        acceleration.z -= walk_speed*sin(walk_angle);
+        if (curr_speed >= max_speed) {
+            v3 norm_velocity = normalize(velocity);
+            velocity.x = max_speed*norm_velocity.x;
+            velocity.z = max_speed*norm_velocity.z;
+            acceleration.x = 0.0f;
+            acceleration.z = 0.0f;
+        }
+        
+        if (walk_speed == 0.0f) {
+            //f32 delta_acc = 20.0f*max_walk_speed;
+            //if (abs(acceleration.x) < delta_acc) {
+            //acceleration.x = 0.0f;
+            //} else {
+            //acceleration.x = -delta_acc*sign(velocity.x);
+            //}
+            
+            //if (abs(acceleration.z) < delta_acc) {
+            //acceleration.z = 0.0f;
+            //} else {
+            //acceleration.z = -delta_acc*sign(velocity.z);
+            //}
+            
+            velocity.x = 0.0f;
+            velocity.z = 0.0f;
+            
+        } else {
+            acceleration.x -= walk_speed*cos(walk_angle);
+            acceleration.z -= walk_speed*sin(walk_angle);
+        }
         
         if (abs(velocity.x) > 3.0f) {
             acceleration.x = 0.0f;
@@ -685,7 +711,7 @@ main() {
         player_aabb.max_p = player_p + vec3(1.0f, 1.0f, 1.0f);
         if (aabb_intersects_aabb(player_aabb, red_box_aabb)) {
             
-            pln("INTERSECTION");
+            //pln("INTERSECTION");
         }
         
         // Update player position

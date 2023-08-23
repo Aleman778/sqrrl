@@ -17,10 +17,11 @@
 #include "sqrrl_type_checker.cpp"
 #include "sqrrl_interp.cpp"
 #include "sqrrl_bytecode_builder.cpp"
+#include "sqrrl_x64_instructions.cpp"
 #include "sqrrl_x64_converter.cpp"
 #include "sqrrl_pe_converter.cpp"
 #include "sqrrl_pdb_converter.cpp"
-#include "sqrrl_wasm_converter.cpp"
+//#include "sqrrl_wasm_converter.cpp"
 
 typedef int asm_main(void);
 typedef f32 asm_f32_main(void);
@@ -521,7 +522,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             buffer.data = (u8*) asm_buffer;
             buffer.size = asm_size;
             
-            convert_to_wasm_module(&bytecode_builder.bytecode, &data_packer, 0, &buffer);
+            //convert_to_wasm_module(&bytecode_builder.bytecode, &data_packer, 0, &buffer);
             
             File_Handle wasm_file = DEBUG_open_file_for_writing("simple.wasm");
             DEBUG_write(wasm_file, buffer.data, (u32) buffer.curr_used);

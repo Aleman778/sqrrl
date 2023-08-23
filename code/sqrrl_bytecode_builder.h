@@ -111,16 +111,51 @@ __FILE__ ":" S2(__LINE__));
 
 #define add_mov_insn(bc, type, dest, src) _add_mov_insn(bc, type, dest, src, __FILE__ ":" S2(__LINE__))
 
+#define add_load_insn(bc, type, dest) _add_load_insn(bc, type, dest, __FILE__ ":" S2(__LINE__))
+
+
+#define instruction(bc, opcode, register_result, register_src0, register_src1) \
+_instruction(bc, opcode, register_result, register_src0, register_src1, __FILE__ ":" S2(__LINE__))
+
+#define const_instruction(bc, opcode, register_result, constant) \
+_const_instruction(bc, opcode, register_result, constant, __FILE__ ":" S2(__LINE__))
+
+
+inline void
+_instruction(Bytecode_Builder* bc, Bytecode_Operator opcode, 
+             Bytecode_Operand result, Bytecode_Operand first, Bytecode_Operand second,
+             cstring comment) {
+    
+    Bytecode_Binary* insn = add_insn_t(bc, opcode, Binary);
+    insn->type = BytecodeType_i32;
+    insn->res_index = result.register_index;
+    insn->arg0_index = first.register_index;
+    insn->arg1_index = second.register_index;
+    insn->comment = comment;
+}
+
+
+inline void
+_const_instruction(Bytecode_Builder* bc, Bytecode_Operator opcode, 
+                   Bytecode_Operand result, s64 constant, cstring comment) {
+    
+    Bytecode_Binary* insn = add_insn_t(bc, opcode, Binary);
+    insn->type = BytecodeType_i32;
+    insn->res_index = result.register_index;
+    insn->const_i64 = constant;
+    insn->comment = comment;
+}
+
 inline void
 _add_mov_insn(Bytecode_Builder* bc, Type* type, Bytecode_Operand dest, Bytecode_Operand src, cstring comment) {
     Bytecode_Operator opcode = BC_MOV;
     Bytecode_Type bc_type = to_bytecode_type(bc, type);
     switch (type->size) {
-        case 1: opcode = BC_MOV_8; break;
-        case 2: opcode = BC_MOV_16; break;
+        case 1: opcode = BC_STORE_8; break;
+        case 2: opcode = BC_STORE_16; break;
         case 4: { 
             opcode = (bc_type == BytecodeType_i64 || 
-                      bc_type == BytecodeType_f64) ? BC_MOV_32 : BC_MOV; 
+                      bc_type == BytecodeType_f64) ? BC_STORE_32 : BC_STORE;
         } break;
     }
     Bytecode_Binary* result = add_insn_t(bc, opcode, Binary);
@@ -140,6 +175,20 @@ add_bytecode_register(Bytecode_Builder* bc) {
     return result;
 }
 
+inline Bytecode_Operand
+_add_load_insn(Bytecode_Builder* bc, Type* type, Bytecode_Operand src, cstring comment) {
+    Bytecode_Operator opcode = BC_LOAD;
+    Bytecode_Type bc_type = to_bytecode_type(bc, type);
+    
+    Bytecode_Binary* result = add_insn_t(bc, opcode, Binary);
+    result->type = bc_type;
+    result->first = add_bytecode_register(bc);
+    result->second = src;
+    result->comment = comment;
+    
+    return result->first;
+}
+
 inline void
 drop_bytecode_register(Bytecode_Builder* bc, u32 register_index) {
     assert(bc->curr_function);
@@ -153,12 +202,15 @@ push_bytecode_stack(bc, (u32) sizeof(T), (u32) alignof(T))
 inline Bytecode_Operand
 push_bytecode_stack(Bytecode_Builder* bc, u32 size, u32 align) {
     assert(bc->curr_function && "need to start a new function first");
-    Bytecode_Operand result = {};
-    result.kind = BytecodeOperand_stack;
-    result.stack_index = (u32) array_count(bc->curr_function->stack);
-    Stack_Entry stk = { size, align };
-    array_push(bc->curr_function->stack, stk);
-    return result;
+    
+    Bytecode_Alloca* alloca = add_insn_t(bc, BC_ALLOCA, Alloca);
+    alloca->dest = add_bytecode_register(bc);
+    alloca->size = size;
+    alloca->align = align;
+    
+    //Stack_Entry stk = { size, align };
+    //array_push(bc->curr_function->stack, stk);
+    return alloca->dest;
 }
 
 inline Bytecode_Operand

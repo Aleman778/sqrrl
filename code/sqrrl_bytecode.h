@@ -22,6 +22,13 @@ struct Bytecode_Import {
 #define DEF_BYTECODE_OPERATORS \
 OP(NOOP) \
 OP(DEBUG_BREAK) \
+OP(CONST) \
+OP(ALLOCA) \
+OP(LOAD) \
+OP(STORE) \
+OP(STORE_8) \
+OP(STORE_16) \
+OP(STORE_32) \
 OP(LOAD_FUNCTION_PTR) \
 OP(CALL) \
 OP(RETURN) \
@@ -108,14 +115,14 @@ global const cstring bc_type_names[] = {
     "", "i32", "i64", "f32", "f64"
 };
 
-struct Stack_Entry {
-    u32 size;
-    u32 align;
+struct Bytecode_Function_Arg {
+    Bytecode_Type type;
+    
+    u32 size, align;
 };
 
 struct Bytecode_Function {
     array(u32)* register_lifetimes;
-    array(Stack_Entry)* stack;
     
     union {
         void* code_ptr;
@@ -137,7 +144,7 @@ struct Bytecode_Function {
     bool is_imported;
     bool is_intrinsic;
     
-    // followed by Bytecode_Type, function arguments then return types and lastly instructions
+    // followed by array of Bytecode_Function_Arg, function arguments then return types and lastly instructions
 };
 
 enum Bytecode_Operand_Kind {
@@ -145,7 +152,6 @@ enum Bytecode_Operand_Kind {
     
     BytecodeOperand_const,
     BytecodeOperand_register,
-    BytecodeOperand_stack,
     BytecodeOperand_memory,
 };
 
@@ -172,8 +178,6 @@ struct Bytecode_Operand {
         
         u32 register_index;
         
-        u32 stack_index;
-        
         struct {
             Bytecode_Memory_Kind memory_kind;
             union {
@@ -190,6 +194,7 @@ enum Bytecode_Instruction_Kind {
     BytecodeInstructionKind_None,
     
     BytecodeInstructionKind_Base,
+    BytecodeInstructionKind_Alloca,
     BytecodeInstructionKind_Unary,
     BytecodeInstructionKind_Binary,
     BytecodeInstructionKind_Call,
@@ -217,6 +222,13 @@ struct Bytecode_Instruction {
 
 global Bytecode_Instruction bc_empty = {};
 
+struct Bytecode_Alloca {
+    Bytecode_Instruction_Base;
+    
+    Bytecode_Operand dest;
+    u32 size, align;
+};
+
 struct Bytecode_Unary {
     Bytecode_Instruction_Base;
     
@@ -227,6 +239,13 @@ struct Bytecode_Unary {
 
 struct Bytecode_Binary {
     Bytecode_Instruction_Base;
+    
+    int res_index;
+    int arg0_index;
+    int arg1_index;
+    
+    s64 const_i64;
+    
     
     Bytecode_Operand first;
     Bytecode_Operand second;

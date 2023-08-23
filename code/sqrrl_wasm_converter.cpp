@@ -166,47 +166,43 @@ wasm_prepare_store(WASM_Assembler* wasm, Buffer* buf, Bytecode_Operand dest, Byt
 
 void
 wasm_store_value(WASM_Assembler* wasm, Buffer* buf, Bytecode_Operand dest, Bytecode_Type type, int bitsize=0) {
-    switch (dest.kind) {
-        case BytecodeOperand_stack: {
-            switch (type) {
-                case BytecodeType_i32: {
-                    if (bitsize == 8) {
-                        push_u8(buf, 0x3A); // i32.store8
-                        push_leb128_u32(buf, 0);
-                    } else {
-                        push_u8(buf, 0x36); // i32.store
-                        push_leb128_u32(buf, 2);
-                    }
-                } break;
-                
-                case BytecodeType_i64: {
-                    if (bitsize == 8) {
-                        push_u8(buf, 0x3C); // i64.store8
-                        push_leb128_u32(buf, 0);
-                    } else {
-                        push_u8(buf, 0x37); // i64.store
-                        push_leb128_u32(buf, 3);
-                    }
-                } break;
-                
-                case BytecodeType_f32: {
-                    push_u8(buf, 0x38); // f32.store
-                    push_leb128_u32(buf, 2);
-                } break;
-                
-                case BytecodeType_f64: {
-                    push_u8(buf, 0x39); // f64.store
-                    push_leb128_u32(buf, 3);
-                } break;
-                
-                default: {
-                    unimplemented;
-                } break;
+    switch (type) {
+        case BytecodeType_i32: {
+            if (bitsize == 8) {
+                push_u8(buf, 0x3A); // i32.store8
+                push_leb128_u32(buf, 0);
+            } else {
+                push_u8(buf, 0x36); // i32.store
+                push_leb128_u32(buf, 2);
             }
-            
-            push_leb128_u32(buf, wasm->stack_offsets[dest.stack_index] + dest.memory_offset);
+        } break;
+        
+        case BytecodeType_i64: {
+            if (bitsize == 8) {
+                push_u8(buf, 0x3C); // i64.store8
+                push_leb128_u32(buf, 0);
+            } else {
+                push_u8(buf, 0x37); // i64.store
+                push_leb128_u32(buf, 3);
+            }
+        } break;
+        
+        case BytecodeType_f32: {
+            push_u8(buf, 0x38); // f32.store
+            push_leb128_u32(buf, 2);
+        } break;
+        
+        case BytecodeType_f64: {
+            push_u8(buf, 0x39); // f64.store
+            push_leb128_u32(buf, 3);
+        } break;
+        
+        default: {
+            unimplemented;
         } break;
     }
+    
+    push_leb128_u32(buf, wasm->stack_offsets[dest.register_index]);
 }
 
 void

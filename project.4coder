@@ -51,6 +51,10 @@ commands = {
     .win = "cd build && first.exe",
     .linux = "build/sqrrl",
     .mac = "build/sqrrl", },
+  .run_wasm_build = { .out = "*wasm*", .footer_panel = false, .save_dirty_files = false,
+    .win = "cd build && python -m http.server",
+    .linux = "build/sqrrl",
+    .mac = "build/sqrrl", },
   .run_all_tests = { .out = "*run*", .footer_panel = false, .save_dirty_files = false,
     .win = "cd build && sqrrl.exe test",
     .linux = "build/sqrrl test",
@@ -64,5 +68,6 @@ fkey_command = {
   .F4 = "run_build",
   .F5 = "build_personal",
   .F6 = "build_personal_wasm",
+  .F7 = "run_wasm_build",
   .F9 = "run_all_tests",
 };

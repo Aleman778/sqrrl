@@ -123,21 +123,21 @@ void
 wasm_prepare_store(WASM_Assembler* wasm, Buffer* buf, Bytecode_Operand dest, Bytecode_Operand src, Bytecode_Type type) {
     // Setup stack pointer
     
-    if (src.kind == BytecodeOperand_register) {
-        // src must be swapped with stack pointer
-        push_u8(buf, 0x21); // local.set
-        wasm_tmp_local(wasm, buf, type);
-    }
+    //if (src.kind == BytecodeOperand_register) {
+    // src must be swapped with stack pointer
+    //push_u8(buf, 0x21); // local.set
+    //wasm_tmp_local(wasm, buf, type);
+    //}
     
     // Push stack pointer
     push_u8(buf, 0x23); // global.get
     push_leb128_u32(buf, 0);
     
-    if (src.kind == BytecodeOperand_register) {
-        // Push src on top of the stack
-        push_u8(buf, 0x20); // local.get
-        wasm_tmp_local(wasm, buf, type);
-    }
+    //if (src.kind == BytecodeOperand_register) {
+    // Push src on top of the stack
+    //push_u8(buf, 0x20); // local.get
+    //wasm_tmp_local(wasm, buf, type);
+    //}
 }
 
 void
@@ -311,7 +311,7 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             push_leb128_u32(buf, block_depth - branch->label_index - 1);
         } break;
         
-        case BC_MOV: {
+        case BC_STORE: {
             Bytecode_Operand dest = bc_binary_first(insn);
             Bytecode_Operand src = bc_binary_second(insn);
             wasm_prepare_store(wasm, buf, dest, src, insn->type);
@@ -319,7 +319,7 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             wasm_store_value(wasm, buf, dest, insn->type);
         } break;
         
-        case BC_MOV_8: {
+        case BC_STORE_8: {
             Bytecode_Operand dest = bc_binary_first(insn);
             Bytecode_Operand src = bc_binary_second(insn);
             wasm_prepare_store(wasm, buf, dest, src, insn->type);

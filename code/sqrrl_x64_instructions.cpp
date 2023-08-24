@@ -106,6 +106,35 @@ x64_add64(Buffer* buf, X64_Reg a, X64_Reg b) {
     x64_modrm_direct(buf, a, b);
 }
 
+inline void
+x64_sub64(Buffer* buf, X64_Reg a, X64_Reg b) {
+    // REX.W + 2B /r 	SUB r64, r/m64 	RM
+    x64_rex(buf, REX_W, a, b);
+    push_u8(buf, 0x2B);
+    x64_modrm_direct(buf, a, b);
+}
+
+inline void
+x64_mul64(Buffer* buf, X64_Reg a, X64_Reg b) {
+    // REX.W + 0F AF /r 	IMUL r64, r/m64 	RM
+    x64_rex(buf, REX_W, a, b);
+    push_u16(buf, 0xAF0F);
+    x64_modrm_direct(buf, a, b);
+}
+
+inline void
+x64_div64(Buffer* buf, X64_Reg a, X64_Reg b, bool is_signed) {
+    assert(a == X64_RAX);
+    
+    // REX.W + 99 	CQO 	ZO
+    x64_rex(buf, REX_W);
+    push_u8(buf, 0x99);
+    
+    // REX.W + F7 /6 	DIV r/m64 	M 	Valid
+    x64_rex(buf, REX_W, 0, b);
+    push_u8(buf, 0xF7);
+    x64_modrm_direct(buf, is_signed ? 7 : 6, b);
+}
 
 #if 0
 void

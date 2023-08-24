@@ -257,6 +257,8 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             if (opcode != BC_NOOP) {
                 result = add_bytecode_register(bc);
                 instruction(bc, opcode, result, first, second);
+            } else {
+                result = second;
             }
             
             if (is_assign) {
@@ -1002,7 +1004,10 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
         } break;
         
         case BytecodeInstructionKind_Binary: {
-            string_builder_push_format(sb, "r% = ", f_int(((Bytecode_Binary*) insn)->res_index));
+            if (((Bytecode_Binary*) insn)->res_index >= 0) {
+                string_builder_push_format(sb, "r% = ", f_int(((Bytecode_Binary*) insn)->res_index));
+            }
+            
             string_builder_dump_bytecode_opcode(sb, insn);
             if (insn->opcode == BC_CONST) {
                 string_builder_push_format(sb, "%", f_int(((Bytecode_Binary*) insn)->const_i64));

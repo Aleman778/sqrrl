@@ -359,6 +359,8 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         opcode |= flag_floating;
     }
     
+    Bytecode_Binary* bc = (Bytecode_Binary*) insn;
+    
     switch (opcode) {
         case BC_DEBUG_BREAK: {
             push_u8(buf, 0xCC);
@@ -369,8 +371,6 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_CONST: {
-            Bytecode_Binary* bc = (Bytecode_Binary*) insn;
-            
             s64 immediate = bc->const_i64;
             if (immediate < S32_MIN || immediate > S32_MAX) {
                 x64_move_rax_u64(buf, immediate);
@@ -389,16 +389,8 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_STORE: {
-#if 0
-            Bytecode_Operand first = bc_binary_first(insn);
-            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
-            Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
-            
-            x64_mov(buf, 
-                    dest.type, dest.reg, dest.disp,
-                    src.type, src.reg, src.disp, rip);
-#endif
-            unimplemented;
+            x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg1_index));
+            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->arg0_index), X64_RAX);
         } break;
         
 #if 0 
@@ -589,14 +581,23 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                     src.type, src.reg, src.disp, rip);
         } break;
 #endif
-        case BC_ADD: {
-            Bytecode_Binary* bc = (Bytecode_Binary*) insn;
-            
+        
+        case BC_ADD:
+        case BC_SUB:
+        case BC_MUL:
+        case BC_DIV_S:
+        case BC_DIV_U:{
             // TODO(Alexander): size and signed flags need to be set here!
-            x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index), 4, false);
-            x64_move_extend(buf, X64_RCX, X64_RSP, register_displacement(x64, bc->arg1_index), 4, false);
+            x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index), 4, true);
+            x64_move_extend(buf, X64_RCX, X64_RSP, register_displacement(x64, bc->arg1_index), 4, true);
             
-            x64_add64(buf, X64_RAX, X64_RCX);
+            switch (opcode) {
+                case BC_ADD: x64_add64(buf, X64_RAX, X64_RCX); break; 
+                case BC_SUB: x64_sub64(buf, X64_RAX, X64_RCX); break; 
+                case BC_MUL: x64_mul64(buf, X64_RAX, X64_RCX); break; 
+                case BC_DIV_S: x64_div64(buf, X64_RAX, X64_RCX, true); break; // TODO(Alexander): we might use flags here type flags instead?
+                case BC_DIV_U: x64_div64(buf, X64_RAX, X64_RCX, false); break; 
+            }
             
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
         } break;

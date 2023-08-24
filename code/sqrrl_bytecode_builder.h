@@ -160,6 +160,9 @@ _add_mov_insn(Bytecode_Builder* bc, Type* type, Bytecode_Operand dest, Bytecode_
     }
     Bytecode_Binary* result = add_insn_t(bc, opcode, Binary);
     result->type = bc_type;
+    result->res_index = -1;
+    result->arg0_index = dest.register_index;
+    result->arg1_index = src.register_index;
     result->first = dest;
     result->second = src;
     result->comment = comment;

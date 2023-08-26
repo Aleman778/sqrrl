@@ -49,6 +49,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
     string filepath = {};
+    string output_filepath = {};
     
     if (argc > 1) {
 #if BUILD_TEST
@@ -66,8 +67,13 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         
         filepath = string_lit(argv[1]);
         
+        if (argc > 3) {
+            if (string_equals(string_lit(argv[2]), string_lit("-output"))) {
+                output_filepath = string_lit(argv[3]);
+            }
+        }
     } else {
-#if 1 // BUILD_DEBUG
+#if  BUILD_DEBUG
         // TODO(Alexander): temporary files for testing
         //filepath = string_lit("../personal/first.sq");
         //filepath = string_lit("../modules/basic.sq");
@@ -89,6 +95,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     string filename = filepath;
     
+    
     // TODO(Alexander): this is hardcoded for now
     t_string->size = sizeof(string);
     t_string->align = alignof(string);
@@ -103,6 +110,14 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     // Read entire source file
     Loaded_Source_File file = read_entire_source_file(filename);
+    
+    string output_filename = output_filepath;
+    if (!output_filename.data) {
+        // TODO(Alexander): this is kind of a HACK to extract the name without extension and replacing with new extension
+        string name_part = string_view(file.abspath.data + file.filedir.count, 
+                                       file.abspath.data + file.abspath.count - file.extension.count - 1);
+        output_filename = string_concat(name_part, ".exe");
+    }
     
     if (!file.is_valid) {
         return -1;
@@ -429,10 +444,12 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             //pln("JIT exited with code: %", f_int(jit_exit_code));
             
             // NOTE(Alexander): write the PE executable to file
-            File_Handle exe_file = DEBUG_open_file_for_writing("simple.exe");
+            cstring exe_filename = string_to_cstring(output_filename);
+            File_Handle exe_file = DEBUG_open_file_for_writing(exe_filename);
+            cstring_free(exe_filename);
             write_pe_executable_to_file(exe_file, &pe_executable);
             DEBUG_close_file(exe_file);
-            pln("\nWrote executable: simple.exe");
+            pln("\nWrote executable: %", f_string(output_filename));
             
             //Read_File_Result exe_data = DEBUG_read_entire_file("simple.exe");
             //pe_dump_executable(create_string(exe_data.contents_size, (u8*) exe_data.contents));

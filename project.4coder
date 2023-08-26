@@ -40,7 +40,7 @@ commands = {
     .linux = "build/sqrrl",
     .mac = "build/sqrrl", },
   .run_build = { .out = "*run*", .footer_panel = false, .save_dirty_files = false,
-    .win = "cd build && simple.exe",
+    .win = "cd build && first.exe",
     .linux = "build/sqrrl",
     .mac = "build/sqrrl", },
   .run_all_tests = { .out = "*run*", .footer_panel = false, .save_dirty_files = false,

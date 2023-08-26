@@ -21,6 +21,7 @@
 #include "sqrrl_x64_converter.cpp"
 #include "sqrrl_pe_converter.cpp"
 #include "sqrrl_pdb_converter.cpp"
+#include "sqrrl_wasm_instructions.cpp"
 #include "sqrrl_wasm_converter.cpp"
 
 typedef int asm_main(void);

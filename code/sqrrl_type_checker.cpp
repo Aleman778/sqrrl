@@ -588,6 +588,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             if (!result) {
                 if (parent_type && parent_type->kind == TypeKind_Basic) {
                     result = parent_type;
+                    type_check_value(tcx, result, expr->Value, expr->span, report_error);
                     expr->Value = value_cast(expr->Value, result->Basic.kind);
                 } else {
                     result = type_infer_value(tcx, expr->Value);

@@ -1,11 +1,18 @@
 
 u8*
-x64_compile_pass(X64_Assembler* x64, Buffer* buf, 
-                 Compiler_Task compiler_task) {
+convert_bytecode_to_x64_machine_code(Bytecode* bc, Buffer* buf, 
+                                     Data_Packer* data_packer,
+                                     Library_Import_Table* import_table,
+                                     Compiler_Task compiler_task) {
     
-    Bytecode* bc = x64->bytecode;
+    X64_Assembler x64 = {};
+    x64.bytecode = bc;
+    x64.data_packer = data_packer;
+    x64.use_absolute_ptrs = compiler_task == CompilerTask_Run;
+    x64.functions = (X64_Function*) calloc(array_count(bc->functions), 
+                                           sizeof(X64_Function));
+    
     u8* asm_buffer_main = buf->data;
-    
     for_array_v(bc->functions, func, func_index) {
         if (compiler_task == CompilerTask_Build) {
             if (func_index < array_count(bc->imports)) {
@@ -21,30 +28,8 @@ x64_compile_pass(X64_Assembler* x64, Buffer* buf,
             asm_buffer_main = buf->data + buf->curr_used;
         }
         
-        convert_bytecode_function_to_x64_machine_code(x64, func, buf);
+        convert_bytecode_function_to_x64_machine_code(&x64, func, buf);
     }
-    
-    return asm_buffer_main;
-}
-
-u8*
-convert_bytecode_to_x64_machine_code(Bytecode* bc, Buffer* buf, 
-                                     Data_Packer* data_packer,
-                                     Library_Import_Table* import_table,
-                                     Compiler_Task compiler_task) {
-    u8* asm_buffer_main = buf->data;
-    
-    X64_Assembler x64 = {};
-    x64.bytecode = bc;
-    x64.data_packer = data_packer;
-    x64.use_absolute_ptrs = compiler_task == CompilerTask_Run;
-    x64.functions = (X64_Function*) calloc(array_count(bc->functions), 
-                                           sizeof(X64_Function));
-    
-    // First pass
-    asm_buffer_main = x64_compile_pass(&x64, buf, compiler_task);
-    smm used_before = buf->curr_used;
-    
     
     Memory_Arena build_arena = {};
     PE_Executable pe;
@@ -65,12 +50,6 @@ convert_bytecode_to_x64_machine_code(Bytecode* bc, Buffer* buf,
                                                             base_address);
         }
     }
-    
-    
-    // Second pass is needed to get correct stack and relative pointers
-    buf->curr_used = 0;
-    asm_buffer_main = x64_compile_pass(&x64, buf, compiler_task);
-    assert(used_before == buf->curr_used && "code is not the same");
     
     if (compiler_task == CompilerTask_Build) {
         // NOTE(Alexander): write the PE executable to file
@@ -227,7 +206,7 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     x64->label_index = 1; // NOTE(Alexander): treat label 0 as end of function
     
     // Stack
-    s64 register_count = (s64) array_count(func->register_lifetimes);
+    s64 register_count = func->register_count;
     s64 stack_size = register_count*8;
     
     
@@ -384,11 +363,10 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             }
         } break;
         
-        case BC_LOAD: {
-            
-        } break;
-        
-        case BC_STORE: {
+        case BC_STORE:
+        case BC_STORE_8: {
+            // TODO(Alexander): this assumes that size of data in memory is at least 8 bytes,
+            // if we make it less then we will overwrite data outside our scope.
             x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg1_index));
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->arg0_index), X64_RAX);
         } break;
@@ -588,14 +566,16 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         case BC_DIV_S:
         case BC_DIV_U:{
             // TODO(Alexander): size and signed flags need to be set here!
-            x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index), 4, true);
-            x64_move_extend(buf, X64_RCX, X64_RSP, register_displacement(x64, bc->arg1_index), 4, true);
+            x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index),
+                            register_type(func, bc->arg0_index));
+            x64_move_extend(buf, X64_RCX, X64_RSP, register_displacement(x64, bc->arg1_index),
+                            register_type(func, bc->arg0_index));
             
             switch (opcode) {
                 case BC_ADD: x64_add64(buf, X64_RAX, X64_RCX); break; 
                 case BC_SUB: x64_sub64(buf, X64_RAX, X64_RCX); break; 
                 case BC_MUL: x64_mul64(buf, X64_RAX, X64_RCX); break; 
-                case BC_DIV_S: x64_div64(buf, X64_RAX, X64_RCX, true); break; // TODO(Alexander): we might use flags here type flags instead?
+                case BC_DIV_S: x64_div64(buf, X64_RAX, X64_RCX, true); break; // TODO(Alexander): we might use flags here type flags instead of DIV_S/ DIV_U?
                 case BC_DIV_U: x64_div64(buf, X64_RAX, X64_RCX, false); break; 
             }
             
@@ -700,35 +680,14 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             // noop
         } break;
         
-        case BC_EXTEND_U8: {
-            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
-            Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
-            src.type = (IC_TF_MASK & src.type) | IC_U8;
-            
-            x64_movzx(buf, 
-                      dest.type, dest.reg, dest.disp,
-                      src.type, src.reg, src.disp, rip);
+#endif
+        // TODO(Alexander): with type flags we don't need separate instructions for U8. S8 etc.
+        case BC_EXTEND: {
+            x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index),
+                            register_type(func, bc->arg0_index));
+            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
         } break;
-        
-        case BC_EXTEND_S8: {
-            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
-            Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
-            src.type = (IC_TF_MASK & src.type) | IC_S8;
-            
-            x64_movsx(buf, 
-                      dest.type, dest.reg, dest.disp,
-                      src.type, src.reg, src.disp, rip);
-        } break;
-        
-        case BC_EXTEND_S32: {
-            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
-            Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
-            src.type = (IC_TF_MASK & src.type) | IC_S32;
-            
-            x64_movsx(buf, 
-                      dest.type, dest.reg, dest.disp,
-                      src.type, src.reg, src.disp, rip);
-        } break;
+#if 0
         
         case BC_CONVERT_F32_S:
         case BC_CONVERT_F64_S: {

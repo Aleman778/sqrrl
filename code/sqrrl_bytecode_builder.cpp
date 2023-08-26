@@ -44,7 +44,7 @@ _convert_assign_to_bytecode(Bytecode_Builder* bc, Type* type,
             src.kind = BytecodeOperand_const;
             src.const_i64 = 0;
         }
-        _add_mov_insn(bc, type, dest, src, comment);
+        add_store_instruction(bc, type, dest, src, comment);
     }
 }
 
@@ -106,7 +106,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             
             if (is_integer(expr->Value) || is_floating(expr->Value)) {
                 s64 constant = 0;
-                result = add_bytecode_register(bc);
+                result = add_bytecode_register(bc, expr->type);
                 value_store_in_memory(expr->type, &constant, expr->Value.data);
                 const_instruction(bc, BC_CONST, result, constant);
                 
@@ -121,8 +121,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 store_data->type = bc_pointer_type(bc);
                 store_data->first = add_bytecode_register(bc);
                 store_data->second = str_data;
-                add_mov_insn(bc, t_void_ptr, result, store_data->first);
-                drop_bytecode_register(bc, store_data->first.register_index);
+                store_instruction(bc, t_void_ptr, result, store_data->first);
                 
                 Bytecode_Binary* store_count = add_insn_t(bc, BC_MOV, Binary);
                 store_count->type = BytecodeType_i64;
@@ -174,13 +173,13 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                     
                     case Op_Post_Increment: {
                         result = add_bytecode_register(bc);
-                        add_mov_insn(bc, type, result, first);
+                        store_instruction(bc, type, result, first);
                         opcode = BC_INC;
                     } break;
                     
                     case Op_Post_Decrement: {
                         result = add_bytecode_register(bc);
-                        add_mov_insn(bc, type, result, first);
+                        store_instruction(bc, type, result, first);
                         opcode = BC_DEC;
                     } break;
                 }
@@ -208,7 +207,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             //bool allocate_tmp_register = (first.kind != BytecodeOperand_register && !is_assign);
             //if (allocate_tmp_register) {
             //Bytecode_Operand tmp_register = add_bytecode_register(bc);
-            //add_mov_insn(bc, type, tmp_register, first);
+            //store_instruction(bc, type, tmp_register, first);
             //first = tmp_register;
             //}
             
@@ -255,7 +254,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             Bytecode_Operand second = convert_expression_to_bytecode(bc, expr->Binary_Expr.second);
             
             if (opcode != BC_NOOP) {
-                result = add_bytecode_register(bc);
+                result = add_bytecode_register(bc, result_type);
                 instruction(bc, opcode, result, first, second);
             } else {
                 result = second;
@@ -337,7 +336,6 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 switch (func->intrinsic_id) {
                     case Sym_rdtsc: {
                         Bytecode_Unary* intrin = add_insn_t(bc, BC_RDTSC, Unary);
-                        intrin->type = BytecodeType_i64;
                         intrin->first = add_bytecode_register(bc);
                         result = intrin->first;
                     } break;
@@ -444,23 +442,9 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                         }
                         
                     } else if (t_dest->size > t_src->size) {
-                        Bytecode_Binary* insn = add_insn_t(bc, BC_NOOP, Binary);
-                        insn->type = dest_type;
-                        insn->first = add_bytecode_register(bc);
-                        insn->second = src;
-                        result = insn->first;
-                        
-                        switch (t_src->Basic.kind) {
-                            case Basic_s8: insn->opcode = BC_EXTEND_S8; break;
-                            case Basic_s16: insn->opcode = BC_EXTEND_S16; break;
-                            case Basic_s32: insn->opcode = BC_EXTEND_S32; break;
-                            case Basic_u8: insn->opcode = BC_EXTEND_U8; break;
-                            case Basic_u16: insn->opcode = BC_EXTEND_U16; break;
-                            case Basic_u32: insn->opcode = BC_EXTEND_U32; break;
-                            default: unimplemented;
-                        }
+                        result = add_bytecode_register(bc, t_dest);
+                        instruction(bc, BC_EXTEND, result, src, {});
                     }
-                    
                 } else if (t_dest->Basic.flags & BasicFlag_Integer &&
                            t_src->Basic.flags & BasicFlag_Floating) {
                     Bytecode_Binary* insn;
@@ -525,7 +509,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                         copy_ptr->type = bc_pointer_type(bc);
                         copy_ptr->first = add_bytecode_register(bc);
                         copy_ptr->second = src;
-                        add_mov_insn(bc, t_void_ptr, result, copy_ptr->first);
+                        store_instruction(bc, t_void_ptr, result, copy_ptr->first);
                         
                         Bytecode_Binary* store_count = add_insn_t(bc, BC_MOV, Binary);
                         store_count->type = BytecodeType_i64;
@@ -586,7 +570,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             // TODO(Alexander): this is a bit hacky, later this should be a single instruction
             if (index.kind != BytecodeOperand_const && type->size > 1) {
                 Bytecode_Operand tmp = add_bytecode_register(bc);
-                add_mov_insn(bc, index_type, tmp, index);
+                store_instruction(bc, index_type, tmp, index);
                 index = tmp;
                 
                 Bytecode_Binary* mul_index = add_insn_t(bc, BC_MUL, Binary);
@@ -762,9 +746,6 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
                 Bytecode_Operand result = convert_expression_to_bytecode(bc, stmt->Return_Stmt.expr);
                 Bytecode_Unary* insn = add_insn_t(bc, BC_RETURN, Unary);
                 insn->first = result;
-                if (result.kind == BytecodeOperand_register) {
-                    drop_bytecode_register(bc, result.register_index);
-                }
             }
         } break;
         
@@ -810,36 +791,6 @@ convert_function_to_bytecode(Bytecode_Builder* bc, Bytecode_Function* func, Ast*
     }
     
     convert_statement_to_bytecode(bc, ast->Decl_Stmt.stmt, 0, 0);
-    
-    // Update function lifetimes
-    // TODO(Alexander): maybe this doesn't need to be done, if we make sure to drop registers manually
-    int insn_index = 0;
-    Bytecode_Instruction* it = iter_bytecode_instructions(func, 0);
-    while (it->kind) {
-        switch (it->kind) {
-            
-            case BytecodeInstructionKind_Unary: {
-                Bytecode_Operand op = bc_unary_first(it);
-                if (op.kind == BytecodeOperand_register) {
-                    func->register_lifetimes[op.register_index] = insn_index;
-                }
-            } break;
-            
-            case BytecodeInstructionKind_Binary: {
-                Bytecode_Operand op = bc_binary_first(it);
-                if (op.kind == BytecodeOperand_register) {
-                    func->register_lifetimes[op.register_index] = insn_index;
-                }
-                op = bc_binary_second(it);
-                if (op.kind == BytecodeOperand_register) {
-                    func->register_lifetimes[op.register_index] = insn_index;
-                }
-            } break;
-        }
-        
-        insn_index++;
-        it = iter_bytecode_instructions(func, it);
-    }
     
     return func;
 }

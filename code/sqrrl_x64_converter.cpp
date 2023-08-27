@@ -303,8 +303,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             }
         } break;
         
-        case BC_STORE:
-        case BC_STORE_8: {
+        case BC_STORE: {
             // TODO(Alexander): this assumes that size of data in memory is at least 8 bytes,
             // if we make it less then we will overwrite data outside our scope.
             x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg1_index));
@@ -386,19 +385,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                 // Direct function call
                 // E8 cd 	CALL rel32 	D
                 push_u8(buf, 0xE8);
-                u8* code_ptr = x64->functions[call->func_index].code;
-                if (code_ptr) {
-                    
-                    push_u32(buf, (u32) (x64->functions[call->func_index].code - 
-                                         (buf->data + buf->curr_used + 4)));
-                } else {
-                    X64_Rel32_Patch patch = {};
-                    patch.origin = buf->data + buf->curr_used;
-                    patch.target = &x64->functions[call->func_index].code;
-                    array_push(x64->rel32_patches, patch);
-                    push_u32(buf, 0);
-                }
-                
+                x64_rel32(x64, buf, &x64->functions[call->func_index].code);
             }
             
             if (first_arg_index == 0 && target->ret_count > 0) {
@@ -507,7 +494,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index),
                             register_type(func, bc->arg0_index));
             x64_move_extend(buf, X64_RCX, X64_RSP, register_displacement(x64, bc->arg1_index),
-                            register_type(func, bc->arg0_index));
+                            register_type(func, bc->arg1_index));
             
             switch (opcode) {
                 case BC_ADD: x64_add64(buf, X64_RAX, X64_RCX); break; 
@@ -638,6 +625,8 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                                           src.type, src.reg, src.disp, rip);
         } break;
         
+#endif
+        
         case BC_EQ:
         case BC_NEQ:
         case BC_GT_S:
@@ -648,13 +637,11 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         case BC_LT_U:
         case BC_LE_S:
         case BC_LE_U: {
-            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
-            Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
-            
-            // cmp
-            x64_binary(buf,
-                       dest.type, dest.reg, dest.disp,
-                       src.type, src.reg, src.disp, 7, 0x38, rip);
+            x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index),
+                            register_type(func, bc->arg0_index));
+            x64_move_extend(buf, X64_RCX, X64_RSP, register_displacement(x64, bc->arg1_index),
+                            register_type(func, bc->arg1_index));
+            x64_cmp64(buf, X64_RAX, X64_RCX);
             
             Bytecode_Branch* branch = (Bytecode_Branch*) ((u8*) insn + insn->next_insn);
             if (branch->opcode == BC_BRANCH) {
@@ -666,7 +653,6 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                 push_u24(buf, x64_setcc_opcodes[insn->opcode - BC_EQ]); 
             }
         } break;
-#endif
         
         case BC_BRANCH: {
             // NOTE(Alexander): conditional branch is handled by operations above

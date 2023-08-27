@@ -179,17 +179,8 @@ add_const_instruction(Bytecode_Builder* bc, Bytecode_Operator opcode,
 
 inline void
 add_store_instruction(Bytecode_Builder* bc, Type* type, Bytecode_Operand dest, Bytecode_Operand src, cstring comment) {
-    Bytecode_Operator opcode = BC_MOV;
     Bytecode_Type bc_type = to_bytecode_type(bc, type);
-    switch (type->size) {
-        case 1: opcode = BC_STORE_8; break;
-        case 2: opcode = BC_STORE_16; break;
-        case 4: { 
-            opcode = (bc_type == BytecodeType_i64 || 
-                      bc_type == BytecodeType_f64) ? BC_STORE_32 : BC_STORE;
-        } break;
-    }
-    Bytecode_Binary* result = add_insn_t(bc, opcode, Binary);
+    Bytecode_Binary* result = add_insn_t(bc, BC_STORE, Binary);
     result->type = bc_type;
     result->res_index = -1;
     result->arg0_index = dest.register_index;

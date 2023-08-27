@@ -92,7 +92,13 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
         case BC_BRANCH: {
             Bytecode_Branch* branch = (Bytecode_Branch*) insn;
             if (branch->cond.kind) {
-                wasm_load_value(wasm, buf, branch->cond, BytecodeType_i32);
+                int cond_index = branch->cond.register_index;
+                wasm_push_stack_pointer(buf);
+                
+                // Condition is always stored as i32
+                push_u8(buf, 0x28); // i32.load
+                push_leb128_u32(buf, 2);
+                push_leb128_u32(buf, cond_index*8);
                 push_u8(buf, 0x0D); // br_if
             } else {
                 push_u8(buf, 0x0C); // br
@@ -102,20 +108,10 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             push_leb128_u32(buf, block_depth - branch->label_index - 1);
         } break;
         
-        case BC_STORE: {
-            Bytecode_Operand dest = bc_binary_first(insn);
-            Bytecode_Operand src = bc_binary_second(insn);
+        case BC_STORE:{
             wasm_prepare_store(buf);
-            wasm_load_value(wasm, buf, src, insn->type, 0);
-            wasm_store_value(wasm, buf, dest, insn->type);
-        } break;
-        
-        case BC_STORE_8: {
-            Bytecode_Operand dest = bc_binary_first(insn);
-            Bytecode_Operand src = bc_binary_second(insn);
-            wasm_prepare_store(buf);
-            wasm_load_value(wasm, buf, src, insn->type, 8);
-            wasm_store_value(wasm, buf, dest, insn->type, 8);
+            wasm_load_register(buf, register_type(func, bc_insn->arg1_index), bc_insn->arg1_index);
+            wasm_store_register(buf, register_type(func, bc_insn->arg0_index), bc_insn->arg0_index);
         } break;
         
         case BC_INC: {
@@ -158,7 +154,7 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             wasm_prepare_store(buf);
             wasm_load_register(buf, register_type(func, bc_insn->arg0_index),
                                bc_insn->arg0_index);
-            wasm_load_register(buf, register_type(func, bc_insn->arg0_index),
+            wasm_load_register(buf, register_type(func, bc_insn->arg1_index),
                                bc_insn->arg1_index);
             
             int type_index = 1; // TODO(Alexander): HACK: hardcoded to i64!!!
@@ -177,19 +173,29 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
         case BC_LE_U:
         case BC_LE_S:
         case BC_NEQ: {
-            wasm_load_value(wasm, buf, bc_binary_first(insn), insn->type);
-            wasm_load_value(wasm, buf, bc_binary_second(insn), insn->type);
+            wasm_prepare_store(buf);
+            wasm_load_register(buf, register_type(func, bc_insn->arg0_index),
+                               bc_insn->arg0_index);
+            wasm_load_register(buf, register_type(func, bc_insn->arg1_index),
+                               bc_insn->arg1_index);
             Bytecode_Branch* branch = (Bytecode_Branch*) ((u8*) insn + insn->next_insn);
             int opcode_index;
             if (branch->opcode == BC_BRANCH) {
                 // Invert the condition for the branch
                 int op = BC_NEQ - insn->opcode;
-                opcode_index = (BC_NEQ - insn->opcode)*4 + insn->type - 1;
+                // TODO(Alexander): hardcoded to use i64
+                opcode_index = (BC_NEQ - insn->opcode)*4 + 1;
             } else {
-                opcode_index = (insn->opcode - BC_EQ)*4 + insn->type - 1;
+                opcode_index = (insn->opcode - BC_EQ)*4 + 1;
             }
             
             push_u8(buf, wasm_comparator_opcodes[opcode_index]);
+            
+            // Comparator always outputs a i32
+            int res_index = bc_insn->res_index;
+            push_u8(buf, 0x36); // i32.store
+            push_leb128_u32(buf, 2);
+            push_leb128_u32(buf, res_index*8);
         } break;
         
         case BC_WRAP_I64: {

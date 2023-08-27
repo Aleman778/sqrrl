@@ -30,6 +30,11 @@ wasm_const_i64(Buffer* buf, s64 val) {
 
 void
 wasm_push_load(Buffer* buf, Bytecode_Flags type_flags, u32 offset) {
+    unimplemented;
+}
+
+void
+wasm_load_i64(Buffer* buf, Bytecode_Flags type_flags, u32 offset) {
     switch (type_flags & (BC_SIZE_MASK | BC_FLAG_SIGNED | BC_FLAG_FLOAT)) {
         case BC_FLAG_64BIT: {
             push_u8(buf, 0x29); // i64.load
@@ -82,11 +87,16 @@ wasm_push_load(Buffer* buf, Bytecode_Flags type_flags, u32 offset) {
     push_leb128_u32(buf, offset);
 }
 
-void
-wasm_load_register(Buffer* buf, Bytecode_Flags type_flags, int register_index) {
+inline void
+wasm_push_stack_pointer(Buffer* buf) {
     push_u8(buf, 0x23); // global.get
     push_leb128_u32(buf, 0);
-    wasm_push_load(buf, type_flags, register_index*8);
+}
+
+inline void
+wasm_load_register(Buffer* buf, Bytecode_Flags type_flags, int register_index) {
+    wasm_push_stack_pointer(buf);
+    wasm_load_i64(buf, type_flags, register_index*8);
 }
 
 

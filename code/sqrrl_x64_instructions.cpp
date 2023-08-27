@@ -126,6 +126,14 @@ x64_div64(Buffer* buf, X64_Reg a, X64_Reg b, bool is_signed) {
     x64_modrm_direct(buf, is_signed ? 7 : 6, b);
 }
 
+inline void
+x64_cmp64(Buffer* buf, X64_Reg a, X64_Reg b) {
+    // REX.W + 3B /r 	CMP r64, r/m64 	RM
+    x64_rex(buf, REX_W, a, b);
+    push_u8(buf, 0x3B);
+    x64_modrm_direct(buf, a, b);
+}
+
 #if 0
 void
 x64_mov(Buffer* buf,

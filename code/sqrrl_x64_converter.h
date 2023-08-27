@@ -160,13 +160,25 @@ x64_rip_relative(Buffer* buf, s64 r, s64 data) {
 }
 
 inline void
+x64_rel32(X64_Assembler* x64, Buffer* buf, u8** target) {
+    if (*target) {
+        push_u32(buf, (u32) (*target - (buf->data + buf->curr_used + 4)));
+    } else {
+        X64_Rel32_Patch patch = {};
+        patch.origin = buf->data + buf->curr_used;
+        patch.target = target;
+        array_push(x64->rel32_patches, patch);
+        push_u32(buf, 0);
+    }
+}
+
+inline void
 x64_push_label_rel32(X64_Assembler* x64, Buffer* buf, Bytecode_Function* func, u32 label_index) {
     if (label_index > 0) {
         label_index = x64->block_stack[label_index - 1].label_index;
     }
     
-    push_u32(buf, (u32) (x64->curr_function->labels[label_index] - 
-                         (buf->data + buf->curr_used + 4)));
+    x64_rel32(x64, buf, &x64->curr_function->labels[label_index]);
 }
 
 inline void

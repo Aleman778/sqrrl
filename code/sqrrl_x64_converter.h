@@ -65,6 +65,11 @@ struct X64_Function {
     u8** labels;
 };
 
+struct X64_Rel32_Patch {
+    u8* origin;
+    u8** target;
+};
+
 struct X64_Assembler {
     Bytecode* bytecode;
     u32* stack;
@@ -79,6 +84,8 @@ struct X64_Assembler {
     u32 curr_bytecode_insn_index;
     
     X64_Register registers[X64_REG_COUNT];
+    
+    array(X64_Rel32_Patch)* rel32_patches;
     
     s64 current_stack_displacement_for_bytecode_registers;
     s64 stack_displacement_for_caller_arguments;

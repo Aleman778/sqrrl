@@ -31,6 +31,13 @@ convert_bytecode_to_x64_machine_code(Bytecode* bc, Buffer* buf,
         convert_bytecode_function_to_x64_machine_code(&x64, func, buf);
     }
     
+    // Patch relative operands
+    for_array_v(x64.rel32_patches, patch, patch_index) {
+        s32 rel32 = (s32) (*patch.target - (patch.origin + 4));
+        pln("% - % = %", f_u64_HEX(*patch.target), f_u64_HEX(patch.origin + 4), f_int(rel32));
+        *((s32*) patch.origin) = rel32;
+    }
+    
     Memory_Arena build_arena = {};
     PE_Executable pe;
     if (compiler_task == CompilerTask_Build) {
@@ -375,11 +382,22 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                 push_u8(buf, 0xFF);
                 x64_modrm_direct(buf, 2, X64_RAX);
             } else {
+                
                 // Direct function call
                 // E8 cd 	CALL rel32 	D
                 push_u8(buf, 0xE8);
-                push_u32(buf, (u32) (x64->functions[call->func_index].code - 
-                                     (buf->data + buf->curr_used + 4)));
+                u8* code_ptr = x64->functions[call->func_index].code;
+                if (code_ptr) {
+                    
+                    push_u32(buf, (u32) (x64->functions[call->func_index].code - 
+                                         (buf->data + buf->curr_used + 4)));
+                } else {
+                    X64_Rel32_Patch patch = {};
+                    patch.origin = buf->data + buf->curr_used;
+                    patch.target = &x64->functions[call->func_index].code;
+                    array_push(x64->rel32_patches, patch);
+                    push_u32(buf, 0);
+                }
                 
             }
             

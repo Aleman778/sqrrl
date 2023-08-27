@@ -151,6 +151,8 @@ struct Bytecode_Function {
     u32 arg_count;
     u32 ret_count;
     
+    u32 max_caller_arg_count;
+    
     u32 first_insn; // relative pointer to first instruction
     
     bool is_imported;

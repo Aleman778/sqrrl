@@ -18,7 +18,7 @@ x64_move_rax_u64(Buffer* buf, u64 disp) {
 void
 x64_move_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_Reg src) {
     // 89 /r 	MOV r/m64,r64 	MR
-    x64_rex(buf, REX_W | src);
+    x64_rex(buf, REX_W, src);
     push_u8(buf, 0x89);
     x64_modrm(buf, src, dest, disp, 0);
 }

@@ -370,10 +370,12 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                                                                      __FILE__ ":" S2(__LINE__));
             insn->func_index = func->type_index;
             
+            bc->curr_function->max_caller_arg_count = (u32) array_count(arg_operands);
+            
             // TODO(Alexander): multiple args
             if (is_valid_type(type->Function.return_type)) {
                 insn->type = to_bytecode_type(bc, type->Function.return_type);
-                result = add_bytecode_register(bc);
+                result = add_bytecode_register(bc, type->Function.return_type);
                 array_push(arg_operands, result);
             }
             
@@ -824,8 +826,8 @@ add_bytecode_function(Bytecode_Builder* bc, Type* type) {
         Type* arg_type = type->Function.arg_types[i];
         *curr_type++ = to_bytecode_type(bc, arg_type);
         
-        //Bytecode_Operand arg = push_bytecode_stack(bc, arg_type->size, arg_type->align);
-        //map_put(bc->locals, arg_ident, arg);
+        Bytecode_Operand arg = add_bytecode_register(bc, arg_type);
+        map_put(bc->locals, arg_ident, arg);
     }
     
     if (ret_count > 0) {

@@ -42,11 +42,19 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             Bytecode_Type* arg_types = (Bytecode_Type*) (call_func + 1);
             
             for (int i = 0; i < (int) call_func->arg_count; i++) {
-                wasm_load_value(wasm, buf, args[i], arg_types[i]);
+                int arg_index = args[i].register_index;
+                wasm_load_register(buf, register_type(func, arg_index), arg_index);
             }
             
-            push_u8(buf, 0x10);
+            push_u8(buf, 0x10); // call
             push_leb128_u32(buf, call_func->type_index);
+            
+            if (call_func->ret_count > 0) {
+                assert(call_func->ret_count == 1 && "TODO: multiple returns");
+                int res_index = args[call_func->arg_count].register_index;
+                wasm_prepare_store(buf, wasm->tmp_local_i64);
+                wasm_store_register(buf, register_type(func, res_index), res_index);
+            }
         } break;
         
         case BC_RETURN: {
@@ -268,7 +276,7 @@ convert_bytecode_function_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* b
     push_u8(buf, 0x24); // global.set
     push_leb128_u32(buf, 0);
     
-    // Push parameters on the stack
+    // Save parameters to local variables
     Bytecode_Type* arg_types = (Bytecode_Type*) (func + 1);
     for (u32 register_index = 0; register_index < func->arg_count; register_index++) {
         // TODO: copy larger structs
@@ -278,6 +286,12 @@ convert_bytecode_function_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* b
         //push_leb128_u32(buf, op.stack_index);
         //wasm_store_value(wasm, buf, op, arg_types[i], stk.size*8);
         
+        wasm_prepare_store(buf);
+        wasm_local_get(buf, register_index);
+        wasm_store_register(buf, register_type(func, register_index), register_index);
+        
+        
+#if 0 // TODO(Alexander): copy larger structures
         u32 offset = register_index*8;
         // dest
         push_u8(buf, 0x23); // global.get
@@ -296,6 +310,7 @@ convert_bytecode_function_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* b
         push_u8(buf, 0x41); // i32.const
         push_leb128_s32(buf, 8);
         push_u32(buf, 0x00000AFC); // memory.copy
+#endif
     }
     
     //Bytecode_Type* args = 

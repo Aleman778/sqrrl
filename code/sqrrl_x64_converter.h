@@ -63,11 +63,6 @@ struct X64_Block {
 struct X64_Function {
     u8* code;
     u8** labels;
-    
-    // last byte offset for each stack segment
-    s32 stack_args;
-    s32 stack_locals;
-    s32 stack;
 };
 
 struct X64_Assembler {
@@ -86,8 +81,7 @@ struct X64_Assembler {
     X64_Register registers[X64_REG_COUNT];
     
     s64 current_stack_displacement_for_bytecode_registers;
-    
-    
+    s64 stack_displacement_for_caller_arguments;
     
     s64 read_write_data_offset;
     s64 read_only_data_offset;
@@ -132,8 +126,6 @@ global const u32 x64_setcc_opcodes[] = {
 global const u16 x64_jcc_opcodes[] = {
     0x840F, 0x8F0F, 0x870F, 0x8D0F, 0x830F, 0x820F, 0x8C0F, 0x860F, 0x8E0F, 0x850F
 };
-
-void x64_move_register_to_memory(Buffer* buf, X64_Reg dest, s64 displacement, X64_Reg src);
 
 //inline void
 //x64_rex(Buffer* buf, u8 flags) {
@@ -195,6 +187,7 @@ x64_modrm_direct(Buffer* buf, u8 reg, u8 rm) {
     push_u8(buf, MODRM_DIRECT | ((reg&7)<<3) | (rm&7));
 }
 
+#if 0
 inline void
 x64_spill_register(X64_Assembler* x64, Buffer* buf, X64_Reg reg) {
     if (x64->registers[reg].is_allocated) {
@@ -202,8 +195,8 @@ x64_spill_register(X64_Assembler* x64, Buffer* buf, X64_Reg reg) {
         Ic_Arg stk = {};
         stk.type = IC_STK | rt;
         stk.reg = X64_RSP;
-        stk.disp = x64->curr_function->stack_locals;
-        x64->curr_function->stack_locals += 8; // TODO(Alexander): proper stack allocation (use size and alignment)
+        //stk.disp = x64->curr_function->stack_locals;
+        //x64->curr_function->stack_locals += 8; // TODO(Alexander): proper stack allocation (use size and alignment)
         
         if (rt & IC_FLOAT) {
             //x64_fmov(buf, stk.type, stk.reg, stk.disp, IC_REG | rt, reg, 0, 0);
@@ -234,7 +227,7 @@ x64_alloc_register(X64_Assembler* x64, Buffer* buf, u32 virtual_index, X64_Reg r
     unimplemented;
     return result;
 }
-
+#endif
 void convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64,
                                                    Bytecode_Function* func,
                                                    Buffer* buf);

@@ -155,7 +155,7 @@ convert_bytecode_operand_to_x64(X64_Assembler* x64, Buffer* buf, Bytecode_Operan
             if (!result.type) {
                 // TODO(Alexander): only allocaing RAX for now!
                 X64_Reg reg = (rt & IC_FLOAT) ? X64_XMM0 : X64_RAX;
-                result = x64_alloc_register(x64, buf, op.register_index, reg, rt);
+                //result = x64_alloc_register(x64, buf, op.register_index, reg, rt);
             }
             assert(result.type && "register not allocated");
         } break;
@@ -195,8 +195,6 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
         return;
     }
     
-    
-    
     // Setup labels
     x64->curr_function = &x64->functions[func->type_index];
     x64->curr_function->code = buf->data + buf->curr_used;
@@ -205,123 +203,58 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     }
     x64->label_index = 1; // NOTE(Alexander): treat label 0 as end of function
     
-    // Stack
-    s64 register_count = func->register_count;
-    s64 stack_size = register_count*8;
+    // Windows calling convention stack setup
+    s32 register_count = (s32) func->register_count;
+    s32 stack_caller_args = func->max_caller_arg_count*8;
+    x64->current_stack_displacement_for_bytecode_registers = stack_caller_args;
+    x64->stack_displacement_for_caller_arguments = 0;
     
+    // Align stack by 16-bytes (excluding 8 bytes for return address)
+    s32 stack_size = stack_caller_args + register_count*8 + 8;
+    stack_size = (s32) align_forward(stack_size, 16) - 8;
+    s32 stack_callee_args = stack_size + 8;
+    
+    Bytecode_Function_Arg* formal_args = (Bytecode_Function_Arg*) (func + 1);
+    
+    // Save HOME registers (TODO: move this it's windows calling convention only)
+    // TODO(Alexander): this doens't handle returns larger than 8 bytes
+    for (int i = (int) min(func->arg_count - 1, 4); i >= 0; i--) {
+        X64_Reg dest = int_arg_registers_ccall_windows[i];
+        x64_move_register_to_memory(buf, X64_RSP, i*8 + 8, dest);
+    }
     
     // Prologue
     x64_rex(buf, REX_W); // sub rsp, stack_size
     push_u8(buf, 0x81);
     x64_modrm_direct(buf, 5, X64_RSP);
-    push_u32(buf, (u32) stack_size);
-    
-    for_bc_insn(func, curr) {
-        convert_bytecode_insn_to_x64_machine_code(x64, buf, func, curr);
-    }
-    
-#if 0
-    
-    memset(&x64->registers, 0, sizeof(x64->registers));
-    
-    Bytecode_Function_Arg* formal_args = (Bytecode_Function_Arg*) (func + 1);
-    
-    // Save HOME registers (TODO: move this it's windows calling convention only)
-    {
-        int num_home_args = 0;
-        Bytecode_Type home_args[4];
-        // TODO(Alexander): fix this
-        if (func->ret_count == 1 && formal_args[func->arg_count].size > 8) {
-            home_args[num_home_args++] = BytecodeType_i64;
-        }
-        
-        for (int i = 0; i < (int) func->arg_count; i++) {
-            if (num_home_args < fixed_array_count(home_args)) {
-                home_args[num_home_args++] = formal_args[i].type;
-            }
-        }
-        
-        for (int i = num_home_args - 1; i >= 0; i--) {
-            int stack_offset = 8*i + 8;
-            Ic_Raw_Type rt = convert_bytecode_type_to_x64(home_args[i]);
-            if (rt & IC_FLOAT) {
-                X64_Reg reg = float_arg_registers_ccall_windows[i];
-                x64_fmov(buf,
-                         IC_STK | rt, X64_RSP, stack_offset,
-                         IC_REG | rt, reg, 0, 0);
-                
-            } else {
-                X64_Reg reg = int_arg_registers_ccall_windows[i];
-                x64_mov(buf,
-                        IC_STK | rt, X64_RSP, stack_offset,
-                        IC_REG | rt, reg, 0, 0);
-            }
-        }
-    }
+    push_u32(buf, stack_size);
     
     // Setup local stack (excluding arguments and return values)
-    x64->curr_function->stack_locals = x64->curr_function->stack_args;
     
-    // TODO(Alexander): windows calling convention setup argument stack to be above our stack frame
-    s32 stack_caller_args = x64->curr_function->stack;
-    //pln("locals = %", f_u64_HEX(x64->curr_function->stack_locals));
-    //pln("stack_caller_args = %\n", f_u64_HEX(stack_caller_args));
     // TODO: implement this!!!
-    if (func->ret_count == 1 && formal_args[func->arg_count].size > 8) {
-        stack_caller_args += 8;
-        x64->stack[func->arg_count] = stack_caller_args;
-    }
-    for (int i = 0; i < (int) func->arg_count; i++) {
-        stack_caller_args += 8;
-        x64->stack[i] = stack_caller_args;
-    }
+    //if (func->ret_count == 1 && formal_args[func->arg_count].size > 8) {
+    //stack_caller_args += 8;
+    //x64->stack[func->arg_count] = stack_caller_args;
+    //}
     
-    // Prologue
-    x64_rex(buf, REX_W); // sub rsp, stack_size
-    push_u8(buf, 0x81);
-    x64_modrm(buf, IC_REG | IC_S64, 0, 5, X64_RSP, 0);
-    u32* prologue_stack_size = (u32*) (buf->data + buf->curr_used);
-    push_u32(buf, 0);
-    
-    // Copy larger structures to local stack (TODO: move this it's windows x64 calling convention)
+    // Copy registers to our local stack space (TODO: move this it's windows x64 calling convention)
     for (int arg_index = 0; arg_index < (int) func->arg_count; arg_index++) {
-        Bytecode_Function_Arg arg = formal_args[arg_index];
-        if (arg.size > 8) {
-            s32 src = x64->stack[arg_index];
-            s32 dest = x64->curr_function->stack_locals;
-            dest = (s32) align_forward(dest, arg.align);
-            x64->stack[arg_index] = dest;
-            x64->curr_function->stack_locals = dest + arg.size;
-            
-            // TODO(Alexander): we should make a more general memcpy function
-            x64_mov(buf, IC_REG | IC_S64, X64_RCX, 0, IC_DISP | IC_S32, 0, arg.size, 0);
-            x64_lea(buf, X64_RDI, X64_RSP, dest, 0);
-            x64_mov(buf, IC_REG | IC_S64, X64_RSI, 0, IC_STK | IC_S64, X64_RSP, src, 0);
-            push_u16(buf, 0xA4F3); // F3 A4 	REP MOVS m8, m8 	ZO
-        }
+        s64 src = stack_callee_args + arg_index*8;
+        s64 dest = register_displacement(x64, arg_index);
+        x64_move_memory_to_register(buf, X64_RAX, X64_RSP, src);
+        x64_move_register_to_memory(buf, X64_RSP, dest, X64_RAX);
     }
     
-    x64->curr_bytecode_insn_index = 0;
     for_bc_insn(func, curr) {
         convert_bytecode_insn_to_x64_machine_code(x64, buf, func, curr);
-        x64->curr_bytecode_insn_index++;
     }
-    
-    if (x64->curr_function->stack == 0) {
-        // Compute stack size and align by 16-bytes (excluding 8 bytes for return address)
-        s32 stack_size = (x64->curr_function->stack_args +
-                          x64->curr_function->stack_locals + 8);
-        stack_size = (s32) align_forward(stack_size, 16) - 8;
-        x64->curr_function->stack = stack_size + 8;
-    }
-#endif
     
     // Epilogue
     x64->curr_function->labels[0] = buf->data + buf->curr_used;
     x64_rex(buf, REX_W); // add rsp, stack_usage
     push_u8(buf, 0x81);
     x64_modrm_direct(buf, 0, X64_RSP);
-    push_u32(buf, (u32) stack_size);
+    push_u32(buf, stack_size);
     push_u8(buf, 0xC3); // RET near
 }
 
@@ -371,7 +304,6 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->arg0_index), X64_RAX);
         } break;
         
-#if 0 
         case BC_CALL | flag_floating:
         case BC_CALL: {
             Bytecode_Call* call = (Bytecode_Call*) insn;
@@ -388,29 +320,17 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             
             // TODO(Alexander): this is part of windows calling convention, move this
             for (int i = (int) target->arg_count - 1; i >= 0; i--) {
-                Ic_Arg arg = convert_bytecode_operand_to_x64(x64, buf, args[i], formal_args[i].type);
-                
+                int src_index = args[i].register_index;
                 int arg_index = first_arg_index + i;
+                X64_Reg dest = X64_RAX;
                 if (arg_index < 4) {
-                    // TODO(Alexander): spill float regs too
-                    if (arg.type & IC_FLOAT) {
-                        X64_Reg reg = float_arg_registers_ccall_windows[arg_index];
-                        x64_spill_register(x64, buf, reg);
-                        x64_fmov(buf, 
-                                 IC_REG | arg.raw_type, reg, 0,
-                                 arg.type, arg.reg, arg.disp, rip);
-                    } else {
-                        X64_Reg reg = int_arg_registers_ccall_windows[arg_index];
-                        x64_spill_register(x64, buf, reg);
-                        
-                        x64_mov(buf, 
-                                IC_REG | arg.raw_type, reg, 0,
-                                arg.type, arg.reg, arg.disp, rip);
-                    }
-                } else {
-                    x64_mov(buf, 
-                            IC_STK | arg.raw_type, X64_RSP, local_arg_stack_usage + i*8,
-                            arg.type, arg.reg, arg.disp, rip);
+                    dest = int_arg_registers_ccall_windows[arg_index];
+                }
+                
+                x64_move_memory_to_register(buf, dest, X64_RSP,
+                                            register_displacement(x64, src_index));
+                if (arg_index >= 4) {
+                    x64_move_register_to_memory(buf, X64_RSP, i*8, dest);
                 }
             }
             local_arg_stack_usage += target->arg_count*8;
@@ -423,6 +343,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                 return_virtual_register = args[target->arg_count].register_index;
             }
             
+#if 0
             if (first_arg_index == 1) {
                 // Create temporary space for storing the return value of the function
                 Bytecode_Function_Arg arg = formal_args[target->arg_count];
@@ -441,22 +362,18 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                     //x64->virtual_registers[return_virtual_register] = result;
                 }
             }
+#endif
             
             // NOTE(Alexander): make sure to allocate space for HOME registers even if they aren't used!
-            int stack_args = x64->curr_function->stack_args;
-            stack_args = max(stack_args, local_arg_stack_usage);
-            stack_args = max(stack_args, 4*8); 
-            x64->curr_function->stack_args = stack_args;
-            
             if (target->is_imported) {
                 
                 // Indirect function call from pointer
-                x64_spill_register(x64, buf, X64_RAX);
+                //x64_spill_register(x64, buf, X64_RAX);
                 x64_move_rax_u64(buf, (u64) target->code_ptr);
                 
                 // FF /2 	CALL r/m64 	M 	
                 push_u8(buf, 0xFF);
-                x64_modrm(buf, IC_REG + IC_S64, 0, 2, X64_RAX, rip);
+                x64_modrm_direct(buf, 2, X64_RAX);
             } else {
                 // Direct function call
                 // E8 cd 	CALL rel32 	D
@@ -467,10 +384,13 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             }
             
             if (first_arg_index == 0 && target->ret_count > 0) {
-                x64_alloc_register(x64, buf, return_virtual_register, X64_RAX, return_rt);
+                x64_move_register_to_memory(buf, X64_RSP,
+                                            register_displacement(x64, return_virtual_register),
+                                            X64_RAX);
+                
+                //x64_alloc_register(x64, buf, return_virtual_register, X64_RAX, return_rt);
             }
         } break;
-#endif
         
         case BC_RETURN: {
             Bytecode_Function_Arg* formal_args = (Bytecode_Function_Arg*) (func + 1);
@@ -775,8 +695,8 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             assert(dest.kind == BytecodeOperand_register);
             
             Ic_Raw_Type rt = convert_bytecode_type_to_x64(insn->type);
-            x64_alloc_register(x64, buf, dest.register_index, X64_RAX, rt);
-            x64_spill_register(x64, buf, X64_RDX);
+            //x64_alloc_register(x64, buf, dest.register_index, X64_RAX, rt);
+            //x64_spill_register(x64, buf, X64_RDX);
             
             push_u16(buf, 0x310F); // rdtsc edx:eax
             

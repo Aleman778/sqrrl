@@ -49,8 +49,8 @@ to_bytecode_type_flags(Bytecode_Builder* bc, Type* type) {
                 case Basic_u32: return BC_FLAG_32BIT;
                 case Basic_u64: return BC_FLAG_64BIT;
                 
-                //case Basic_f32: return BytecodeType_f32;
-                //case Basic_f64: return BytecodeType_f64;
+                case Basic_f32: return BC_FLAG_32BIT | BC_FLAG_FLOAT;
+                case Basic_f64: return BC_FLAG_64BIT | BC_FLAG_FLOAT;
                 
                 default: unimplemented;
             }
@@ -63,9 +63,6 @@ to_bytecode_type_flags(Bytecode_Builder* bc, Type* type) {
 
 Bytecode_Type
 to_bytecode_type(Bytecode_Builder* bc, Type* type) {
-    return {};
-    
-#if 0
     switch (type->kind) {
         case TypeKind_Basic: {
             
@@ -116,7 +113,6 @@ to_bytecode_type(Bytecode_Builder* bc, Type* type) {
     }
     
     return BytecodeType_i32;
-#endif
 }
 
 Bytecode_Function* add_bytecode_function(Bytecode_Builder* bc, Type* type);

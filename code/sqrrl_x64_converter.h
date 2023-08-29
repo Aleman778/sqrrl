@@ -65,9 +65,14 @@ struct X64_Function {
     u8** labels;
 };
 
-struct X64_Rel32_Patch {
+struct X64_Jump_Patch {
     u8* origin;
     u8** target;
+};
+
+struct X64_Data_Patch {
+    u8* origin;
+    Exported_Data data;
 };
 
 struct X64_Assembler {
@@ -85,7 +90,9 @@ struct X64_Assembler {
     
     X64_Register registers[X64_REG_COUNT];
     
-    array(X64_Rel32_Patch)* rel32_patches;
+    array(X64_Jump_Patch)* jump_patches;
+    array(X64_Data_Patch)* data_patches;
+    
     
     s64 current_stack_displacement_for_bytecode_registers;
     s64 stack_displacement_for_caller_arguments;
@@ -160,25 +167,25 @@ x64_rip_relative(Buffer* buf, s64 r, s64 data) {
 }
 
 inline void
-x64_rel32(X64_Assembler* x64, Buffer* buf, u8** target) {
+x64_jump_address(X64_Assembler* x64, Buffer* buf, u8** target) {
     if (*target) {
         push_u32(buf, (u32) (*target - (buf->data + buf->curr_used + 4)));
     } else {
-        X64_Rel32_Patch patch = {};
+        X64_Jump_Patch patch = {};
         patch.origin = buf->data + buf->curr_used;
         patch.target = target;
-        array_push(x64->rel32_patches, patch);
+        array_push(x64->jump_patches, patch);
         push_u32(buf, 0);
     }
 }
 
 inline void
-x64_push_label_rel32(X64_Assembler* x64, Buffer* buf, Bytecode_Function* func, u32 label_index) {
+x64_jump_address_for_label(X64_Assembler* x64, Buffer* buf, Bytecode_Function* func, u32 label_index) {
     if (label_index > 0) {
         label_index = x64->block_stack[label_index - 1].label_index;
     }
     
-    x64_rel32(x64, buf, &x64->curr_function->labels[label_index]);
+    x64_jump_address(x64, buf, &x64->curr_function->labels[label_index]);
 }
 
 inline void
@@ -204,6 +211,21 @@ x64_modrm(Buffer* buf, u8 reg, u8 rm, s64 disp, s64 rip) {
 inline void
 x64_modrm_direct(Buffer* buf, u8 reg, u8 rm) {
     push_u8(buf, MODRM_DIRECT | ((reg&7)<<3) | (rm&7));
+}
+
+inline void
+x64_modrm_exported_data(X64_Assembler* x64, Buffer* buf, X64_Reg reg, Exported_Data data) {
+    push_u8(buf, ((u8) (reg&7)<<3) | (u8) X64_RBP);
+    if (x64->use_absolute_ptrs) {
+        s64 disp = (s64) data.data - (s64) (buf->data + buf->curr_used + 4);
+        push_u32(buf, (u32) disp);
+    } else {
+        X64_Data_Patch patch = {};
+        patch.origin = buf->data + buf->curr_used;
+        patch.data = data;
+        array_push(x64->data_patches, patch);
+        push_u32(buf, 0);
+    }
 }
 
 #if 0

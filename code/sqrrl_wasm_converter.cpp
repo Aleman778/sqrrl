@@ -9,28 +9,24 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
         } break;
         
         case BC_CONST: {
-            
             wasm_prepare_store(buf);
-            
-            switch (insn->type) {
-                case BytecodeType_i32:
-                case BytecodeType_i64: {
-                    wasm_const_i64(buf, (s64) bc_insn->const_i64);
-                } break;
-                
-                case BytecodeType_f32: {
-                    push_u8(buf, 0x43); // i32.const
-                    push_u32(buf, (u32) bc_insn->const_i64);
-                } break;
-                
-                case BytecodeType_f64: {
-                    push_u8(buf, 0x44); // i64.const
-                    push_u64(buf, (u64) bc_insn->const_i64);
-                } break;
-            }
-            
-            Bytecode_Operand result = {};
-            result.register_index = bc_insn->res_index;
+            wasm_const_i64(buf, (s64) bc_insn->const_i64);
+            wasm_store_register(buf, register_type(func, bc_insn->res_index),
+                                bc_insn->res_index);
+        } break;
+        
+        case BC_CONST_F32: {
+            wasm_prepare_store(buf);
+            push_u8(buf, 0x43); // i32.const
+            push_u32(buf, (u32) bc_insn->const_i64);
+            wasm_store_register(buf, register_type(func, bc_insn->res_index),
+                                bc_insn->res_index);
+        } break;
+        
+        case BC_CONST_F64: {
+            wasm_prepare_store(buf);
+            push_u8(buf, 0x44); // i64.const
+            push_u64(buf, (u64) bc_insn->const_i64);
             wasm_store_register(buf, register_type(func, bc_insn->res_index),
                                 bc_insn->res_index);
         } break;
@@ -151,13 +147,15 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
         case BC_SHL:
         case BC_SAR:
         case BC_SHR: {
+            Bytecode_Flags flags = register_type(func, bc_insn->arg0_index);
             wasm_prepare_store(buf);
-            wasm_load_register(buf, register_type(func, bc_insn->arg0_index),
-                               bc_insn->arg0_index);
-            wasm_load_register(buf, register_type(func, bc_insn->arg1_index),
-                               bc_insn->arg1_index);
+            wasm_load_register(buf, flags, bc_insn->arg0_index);
+            wasm_load_register(buf, flags, bc_insn->arg1_index);
             
-            int type_index = 1; // TODO(Alexander): HACK: hardcoded to i64!!!
+            int type_index = 1;
+            if (flags & BC_FLAG_FLOAT) {
+                type_index = flags & BC_FLAG_64BIT ? 3 : 2;
+            }
             push_u8(buf, wasm_binary_opcodes[(insn->opcode - BC_ADD)*4 + type_index]);
             wasm_store_register(buf, register_type(func, bc_insn->res_index),
                                 bc_insn->res_index);
@@ -173,20 +171,23 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
         case BC_LE_U:
         case BC_LE_S:
         case BC_NEQ: {
+            Bytecode_Flags flags = register_type(func, bc_insn->arg0_index);
             wasm_prepare_store(buf);
-            wasm_load_register(buf, register_type(func, bc_insn->arg0_index),
-                               bc_insn->arg0_index);
-            wasm_load_register(buf, register_type(func, bc_insn->arg1_index),
-                               bc_insn->arg1_index);
+            wasm_load_register(buf, flags, bc_insn->arg0_index);
+            wasm_load_register(buf, flags, bc_insn->arg1_index);
             Bytecode_Branch* branch = (Bytecode_Branch*) ((u8*) insn + insn->next_insn);
+            int type_index = 1;
+            if (flags & BC_FLAG_FLOAT) {
+                type_index = flags & BC_FLAG_64BIT ? 3 : 2;
+            }
+            
             int opcode_index;
             if (branch->opcode == BC_BRANCH) {
                 // Invert the condition for the branch
                 int op = BC_NEQ - insn->opcode;
-                // TODO(Alexander): hardcoded to use i64
-                opcode_index = (BC_NEQ - insn->opcode)*4 + 1;
+                opcode_index = (BC_NEQ - insn->opcode)*4 + type_index;
             } else {
-                opcode_index = (insn->opcode - BC_EQ)*4 + 1;
+                opcode_index = (insn->opcode - BC_EQ)*4 + type_index;
             }
             
             push_u8(buf, wasm_comparator_opcodes[opcode_index]);
@@ -216,17 +217,19 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             wasm_store_register(buf, res_flags, bc_insn->res_index);
         } break;
         
-        case BC_CONVERT_F32_S: {
-            wasm_load_value(wasm, buf, bc_binary_second(insn), BytecodeType_f32);
-            const u8 opcodes[] = { 0xA8, 0xAF };
-            push_u8(buf, opcodes[insn->type - 1]);
+        case BC_CONVERT_FLOAT_TO_INT: {
+            Bytecode_Flags a_flags = register_type(func, bc_insn->arg0_index);
+            wasm_prepare_store(buf);
+            wasm_load_register(buf, a_flags, bc_insn->arg0_index);
+            push_u8(buf, (a_flags & BC_FLAG_64BIT) ? 0xB0 : 0xAF);
+            wasm_store_register(buf, register_type(func, bc_insn->res_index),
+                                bc_insn->res_index);
         } break;
         
-        case BC_CONVERT_F64_S: {
-            wasm_load_value(wasm, buf, bc_binary_second(insn), BytecodeType_f64);
-            const u8 opcodes[] = { 0xAA, 0xB0 };
-            push_u8(buf, opcodes[insn->type - 1]);
-        } break;
+        // 64-bit version of above
+        //wasm_load_value(wasm, buf, bc_binary_second(insn), BytecodeType_f64);
+        //const u8 opcodes[] = { 0xAA, 0xB0 };
+        //push_u8(buf, opcodes[insn->type - 1]);
         
         case BC_MEMORY_COPY: {
             Bytecode_Memory* mem = (Bytecode_Memory*) insn;

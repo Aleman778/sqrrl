@@ -99,7 +99,6 @@ wasm_load_register(Buffer* buf, Bytecode_Flags type_flags, int register_index) {
     wasm_load_i64(buf, type_flags, register_index*8);
 }
 
-
 void
 wasm_prepare_store(Buffer* buf, int swap_local_i64=-1) {
     // Setup stack pointer

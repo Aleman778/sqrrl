@@ -134,6 +134,60 @@ x64_cmp64(Buffer* buf, X64_Reg a, X64_Reg b) {
     x64_modrm_direct(buf, a, b);
 }
 
+inline void
+x64_move_float_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_Reg src, int size) {
+    // F3 0F 11 /r MOVSS xmm2/m32, xmm1
+    // F2 0F 11 /r MOVSD xmm1/m64, xmm2
+    push_u24(buf, (size == 8) ? 0x110FF2 : 0x110FF3);
+    x64_modrm(buf, src, dest, disp, 0);
+}
+
+inline void
+x64_move_memory_to_float_register(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp, int size) {
+    // F3 0F 10 /r MOVSS xmm1, m32
+    // F2 0F 10 /r MOVSD xmm1, m64
+    push_u24(buf, (size == 8) ? 0x100FF2 : 0x100FF3);
+    x64_modrm(buf, dest, src, disp, 0);
+}
+
+inline void
+x64_addss(Buffer* buf, X64_Reg a, X64_Reg b, int size) {
+    // F3 0F 58 /r ADDSS xmm1, xmm2/m32
+    // F2 0F 58 /r ADDSD xmm1, xmm2/m64
+    push_u24(buf, (size == 8) ? 0x580FF2 : 0x580FF3);
+    x64_modrm_direct(buf, a, b);
+}
+
+inline void
+x64_subss(Buffer* buf, X64_Reg a, X64_Reg b, int size) {
+    // F3 0F 5C /r SUBSS xmm1, xmm2/m32
+    // F2 0F 5C /r SUBSD xmm1, xmm2/m64
+    push_u24(buf, (size == 8) ? 0x5C0FF2 : 0x5C0FF3);
+    x64_modrm_direct(buf, a, b);
+}
+
+inline void
+x64_mulss(Buffer* buf, X64_Reg a, X64_Reg b, int size) {
+    push_u24(buf, (size == 8) ? 0x590FF2 : 0x5C0FF3);
+    x64_modrm_direct(buf, a, b);
+}
+
+inline void
+x64_divss(Buffer* buf, X64_Reg a, X64_Reg b, int size) {
+    push_u24(buf, (size == 8) ? 0x5E0FF2 : 0x5E0FF3);
+    x64_modrm_direct(buf, a, b);
+}
+
+inline void
+x64_convert_float_to_int(Buffer* buf, X64_Reg dest, X64_Reg src, int size) {
+    // F3 REX.W 0F 2C /r CVTTSS2SI r64, xmm1/m32
+    // F2 REX.W 0F 2C /r CVTTSD2SI r64, xmm1/m64
+    push_u8(buf, (size == 8) ? 0xF2 : 0xF3);
+    x64_rex(buf, REX_W);
+    push_u16(buf, 0x2C0F);
+    x64_modrm_direct(buf, dest, src);
+}
+
 #if 0
 void
 x64_mov(Buffer* buf,
@@ -508,23 +562,6 @@ x64_convert_int_to_float_type(Buffer* buf,
         x64_rex(buf, REX_W);
     }
     push_u16(buf, 0x2A0F);
-    x64_modrm(buf, t2, d2, r1, r2, rip);
-}
-
-inline void
-x64_convert_float_to_int_type(Buffer* buf, 
-                              Ic_Type t1, s64 r1, s64 d1, 
-                              Ic_Type t2, s64 r2, s64 d2, s64 rip) {
-    assert(t1 & IC_REG);
-    assert(t2 & (IC_REG | IC_STK | IC_RIP_DISP32));
-    
-    // F3 0F 2C /r CVTTSS2SI r32, xmm1/m32
-    // F2 0F 2C /r CVTTSD2SI r32, xmm1/m64
-    push_u8(buf, t2 & IC_T64 ? 0xF2 : 0xF3);
-    if (t1 & IC_T64) {
-        x64_rex(buf, REX_W);
-    }
-    push_u16(buf, 0x2C0F);
     x64_modrm(buf, t2, d2, r1, r2, rip);
 }
 

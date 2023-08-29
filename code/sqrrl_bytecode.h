@@ -23,6 +23,8 @@ struct Bytecode_Import {
 OP(NOOP) \
 OP(DEBUG_BREAK) \
 OP(CONST) \
+OP(CONST_F32) \
+OP(CONST_F64) \
 OP(ALLOCA) \
 OP(LOAD) \
 OP(STORE) \
@@ -41,15 +43,9 @@ OP(WRAP_I64) \
 OP(MEMORY_COPY) \
 OP(MEMORY_SET) \
 OP(EXTEND) \
-OP(CONVERT_S32) \
-OP(CONVERT_U32) \
-OP(CONVERT_S64) \
-OP(CONVERT_U64) \
-OP(CONVERT_F32_S) \
-OP(CONVERT_F32_U) \
-OP(CONVERT_F64_S) \
-OP(CONVERT_F64_U) \
-OP(CONVERT_F2F) \
+OP(CONVERT_INT_TO_FLOAT) \
+OP(CONVERT_FLOAT_TO_INT) \
+OP(CONVERT_FLOAT_TO_FLOAT) \
 OP(REINTERPRET_F2I) \
 OP(NEG) \
 OP(NOT) \
@@ -114,6 +110,7 @@ typedef u8 Bytecode_Flags;
 #define BC_SIZE_PLUS_SIGNED_MASK (BC_FLAG_8BIT | BC_FLAG_16BIT | BC_FLAG_32BIT | BC_FLAG_64BIT | BC_FLAG_SIGNED)
 
 enum Bytecode_Type {
+    BytecodeType_void,
     BytecodeType_i32,
     BytecodeType_i64,
     BytecodeType_f32,
@@ -261,8 +258,11 @@ struct Bytecode_Binary {
     int arg0_index;
     int arg1_index;
     
-    s64 const_i64;
-    
+    union {
+        s64 const_i64;
+        f32 const_f32;
+        f64 const_f64;
+    };
     
     Bytecode_Operand first;
     Bytecode_Operand second;

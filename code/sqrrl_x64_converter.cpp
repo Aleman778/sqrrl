@@ -285,11 +285,11 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             push_u8(buf, 0xCC);
         } break;
         
-        case BC_ALLOCA: {
-            // noop! All registers are stack based
+        case BC_LOCAL: {
+            unimplemented;
         } break;
         
-        case BC_CONST: {
+        case BC_INT_CONST: {
             s64 immediate = bc->const_i64;
             if (immediate < S32_MIN || immediate > S32_MAX) {
                 x64_move_rax_u64(buf, immediate);
@@ -303,7 +303,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             }
         } break;
         
-        case BC_CONST_F32: {
+        case BC_F32_CONST: {
             Exported_Data f32_data = export_struct(x64->data_packer, f32, Read_Data_Section);
             *((f32*) f32_data.data) = bc->const_f32;
             
@@ -314,7 +314,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                                               X64_XMM0, sizeof(f32));
         } break;
         
-        case BC_CONST_F64: {
+        case BC_F64_CONST: {
             Exported_Data f64_data = export_struct(x64->data_packer, f64, Read_Data_Section);
             *((f64*) f64_data.data) = bc->const_f64;
             
@@ -513,7 +513,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
         } break;
         
-        case BC_CONVERT_FLOAT_TO_INT: {
+        case BC_FLOAT_TO_INT: {
             Bytecode_Flags src_flags = register_type(func, bc->arg0_index);
             int size = 4;
             if (src_flags & BC_FLAG_64BIT) size = 8;
@@ -620,7 +620,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             }
         } break;
         
-        case BC_MEMORY_COPY: {
+        case BC_MEMCPY: {
             Bytecode_Memory* mem = (Bytecode_Memory*) insn;
             Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, mem->dest, BytecodeType_i64);
             Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, mem->src, BytecodeType_i64);
@@ -632,7 +632,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             unimplemented;
         } break;
         
-        case BC_RDTSC: {
+        case BC_X64_RDTSC: {
             Bytecode_Operand dest = bc_unary_first(insn);
             assert(dest.kind == BytecodeOperand_register);
             

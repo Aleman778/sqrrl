@@ -19,76 +19,96 @@ struct Bytecode_Import {
     u32 rdata_offset;
 };
 
-#define DEF_BYTECODE_OPERATORS \
-OP(NOOP) \
-OP(DEBUG_BREAK) \
-OP(CONST) \
-OP(CONST_F32) \
-OP(CONST_F64) \
-OP(ALLOCA) \
-OP(LOAD) \
-OP(STORE) \
-OP(LOAD_FUNCTION_PTR) \
-OP(CALL) \
-OP(RETURN) \
-OP(BLOCK) \
-OP(LOOP) \
-OP(END) \
-OP(BRANCH) \
-OP(MOV) \
-OP(MOV_8) \
-OP(MOV_16) \
-OP(MOV_32) \
-OP(WRAP_I64) \
-OP(MEMORY_COPY) \
-OP(MEMORY_SET) \
-OP(EXTEND) \
-OP(CONVERT_INT_TO_FLOAT) \
-OP(CONVERT_FLOAT_TO_INT) \
-OP(CONVERT_FLOAT_TO_FLOAT) \
-OP(REINTERPRET_F2I) \
-OP(NEG) \
-OP(NOT) \
-OP(INC) \
-OP(DEC) \
-OP(ADDR_OF) \
-OP(DEREF) \
-OP(ADD) \
-OP(SUB) \
-OP(MUL) \
-OP(DIV_S) \
-OP(DIV_U) \
-OP(MOD_S) \
-OP(MOD_U) \
-OP(AND) \
-OP(OR) \
-OP(XOR) \
-OP(SHL) \
-OP(SAR) \
-OP(SHR) \
-OP(EQ) \
-OP(GT_S) \
-OP(GT_U) \
-OP(GE_S) \
-OP(GE_U) \
-OP(LT_U) \
-OP(LT_S) \
-OP(LE_U) \
-OP(LE_S) \
-OP(NEQ) \
-OP(RDTSC)
-
 
 enum Bytecode_Operator {
-#define OP(name) BC_##name,
-    DEF_BYTECODE_OPERATORS
-#undef OP
+    BC_NOOP = 0,
+    
+    // Control
+    BC_DEBUG_BREAK,
+    BC_LOOP,
+    BC_BLOCK,
+    BC_END,
+    BC_BRANCH,
+    BC_CALL,
+    BC_RETURN,
+    
+    // Constants
+    BC_INT_CONST,
+    BC_F32_CONST,
+    BC_F64_CONST,
+    
+    // Pointers
+    BC_LOCAL, // (int size, int align) -> void*
+    BC_GLOBAL,
+    BC_PTR_ARRAY_INDEX,
+    BC_PTR_STRUCT_FIELD,
+    
+    // Memory
+    BC_STORE,
+    BC_LOAD,
+    BC_MEMCPY,
+    BC_MEMSET,
+    
+    // Conversions
+    BC_WRAP_I64,
+    BC_EXTEND,
+    BC_INT_TO_FLOAT,
+    BC_FLOAT_TO_INT,
+    BC_FLOAT_TO_FLOAT,
+    BC_REINTERPRET_F2I,
+    
+    // Unary
+    BC_NEG,
+    BC_NOT,
+    BC_INC,
+    BC_DEC,
+    
+    // Binary
+    BC_ADDR_OF,
+    BC_DEREF,
+    BC_ADD,
+    BC_SUB,
+    BC_MUL,
+    BC_DIV_S,
+    BC_DIV_U,
+    BC_MOD_S,
+    BC_MOD_U,
+    BC_AND,
+    BC_OR,
+    BC_XOR,
+    BC_SHL,
+    BC_SAR,
+    BC_SHR,
+    
+    // Comparators
+    BC_EQ,
+    BC_GT_S,
+    BC_GT_U,
+    BC_GE_S,
+    BC_GE_U,
+    BC_LT_U,
+    BC_LT_S,
+    BC_LE_U,
+    BC_LE_S,
+    BC_NEQ,
+    
+    // Intrinsics (x64)
+    BC_X64_RDTSC
 };
 
-global const cstring bc_opcode_names[] = {
-#define OP(name) #name,
-    DEF_BYTECODE_OPERATORS
-#undef OP
+global const cstring bc_operator_names[] = {
+    /*                   */ "noop",
+    /* Control:          */ "debug_break", "loop", "block", "end", "branch", "call", "return",
+    /* Constants:        */ "i64.const", "f32.const", "f64.const",
+    /* Pointers:         */ "local", "global", "ptr.array_index", "ptr.struct_field",
+    /* Memory:           */ "store", "load", "memcpy", "memset",
+    /* Conversions:      */ "wrap_i64", "extend", "int_to_float", "float_to_int", "float_to_float",
+    /*                   */ "reinterpret_f2i",
+    /* Unary:            */ "neg", "not", "inc", "dec",
+    /* Binary:           */ "addr_of", "deref", "add", "sub", "mul", "div_s", "div_u", 
+    /*                   */ "mod_s", "mod_u", "and", "or", "xor", "shl", "sar", "shr",
+    /* Comparators:      */ "eq", "gt_s", "gt_u", "ge_s", "ge_u", "lt_u", "lt_s", "le_u", "le_s", "neq",
+    /* intrinsics (x64): */ "x64_rdts"
 };
 
 global const cstring bc_type_names[] = {
@@ -203,6 +223,15 @@ struct Bytecode_Operand {
         };
     };
 };
+
+//struct Bytecode_Instruction {
+
+
+//int res;
+//int arg0;
+//int arg1;
+//};
+
 
 enum Bytecode_Instruction_Kind {
     BytecodeInstructionKind_None,

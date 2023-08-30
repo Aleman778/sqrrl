@@ -8,14 +8,14 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             // noop, doesn't exist in wasm AFAIK
         } break;
         
-        case BC_CONST: {
+        case BC_INT_CONST: {
             wasm_prepare_store(buf);
             wasm_const_i64(buf, (s64) bc_insn->const_i64);
             wasm_store_register(buf, register_type(func, bc_insn->res_index),
                                 bc_insn->res_index);
         } break;
         
-        case BC_CONST_F32: {
+        case BC_F32_CONST: {
             wasm_prepare_store(buf);
             push_u8(buf, 0x43); // i32.const
             push_u32(buf, (u32) bc_insn->const_i64);
@@ -23,7 +23,7 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
                                 bc_insn->res_index);
         } break;
         
-        case BC_CONST_F64: {
+        case BC_F64_CONST: {
             wasm_prepare_store(buf);
             push_u8(buf, 0x44); // i64.const
             push_u64(buf, (u64) bc_insn->const_i64);
@@ -217,7 +217,7 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             wasm_store_register(buf, res_flags, bc_insn->res_index);
         } break;
         
-        case BC_CONVERT_FLOAT_TO_INT: {
+        case BC_FLOAT_TO_INT: {
             Bytecode_Flags a_flags = register_type(func, bc_insn->arg0_index);
             wasm_prepare_store(buf);
             wasm_load_register(buf, a_flags, bc_insn->arg0_index);
@@ -231,7 +231,7 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
         //const u8 opcodes[] = { 0xAA, 0xB0 };
         //push_u8(buf, opcodes[insn->type - 1]);
         
-        case BC_MEMORY_COPY: {
+        case BC_MEMSET: {
             Bytecode_Memory* mem = (Bytecode_Memory*) insn;
             
             if (mem->src.kind == BytecodeOperand_register) {

@@ -77,9 +77,9 @@ to_bytecode_type(Bytecode_Builder* bc, Type* type) {
                 case Basic_int:
                 case Basic_uint: 
                 
-                case Basic_s64: 
-                case Basic_u64: 
-                case Basic_smm: 
+                case Basic_s64:
+                case Basic_u64:
+                case Basic_smm:
                 case Basic_umm: return BytecodeType_i64;
                 
                 case Basic_string:
@@ -208,7 +208,7 @@ inline Bytecode_Operand
 push_bytecode_stack(Bytecode_Builder* bc, u32 size, u32 align) {
     assert(bc->curr_function && "need to start a new function first");
     
-    Bytecode_Alloca* alloca = add_insn_t(bc, BC_ALLOCA, Alloca);
+    Bytecode_Alloca* alloca = add_insn_t(bc, BC_LOCAL, Alloca);
     alloca->dest = add_bytecode_register(bc);
     alloca->size = size;
     alloca->align = align;

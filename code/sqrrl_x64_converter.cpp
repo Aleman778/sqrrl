@@ -222,11 +222,19 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     s32 register_count = (s32) func->register_count;
     s32 stack_caller_args = func->max_caller_arg_count*8;
     x64->current_stack_displacement_for_bytecode_registers = stack_caller_args;
-    x64->stack_displacement_for_caller_arguments = 0;
+    
+    s32 stack_size = stack_caller_args + register_count*8;
+    x64->current_stack_displacement_for_locals = stack_size;
+    for_bc_insn(func, insn) {
+        if (insn->opcode == BC_LOCAL) {
+            Bytecode_Binary* bc_insn = (Bytecode_Binary*) insn;
+            stack_size = (s32) align_forward(stack_size, bc_insn->arg1_index);
+            stack_size += bc_insn->arg0_index;
+        }
+    }
     
     // Align stack by 16-bytes (excluding 8 bytes for return address)
-    s32 stack_size = stack_caller_args + register_count*8 + 8;
-    stack_size = (s32) align_forward(stack_size, 16) - 8;
+    stack_size = (s32) align_forward(stack_size + 8, 16) - 8;
     s32 stack_callee_args = stack_size + 8;
     
     Bytecode_Function_Arg* formal_args = (Bytecode_Function_Arg*) (func + 1);
@@ -285,10 +293,6 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             push_u8(buf, 0xCC);
         } break;
         
-        case BC_LOCAL: {
-            unimplemented;
-        } break;
-        
         case BC_INT_CONST: {
             s64 immediate = bc->const_i64;
             if (immediate < S32_MIN || immediate > S32_MAX) {
@@ -323,6 +327,20 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             x64_modrm_exported_data(x64, buf, X64_XMM0, f64_data);
             x64_move_float_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), 
                                               X64_XMM0, sizeof(f64));
+        } break;
+        
+        case BC_LOCAL: {
+            s64 disp = x64->current_stack_displacement_for_locals;
+            disp = (s64) align_forward(disp, bc->arg1_index);
+            x64->current_stack_displacement_for_locals = disp + bc->arg0_index;
+            x64_lea(buf, X64_RAX, X64_RSP, disp);
+            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
+        } break;
+        
+        case BC_PTR_STRUCT_FIELD: {
+            x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index));
+            x64_add64_immediate(buf, X64_RAX, bc->arg1_index);
+            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
         } break;
         
         case BC_STORE: {

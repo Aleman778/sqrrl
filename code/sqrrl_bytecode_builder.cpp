@@ -595,6 +595,7 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
                         // TODO(Alexander): all assign stmts should probably allocate as local, later on...
                         src = add_bytecode_register(bc, type);
                         bc_instruction(bc, BC_LOCAL, src, type->size, type->align);
+                        
                     }
                 }
                 map_put(bc->locals, ident, src);
@@ -871,6 +872,16 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
                 
                 case BC_F64_CONST: {
                     string_builder_push_format(sb, "%", f_float(bc_insn->const_f64));
+                } break;
+                
+                case BC_LOCAL: {
+                    string_builder_push_format(sb, "size %, align %", f_int(bc_insn->arg0_index),
+                                               f_int(bc_insn->arg1_index));
+                } break;
+                
+                case BC_PTR_STRUCT_FIELD: {
+                    string_builder_push_format(sb, "r%, %", f_int(bc_insn->arg0_index),
+                                               f_int(bc_insn->arg1_index));
                 } break;
                 
                 case BC_FLOAT_TO_INT: {

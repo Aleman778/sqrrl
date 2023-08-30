@@ -89,11 +89,28 @@ x64_move_extend(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp, Bytecode_Flags
 }
 
 inline void
+x64_lea(Buffer* buf, X64_Reg a, X64_Reg b, s64 disp) {
+    // REX.W + 8D /r 	LEA r64,m 	RM
+    x64_rex(buf, REX_W, a, b);
+    push_u8(buf, 0x8D);
+    x64_modrm(buf, a, b, disp, 0);
+}
+
+inline void
 x64_add64(Buffer* buf, X64_Reg a, X64_Reg b) {
     // REX.W + 03 /r 	ADD r64, r/m64 	RM
     x64_rex(buf, REX_W, a, b);
     push_u8(buf, 0x03);
     x64_modrm_direct(buf, a, b);
+}
+
+inline void
+x64_add64_immediate(Buffer* buf, X64_Reg a, s32 imm) {
+    // REX.W + 81 /0 id 	ADD r/m64, imm32 	MI
+    x64_rex(buf, REX_W, 0, a);
+    push_u8(buf, 0x81);
+    x64_modrm_direct(buf, 0, a);
+    push_u32(buf, imm);
 }
 
 inline void

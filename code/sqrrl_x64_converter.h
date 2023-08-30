@@ -95,7 +95,7 @@ struct X64_Assembler {
     
     
     s64 current_stack_displacement_for_bytecode_registers;
-    s64 stack_displacement_for_caller_arguments;
+    s64 current_stack_displacement_for_locals;
     
     s64 read_write_data_offset;
     s64 read_only_data_offset;

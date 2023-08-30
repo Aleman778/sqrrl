@@ -4,8 +4,8 @@ struct Bytecode_Builder {
     
     array(Bytecode_Operand*)* register_stack;
     
-    map(string_id, Bytecode_Operand)* locals;
-    map(string_id, Bytecode_Operand)* globals;
+    map(string_id, int)* locals;
+    map(string_id, int)* globals;
     
     Bytecode_Function* curr_function;
     Bytecode_Instruction* curr_insn;
@@ -21,6 +21,7 @@ struct Bytecode_Builder {
     u32 next_register_index;
     
     Bytecode_Type pointer_type;
+    Bytecode_Type pointer_flags;
     bool use_absolute_memory;
 };
 
@@ -54,6 +55,11 @@ to_bytecode_type_flags(Bytecode_Builder* bc, Type* type) {
                 
                 default: unimplemented;
             }
+        } break;
+        
+        default: {
+            // TODO(Alexander): add BC_FLAG_PTR? maybe it should be type enum instead
+            return BC_FLAG_64BIT;
         } break;
     }
     
@@ -137,88 +143,64 @@ alignof(Bytecode_##T), \
 __FILE__ ":" S2(__LINE__));
 
 
-#define instruction(bc, opcode, register_result, register_src0, register_src1) \
-_instruction(bc, opcode, register_result, register_src0, register_src1, __FILE__ ":" S2(__LINE__))
-
-#define const_instruction(bc, opcode, register_result, constant) \
-add_const_instruction(bc, opcode, register_result, constant, __FILE__ ":" S2(__LINE__))
-
-#define store_instruction(bc, type, dest, src) \
-add_store_instruction(bc, type, dest, src, __FILE__ ":" S2(__LINE__))
-
+#define bc_instruction(bc, opcode, res, arg0, arg1) \
+add_bc_instruction(bc, opcode, res, arg0, arg1, __FILE__ ":" S2(__LINE__))
 
 inline Bytecode_Binary*
-_instruction(Bytecode_Builder* bc, Bytecode_Operator opcode, 
-             Bytecode_Operand result, Bytecode_Operand first, Bytecode_Operand second,
-             cstring comment) {
+add_bc_instruction(Bytecode_Builder* bc, Bytecode_Operator opcode, 
+                   int res, int arg0, int arg1,
+                   cstring comment) {
     
     Bytecode_Binary* insn = add_insn_t(bc, opcode, Binary);
     insn->type = BytecodeType_i32;
-    insn->res_index = result.register_index;
-    insn->arg0_index = first.register_index;
-    insn->arg1_index = second.register_index;
+    insn->res_index = res;
+    insn->arg0_index = arg0;
+    insn->arg1_index = arg1;
     insn->comment = comment;
     return insn;
 }
 
+#define bc_const_instruction(bc, opcode, res, constant) \
+add_bc_const_instruction(bc, opcode, res, constant, __FILE__ ":" S2(__LINE__))
 
 inline void
-add_const_instruction(Bytecode_Builder* bc, Bytecode_Operator opcode, 
-                      Bytecode_Operand result, s64 constant, cstring comment) {
+add_bc_const_instruction(Bytecode_Builder* bc, Bytecode_Operator opcode, 
+                         int res, s64 val, cstring comment) {
     
     Bytecode_Binary* insn = add_insn_t(bc, opcode, Binary);
     insn->type = BytecodeType_i32;
-    insn->res_index = result.register_index;
-    insn->const_i64 = constant;
+    insn->res_index = res;
+    insn->const_i64 = val;
     insn->comment = comment;
 }
 
+#define bc_store_instruction(bc, dest, src) \
+add_store_instruction(bc, dest, src, __FILE__ ":" S2(__LINE__))
+
 inline void
-add_store_instruction(Bytecode_Builder* bc, Type* type, Bytecode_Operand dest, Bytecode_Operand src, cstring comment) {
-    Bytecode_Type bc_type = to_bytecode_type(bc, type);
+add_store_instruction(Bytecode_Builder* bc, int dest, int src,
+                      cstring comment) {
     Bytecode_Binary* result = add_insn_t(bc, BC_STORE, Binary);
-    result->type = bc_type;
     result->res_index = -1;
-    result->arg0_index = dest.register_index;
-    result->arg1_index = src.register_index;
+    result->arg0_index = dest;
+    result->arg1_index = src;
     result->comment = comment;
 }
 
-inline Bytecode_Operand
-add_bytecode_register(Bytecode_Builder* bc, Type* type=0) {
+inline int
+add_bytecode_register(Bytecode_Builder* bc, Type* type) {
     assert(bc->curr_function);
     
-    Bytecode_Operand result = {};
-    result.kind = BytecodeOperand_register;
-    result.register_index = bc->curr_function->register_count++;
+    int result = bc->curr_function->register_count++;
     
     Bytecode_Flags reg_type = 0;
-    if (type) {
-        reg_type = to_bytecode_type_flags(bc, type);
-    }
+    reg_type = to_bytecode_type_flags(bc, type);
     array_push(bc->curr_function->register_types, reg_type);
     
     return result;
 }
 
-#define push_bytecode_stack_t(bc, T) \
-push_bytecode_stack(bc, (u32) sizeof(T), (u32) alignof(T))
-
-inline Bytecode_Operand
-push_bytecode_stack(Bytecode_Builder* bc, u32 size, u32 align) {
-    assert(bc->curr_function && "need to start a new function first");
-    
-    Bytecode_Alloca* alloca = add_insn_t(bc, BC_LOCAL, Alloca);
-    alloca->dest = add_bytecode_register(bc);
-    alloca->size = size;
-    alloca->align = align;
-    
-    //Stack_Entry stk = { size, align };
-    //array_push(bc->curr_function->stack, stk);
-    return alloca->dest;
-}
-
-inline Bytecode_Operand
+inline int
 push_bytecode_memory(Bytecode_Builder* bc, Bytecode_Memory_Kind kind, smm size, smm align, void* init=0) {
     Memory_Arena* arena = (kind == BytecodeMemory_read_only ? 
                            &bc->data_packer->rdata_arena : 
@@ -237,7 +219,9 @@ push_bytecode_memory(Bytecode_Builder* bc, Bytecode_Memory_Kind kind, smm size, 
         result.memory_offset = offset;
         result.memory_kind = kind;
     }
-    return result;
+    unimplemented;
+    return 0;
+    //return result;
 }
 
 inline void

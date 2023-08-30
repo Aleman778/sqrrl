@@ -50,7 +50,7 @@ enum Bytecode_Operator {
     BC_MEMSET,
     
     // Conversions
-    BC_WRAP_I64,
+    BC_TRUNCATE,
     BC_EXTEND,
     BC_INT_TO_FLOAT,
     BC_FLOAT_TO_INT,
@@ -102,7 +102,7 @@ global const cstring bc_operator_names[] = {
     /* Constants:        */ "i64.const", "f32.const", "f64.const",
     /* Pointers:         */ "local", "global", "ptr.array_index", "ptr.struct_field",
     /* Memory:           */ "store", "load", "memcpy", "memset",
-    /* Conversions:      */ "wrap_i64", "extend", "int_to_float", "float_to_int", "float_to_float",
+    /* Conversions:      */ "truncate", "extend", "int_to_float", "float_to_int", "float_to_float",
     /*                   */ "reinterpret_f2i",
     /* Unary:            */ "neg", "not", "inc", "dec",
     /* Binary:           */ "addr_of", "deref", "add", "sub", "mul", "div_s", "div_u", 
@@ -284,17 +284,15 @@ struct Bytecode_Binary {
     Bytecode_Instruction_Base;
     
     int res_index;
-    int arg0_index;
-    int arg1_index;
-    
     union {
+        struct {
+            int arg0_index;
+            int arg1_index;
+        };
         s64 const_i64;
         f32 const_f32;
         f64 const_f64;
     };
-    
-    Bytecode_Operand first;
-    Bytecode_Operand second;
 };
 
 #define bc_binary_first(insn) (((Bytecode_Binary*) insn)->first)
@@ -317,7 +315,7 @@ struct Bytecode_Block {
 struct Bytecode_Branch {
     Bytecode_Instruction_Base;
     
-    Bytecode_Operand cond;
+    int cond;
     
     u32 label_index;
     // TODO(Alexander): maybe have a true and false label?

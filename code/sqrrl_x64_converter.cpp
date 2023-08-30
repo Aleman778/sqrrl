@@ -34,7 +34,7 @@ convert_bytecode_to_x64_machine_code(Bytecode* bc, Buffer* buf,
     // Patch relative operands
     for_array_v(x64.jump_patches, patch, _pi) {
         s32 rel32 = (s32) (*patch.target - (patch.origin + 4));
-        pln("% - % = %", f_u64_HEX(*patch.target), f_u64_HEX(patch.origin + 4), f_int(rel32));
+        //pln("% - % = %", f_u64_HEX(*patch.target), f_u64_HEX(patch.origin + 4), f_int(rel32));
         *((s32*) patch.origin) = rel32;
     }
     
@@ -595,7 +595,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         case BC_BRANCH: {
             // NOTE(Alexander): conditional branch is handled by operations above
             Bytecode_Branch* branch = (Bytecode_Branch*) insn;
-            if (!branch->cond.kind) {
+            if (branch->cond == -1) {
                 push_u8(buf, 0xE9);
                 x64_jump_address_for_label(x64, buf, func, branch->label_index);
             }

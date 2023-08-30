@@ -87,14 +87,13 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
         
         case BC_BRANCH: {
             Bytecode_Branch* branch = (Bytecode_Branch*) insn;
-            if (branch->cond.kind) {
-                int cond_index = branch->cond.register_index;
+            if (branch->cond >= 0) {
                 wasm_push_stack_pointer(buf);
                 
                 // Condition is always stored as i32
                 push_u8(buf, 0x28); // i32.load
                 push_leb128_u32(buf, 2);
-                push_leb128_u32(buf, cond_index*8);
+                push_leb128_u32(buf, branch->cond*8);
                 push_u8(buf, 0x0D); // br_if
             } else {
                 push_u8(buf, 0x0C); // br
@@ -199,10 +198,14 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             push_leb128_u32(buf, res_index*8);
         } break;
         
-        case BC_WRAP_I64: {
-            assert(insn->type == BytecodeType_i32);
-            wasm_load_value(wasm, buf, bc_binary_second(insn), BytecodeType_i64);
-            push_u8(buf, 0xA7); // i32.wrap_i64
+        case BC_TRUNCATE: {
+            Bytecode_Flags flags = register_type(func, bc_insn->arg0_index);
+            if (flags & BC_FLAG_64BIT) {
+                wasm_load_register(buf, flags, bc_insn->arg0_index);
+                push_u8(buf, 0xA7); // i32.wrap_i64
+            } else {
+                unimplemented;
+            }
         } break;
         
         case BC_EXTEND: {

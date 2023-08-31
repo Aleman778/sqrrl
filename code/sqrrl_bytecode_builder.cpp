@@ -54,24 +54,21 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
         } break;
         
         case Ast_Value: {
-            Bytecode_Type result_type = to_bytecode_type(bc, expr->type);
+            Bytecode_Type type = to_bytecode_type(bc, expr->type);
             
             if (is_integer(expr->Value) || is_floating(expr->Value)) {
                 s64 constant = 0;
                 result = add_bytecode_register(bc, expr->type);
                 value_store_in_memory(expr->type, &constant, expr->Value.data);
-                switch (result_type) {
-                    case BytecodeType_i32:
-                    case BytecodeType_i64: {
+                switch (type.kind) {
+                    case BC_TYPE_INT: {
                         bc_const_instruction(bc, BC_INT_CONST, result, constant);
                     } break;
                     
-                    case BytecodeType_f32: {
-                        bc_const_instruction(bc, BC_F32_CONST, result, constant);
-                    } break;
-                    
-                    case BytecodeType_f64: {
-                        bc_const_instruction(bc, BC_F64_CONST, result, constant);
+                    case BC_TYPE_FLOAT: {
+                        bc_const_instruction(bc, 
+                                             (type.size == 8) ? BC_F64_CONST : BC_F32_CONST,
+                                             result, constant);
                     } break;
                 }
             } else if (is_string(expr->Value)) {
@@ -348,7 +345,6 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             
             // TODO(Alexander): multiple args
             if (is_valid_type(type->Function.return_type)) {
-                insn->type = to_bytecode_type(bc, type->Function.return_type);
                 result = add_bytecode_register(bc, type->Function.return_type);
                 array_push(arg_operands, result);
             }
@@ -957,6 +953,29 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
 }
 
 void
+string_builder_dump_bytecode_type(String_Builder* sb, Bytecode_Type type) {
+    
+    switch (type.kind) {
+        case BC_TYPE_INT: {
+            if (type.flags & BC_FLAG_SIGNED) {
+                string_builder_push_format(sb, "s%", f_int((int) type.size*8));
+            } else {
+                string_builder_push_format(sb, "u%", f_int((int) type.size*8));
+            }
+        } break;
+        
+        case BC_TYPE_FLOAT: {
+            string_builder_push_format(sb, "f%", f_int((int) type.size*8));
+        } break;
+        
+        case BC_TYPE_PTR: {
+            string_builder_push(sb, "ptr");
+        } break;
+    }
+    
+}
+
+void
 string_builder_dump_bytecode(String_Builder* sb, Bytecode* bc, Bytecode_Function* func) {
     if (!func) return;
     
@@ -971,7 +990,7 @@ string_builder_dump_bytecode(String_Builder* sb, Bytecode* bc, Bytecode_Function
     Bytecode_Type* types = (Bytecode_Type*) (func + 1);
     if (func->ret_count == 1) {
         // TODO(Alexander): multiple returns
-        string_builder_push(sb, bc_type_names[types[func->arg_count]]);
+        string_builder_dump_bytecode_type(sb, types[func->arg_count]);
         string_builder_push(sb, " ");
     } else {
         string_builder_push(sb, "void ");
@@ -979,7 +998,7 @@ string_builder_dump_bytecode(String_Builder* sb, Bytecode* bc, Bytecode_Function
     string_builder_dump_bytecode_function_name(sb, bc, func);
     string_builder_push(sb, "(");
     for (u32 i = 0; i < func->arg_count; i++) {
-        string_builder_push(sb, bc_type_names[types[i]]);
+        string_builder_dump_bytecode_type(sb, types[i]);
         if (i + 1 < func->arg_count) {
             string_builder_push(sb, ", ");
         }

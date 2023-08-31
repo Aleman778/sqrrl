@@ -89,119 +89,6 @@ convert_bytecode_to_x64_machine_code(Bytecode* bc, Buffer* buf,
     return asm_buffer_main;
 }
 
-
-Ic_Raw_Type
-convert_bytecode_type_to_x64(Bytecode_Type type) {
-    switch (type) {
-        case BytecodeType_i32: return IC_S32;
-        case BytecodeType_i64: return IC_S64;
-        case BytecodeType_f32: return IC_F32;
-        case BytecodeType_f64: return IC_F64;
-    }
-    return 0;
-}
-
-Ic_Raw_Type
-convert_bytecode_type_to_x64(Bytecode_Type type, int size) {
-    switch (type) {
-        case BytecodeType_i32: 
-        case BytecodeType_i64: {
-            switch (size) {
-                case 1: return IC_S8;
-                case 2: return IC_S16;
-                case 4: return IC_S32;
-                default: return IC_S64;
-            }
-        } break;
-        
-        case BytecodeType_f32: 
-        case BytecodeType_f64: {
-            switch (size) {
-                case 4: return IC_F32;
-                case 8: return IC_F64;
-                default: unimplemented;
-            }
-        } break;
-    }
-    return 0;
-}
-
-Ic_Arg
-convert_bytecode_operand_to_x64(X64_Assembler* x64, Buffer* buf, Bytecode_Operand op, Bytecode_Type type) {
-    Ic_Raw_Type rt = convert_bytecode_type_to_x64(type);
-    Ic_Arg result = {};
-    switch (op.kind) {
-        case BytecodeOperand_const: {
-            
-            switch (type) {
-                case BytecodeType_i32: {
-                    result.type = IC_DISP | rt;
-                    result.disp = op.const_i32; 
-                } break;
-                
-                case BytecodeType_i64: {
-                    result.type = IC_DISP | rt;
-                    result.disp = op.const_i64; 
-                } break;
-                
-                case BytecodeType_f32: {
-                    
-                } break;
-                
-                case BytecodeType_f64: {
-                    void* data = arena_push_struct(&x64->data_packer->rdata_arena, f64);
-                    u32 relative_ptr = (u32) arena_relative_pointer(&x64->data_packer->rdata_arena, data);
-                    *((f64*) data) = op.const_f64;
-                    result.type = IC_RIP_DISP32 | rt;
-                    if (x64->use_absolute_ptrs) {
-                        result.disp = (s64) data;
-                    } else {
-                        result.data.disp = relative_ptr;
-                        result.data.area = IcDataArea_Read_Only;
-                    }
-                } break;
-            }
-        } break;
-        
-        case BytecodeOperand_register: {
-            unimplemented;
-            //result = x64->virtual_registers[op.register_index];
-            
-            if (!result.type) {
-                // TODO(Alexander): only allocaing RAX for now!
-                X64_Reg reg = (rt & IC_FLOAT) ? X64_XMM0 : X64_RAX;
-                //result = x64_alloc_register(x64, buf, op.register_index, reg, rt);
-            }
-            assert(result.type && "register not allocated");
-        } break;
-        
-        case BytecodeOperand_memory: {
-            result.type = IC_RIP_DISP32 | rt;
-            result.reg = X64_RIP;
-            
-            if (x64->use_absolute_ptrs) {
-                result.disp = (s64) op.memory_absolute;
-            } else {
-                switch (op.memory_kind) {
-                    case BytecodeMemory_read_write: {
-                        result.disp = (s64) x64->read_write_data_offset + op.memory_offset;
-                    } break;
-                    
-                    case BytecodeMemory_read_only: {
-                        result.disp = (s64) x64->read_only_data_offset + op.memory_offset;
-                    } break;
-                }
-            }
-        } break;
-        
-        default: {
-            unimplemented;
-        } break;
-    }
-    
-    return result;
-}
-
 void
 convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Function* func, Buffer* buf) {
     assert(x64->bytecode && x64->functions && x64->data_packer && "X64 assembler is not setup correctly");
@@ -346,8 +233,15 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         case BC_STORE: {
             // TODO(Alexander): this assumes that size of data in memory is at least 8 bytes,
             // if we make it less then we will overwrite data outside our scope.
-            x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg1_index));
-            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->arg0_index), X64_RAX);
+            x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index));
+            x64_move_memory_to_register(buf, X64_RCX, X64_RSP, register_displacement(x64, bc->arg1_index));
+            x64_move_register_to_memory(buf, X64_RAX, 0, X64_RCX);
+        } break;
+        
+        case BC_LOAD: {
+            x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index));
+            x64_move_memory_to_register(buf, X64_RAX, X64_RAX, 0);
+            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);;
         } break;
         
         case BC_CALL: {
@@ -381,10 +275,8 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             local_arg_stack_usage += target->arg_count*8;
             
             
-            Ic_Raw_Type return_rt = 0;
             u32 return_virtual_register = 0;
             if (target->ret_count > 0) {
-                return_rt = convert_bytecode_type_to_x64(insn->type);
                 return_virtual_register = args[target->arg_count].register_index;
             }
             
@@ -428,6 +320,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             }
             
             if (first_arg_index == 0 && target->ret_count > 0) {
+                // TODO(Alexander): Add support for floats!
                 x64_move_register_to_memory(buf, X64_RSP,
                                             register_displacement(x64, return_virtual_register),
                                             X64_RAX);
@@ -526,17 +419,16 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         
         // TODO(Alexander): with type flags we don't need separate instructions for U8. S8 etc.
         case BC_EXTEND: {
+            Bytecode_Type type = register_type(func, bc->arg0_index);
             x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index),
-                            register_type(func, bc->arg0_index));
+                            type.size, type.flags & BC_FLAG_SIGNED);
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
         } break;
         
         case BC_FLOAT_TO_INT: {
-            Bytecode_Flags src_flags = register_type(func, bc->arg0_index);
-            int size = 4;
-            if (src_flags & BC_FLAG_64BIT) size = 8;
-            x64_move_memory_to_float_register(buf, X64_XMM0, X64_RSP, register_displacement(x64, bc->arg0_index), size);
-            x64_convert_float_to_int(buf, X64_RAX, X64_XMM0, size);
+            Bytecode_Type type = register_type(func, bc->arg0_index);
+            x64_move_memory_to_float_register(buf, X64_XMM0, X64_RSP, register_displacement(x64, bc->arg0_index), type.size);
+            x64_convert_float_to_int(buf, X64_RAX, X64_XMM0, type.size);
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
         } break;
         
@@ -545,29 +437,28 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         case BC_MUL:
         case BC_DIV_S:
         case BC_DIV_U: {
-            Bytecode_Flags flags = register_type(func, bc->arg0_index);
-            if (flags & BC_FLAG_FLOAT) {
-                int size = 4;
-                if (flags & BC_FLAG_64BIT) size = 8;
-                x64_move_memory_to_float_register(buf, X64_XMM4, X64_RSP, register_displacement(x64, bc->arg0_index), size);
-                x64_move_memory_to_float_register(buf, X64_XMM5, X64_RSP, register_displacement(x64, bc->arg1_index), size);
+            Bytecode_Type type = register_type(func, bc->arg0_index);
+            if (type.kind == BC_TYPE_FLOAT) {
+                x64_move_memory_to_float_register(buf, X64_XMM4, X64_RSP, register_displacement(x64, bc->arg0_index), type.size);
+                x64_move_memory_to_float_register(buf, X64_XMM5, X64_RSP, register_displacement(x64, bc->arg1_index), type.size);
                 
                 switch (bc->opcode) {
-                    case BC_ADD: x64_addss(buf, X64_XMM4, X64_XMM5, size); break; 
-                    case BC_SUB: x64_subss(buf, X64_XMM4, X64_XMM5, size); break; 
-                    case BC_MUL: x64_mulss(buf, X64_XMM4, X64_XMM5, size); break; 
+                    case BC_ADD: x64_addss(buf, X64_XMM4, X64_XMM5, type.size); break; 
+                    case BC_SUB: x64_subss(buf, X64_XMM4, X64_XMM5, type.size); break; 
+                    case BC_MUL: x64_mulss(buf, X64_XMM4, X64_XMM5, type.size); break; 
                     case BC_DIV_S: // TODO(Alexander): we should only have DIV!!!
-                    case BC_DIV_U: x64_divss(buf, X64_XMM4, X64_XMM5, size); break;
+                    case BC_DIV_U: x64_divss(buf, X64_XMM4, X64_XMM5, type.size); break;
                     
                     default: unimplemented;
                 }
                 x64_move_float_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index),
-                                                  X64_XMM4, size);
+                                                  X64_XMM4, type.size);
                 
             } else {
+                bool is_signed = type.flags & BC_FLAG_SIGNED;
                 // TODO(Alexander): size and signed flags need to be set here!
-                x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index), flags);
-                x64_move_extend(buf, X64_RCX, X64_RSP, register_displacement(x64, bc->arg1_index), flags);
+                x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index), type.size, is_signed);
+                x64_move_extend(buf, X64_RCX, X64_RSP, register_displacement(x64, bc->arg1_index), type.size, is_signed);
                 
                 switch (bc->opcode) {
                     case BC_ADD: x64_add64(buf, X64_RAX, X64_RCX); break; 
@@ -593,10 +484,12 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         case BC_LT_U:
         case BC_LE_S:
         case BC_LE_U: {
+            Bytecode_Type type = register_type(func, bc->arg0_index);
+            bool is_signed = type.flags & BC_FLAG_SIGNED;
             x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index),
-                            register_type(func, bc->arg0_index));
+                            type.size, is_signed);
             x64_move_extend(buf, X64_RCX, X64_RSP, register_displacement(x64, bc->arg1_index),
-                            register_type(func, bc->arg1_index));
+                            type.size, is_signed);
             x64_cmp64(buf, X64_RAX, X64_RCX);
             
             Bytecode_Branch* branch = (Bytecode_Branch*) ((u8*) insn + insn->next_insn);
@@ -640,8 +533,8 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         
         case BC_MEMCPY: {
             Bytecode_Memory* mem = (Bytecode_Memory*) insn;
-            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, mem->dest, BytecodeType_i64);
-            Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, mem->src, BytecodeType_i64);
+            //Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, mem->dest, BytecodeType_i64);
+            //Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, mem->src, BytecodeType_i64);
             
             //x64_string_op(x64, buf, 
             //dest.type, dest.reg, dest.disp, 
@@ -654,7 +547,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             Bytecode_Operand dest = bc_unary_first(insn);
             assert(dest.kind == BytecodeOperand_register);
             
-            Ic_Raw_Type rt = convert_bytecode_type_to_x64(insn->type);
+            //Ic_Raw_Type rt = convert_bytecode_type_to_x64(insn->type);
             //x64_alloc_register(x64, buf, dest.register_index, X64_RAX, rt);
             //x64_spill_register(x64, buf, X64_RDX);
             
@@ -677,121 +570,3 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
     }
 }
-
-#if 0
-inline void
-x64_unary(Buffer* buf, Ic_Type t, s64 r, s64 d, u8 opcode, u8 reg_field, s64 rip) {
-    if (t & IC_T64) {
-        x64_rex(buf, REX_W);
-    }
-    // F7 /3 	NEG r/m32 	M
-    push_u8(buf, opcode);
-    x64_modrm(buf, t, d, reg_field, r, rip);
-}
-
-inline void
-x64_binary(Buffer* buf,
-           Ic_Type t1, s64 r1, s64 d1, 
-           Ic_Type t2, s64 r2, s64 d2,
-           u8 reg_field, u8 opcode, s64 rip) {
-    
-    if (t1 & IC_DISP) {
-        Ic_Type tmpt = IC_REG + (t1 & IC_RT_MASK);
-        s64 tmpr = X64_RAX;
-        x64_mov(buf, tmpt, tmpr, 0, t1, r1, d1, rip);
-        t1 = tmpt;
-        r1 = tmpr;
-        d1 = 0;
-    }
-    
-    switch (t1 & IC_TF_MASK) {
-        case IC_REG: {
-            if (t2 & IC_DISP) {
-                if (d2 > U32_MAX) {
-                    unimplemented;
-                }
-                
-                if (t1 & IC_T64) {
-                    x64_rex(buf, REX_W);
-                }
-                
-                // 81 /0 id 	ADD r/m32, imm32 	MI
-                //push_u8(buf, 0x81);
-                push_u8(buf, (t1 & IC_T8) ? 0x80 : 0x81);
-                push_u8(buf, 0xC0 | (reg_field << 3) | (u8) r1);
-                if (t1 & IC_T8) {
-                    push_u8(buf, (u8) d2);
-                } else {
-                    push_u32(buf, (u32) d2);
-                }
-                
-            } else if (t2 & IC_STK_RIP_REG) {
-                if (t1 & IC_T64) {
-                    x64_rex(buf, REX_W);
-                }
-                
-                // 03 /r 	ADD r32, r/m32 	RM
-                push_u8(buf, (t1 & IC_T8) ? opcode + 2 : opcode + 3);
-                x64_modrm(buf, t2, d2, r1, r2, rip);
-            } else {
-                unimplemented;
-            }
-        } break;
-        
-        case IC_STK:
-        case IC_RIP_DISP32: {
-            if (t2 & IC_DISP) {
-                
-                if ((u64) d2 > U32_MAX && (d2 != -1 || t2 & IC_UINT)) {
-                    unimplemented;
-                } else if (t2 & IC_UINT && (s32) d2 < 0) {
-                    Ic_Type tmpt = IC_T32 + IC_REG;
-                    s64 tmpr = X64_RAX;
-                    x64_mov(buf, tmpt, tmpr, 0, t2, r2, d2, rip);
-                    x64_binary(buf, t1, r1, d1, tmpt, tmpr, 0, reg_field, opcode, rip);
-                } else {
-                    if (t1 & IC_T64) {
-                        x64_rex(buf, REX_W);
-                    }
-                    
-                    // 81 /0 id 	ADD r/m32, imm32 	MI
-                    push_u8(buf, (t1 & IC_T8) ? 0x80 : 0x81);
-                    //push_u8(buf, 0xC7);
-                    s64 disp_size = t1 & IC_T8 ? 1 : 4;
-                    x64_modrm(buf, t1, d1, reg_field, r1, rip + disp_size);
-                    if (t1 & IC_T8) {
-                        push_u8(buf, (u8) d2);
-                    } else {
-                        push_u32(buf, (u32) d2);
-                    }
-                }
-            } else if (t2 & IC_REG) {
-                if (t1 & IC_T16) {
-                    push_u8(buf, X64_OP_SIZE_PREFIX);
-                }
-                
-                if (t1 & IC_T64) {
-                    x64_rex(buf, REX_W);
-                }
-                
-                // 01 /r 	ADD r/m32, r32 	MR
-                push_u8(buf, (t1 & IC_T8) ? opcode : opcode + 1);
-                x64_modrm(buf, t1, d1, r2, r1, rip);
-                
-            } else if (t2 & IC_STK_RIP) {
-                s64 tmpr = X64_RAX;
-                if (r2 == tmpr || r1 == tmpr) {
-                    tmpr = X64_RCX;
-                }
-                x64_mov(buf, IC_REG + (t2 & IC_RT_MASK), tmpr, 0, t2, r2, d2, rip);
-                x64_binary(buf, t1, r1, d1, IC_REG + (t1 & IC_RT_MASK), tmpr, 0, reg_field, opcode, rip);
-            } else {
-                assert(0 && "invalid instruction");
-            }
-        } break;
-        
-        default: assert(0 && "invalid instruction");
-    }
-}
-
-#endif

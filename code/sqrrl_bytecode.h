@@ -115,31 +115,21 @@ global const cstring bc_type_names[] = {
     "", "i32", "i64", "f32", "f64"
 };
 
-enum {
-    BC_FLAG_8BIT   = bit(0),
-    BC_FLAG_16BIT  = bit(1),
-    BC_FLAG_32BIT  = bit(2),
-    BC_FLAG_64BIT  = bit(3),
-    BC_FLAG_BOOL   = bit(4),
-    BC_FLAG_FLOAT  = bit(5),
-    BC_FLAG_SIGNED = bit(6),
-};
-typedef u8 Bytecode_Flags;
-
-#define BC_SIZE_MASK (BC_FLAG_8BIT | BC_FLAG_16BIT | BC_FLAG_32BIT | BC_FLAG_64BIT)
-#define BC_SIZE_PLUS_SIGNED_MASK (BC_FLAG_8BIT | BC_FLAG_16BIT | BC_FLAG_32BIT | BC_FLAG_64BIT | BC_FLAG_SIGNED)
-
-enum Bytecode_Type {
-    BytecodeType_void,
-    BytecodeType_i32,
-    BytecodeType_i64,
-    BytecodeType_f32,
-    BytecodeType_f64,
+enum Bytecode_Type_Kind {
+    BC_TYPE_INT,
+    BC_TYPE_FLOAT,
+    BC_TYPE_PTR,
 };
 
-//struct Bytecode_Type {
-//Bytecode_Flags flags;
-//};
+enum Byytecode_Type_Flags {
+    BC_FLAG_SIGNED = bit(0),
+};
+
+struct Bytecode_Type {
+    u8 kind;
+    u8 size;
+    u8 flags;
+};
 
 struct Bytecode_Function_Arg {
     Bytecode_Type type;
@@ -147,7 +137,7 @@ struct Bytecode_Function_Arg {
 };
 
 struct Bytecode_Function {
-    array(Bytecode_Flags)* register_types;
+    array(Bytecode_Type)* register_types;
     int register_count;
     
     union {
@@ -175,7 +165,7 @@ struct Bytecode_Function {
     // followed by array of Bytecode_Function_Arg, function arguments then return types and lastly instructions
 };
 
-inline Bytecode_Flags
+inline Bytecode_Type
 register_type(Bytecode_Function* func, int register_index) {
     return func->register_types[register_index];
 }
@@ -249,7 +239,6 @@ enum Bytecode_Instruction_Kind {
 #define Bytecode_Instruction_Base \
 Bytecode_Operator opcode; \
 Bytecode_Instruction_Kind kind; \
-Bytecode_Type type; \
 u32 next_insn; \
 cstring comment
 

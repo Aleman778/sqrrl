@@ -1,11 +1,10 @@
 
 void
 wasm_push_valtype(Buffer* buf, Bytecode_Type type) {
-    switch (type) {
-        case BytecodeType_i32: 
-        case BytecodeType_i64: push_u8(buf, 0x7E); break;
-        case BytecodeType_f32: push_u8(buf, 0x7D); break;
-        case BytecodeType_f64: push_u8(buf, 0x7C); break;
+    switch (type.kind) {
+        case BC_TYPE_INT: 
+        case BC_TYPE_PTR: push_u8(buf, 0x7E); break;
+        case BC_TYPE_FLOAT: push_u8(buf, (type.size == 8) ? 0x7C : 0x7D); break;
         default: unimplemented;
     }
 }
@@ -28,81 +27,108 @@ wasm_const_i64(Buffer* buf, s64 val) {
     push_leb128_s64(buf, val);
 }
 
-void
-wasm_push_load(Buffer* buf, Bytecode_Flags type_flags, u32 offset) {
-    unimplemented;
-}
-
-void
-wasm_load_i64(Buffer* buf, Bytecode_Flags type_flags, u32 offset) {
-    switch (type_flags & (BC_SIZE_MASK | BC_FLAG_SIGNED | BC_FLAG_FLOAT)) {
-        case BC_FLAG_64BIT: {
-            push_u8(buf, 0x29); // i64.load
-            push_leb128_u32(buf, 3);
-        } break;
-        
-        case BC_FLAG_8BIT | BC_FLAG_SIGNED: {
-            push_u8(buf, 0x30); // i64.load8_s
-            push_leb128_u32(buf, 0);
-        } break;
-        
-        case BC_FLAG_8BIT: {
-            push_u8(buf, 0x31); // i64.load8_u
-            push_leb128_u32(buf, 0);
-        } break;
-        
-        case BC_FLAG_16BIT | BC_FLAG_SIGNED: {
-            push_u8(buf, 0x32); // i64.load16_s
-            push_leb128_u32(buf, 1);
-        } break;
-        
-        case BC_FLAG_16BIT: {
-            push_u8(buf, 0x33); // i64.load16_u
-            push_leb128_u32(buf, 1);
-        } break;
-        
-        case BC_FLAG_32BIT | BC_FLAG_SIGNED: {
-            push_u8(buf, 0x34); // i64.load32_s
-            push_leb128_u32(buf, 2);
-        } break;
-        
-        case BC_FLAG_32BIT: {
-            push_u8(buf, 0x35); // i64.load32_u
-            push_leb128_u32(buf, 2);
-        } break;
-        
-        case BC_FLAG_32BIT | BC_FLAG_FLOAT: {
-            push_u8(buf, 0x2A); // f32.load
-            push_leb128_u32(buf, 2);
-        } break;
-        
-        case BC_FLAG_64BIT | BC_FLAG_FLOAT: {
-            push_u8(buf, 0x2B); // f64.load
-            push_leb128_u32(buf, 3);
-        } break;
-        
-        default: unimplemented;
-    }
-    
-    push_leb128_u32(buf, offset);
-}
-
 inline void
 wasm_push_stack_pointer(Buffer* buf) {
     push_u8(buf, 0x23); // global.get
     push_leb128_u32(buf, 0);
 }
 
+void
+wasm_load_extend(Buffer* buf, Bytecode_Type type, u32 offset) {
+    // NOTE(Alexander): you have to first push i32 memory offset
+    
+    if (type.kind == BC_TYPE_INT) {
+        if (type.flags & BC_FLAG_SIGNED) {
+            switch (type.size) {
+                case 1: {
+                    push_u8(buf, 0x30); // i64.load8_s
+                    push_leb128_u32(buf, 0);
+                } break;
+                
+                case 2: {
+                    push_u8(buf, 0x32); // i64.load16_s
+                    push_leb128_u32(buf, 1);
+                } break;
+                
+                case 4: {
+                    push_u8(buf, 0x34); // i64.load32_s
+                    push_leb128_u32(buf, 2);
+                } break;
+                
+                default: {
+                    push_u8(buf, 0x29); // i64.load
+                    push_leb128_u32(buf, 3);
+                } break;
+            }
+        } else {
+            switch (type.size) {
+                case 1: {
+                    push_u8(buf, 0x31); // i64.load8_u
+                    push_leb128_u32(buf, 0);
+                } break;
+                
+                case 2: {
+                    push_u8(buf, 0x33); // i64.load16_u
+                    push_leb128_u32(buf, 1);
+                } break;
+                
+                case 4: {
+                    push_u8(buf, 0x35); // i64.load32_u
+                    push_leb128_u32(buf, 2);
+                } break;
+                
+                default: {
+                    push_u8(buf, 0x29); // i64.load
+                    push_leb128_u32(buf, 3);
+                } break;
+            }
+        }
+    } else if (type.kind == BC_TYPE_FLOAT) {
+        if (type.size == 8) {
+            push_u8(buf, 0x2B); // f64.load
+            push_leb128_u32(buf, 3);
+        } else if (type.size == 4) {
+            push_u8(buf, 0x2A); // f32.load
+            push_leb128_u32(buf, 2);
+        } else {
+            unimplemented;
+        }
+    } else {
+        unimplemented;
+    }
+    
+    push_leb128_u32(buf, offset);
+}
+
 inline void
-wasm_load_register(Buffer* buf, Bytecode_Flags type_flags, int register_index) {
+wasm_load_register_extend(Bytecode_Function* func, Buffer* buf, int register_index) {
+    Bytecode_Type type = register_type(func, register_index);
     wasm_push_stack_pointer(buf);
-    wasm_load_i64(buf, type_flags, register_index*8);
+    wasm_load_extend(buf, type, register_index*8);
+}
+
+void
+wasm_load_register(Bytecode_Function* func, Buffer* buf, int register_index) {
+    wasm_push_stack_pointer(buf);
+    
+    Bytecode_Type type = register_type(func, register_index);
+    if (type.kind == BC_TYPE_FLOAT) {
+        if (type.size == 8) {
+            push_u8(buf, 0x2B); // f64.load
+            push_leb128_u32(buf, 3);
+        } else {
+            push_u8(buf, 0x3A); // f32.load
+            push_leb128_u32(buf, 2);
+        } 
+    } else {
+        push_u8(buf, 0x29); // i64.load
+        push_leb128_u32(buf, 3);
+    }
+    push_leb128_u32(buf, register_index*8);
 }
 
 void
 wasm_prepare_store(Buffer* buf, int swap_local_i64=-1) {
-    // Setup stack pointer
-    
     if (swap_local_i64 >= 0) {
         wasm_local_set(buf, swap_local_i64);
     }
@@ -118,9 +144,10 @@ wasm_prepare_store(Buffer* buf, int swap_local_i64=-1) {
 }
 
 void
-wasm_store_register(Buffer* buf, Bytecode_Flags type_flags, int register_index) {
-    if (type_flags & BC_FLAG_FLOAT) {
-        if (type_flags & BC_FLAG_64BIT) {
+wasm_store_register(Bytecode_Function* func, Buffer* buf, int register_index) {
+    Bytecode_Type type = register_type(func, register_index);
+    if (type.kind == BC_TYPE_FLOAT) {
+        if (type.size == 8) {
             push_u8(buf, 0x39); // f64.store
             push_leb128_u32(buf, 3);
         } else {
@@ -132,27 +159,6 @@ wasm_store_register(Buffer* buf, Bytecode_Flags type_flags, int register_index) 
         push_leb128_u32(buf, 3);
     }
     push_leb128_u32(buf, register_index*8);
-}
-
-void
-wasm_tmp_local(WASM_Assembler* wasm, Buffer* buf, Bytecode_Type type) {
-    switch (type) {
-        case BytecodeType_i32: {
-            push_leb128_u32(buf, wasm->tmp_local_i32);
-        } break;
-        
-        case BytecodeType_i64: {
-            push_leb128_u32(buf, wasm->tmp_local_i64);
-        } break;
-        
-        case BytecodeType_f32: {
-            push_leb128_u32(buf, wasm->tmp_local_f32);
-        } break;
-        
-        case BytecodeType_f64: {
-            push_leb128_u32(buf, wasm->tmp_local_f64);
-        } break;
-    }
 }
 
 u32
@@ -193,51 +199,6 @@ wasm_prepare_store_old(WASM_Assembler* wasm, Buffer* buf, Bytecode_Operand dest,
     }
 }
 
-
-void
-wasm_store_value(WASM_Assembler* wasm, Buffer* buf, Bytecode_Operand dest, Bytecode_Type type, int bitsize=0) {
-    switch (type) {
-        case BytecodeType_i64: {
-            push_u8(buf, 0x37); // i64.store
-            push_leb128_u32(buf, 3);
-        } break;
-        
-        case BytecodeType_f32: {
-            push_u8(buf, 0x38); // f32.store
-            push_leb128_u32(buf, 2);
-        } break;
-        
-        case BytecodeType_f64: {
-            push_u8(buf, 0x39); // f64.store
-            push_leb128_u32(buf, 3);
-        } break;
-        
-        default: {
-            unimplemented;
-        } break;
-    }
-    
-    push_leb128_u32(buf, dest.register_index*8);
-}
-
-void
-wasm_extend(Buffer* buf, Bytecode_Flags type_flags, int reg_index) {
-    switch (type_flags & BC_SIZE_PLUS_SIGNED_MASK) {
-        case BC_FLAG_8BIT | BC_FLAG_SIGNED: {
-            push_u8(buf, 0xC0); // i32.extend_s8
-        } break;
-        
-        case BC_FLAG_8BIT: {
-            wasm_load_register(buf, type_flags, reg_index);
-            wasm_const_i64(buf, 0xFF);
-            push_u8(buf, 0x83); // i64.and x, 0xFF
-        } break;
-        
-        case BC_FLAG_16BIT: {
-            
-        } break;
-    }
-}
 
 #if 0
 void

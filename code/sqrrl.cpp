@@ -290,9 +290,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     if (target_backend == Backend_X64) {
         bytecode_builder.use_absolute_memory = compiler_task == CompilerTask_Run;
-        
-    } else if (target_backend == Backend_WASM) {
-        bytecode_builder.pointer_type = BytecodeType_i32;
     }
     
     // First create functions imported from libraries

@@ -32,57 +32,63 @@ x64_move_memory_to_register(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp) {
 }
 
 void
-x64_move_extend(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp, Bytecode_Flags type_flags) {
-    switch (type_flags & BC_SIZE_PLUS_SIGNED_MASK) {
-        case BC_FLAG_8BIT | BC_FLAG_SIGNED: {
-            // REX.W + 0F BE /r 	MOVSX r64, r/m8 	RM
-            x64_rex(buf, REX_W, dest);
-            push_u16(buf, 0xBE0F);
-        } break;
-        
-        case BC_FLAG_16BIT | BC_FLAG_SIGNED: {
-            // 0F BF /r 	MOVSX r32, r/m16 	RM
-            push_u8(buf, X64_OP_SIZE_PREFIX);
-            x64_rex(buf, REX_W, dest);
-            push_u16(buf, 0xBF0F);
-        } break;
-        
-        case BC_FLAG_32BIT | BC_FLAG_SIGNED: {
-            // REX.W + 63 /r 	MOVSXD r64, r/m32 	RM
-            x64_rex(buf, REX_W, dest);
-            push_u8(buf, 0x63);
-        } break;
-        
-        case BC_FLAG_64BIT | BC_FLAG_SIGNED: {
-            x64_rex(buf, REX_W, dest);
-            push_u8(buf, 0x8B);
-        } break;
-        
-        case BC_FLAG_8BIT: {
-            // REX.W + 0F B6 /r 	MOVZX r64, r/m81 	RM
-            x64_rex(buf, REX_W, dest);
-            push_u16(buf, 0xB60F);
-        } break;
-        
-        case BC_FLAG_16BIT: {
-            // REX.W + 0F B6 /r 	MOVZX r64, r/m81 	RM
-            x64_rex(buf, REX_W, dest);
-            push_u16(buf, 0xB70F);
-        } break;
-        
-        case BC_FLAG_32BIT: {
-            // 8B /r 	MOV r32, r/m32 (this will clear the upper 32-bits)
-            x64_rex(buf, 0, dest);
-            push_u8(buf, 0x8B);
-        } break;
-        
-        case BC_FLAG_64BIT: {
-            //REX.W + 8B /r 	MOV r64, r/m64 	RM
-            x64_rex(buf, REX_W, dest);
-            push_u8(buf, 0x8B);
-        } break;
-        
-        default: unimplemented;
+x64_move_extend(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp, int size, bool is_signed) {
+    if (is_signed) {
+        switch (size) {
+            case 1: {
+                // REX.W + 0F BE /r 	MOVSX r64, r/m8 	RM
+                x64_rex(buf, REX_W, dest);
+                push_u16(buf, 0xBE0F);
+            } break;
+            
+            case 2: {
+                // 0F BF /r 	MOVSX r32, r/m16 	RM
+                push_u8(buf, X64_OP_SIZE_PREFIX);
+                x64_rex(buf, REX_W, dest);
+                push_u16(buf, 0xBF0F);
+            } break;
+            
+            case 4: {
+                // REX.W + 63 /r 	MOVSXD r64, r/m32 	RM
+                x64_rex(buf, REX_W, dest);
+                push_u8(buf, 0x63);
+            } break;
+            
+            case 8: {
+                x64_rex(buf, REX_W, dest);
+                push_u8(buf, 0x8B);
+            } break;
+            
+            default: unimplemented;
+        }
+    } else {
+        switch (size) {
+            case 1: {
+                // REX.W + 0F B6 /r 	MOVZX r64, r/m81 	RM
+                x64_rex(buf, REX_W, dest);
+                push_u16(buf, 0xB60F);
+            } break;
+            
+            case 2: {
+                // REX.W + 0F B6 /r 	MOVZX r64, r/m81 	RM
+                x64_rex(buf, REX_W, dest);
+                push_u16(buf, 0xB70F);
+            } break;
+            
+            case 4: {
+                // 8B /r 	MOV r32, r/m32 (this will clear the upper 32-bits)
+                x64_rex(buf, 0, dest);
+                push_u8(buf, 0x8B);
+            } break;
+            
+            case 8: {
+                //REX.W + 8B /r 	MOV r64, r/m64 	RM
+                x64_rex(buf, REX_W, dest);
+                push_u8(buf, 0x8B);
+            } break;
+            
+            default: unimplemented;
+        }
     }
     
     x64_modrm(buf, dest, src, disp, 0);

@@ -222,15 +222,19 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             int second = convert_expression_to_bytecode(bc, expr->Binary_Expr.second);
             
             if (opcode != BC_NOOP) {
+                int arg0 = add_load_instruction(bc, type, first);
+                int arg1 = add_load_instruction(bc, type, second);
                 result = add_bytecode_register(bc, result_type);
-                bc_instruction(bc, opcode, result, first, second);
-            } else {
-                result = second;
-            }
-            
-            if (is_assign) {
+                bc_instruction(bc, opcode, result, arg0, arg1);
+                
+                if (is_assign) {
+                    bc_store_instruction(bc, first, result);
+                }
+            } else if (is_assign) {
+                result = add_load_instruction(bc, type, second);
                 bc_store_instruction(bc, first, result);
             }
+            
         } break;
         
         case Ast_Aggregate_Expr: {

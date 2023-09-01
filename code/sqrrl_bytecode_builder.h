@@ -134,6 +134,33 @@ add_bc_const_instruction(Bytecode_Builder* bc, Bytecode_Operator opcode,
     insn->comment = comment;
 }
 
+inline int
+add_bytecode_register(Bytecode_Builder* bc, Type* type) {
+    assert(bc->curr_function);
+    int result = bc->curr_function->register_count++;
+    Bytecode_Type reg_type = to_bytecode_type(bc, type);
+    array_push(bc->curr_function->register_types, reg_type);
+    return result;
+}
+
+inline int 
+add_load_instruction(Bytecode_Builder* bc, Type* type, int src) {
+    int result = src;
+    
+    Bytecode_Type bc_type = register_type(bc->curr_function, src);
+    if (bc_type.kind == BC_TYPE_PTR) {
+        result = add_bytecode_register(bc, type);
+        
+        Bytecode_Binary* insn = add_insn_t(bc, BC_LOAD, Binary);
+        insn->res_index = result;
+        insn->arg0_index = src;
+        insn->arg1_index = -1;
+        //insn->comment = comment; // TODO(Alexander): add comment
+    }
+    
+    return result;
+}
+
 #define bc_store_instruction(bc, dest, src) \
 add_store_instruction(bc, dest, src, __FILE__ ":" S2(__LINE__))
 
@@ -145,15 +172,6 @@ add_store_instruction(Bytecode_Builder* bc, int dest, int src,
     result->arg0_index = dest;
     result->arg1_index = src;
     result->comment = comment;
-}
-
-inline int
-add_bytecode_register(Bytecode_Builder* bc, Type* type) {
-    assert(bc->curr_function);
-    int result = bc->curr_function->register_count++;
-    Bytecode_Type reg_type = to_bytecode_type(bc, type);
-    array_push(bc->curr_function->register_types, reg_type);
-    return result;
 }
 
 inline int

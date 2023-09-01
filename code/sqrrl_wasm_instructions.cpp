@@ -21,12 +21,6 @@ wasm_local_set(Buffer* buf, u32 local_index) {
     push_leb128_u32(buf, local_index);
 }
 
-void
-wasm_const_i64(Buffer* buf, s64 val) {
-    push_u8(buf, 0x42); // i64.const
-    push_leb128_s64(buf, val);
-}
-
 inline void
 wasm_push_stack_pointer(Buffer* buf) {
     push_u8(buf, 0x23); // global.get
@@ -34,10 +28,70 @@ wasm_push_stack_pointer(Buffer* buf) {
 }
 
 void
+wasm_i32_const(Buffer* buf, s32 val) {
+    push_u8(buf, 0x41);
+    push_leb128_s64(buf, val);
+}
+
+void
+wasm_i64_const(Buffer* buf, s64 val) {
+    push_u8(buf, 0x42);
+    push_leb128_s64(buf, val);
+}
+
+void
+wasm_f32_const(Buffer* buf, f32 val) {
+    u32* raw_data = (u32*) &val;
+    push_u8(buf, 0x43);
+    push_u32(buf, *raw_data);
+}
+
+void
+wasm_f64_const(Buffer* buf, f64 val) {
+    u64* raw_data = (u64*) &val;
+    push_u8(buf, 0x44);
+    push_u64(buf, *raw_data);
+}
+
+inline void
+wasm_i32_load(Buffer* buf, u32 offset) {
+    push_u8(buf, 0x28);
+    push_leb128_u32(buf, 2);
+    push_leb128_u32(buf, offset);
+}
+
+inline void
+wasm_i64_load(Buffer* buf, u32 offset) {
+    push_u8(buf, 0x29);
+    push_leb128_u32(buf, 3);
+    push_leb128_u32(buf, offset);
+}
+
+inline void
+wasm_i32_add(Buffer* buf) {
+    push_u8(buf, 0x6A);
+}
+
+inline void
+wasm_i64_add(Buffer* buf) {
+    push_u8(buf, 0x7C);
+}
+
+void
 wasm_load_extend(Buffer* buf, Bytecode_Type type, u32 offset) {
     // NOTE(Alexander): you have to first push i32 memory offset
     
-    if (type.kind == BC_TYPE_INT) {
+    if (type.kind == BC_TYPE_FLOAT) {
+        if (type.size == 8) {
+            push_u8(buf, 0x2B); // f64.load
+            push_leb128_u32(buf, 3);
+        } else if (type.size == 4) {
+            push_u8(buf, 0x2A); // f32.load
+            push_leb128_u32(buf, 2);
+        } else {
+            unimplemented;
+        }
+    } else {
         if (type.flags & BC_FLAG_SIGNED) {
             switch (type.size) {
                 case 1: {
@@ -83,19 +137,7 @@ wasm_load_extend(Buffer* buf, Bytecode_Type type, u32 offset) {
                 } break;
             }
         }
-    } else if (type.kind == BC_TYPE_FLOAT) {
-        if (type.size == 8) {
-            push_u8(buf, 0x2B); // f64.load
-            push_leb128_u32(buf, 3);
-        } else if (type.size == 4) {
-            push_u8(buf, 0x2A); // f32.load
-            push_leb128_u32(buf, 2);
-        } else {
-            unimplemented;
-        }
-    } else {
-        unimplemented;
-    }
+    } 
     
     push_leb128_u32(buf, offset);
 }
@@ -117,7 +159,7 @@ wasm_load_register(Bytecode_Function* func, Buffer* buf, int register_index) {
             push_u8(buf, 0x2B); // f64.load
             push_leb128_u32(buf, 3);
         } else {
-            push_u8(buf, 0x3A); // f32.load
+            push_u8(buf, 0x2A); // f32.load
             push_leb128_u32(buf, 2);
         } 
     } else {
@@ -144,8 +186,7 @@ wasm_prepare_store(Buffer* buf, int swap_local_i64=-1) {
 }
 
 void
-wasm_store_register(Bytecode_Function* func, Buffer* buf, int register_index) {
-    Bytecode_Type type = register_type(func, register_index);
+wasm_store_register(Buffer* buf, Bytecode_Type type, int register_index) {
     if (type.kind == BC_TYPE_FLOAT) {
         if (type.size == 8) {
             push_u8(buf, 0x39); // f64.store

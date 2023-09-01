@@ -55,9 +55,8 @@ const u8 wasm_comparator_opcodes[] = {
 };
 
 struct WASM_Assembler {
-    u32* stack_offsets;
-    u32 stack_usage;
-    u32 stack_num_locals;
+    s64 stack_size;
+    s64 stack_offset_for_locals;
     
     u32 rdata_offset;
     u32 data_offset;

@@ -405,26 +405,31 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                            t_src->Basic.flags & BasicFlag_Integer) {
                     
                     if (t_dest->size < t_src->size) {
+                        src = add_load_instruction(bc, t_src, src);
                         result = add_bytecode_register(bc, t_dest);
                         bc_instruction(bc, BC_TRUNCATE, result, src, -1);
                         
                     } else if (t_dest->size > t_src->size) {
+                        src = add_load_instruction(bc, t_src, src);
                         result = add_bytecode_register(bc, t_dest);
                         bc_instruction(bc, BC_EXTEND, result, src, -1);
                     }
                 } else if (t_dest->Basic.flags & BasicFlag_Integer &&
                            t_src->Basic.flags & BasicFlag_Floating) {
                     
+                    src = add_load_instruction(bc, t_src, src);
                     result = add_bytecode_register(bc, t_dest);
                     bc_instruction(bc, BC_FLOAT_TO_INT, result, src, -1);
                     
                 } else if (t_dest->Basic.flags & BasicFlag_Floating &&
                            t_src->Basic.flags & BasicFlag_Integer) {
+                    src = add_load_instruction(bc, t_src, src);
                     result = add_bytecode_register(bc, t_dest);
                     bc_instruction(bc, BC_INT_TO_FLOAT, result, src, -1);
                     
                 } else if (t_dest->Basic.flags & BasicFlag_Floating &&
                            t_src->Basic.flags & BasicFlag_Floating) {
+                    src = add_load_instruction(bc, t_src, src);
                     result = add_bytecode_register(bc, t_dest);
                     bc_instruction(bc, BC_FLOAT_TO_FLOAT, result, src, -1);
                     
@@ -889,8 +894,12 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
                 } break;
                 
                 default: {
-                    string_builder_push_format(sb, "r%, ", f_int(bc_insn->arg0_index));
-                    string_builder_push_format(sb, "r%", f_int(bc_insn->arg1_index));
+                    if (bc_insn->arg1_index >= 0) {
+                        string_builder_push_format(sb, "r%, ", f_int(bc_insn->arg0_index));
+                        string_builder_push_format(sb, "r%", f_int(bc_insn->arg1_index));
+                    } else if (bc_insn->arg0_index >= 0) {
+                        string_builder_push_format(sb, "r%", f_int(bc_insn->arg0_index));
+                    }
                 } break;
             }
         } break;

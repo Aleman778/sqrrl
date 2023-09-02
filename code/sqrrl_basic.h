@@ -99,12 +99,13 @@ DEBUG_log_backtrace();
 #if BUILD_DEBUG
 void
 __assert(cstring expression, cstring file, smm line) {
+    // Flush the standard streams make sure we get all debug data
+    fflush(stdout);
+    fflush(stderr);
+    
     // TODO(Alexander): improve assertion printing.
     fprintf(stderr, "%s:%zd: Assertion failed: %s\n", file, line, expression);
     DEBUG_log_backtrace();
-    
-    // Flush the standard streams make sure we get all debug data
-    fflush(stderr);
     
     *(int *)0 = 0; // NOTE(Alexander): purposefully trap the program
 }
@@ -470,6 +471,21 @@ string_builder_push(String_Builder* sb, cstring str) {
     string_builder_push(sb, string_lit(str));
 }
 
+void
+string_builder_pad(String_Builder* sb, smm from_byte, smm width) {
+    smm used = sb->curr_used - from_byte;
+    for (smm i = used; i < width; i++) {
+        string_builder_push(sb, " ");
+    }
+}
+
+void
+string_builder_pad_string(String_Builder* sb, cstring str, smm width) { 
+    smm start = sb->curr_used;
+    string_builder_push(sb, str);
+    string_builder_pad(sb, start, width);
+}
+
 void string_builder_push_format(String_Builder* sb, cstring format...);
 void string_builder_push_cformat(String_Builder* sb, cstring format...);
 
@@ -749,6 +765,22 @@ allocate_memory_block(umm block_size) {
     return block;
 }
 
+void
+copy_memory_block_recursively(u8** dest, Memory_Block* src, umm* size) {
+    if (!src) return;
+    copy_memory_block_recursively(dest, src->prev_block, size);
+    memcpy(*dest, src->base, src->used);
+    *dest += src->used;
+    *size += src->used;
+}
+
+umm
+copy_memory_block(u8* dest, Memory_Block* src) {
+    umm size = 0;
+    copy_memory_block_recursively(&dest, src, &size);
+    return size;
+}
+
 inline void
 free_memory_blocks(Memory_Block* block) {
     if (!block) return;
@@ -795,7 +827,9 @@ arena_grow(Memory_Arena* arena, umm block_size = 0) {
     arena->prev_used = 0;
 }
 
-
+// NOTE(Alexander): the absolute_ptr has to be the most recent allocation
+// returned from arena_push_size/_struct, if old allocation is used then
+// it can potentially be wrong due newer memory blocks being created.
 inline umm
 arena_relative_pointer(Memory_Arena* arena, void* absolute_ptr) {
     if (!arena->current_block) return 0;
@@ -955,7 +989,7 @@ push_u64(Buffer* buf, u64 qw) {
 }
 
 void
-push_leb128_u32(Buffer* buf, s32 num) {
+push_leb128_u32(Buffer* buf, u32 num) {
     bool neg = num < 0;
     do {
         u8 byte = num & 0x7F;
@@ -970,6 +1004,27 @@ push_leb128_u32(Buffer* buf, s32 num) {
 
 void
 push_leb128_s32(Buffer* buf, s32 num) {
+    bool cont = true;
+    while (cont) {
+        u8 byte = num & 0x7F;
+        num = num >> 7;
+        bool sign_bit = (byte & 0x40) > 0;
+        
+        if ((num == 0 && !sign_bit) ||
+            (num == -1 && sign_bit)) {
+            cont = false;
+        } else {
+            byte |= 0x80;
+        }
+        
+        assert(buf->curr_used + 1 < buf->size);
+        *((u8*) (buf->data + buf->curr_used)) = byte;
+        buf->curr_used++;
+    }
+}
+
+void
+push_leb128_s64(Buffer* buf, s64 num) {
     bool cont = true;
     while (cont) {
         u8 byte = num & 0x7F;

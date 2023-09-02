@@ -401,7 +401,6 @@ struct PE_Executable {
     
     u8* text_data;
     u32 text_data_size;
-    u32 global_data_offset;
     
     Memory_Arena header_arena;
     Memory_Arena rdata_arena;
@@ -409,6 +408,14 @@ struct PE_Executable {
     Memory_Arena data_arena;
     Memory_Arena reloc_arena;
 };
+
+PE_Executable convert_to_pe_executable(Memory_Arena* arena,
+                                       u8* machine_code, u32 machine_code_size,
+                                       Library_Import_Table* import_table,
+                                       Data_Packer* data_packer,
+                                       u8* entry_point);
+
+void write_pe_executable_to_file(File_Handle output_file, PE_Executable* pe);
 
 inline u32
 read_u32_bytes(string s) {

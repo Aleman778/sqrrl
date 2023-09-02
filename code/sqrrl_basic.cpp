@@ -4,7 +4,6 @@ struct Ast_Node;
 
 
 struct Intermediate_Code;
-void print_intermediate_code(Intermediate_Code* value);
 
 void
 print(const char* format...) {
@@ -135,10 +134,6 @@ print(const char* format...) {
                     print_value(va_arg(args, Value*));
                 } break;
                 
-                case FormatType_intermediate_code: {
-                    print_intermediate_code(va_arg(args, Intermediate_Code*));
-                } break;
-                
                 default: {
                     assert(0 && "unimplemented format type");
                 } break;
@@ -214,7 +209,7 @@ format_sprintf(char* dst, umm dst_size, Format_Type type, va_list args) {
         
         case FormatType_u64_HEX: {
             u64 value = va_arg(args, u64);
-            result.count= snprintf(dst, dst_size, "%llX", value);
+            result.count= snprintf(dst, dst_size, "0x%llX", value);
         } break;
         
         case FormatType_smm: {

@@ -69,6 +69,8 @@ struct Type_Context {
     array(Type_Scope)* scopes;
     Type_Scope* active_scope;
     
+    Backend_Type target_backend;
+    
     Type* return_type;
     
     // TODO(Alexander): this can be made into a bitflag later

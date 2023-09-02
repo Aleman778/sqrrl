@@ -318,35 +318,17 @@ struct Ast {
 
 typedef map(string_id, Ast*) Ast_Decl_Table;
 
+struct Bytecode_Function;
+
 struct Compilation_Unit {
     Ast* ast;
     Interp* interp;
     Value interp_result;
     string_id ident;
     
-    Ic_Arg ic_return;
-    Intermediate_Code* ic_first;
-    Intermediate_Code* ic_last;
-    Ic_Basic_Block* bb_first;
-    Ic_Basic_Block* bb_last;
-    Ic_Basic_Block* bb_return;
-    Ic_Basic_Block* bb_data;
-    int bb_index;
+    Bytecode_Function* bytecode_function;
     
-    // TODO(Alexander): move these to different place!
-    Data_Packer* data_packer;
-    Ic_Arg_Map* locals;
-    Ic_Arg_Map* globals;
-    
-    s64 external_address = 0;
-    s64 stk_args = 0;
-    s64 stk_locals = 0;
-    s64 stk_caller_args = 0;
-    array(Ic_Stk_Entry)* stk_entries;
-    s64 stk_usage;
-    u8 data_reg; // TODO(Alexander): hack temporary register allocation strategy
-    
-    bool use_absolute_ptrs;
+    s64 external_address;
 };
 
 struct Ast_File {
@@ -535,24 +517,56 @@ parse_attribute(Ast* node) {
 void
 string_builder_push(String_Builder* sb, Ast_Decl_Modifier mods) {
     if (mods > 0) {
-        string_builder_push(sb, "( ");
+        bool next = false;
+        string_builder_push(sb, " (mods: ");
         if (is_bitflag_set(mods, AstDeclModifier_Inline)) {
-            string_builder_push(sb, "inline ");
+            if (next) {
+                string_builder_push(sb, ", "); 
+            } 
+            next++;
+            string_builder_push(sb, "inline");
         }
         if (is_bitflag_set(mods, AstDeclModifier_No_Inline)) {
-            string_builder_push(sb, "no_inline ");
+            if (next) {
+                string_builder_push(sb, ", "); 
+            } 
+            next++;
+            string_builder_push(sb, "no_inline");
+        }
+        if (is_bitflag_set(mods, AstDeclModifier_External)) {
+            if (next) {
+                string_builder_push(sb, ", "); 
+            } 
+            next++;
+            string_builder_push(sb, "extern");
         }
         if (is_bitflag_set(mods, AstDeclModifier_Internal)) {
-            string_builder_push(sb, "internal ");
+            if (next) {
+                string_builder_push(sb, ", "); 
+            } 
+            next++;
+            string_builder_push(sb, "internal");
         }
         if (is_bitflag_set(mods, AstDeclModifier_Global)) {
-            string_builder_push(sb, "global ");
+            if (next) {
+                string_builder_push(sb, ", "); 
+            } 
+            next++;
+            string_builder_push(sb, "global");
         }
         if (is_bitflag_set(mods, AstDeclModifier_Volatile)) {
-            string_builder_push(sb, "volatile ");
+            if (next) {
+                string_builder_push(sb, ", "); 
+            } 
+            next++;
+            string_builder_push(sb, "volatile");
         }
         if (is_bitflag_set(mods, AstDeclModifier_Local_Persist)) {
-            string_builder_push(sb, "local_persist ");
+            if (next) {
+                string_builder_push(sb, ", "); 
+            } 
+            next++;
+            string_builder_push(sb, "local_persist");
         }
         string_builder_push(sb, ")");
     }
@@ -569,7 +583,7 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
     string_builder_push_format(sb, "(%", f_cstring(ast_struct_strings[node->kind]));
     
     if (node->type) {
-        string_builder_push_format(sb, " <%>", f_type(node->type));
+        string_builder_push_format(sb, " <%>", f_type(node->type), true);
     }
     
     spacing += 2;

@@ -16,26 +16,23 @@
 #include "sqrrl_parser.cpp"
 #include "sqrrl_type_checker.cpp"
 #include "sqrrl_interp.cpp"
-#include "sqrrl_intermediate_code.cpp"
+#include "sqrrl_bytecode_builder.cpp"
+#include "sqrrl_x64_instructions.cpp"
 #include "sqrrl_x64_converter.cpp"
 #include "sqrrl_pe_converter.cpp"
 #include "sqrrl_pdb_converter.cpp"
+#include "sqrrl_wasm_instructions.cpp"
 #include "sqrrl_wasm_converter.cpp"
 
 typedef int asm_main(void);
 typedef f32 asm_f32_main(void);
 
-enum Backend_Type {
-    Backend_X64,
-    Backend_WASM,
-};
-
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm), bool is_debugger_present) {
     
-    
-    Backend_Type target_backend = Backend_X64; // Backend_WASM;
+    Compiler_Task compiler_task = CompilerTask_Build;//CompilerTask_Run;
+    Backend_Type target_backend = Backend_X64;
     
     {
         // Put dummy file as index 0
@@ -65,7 +62,17 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         }
 #endif
         
-        filepath = string_lit(argv[1]);
+        if (argc > 2) {
+            if (string_equals(string_lit(argv[1]), string_lit("-wasm"))) {
+                target_backend = Backend_WASM;
+            } else if (string_equals(string_lit(argv[1]), string_lit("-x64"))) {
+                target_backend = Backend_X64;
+            }
+            
+            filepath = string_lit(argv[2]);
+        } else {
+            filepath = string_lit(argv[1]);
+        }
         
         if (argc > 3) {
             if (string_equals(string_lit(argv[2]), string_lit("-output"))) {
@@ -156,6 +163,25 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     Preprocessor preprocessor = {};
     
+    {
+        string zero = string_lit("0");
+        string one = string_lit("1");
+        Preprocessor_Macro define_target = {};
+        define_target.is_integral = true;
+        define_target.is_valid = true;
+        string_id ident;
+        ident = vars_save_cstring("BUILD_TARGET_X64");
+        define_target.integral = target_backend == Backend_X64;
+        define_target.source = target_backend == Backend_X64 ? one : zero;
+        map_put(preprocessor.macros, ident, define_target);
+        
+        ident = vars_save_cstring("BUILD_TARGET_WASM");
+        define_target.integral = target_backend == Backend_WASM;
+        define_target.source = target_backend == Backend_WASM ? one : zero;
+        map_put(preprocessor.macros, ident, define_target);
+    }
+    
+    
     string preprocessed_source = preprocess_file(&preprocessor, 
                                                  file.source, file.abspath, file.extension, file.index);
     
@@ -218,12 +244,14 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     // Typecheck the AST
     Interp interp = {};
     Type_Context tcx = {};
+    tcx.target_backend = target_backend;
     tcx.data_packer = &data_packer;
     
     if (type_check_ast_file(&tcx, &ast_file, &interp) != 0) {
         for_array(ast_file.units, cu, _) {
-            if (flag_print_ast || (cu->ast && cu->ast->kind == Ast_Decl_Stmt && 
-                                   cu->ast->type->kind == TypeKind_Function &&
+            if (!(cu->ast && cu->ast->kind == Ast_Decl_Stmt)) continue;
+            
+            if (flag_print_ast || (cu->ast->type->kind == TypeKind_Function &&
                                    cu->ast->type->Function.dump_ast)) {
                 print_ast(cu->ast, &tokenizer);
             }
@@ -234,8 +262,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
     for_array(ast_file.units, cu, _) {
-        if (flag_print_ast || (cu->ast && cu->ast->kind == Ast_Decl_Stmt && 
-                               cu->ast->type->kind == TypeKind_Function &&
+        if (!(cu->ast && cu->ast->kind == Ast_Decl_Stmt)) continue;
+        
+        if (flag_print_ast || (cu->ast->type->kind == TypeKind_Function &&
                                cu->ast->type->Function.dump_ast)) {
             print_ast(cu->ast, &tokenizer);
         }
@@ -254,176 +283,107 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         return 0;
     }
     
-    // Start by pushing address lookup table for external libs
+    Bytecode_Builder bytecode_builder = {};
+    bytecode_builder.data_packer = &data_packer;
+    bytecode_builder.interp = &interp;
+    
+    
+    if (target_backend == Backend_X64) {
+        bytecode_builder.use_absolute_memory = compiler_task == CompilerTask_Run;
+    }
+    
+    // First create functions imported from libraries
     for_map(tcx.import_table.libs, it) {
-        
-        Exported_Data library = {};
         for_array(it->value.functions, function, function_index) {
-            if (function->type) {
-                
-                //pln("LIB(%): %", f_var(it->key), f_type(function->type));
-                
-                assert(function->type->kind == TypeKind_Function && 
-                       function->type->Function.unit);
-                
-                Compilation_Unit* cu = function->type->Function.unit;
-                
-                Ic_Basic_Block* bb_begin = ic_basic_block();
-                ic_label(cu, bb_begin);
-                
-                Exported_Data import_fn;
-                Ic_Data_Area data_area;
-                if (it->value.resolve_at_compile_time) {
-                    // Library function pointer is replaced by the loader
-                    import_fn = export_size(&data_packer, Read_Data_Section, 8, 8);
-                    data_area = IcDataArea_Read_Only;
-                } else {
-                    if (!library.data) {
-                        library = export_struct(&data_packer, Dynamic_Library, Data_Section);
-                    }
-                    Dynamic_Library* dynamic_library = (Dynamic_Library*) library.data;
-                    dynamic_library->count++;
-                    
-                    
-                    // Library function pointer is replaced by user at runtime
-                    import_fn = export_struct(&data_packer, Dynamic_Function, Data_Section);
-                    data_area = IcDataArea_Globals;
-                    
-                    if (!map_key_exists(x64_globals, it->key)) {
-                        push_relocation(&data_packer, library, import_fn);
-                        Ic_Arg ptr = ic_rip_disp32(cu, IC_U64, data_area, library.data, library.relative_ptr);
-                        map_put(x64_globals, it->key, ptr);
-                    }
-                    
-                    Dynamic_Function* dynamic_fn = (Dynamic_Function*) import_fn.data;
-                    Exported_Data fn_name = export_string(&data_packer, function->name);
-                    dynamic_fn->name = fn_name.str;
-                    push_relocation(&data_packer, add_offset(import_fn, 8), fn_name);
-                }
-                
-                // Jump to library function
-                Intermediate_Code* ic_jump = ic_add(cu, IC_JMP_INDIRECT);
-                //pln("-> %", f_var(cu->ident));
-                ic_jump->src0 = ic_rip_disp32(cu, IC_U64, data_area, import_fn.data, import_fn.relative_ptr);
-                cu->external_address = ic_jump->src0.data.disp;
+            Type* type = function->type;
+            assert(type && type->kind == TypeKind_Function);
+            
+            Bytecode_Function* func = add_bytecode_function(&bytecode_builder, type);
+            func->is_imported = true;
+            func->code_ptr = type->Function.external_address;
+            
+            Bytecode_Import import = {};
+            import.module = it->key;
+            import.function = function->name;
+            
+            // TODO(Alexander): hack this doesn't really belong here
+            // but this is needed for now to make this data appear first in the rdata section.
+            if (target_backend == Backend_X64 && compiler_task == CompilerTask_Build) {
+                // Start by pushing address lookup table for external libs
+                // NOTE(Alexander): library function pointer is replaced by the loader
+                Exported_Data import_fn = export_size(&data_packer, Read_Data_Section, 8, 8);
+                import.rdata_offset = import_fn.relative_ptr;
             }
+            
+            array_push(bytecode_builder.bytecode.imports, import);
         }
         
-        if (it->value.resolve_at_compile_time) {
+        if (target_backend == Backend_X64 && compiler_task == CompilerTask_Build) {
             export_size(&data_packer, Read_Data_Section, 8, 8); // null entry
         }
     }
     
-    
     Compilation_Unit* main_cu = 0;
     for_array(ast_file.units, cu, _2) {
-        cu->data_packer = &data_packer;
-        cu->globals = x64_globals;
-        if (cu->ast->kind == Ast_Decl_Stmt) {
+        if (!cu->bytecode_function && cu->ast->kind == Ast_Decl_Stmt) {
             Type* type = cu->ast->type;
             if (type->kind == TypeKind_Function) {
-                bool is_main = cu->ident == Sym_main;
-                convert_procedure_to_intermediate_code(cu, is_debugger_present && is_main);
+                add_bytecode_function(&bytecode_builder, type);
                 
+                bool is_main = cu->ident == Sym_main;
                 if (is_main) {
                     main_cu = cu;
                 }
             }
         }
-        
-        x64_globals = cu->globals;
     }
-    assert(main_cu);
+    assert(main_cu && "no main function"); // TODO: turn this into an actual error
     
-    // Compute the actual stack displacement for each Ic_Arg
+    // Build the bytecode
     for_array(ast_file.units, cu, _3) {
-        Intermediate_Code* ic = cu->ic_first;
-        while (ic) {
-            
-            // TODO: robustness we need a better way to know what the instruction data is!
-            if (ic->opcode >= IC_NEG && ic->opcode <= IC_SETNE) {
-                if (ic->dest.type & IC_STK) {
-                    ic->dest.disp = compute_stk_displacement(cu, ic->dest);
-                }
-                if (ic->src0.type & IC_STK) {
-                    ic->src0.disp = compute_stk_displacement(cu, ic->src0);
-                }
-                if (ic->src1.type & IC_STK) {
-                    ic->src1.disp = compute_stk_displacement(cu, ic->src1);
-                }
-            }
-            
-            ic = ic->next;
+        if (cu->bytecode_function) {
+            bool is_main = cu->ident == Sym_main;
+            convert_function_to_bytecode(&bytecode_builder, cu->bytecode_function, cu->ast,
+                                         is_main, is_debugger_present && is_main);
         }
     }
     
+    // Print the bytecode
     String_Builder sb = {};
     for_array(ast_file.units, cu, _4) {
         if (flag_print_bc || (cu->ast && cu->ast->type && 
                               cu->ast->type->kind == TypeKind_Function &&
                               cu->ast->type->Function.dump_bytecode)) {
-            string_builder_dump_bytecode(&sb, cu);
+            
+            string_builder_dump_bytecode(&sb, &bytecode_builder.bytecode, 
+                                         cu->bytecode_function);
         }
     }
-    //
     if (sb.data) {
         string s = string_builder_to_string_nocopy(&sb);
-        pln("\nIntermediate code:\n%", f_string(s));
+        pln("\nBytecode:\n%", f_string(s));
         string_builder_free(&sb);
     }
     
-    // Convert to X64 machine code
-    s64 rip = 0;
-    for_array(ast_file.units, cu, _5) {
-        rip = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage, 0, 0, 0, rip);
-    }
-    
-    Type* main_func_return_type = main_cu->ast->type;
-    if (main_func_return_type && main_func_return_type->kind == TypeKind_Function) {
-        main_func_return_type = main_func_return_type->Function.return_type;
-    }
-    u8* asm_buffer_main = (u8*) asm_buffer + main_cu->bb_first->addr;
-    
-    // NOTE(Alexander): Build initial PE executable
-    Memory_Arena build_arena = {};
-    PE_Executable pe_executable = convert_to_pe_executable(&build_arena,
-                                                           (u8*) asm_buffer, (u32) rip,
-                                                           &tcx.import_table,
-                                                           &data_packer,
-                                                           asm_buffer_main);
-    
-    
     switch (target_backend) {
         case Backend_X64: {
-            // TODO(Alexander): the PE section_alignment is hardcoded as 0x1000
-            for_array(ast_file.units, cu, _6) {
-                Intermediate_Code* ic = cu->ic_first;
-                
-                while (ic) {
-                    // TODO: we should have instruction type or something?
-                    if (ic->opcode >= IC_NEG && ic->opcode <= IC_SETNE) {
-                        ic->dest = patch_rip_relative_address(&pe_executable, ic->dest);
-                        ic->src0 = patch_rip_relative_address(&pe_executable, ic->src0);
-                        ic->src1 = patch_rip_relative_address(&pe_executable, ic->src1);
-                    } else if (ic->opcode == IC_JMP_INDIRECT) {
-                        ic->src0 = patch_rip_relative_address(&pe_executable, ic->src0);
-                    }
-                    ic = ic->next;
-                }
+            Type* main_func_return_type = main_cu->ast->type;
+            if (main_func_return_type && main_func_return_type->kind == TypeKind_Function) {
+                main_func_return_type = main_func_return_type->Function.return_type;
             }
             
-            global_asm_buffer = (s64) asm_buffer;
-            s64 rip2 = 0;
-            for_array(ast_file.units, cu, _7) {
-                rip2 = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage,
-                                                   (u8*) asm_buffer, 0, (s64) asm_size, rip2);
-            }
-            assert(rip == rip2);
+            Buffer buf = {};
+            buf.data = (u8*) asm_buffer;
+            buf.size = asm_size;
             
+            X64_Compiled_Code code = convert_bytecode_to_x64_machine_code(&bytecode_builder.bytecode, 
+                                                                          &buf, &data_packer, 
+                                                                          &tcx.import_table, 
+                                                                          compiler_task);
             
-#if 0
-            pln("\nX64 Machine Code (% bytes):", f_umm(rip));
-            for (int byte_index = 0; byte_index < rip; byte_index++) {
+#if 1
+            pln("\nX64 Machine Code (% bytes):", f_umm(buf.curr_used));
+            for (int byte_index = 0; byte_index < buf.curr_used; byte_index++) {
                 u8 byte = ((u8*) asm_buffer)[byte_index];
                 if (byte > 0xF) {
                     printf("%hhX ", byte);
@@ -438,86 +398,67 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             printf("\n\n");
 #endif
             
-            //asm_make_executable(asm_buffer, asm_size);
-            //asm_main* func = (asm_main*) asm_buffer;
-            //int jit_exit_code = (int) func();
-            //pln("JIT exited with code: %", f_int(jit_exit_code));
-            
-            // NOTE(Alexander): write the PE executable to file
-            cstring exe_filename = string_to_cstring(output_filename);
-            File_Handle exe_file = DEBUG_open_file_for_writing(exe_filename);
-            cstring_free(exe_filename);
-            write_pe_executable_to_file(exe_file, &pe_executable);
-            DEBUG_close_file(exe_file);
-            pln("\nWrote executable: %", f_string(output_filename));
-            
-            //Read_File_Result exe_data = DEBUG_read_entire_file("simple.exe");
-            //pe_dump_executable(create_string(exe_data.contents_size, (u8*) exe_data.contents));
-            
-#if 0
-            // NOTE(Alexander): Run machine code
-            asm_make_executable(asm_buffer, rip);
-            //DEBUG_add_debug_symbols(&ast_file, (u8*) asm_buffer);
-            
-            if (working_directory.data) {
-                cstring dir = string_to_cstring(working_directory);
-                DEBUG_set_current_directory(dir);
-                cstring_free(dir);
+            if (compiler_task == CompilerTask_Run) {
+                // NOTE(Alexander): Run machine code
+                asm_make_executable(buf.data, buf.curr_used);
+                //DEBUG_add_debug_symbols(&ast_file, (u8*) asm_buffer);
+                
+                fflush(stdout);
+                fflush(stderr);
+                
+                if (working_directory.data) {
+                    cstring dir = string_to_cstring(working_directory);
+                    DEBUG_set_current_directory(dir);
+                    cstring_free(dir);
+                }
+                
+                u8* asm_buffer_main = code.main_function_ptr;
+                if (main_func_return_type == t_s32) {
+                    asm_main* func = (asm_main*) asm_buffer_main;
+                    int jit_exit_code = (int) func();
+                    pln("\nJIT exited with code: %", f_int(jit_exit_code));
+                } else if (main_func_return_type == t_f32) {
+                    asm_f32_main* func = (asm_f32_main*) asm_buffer_main;
+                    f32 jit_exit_code = (f32) func();
+                    pln("\nJIT exited with code: %", f_float(jit_exit_code));
+                } else {
+                    asm_main* func = (asm_main*) asm_buffer_main;
+                    func();
+                    pln("\nJIT exited with code: 0");
+                }
+                
+            } else if (compiler_task == CompilerTask_Build) {
+                // NOTE(Alexander): write the PE executable to file
+                cstring exe_filename = string_to_cstring(output_filename);
+                File_Handle exe_file = DEBUG_open_file_for_writing(exe_filename);
+                write_pe_executable_to_file(exe_file, &code.pe_executable);
+                DEBUG_close_file(exe_file);
+                pln("\nWrote executable: %", f_string(output_filename));
+                
+                //Read_File_Result exe_data = DEBUG_read_entire_file(exe_filename);
+                //pe_dump_executable(create_string(exe_data.contents_size, (u8*) exe_data.contents));
+                //DEBUG_close_file(exe_file);
+                //cstring_free(exe_filename);
             }
             
-            if (main_func_return_type == t_s32) {
-                asm_main* func = (asm_main*) asm_buffer_main;
-                int jit_exit_code = (int) func();
-                pln("\nJIT exited with code: %", f_int(jit_exit_code));
-            } else if (main_func_return_type == t_f32) {
-                asm_f32_main* func = (asm_f32_main*) asm_buffer_main;
-                f32 jit_exit_code = (f32) func();
-                pln("\nJIT exited with code: %", f_float(jit_exit_code));
-            } else {
-                asm_main* func = (asm_main*) asm_buffer_main;
-                func();
-                pln("\nJIT exited with code: 0");
-            }
-#endif
         } break;
         
         case Backend_WASM: {
+            
             Buffer buffer = {};
             buffer.data = (u8*) asm_buffer;
             buffer.size = asm_size;
             
-            convert_to_wasm_module(0, 0, &buffer);
-            for_array(ast_file.units, cu, _6) {
-                if (cu->ast->kind == Ast_Decl_Stmt) {
-                    
-                    Type* type = cu->ast->type;
-                    if (type->kind == TypeKind_Function) {
-                        
-                        smm first_byte = buffer.curr_used;
-                        pln("Compiling function: %", f_type(type));
-                        convert_type_to_wasm(type, &buffer);
-                        
-                        for (smm byte_index = first_byte; byte_index < buffer.curr_used; byte_index++) {
-                            u8 byte = buffer.data[byte_index];
-                            if (byte > 0xF) {
-                                printf("%hhX ", byte);
-                            } else {
-                                printf("0%hhX ", byte);
-                            }
-                            
-                            if ((byte_index - first_byte) % 40 == 39) {
-                                printf("\n");
-                            }
-                        }
-                        printf("\n\n");
-                    }
-                }
-            }
+            convert_to_wasm_module(&bytecode_builder.bytecode, &data_packer, 0, &buffer);
             
             File_Handle wasm_file = DEBUG_open_file_for_writing("simple.wasm");
             DEBUG_write(wasm_file, buffer.data, (u32) buffer.curr_used);
             DEBUG_close_file(wasm_file);
             pln("\nWrote executable: simple.wasm");
+            
+            pln("\nRunning: `wasm2wat simple.wasm`:");
+            fflush(stdout);
+            system("wasm2wat simple.wasm");
         } break;
     }
     

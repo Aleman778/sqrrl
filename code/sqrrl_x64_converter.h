@@ -1,7 +1,7 @@
 
 Ic_Opcode x64_intrin_rdtsc = IC_RDTSC;
 
-enum {
+enum X64_Reg: u8 {
     X64_RAX,
     X64_RCX,
     X64_RDX,
@@ -18,37 +18,97 @@ enum {
     X64_R13,
     X64_R14,
     X64_R15,
+    
+    X64_XMM0,
+    X64_XMM1,
+    X64_XMM2,
+    X64_XMM3,
+    X64_XMM4,
+    X64_XMM5,
+    X64_XMM6,
+    X64_XMM7,
+    X64_XMM8,
+    X64_XMM9,
+    X64_XMM10,
+    X64_XMM11,
+    X64_XMM12,
+    X64_XMM13,
+    X64_XMM14,
+    X64_XMM15,
+    
     X64_RIP,
     
-    X64_XMM0 = 0,
-    X64_XMM1 = 1,
-    X64_XMM2 = 2,
-    X64_XMM3 = 3,
-    X64_XMM4 = 4,
-    X64_XMM5 = 5,
-    X64_XMM6 = 6,
-    X64_XMM7 = 7,
-    X64_XMM8 = 8,
-    X64_XMM9 = 9,
-    X64_XMM10 = 10,
-    X64_XMM11 = 11,
-    X64_XMM12 = 12,
-    X64_XMM13 = 13,
-    X64_XMM14 = 14,
-    X64_XMM15 = 15,
+    X64_REG_COUNT,
 };
-typedef u8 X64_Reg;
 
-global const cstring int_register_names[] {
+global const cstring register_names[] {
     "RAX", "RCX", "RDX", "RBX", "RSP", "RBP", "RSI", "RDI",
-    "R8",  "R9",  "R10", "R11", "R12", "R13", "R14", "R15"
-};
-
-global const cstring float_register_names[] {
+    "R8",  "R9",  "R10", "R11", "R12", "R13", "R14", "R15",
     "XMM0", "XMM1", "XMM2", "XMM3", "XMM4", "XMM5", 
     "XMM6", "XMM7", "XMM8", "XMM9", "XMM10", "XMM11", 
     "XMM12", "XMM13", "XMM14", "XMM15",
 };
+
+struct X64_Register {
+    u32 virtual_index;
+    Ic_Raw_Type raw_type;
+    bool is_allocated;
+};
+
+struct X64_Block {
+    u32 label_index;
+    bool is_loop;
+};
+
+struct X64_Function {
+    u8* code;
+    u8** labels;
+};
+
+struct X64_Jump_Patch {
+    u8* origin;
+    u8** target;
+};
+
+struct X64_Data_Patch {
+    u8* origin;
+    Exported_Data data;
+};
+
+struct X64_Assembler {
+    Bytecode* bytecode;
+    u32* stack;
+    
+    Data_Packer* data_packer;
+    
+    X64_Function* curr_function;
+    X64_Function* functions;
+    array(X64_Block)* block_stack;
+    u32 label_index;
+    
+    u32 curr_bytecode_insn_index;
+    
+    X64_Register registers[X64_REG_COUNT];
+    
+    array(X64_Jump_Patch)* jump_patches;
+    array(X64_Data_Patch)* data_patches;
+    
+    
+    s64 current_stack_displacement_for_bytecode_registers;
+    s64 current_stack_displacement_for_locals;
+    
+    s64 read_write_data_offset;
+    s64 read_only_data_offset;
+    
+    bool use_absolute_ptrs;
+};
+
+inline s64
+register_displacement(X64_Assembler* x64, int register_index) {
+    // Each register is 8 bytes from RSP
+    return x64->current_stack_displacement_for_bytecode_registers + register_index * 8;
+}
+
 
 global const X64_Reg int_arg_registers_ccall_windows[] {
     X64_RCX, X64_RDX, X64_R8, X64_R9
@@ -58,6 +118,187 @@ global const X64_Reg float_arg_registers_ccall_windows[] {
     X64_XMM0, X64_XMM1, X64_XMM2, X64_XMM3
 };
 
+
+#define X64_OP_SIZE_PREFIX 0x66
+
+#define REX_PATTERN 0x40
+#define REX_W bit(3)
+#define REX_R bit(2)
+#define REX_X bit(1)
+#define REX_B bit(0)
+
+#define MODRM_DIRECT 0xC0
+#define MODRM_INDIRECT_DISP8 0x40
+#define MODRM_INDIRECT_DISP32 0x80
+
+global const u32 x64_setcc_opcodes[] = {
+    0xC0940F, 0xC0950F, 0xC0970F, 0xC0930F, 0xC0920F,
+    0xC0960F, 0xC09F0F, 0xC09D0F, 0xC09C0F, 0xC09E0F
+};
+
+global const u16 x64_jcc_opcodes[] = {
+    0x840F, 0x8F0F, 0x870F, 0x8D0F, 0x830F, 0x820F, 0x8C0F, 0x860F, 0x8E0F, 0x850F
+};
+
+//inline void
+//x64_rex(Buffer* buf, u8 flags) {
+//push_u8(buf, REX_PATTERN | flags);
+//}
+
+inline void
+x64_rex(Buffer* buf, u8 flags, u8 reg=0, u8 rm=0) {
+    push_u8(buf, REX_PATTERN | flags | ((reg&8)>>1) | (rm&8)>>3);
+}
+
+inline void
+x64_sib(Buffer* buf, u8 scale, u8 index, u8 base) {
+    push_u8(buf, scale << 6 | index << 3 | base);
+}
+
+inline void
+x64_rip_relative(Buffer* buf, s64 r, s64 data) {
+    push_u8(buf, ((u8) (r&7)<<3) | (u8) X64_RBP);
+    
+    u8* x64_machine_code_ptr = buf->data + buf->curr_used;
+    s64 disp = data - (s64) x64_machine_code_ptr - 4;
+    
+    push_u32(buf, (u32) disp);
+}
+
+inline void
+x64_jump_address(X64_Assembler* x64, Buffer* buf, u8** target) {
+    if (*target) {
+        push_u32(buf, (u32) (*target - (buf->data + buf->curr_used + 4)));
+    } else {
+        X64_Jump_Patch patch = {};
+        patch.origin = buf->data + buf->curr_used;
+        patch.target = target;
+        array_push(x64->jump_patches, patch);
+        push_u32(buf, 0);
+    }
+}
+
+inline void
+x64_jump_address_for_label(X64_Assembler* x64, Buffer* buf, Bytecode_Function* func, u32 label_index) {
+    if (label_index > 0) {
+        label_index = x64->block_stack[label_index - 1].label_index;
+    }
+    
+    x64_jump_address(x64, buf, &x64->curr_function->labels[label_index]);
+}
+
+inline void
+x64_modrm(Buffer* buf, u8 reg, u8 rm, s64 disp, s64 rip) {
+    reg = reg % 16; 
+    rm = rm % 16;
+    
+    if (disp < S8_MIN || disp > S8_MAX) {
+        push_u8(buf, MODRM_INDIRECT_DISP32 | (( reg&7)<<3) |  rm&7);
+        if (rm == X64_RSP) {
+            push_u8(buf,  (rm << 3) |  rm);
+        }
+        push_u32(buf, (u32) disp);
+    } else {
+        push_u8(buf, MODRM_INDIRECT_DISP8 | (( reg&7)<<3) |  rm&7);
+        if (rm == X64_RSP) {
+            push_u8(buf,  (rm << 3) |  rm);
+        }
+        push_u8(buf, (u8) disp);
+    }
+}
+
+inline void
+x64_modrm_direct(Buffer* buf, u8 reg, u8 rm) {
+    push_u8(buf, MODRM_DIRECT | ((reg&7)<<3) | (rm&7));
+}
+
+inline void
+x64_modrm_exported_data(X64_Assembler* x64, Buffer* buf, X64_Reg reg, Exported_Data data) {
+    push_u8(buf, ((u8) (reg&7)<<3) | (u8) X64_RBP);
+    if (x64->use_absolute_ptrs) {
+        s64 disp = (s64) data.data - (s64) (buf->data + buf->curr_used + 4);
+        push_u32(buf, (u32) disp);
+    } else {
+        X64_Data_Patch patch = {};
+        patch.origin = buf->data + buf->curr_used;
+        patch.data = data;
+        array_push(x64->data_patches, patch);
+        push_u32(buf, 0);
+    }
+}
+
+#if 0
+inline void
+x64_spill_register(X64_Assembler* x64, Buffer* buf, X64_Reg reg) {
+    if (x64->registers[reg].is_allocated) {
+        Ic_Raw_Type rt = x64->registers[reg].raw_type;
+        Ic_Arg stk = {};
+        stk.type = IC_STK | rt;
+        stk.reg = X64_RSP;
+        //stk.disp = x64->curr_function->stack_locals;
+        //x64->curr_function->stack_locals += 8; // TODO(Alexander): proper stack allocation (use size and alignment)
+        
+        if (rt & IC_FLOAT) {
+            //x64_fmov(buf, stk.type, stk.reg, stk.disp, IC_REG | rt, reg, 0, 0);
+        } else {
+            //x64_mov(buf, stk.type, stk.reg, stk.disp, IC_REG | rt, reg, 0, 0);
+        }
+        x64->registers[reg].is_allocated = false;
+        
+        u32 virtual_index = x64->registers[reg].virtual_index;
+        //x64->virtual_registers[virtual_index] = stk;
+        unimplemented;
+    }
+}
+
+inline Ic_Arg
+x64_alloc_register(X64_Assembler* x64, Buffer* buf, u32 virtual_index, X64_Reg reg, Ic_Raw_Type raw_type) {
+    x64_spill_register(x64, buf, reg);
+    
+    Ic_Arg result = {};
+    result.type = IC_REG | raw_type;
+    result.reg = (u8) reg;
+    
+    x64->registers[reg].is_allocated = true;
+    x64->registers[reg].virtual_index = virtual_index;
+    x64->registers[reg].raw_type = raw_type;
+    
+    //x64->virtual_registers[virtual_index] = result;
+    unimplemented;
+    return result;
+}
+#endif
+void convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64,
+                                                   Bytecode_Function* func,
+                                                   Buffer* buf);
+void convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, 
+                                               Buffer* buf,
+                                               Bytecode_Function* func,
+                                               Bytecode_Instruction* insn);
+
+#if 0
+inline void
+x64_unary(Buffer* buf, Ic_Type t, s64 r, s64 d, u8 opcode, u8 reg_field, s64 rip);
+
+inline void
+x64_binary(Buffer* buf,
+           Ic_Type t1, s64 r1, s64 d1, 
+           Ic_Type t2, s64 r2, s64 d2,
+           u8 reg_field, u8 opcode, s64 rip);
+#endif
+
+inline Ic_Arg
+ic_stk(Ic_Raw_Type raw_type, s64 disp, Ic_Stk_Area area=IcStkArea_None, u8 reg=X64_RSP) {
+    Ic_Arg result = {};
+    result.type = raw_type + IC_STK;
+    result.reg = reg;
+    result.stk.area = area;
+    result.stk.disp = safe_truncate_s64(disp);
+    return result;
+}
+
+
+#if 0
 struct X64_Arg_Copy {
     Type* type;
     union {
@@ -91,16 +332,6 @@ compute_stk_displacement(Compilation_Unit* cu, Ic_Arg arg) {
     }
     
     return 0;
-}
-
-inline Ic_Arg
-ic_stk(Ic_Raw_Type raw_type, s64 disp, Ic_Stk_Area area=IcStkArea_None, u8 reg=X64_RSP) {
-    Ic_Arg result = {};
-    result.type = raw_type + IC_STK;
-    result.reg = reg;
-    result.stk.area = area;
-    result.stk.disp = safe_truncate_s64(disp);
-    return result;
 }
 
 inline Ic_Arg
@@ -156,17 +387,6 @@ x64_is_scalar_type(int size) {
     return size == 1 || size == 2 || size == 4 || size == 8;
 }
 
-inline int
-intrin_index_of_first_set_bit(u32 value) {
-    unsigned long result = 0;
-    // TODO(Alexander): MSVC intrinsics, make compiler agnostic
-    if (_BitScanForward(&result, value)) {
-        return result;
-    }
-    return -1;
-}
-
-
 enum X64_Jump_Opcode {
     X64_JMP,
     X64_JA,
@@ -209,17 +429,6 @@ global const X64_Jump_Opcode ic_jmp_to_x64_jmp[] = {
 #undef IC
 };
 
-
-u32 x64_setcc_opcodes[] = {
-    0xC0970F, 0xC0930F, 0xC0920F, 0xC0960F, 0xC0940F, 
-    0xC09F0F, 0xC09D0F, 0xC09C0F, 0xC09E0F, 0xC0950F
-};
-
-u16 x64_jcc_opcodes[] = {
-    0x870F, 0x830F, 0x820F, 0x860F, 0x840F, 0x8F0F, 0x8D0F, 0x8C0F, 0x8E0F, 0x850F,
-};
-
-
 global const u8 x64_jmp_opcodes[] = {
     // Short jump
     0xEB, 0x77, 0x73, 0x72, 0x76, 0x72, 0x74, 0x7F, 0x7D, 0x7C, 0x7E, 0x76,
@@ -242,8 +451,6 @@ ic_add_orphan(Compilation_Unit* cu, Ic_Opcode opcode = IC_NOOP, smm size=sizeof(
     return result;
 }
 
-#define S1(x) #x
-#define S2(x) S1(x)
 #define ic_add(cu, opcode) ic_add_insn(cu, opcode, __FILE__ ":" S2(__LINE__))
 #define ic_label(cu, bb) ic_label_insn(cu, bb, __FILE__ ":" S2(__LINE__))
 #define ic_jump(cu, opcode, target_bb) ic_jump_insn(cu, opcode, target_bb, __FILE__ ":" S2(__LINE__))
@@ -366,34 +573,6 @@ _ic_lea(Compilation_Unit* cu, Ic_Arg dest, Ic_Arg src, cstring comment=0, u8 tmp
     }
 }
 
-#define X64_OP_SIZE_PREFIX 0x66
-
-#define REX_PATTERN 0x40
-#define REX_FLAG_W bit(3)
-#define REX_FLAG_R bit(2)
-#define REX_FLAG_X bit(1)
-#define REX_FLAG_B bit(0)
-#define REX_FLAG_64_BIT REX_FLAG_W
-
-inline void
-x64_rex(Intermediate_Code* ic, u8 flags) {
-    ic_u8(ic, REX_PATTERN | flags);
-}
-
-#define MODRM_DIRECT 0xC0
-#define MODRM_INDIRECT_DISP8 0x40
-#define MODRM_INDIRECT_DISP32 0x80
-
-inline void x64_mov(Intermediate_Code* ic, 
-                    Ic_Type t1, s64 r1, s64 d1, 
-                    Ic_Type t2, s64 r2, s64 d2, s64 rip);
-
-inline void x64_add(Intermediate_Code* ic, 
-                    Ic_Type t1, s64 r1, s64 d1, 
-                    Ic_Type t2, s64 r2, s64 d2, 
-                    Ic_Type t3, s64 r3, s64 d3,
-                    u8 reg_field, u8 opcode, s64 rip);
-
 Ic_Arg convert_expr_to_intermediate_code(Compilation_Unit* cu, Ast* expr);
 
 void convert_procedure_to_intermediate_code(Compilation_Unit* cu, bool insert_debug_break);
@@ -402,3 +581,4 @@ s64 convert_to_x64_machine_code(Intermediate_Code* ic, s64 stack_usage, u8* buff
 void string_builder_push(String_Builder* sb, Ic_Arg arg);
 void string_builder_push(String_Builder* sb, Intermediate_Code* ic, int bb_index=0);
 void print_intermediate_code(Intermediate_Code* value);
+#endif

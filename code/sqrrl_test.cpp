@@ -82,6 +82,7 @@ run_compiler_tests(string filename,
         return 1;
     }
     
+#if 0
     // Convert to intermediate code
     Ic_Arg_Map* x64_globals = 0;
     for_array(ast_file.units, cu, _) {
@@ -142,6 +143,7 @@ run_compiler_tests(string filename,
     }
     assert(rip == rip2);
     
+#endif
     asm_make_executable(asm_buffer, asm_size);
     
     // Collect all the test to run
@@ -168,7 +170,8 @@ run_compiler_tests(string filename,
                     test.modes = modes;
                     
                     if (decl->type->Function.dump_bytecode) {
-                        dump_bytecode(unit);
+                        unimplemented;
+                        //dump_bytecode(bytecode_builder);
                     }
                     
                     assert(!map_key_exists(tests, unit->ident) && "duplicate test name");
@@ -228,7 +231,7 @@ run_compiler_tests(string filename,
         if (is_bitflag_set(test->modes, TestExecutionMode_X64)) {
             u32 prev_num_failed = test->num_failed;
             
-            s64 offset = unit->bb_first->addr;
+            s64 offset = 0;//unit->bb_first->addr;
             //pln("Running `%` at memory location: 0x%", f_string(vars_load_string(test->ident)),
             //f_u64_HEX((u8*) asm_buffer + offset));
             asm_test* test_func = (asm_test*) ((u8*) asm_buffer + offset);

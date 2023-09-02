@@ -479,8 +479,7 @@ patch_rip_relative_address(PE_Executable* pe, Ic_Arg arg) {
             
             // TODO(Alexander): add support for globals!
             case IcDataArea_Globals: {
-                arg.data.disp += (pe->data_section->virtual_address - base_address + 
-                                  pe->global_data_offset);
+                arg.data.disp += (pe->data_section->virtual_address - base_address);
             } break;
         }
     }
@@ -510,7 +509,7 @@ write_pe_executable_to_file(File_Handle output_file, PE_Executable* pe) {
     }
     
     if (pe->data_section) {
-        umm data_size = arena_total_used(&pe->data_arena) + pe->global_data_offset;
+        umm data_size = arena_total_used(&pe->data_arena);
         write_memory_block_to_file(output_file, pe->type_info_arena.current_block);
         write_memory_block_to_file(output_file, pe->data_arena.current_block);
         write_padding_to_file(output_file, data_size, pe->data_section->size_of_raw_data);

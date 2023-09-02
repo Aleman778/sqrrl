@@ -17,25 +17,43 @@ sqrrl_free(void* data) {
 #define STBDS_FREE(c, p) sqrrl_free(p)
 #endif
 
+
+enum Backend_Type {
+    Backend_X64,
+    Backend_WASM,
+    
+    Backend_Count,
+};
+
+enum Compiler_Task {
+    CompilerTask_Run,
+    CompilerTask_Build,
+};
+
+
 // TODO(alexander): this will in the future be replaced with our own implementation
 #define STB_DS_IMPLEMENTATION
 #include "stb_ds.h" // TODO(alexander): implement this on our own!
 
 #include "sqrrl_basic.h"
 #include "sqrrl_platform.h"
+#include "sqrrl_intrinsics.h"
 #include "sqrrl_vars.h"
 #include "sqrrl_source.h"
 #include "sqrrl_tokenizer.h"
 #include "sqrrl_value.h"
 #include "sqrrl_data.h"
 #include "sqrrl_types.h"
+#include "sqrrl_bytecode.h"
 #include "sqrrl_intermediate_code.h"
 #include "sqrrl_ast.h"
 #include "sqrrl_type_checker.h"
 #include "sqrrl_parser.h"
 #include "sqrrl_preprocessor.h"
 #include "sqrrl_interp.h"
+#include "sqrrl_bytecode_builder.h"
 #include "sqrrl_x64_converter.h"
+#include "sqrrl_wasm_converter.h"
 #include "sqrrl_pe_converter.h"
 #include "sqrrl_test.h"
 

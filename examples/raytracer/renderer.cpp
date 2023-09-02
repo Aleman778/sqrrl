@@ -196,6 +196,14 @@ vec3_refract(v3 uv, v3 normal, f32 etai_over_etat) {
     return vec3_add(perp, parallel);
 }
 
+f32
+reflectance(f32 cos_theta, f32 refraction_ratio) {
+    // Schlick's approximation
+    f32 r0 = (1-refraction_ratio) / (1+refraction_ratio);
+    r0 = r0 * r0;
+    return r0 + (1 - r0) * pow((1 - cos_theta), 5);
+}
+
 
 int scatter_count = 0;
 
@@ -237,14 +245,6 @@ dieletric_scatter(ray r, Hit_Result hit) {
     result.scatter = true;
     
     return result;
-}
-
-f32
-reflectance(f32 cos_theta, f32 refraction_ratio) {
-    // Schlick's approximation
-    f32 r0 = (1-refraction_ratio) / (1+refraction_ratio);
-    r0 = r0 * r0;
-    return r0 + (1 - r0) * pow((1 - cos_theta), 5);
 }
 
 v3

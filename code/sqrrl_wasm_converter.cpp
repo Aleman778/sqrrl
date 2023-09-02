@@ -75,7 +75,7 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             Bytecode_Call* call = (Bytecode_Call*) insn;
             Bytecode_Operand* args = (Bytecode_Operand*) (call + 1);
             Bytecode_Function* call_func = bc->functions[call->func_index];
-            Bytecode_Type* arg_types = (Bytecode_Type*) (call_func + 1);
+            Bytecode_Function_Arg* formal_args = function_arg_types(call_func);
             
             for (int i = 0; i < (int) call_func->arg_count; i++) {
                 int arg_index = args[i].register_index;
@@ -326,7 +326,7 @@ convert_bytecode_function_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* b
     push_leb128_u32(buf, 0);
     
     // Save parameters to local variables
-    Bytecode_Type* arg_types = (Bytecode_Type*) (func + 1);
+    Bytecode_Function_Arg* formal_args = function_arg_types(func);
     for (u32 register_index = 0; register_index < func->arg_count; register_index++) {
         // TODO: copy larger structs
         //if (stk.size <= 8) {
@@ -386,7 +386,7 @@ convert_bytecode_function_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* b
     
     if (func->ret_count == 1) {
         // TODO(Alexander): multiple returns
-        Bytecode_Type type = arg_types[func->arg_count];
+        Bytecode_Type type = formal_args[func->arg_count].type;
         // TODO(Alexander): add support for f32 and f64!!!
         wasm_local_get(buf, wasm->tmp_local_i64);
     }
@@ -504,18 +504,17 @@ convert_to_wasm_module(Bytecode* bc, Data_Packer* data_packer, s64 stk_usage, Bu
         push_u8(buf, 0x60); // functype tag
         
         // arguments
-        Bytecode_Type* arg_types = (Bytecode_Type*) (func + 1);
+        Bytecode_Function_Arg* formal_args = function_arg_types(func);
         push_leb128_u32(buf, func->arg_count);
         for (u32 i = 0; i < func->arg_count; i++) {
-            wasm_push_valtype(buf, arg_types[i]);
+            wasm_push_valtype(buf, formal_args[i].type);
         }
         
         // return values
-        // TODO: multiple return types
-        Bytecode_Type* ret_types = arg_types + func->arg_count;
+        Bytecode_Function_Arg* return_args = function_ret_types(func);
         push_leb128_u32(buf, func->ret_count);
         for (u32 i = 0; i < func->ret_count; i++) {
-            wasm_push_valtype(buf, ret_types[i]);
+            wasm_push_valtype(buf, return_args[i].type);
         }
     }
     wasm_set_vec_size(buf, type_section_start);

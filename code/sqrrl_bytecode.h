@@ -165,6 +165,16 @@ struct Bytecode_Function {
     // followed by array of Bytecode_Function_Arg, function arguments then return types and lastly instructions
 };
 
+inline Bytecode_Function_Arg*
+function_arg_types(Bytecode_Function* func) {
+    return (Bytecode_Function_Arg*) (func + 1);
+}
+
+inline Bytecode_Function_Arg*
+function_ret_types(Bytecode_Function* func) {
+    return (Bytecode_Function_Arg*) (func + 1) + func->arg_count;
+}
+
 inline Bytecode_Type
 register_type(Bytecode_Function* func, int register_index) {
     return func->register_types[register_index];

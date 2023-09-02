@@ -308,10 +308,8 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             if (func->is_intrinsic) {
                 switch (func->intrinsic_id) {
                     case Sym_rdtsc: {
-                        unimplemented;
-                        //Bytecode_Unary* intrin = add_insn_t(bc, BC_RDTSC, Unary);
-                        //intrin->first = add_bytecode_register(bc);
-                        //result = intrin->first;
+                        result = add_bytecode_register(bc, t_s64);
+                        bc_instruction(bc, BC_X64_RDTSC, result, -1, -1);
                     } break;
                 }
                 
@@ -758,7 +756,8 @@ add_bytecode_function(Bytecode_Builder* bc, Type* type) {
     
     int ret_count = is_valid_type(type->Function.return_type) ? 1 : 0;
     int arg_count = (int) array_count(type->Function.arg_types);
-    int size = sizeof(Bytecode_Function) + ret_count + arg_count;
+    int size = (sizeof(Bytecode_Function) + 
+                (ret_count + arg_count)*sizeof(Bytecode_Function_Arg));
     
     Bytecode_Function* func = (Bytecode_Function*) arena_push_size(&bc->arena, size, 
                                                                    alignof(Bytecode_Function));
@@ -774,22 +773,27 @@ add_bytecode_function(Bytecode_Builder* bc, Type* type) {
         type->Function.unit->bytecode_function = func;
     }
     
-    Bytecode_Type* curr_type = (Bytecode_Type*) (func + 1);
+    Bytecode_Function_Arg* curr_arg = function_arg_types(func);
     for (int i = 0; i < arg_count; i++) {
         string_id arg_ident = type->Function.arg_idents[i];
         Type* arg_type = type->Function.arg_types[i];
-        *curr_type++ = to_bytecode_type(bc, arg_type);
+        curr_arg->type = to_bytecode_type(bc, arg_type);
+        curr_arg->size = type->size;
+        curr_arg->align = type->align;
         
         int arg = add_bytecode_register(bc, arg_type);
         map_put(bc->locals, arg_ident, arg);
+        
+        curr_arg++;
     }
     
     if (ret_count > 0) {
         assert(ret_count == 1 && "TODO: multiple returns");
-        *curr_type++ = to_bytecode_type(bc, type->Function.return_type);
-        //push_bytecode_stack(bc, 
-        //type->Function.return_type->size,
-        //type->Function.return_type->align);
+        curr_arg->type = to_bytecode_type(bc, type->Function.return_type);
+        curr_arg->size = type->Function.return_type->size;
+        curr_arg->align = type->Function.return_type->align;
+        
+        curr_arg++;
     }
     
     array_push(bc->bytecode.functions, func);
@@ -921,7 +925,7 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
             string_builder_dump_bytecode_function_name(sb, bc, func);
             string_builder_push(sb, "(");
             
-            Bytecode_Function_Arg* formal_args = (Bytecode_Function_Arg*) (func + 1);
+            Bytecode_Function_Arg* formal_args = function_arg_types(func);
             for (u32 i = 0; i < func->arg_count; i++) {
                 string_builder_push_format(sb, "r%", f_int(args[i]));
                 if (i + 1 < func->arg_count) {
@@ -1000,10 +1004,10 @@ string_builder_dump_bytecode(String_Builder* sb, Bytecode* bc, Bytecode_Function
         string_builder_push(sb, "import ");
     }
     
-    Bytecode_Type* types = (Bytecode_Type*) (func + 1);
+    Bytecode_Function_Arg* formal_args = function_arg_types(func);
     if (func->ret_count == 1) {
         // TODO(Alexander): multiple returns
-        string_builder_dump_bytecode_type(sb, types[func->arg_count]);
+        string_builder_dump_bytecode_type(sb, formal_args[func->arg_count].type);
         string_builder_push(sb, " ");
     } else {
         string_builder_push(sb, "void ");
@@ -1011,7 +1015,7 @@ string_builder_dump_bytecode(String_Builder* sb, Bytecode* bc, Bytecode_Function
     string_builder_dump_bytecode_function_name(sb, bc, func);
     string_builder_push(sb, "(");
     for (u32 i = 0; i < func->arg_count; i++) {
-        string_builder_dump_bytecode_type(sb, types[i]);
+        string_builder_dump_bytecode_type(sb, formal_args[i].type);
         if (i + 1 < func->arg_count) {
             string_builder_push(sb, ", ");
         }

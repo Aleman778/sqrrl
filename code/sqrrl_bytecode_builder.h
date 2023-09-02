@@ -26,10 +26,10 @@ struct Bytecode_Builder {
 Bytecode_Type
 to_bytecode_type(Bytecode_Builder* bc, Type* type) {
     Bytecode_Type result = {};
-    result.size = (u8) type->size;
     
     switch (type->kind) {
         case TypeKind_Basic: {
+            result.size = (u8) type->size;
             
             switch (type->Basic.kind) {
                 case Basic_s8:;

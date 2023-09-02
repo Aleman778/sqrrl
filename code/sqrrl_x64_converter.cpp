@@ -97,6 +97,10 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
         return;
     }
     
+    Bytecode_Function_Arg* formal_args = function_arg_types(func);
+    
+    // TODO(Alexander): most  of the code here is windows x64 calling convention specific
+    
     // Setup labels
     x64->curr_function = &x64->functions[func->type_index];
     x64->curr_function->code = buf->data + buf->curr_used;
@@ -111,6 +115,17 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     x64->current_stack_displacement_for_bytecode_registers = stack_caller_args;
     
     s32 stack_size = stack_caller_args + register_count*8;
+    
+    // Push larger structures in our stack frame
+    s32 stack_callee_args_copy = stack_size;
+    for (int arg_index = 0; arg_index < (int) func->arg_count; arg_index++) {
+        Bytecode_Type arg_type = formal_args[arg_index].type;
+        // TODO(Alexander): we need a better way to know when to copy a pointers data!!!
+        if (arg_type.kind == BC_TYPE_PTR) {
+            stack_size += arg_type.size;
+        }
+    }
+    
     x64->current_stack_displacement_for_locals = stack_size;
     for_bc_insn(func, insn) {
         if (insn->opcode == BC_LOCAL) {
@@ -124,7 +139,6 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     stack_size = (s32) align_forward(stack_size + 8, 16) - 8;
     s32 stack_callee_args = stack_size + 8;
     
-    Bytecode_Function_Arg* formal_args = (Bytecode_Function_Arg*) (func + 1);
     
     // Save HOME registers (TODO: move this it's windows calling convention only)
     // TODO(Alexander): this doens't handle returns larger than 8 bytes
@@ -147,7 +161,9 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     //x64->stack[func->arg_count] = stack_caller_args;
     //}
     
-    // Copy registers to our local stack space (TODO: move this it's windows x64 calling convention)
+    
+    // Copy registers to our local stack space
+    // TODO(Alexander): we should find a way to reference the old stack frame!!!
     for (int arg_index = 0; arg_index < (int) func->arg_count; arg_index++) {
         s64 src = stack_callee_args + arg_index*8;
         s64 dest = register_displacement(x64, arg_index);
@@ -248,8 +264,9 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             Bytecode_Call* call = (Bytecode_Call*) insn;
             Bytecode_Operand* args = (Bytecode_Operand*) (call + 1);
             Bytecode_Function* target = x64->bytecode->functions[call->func_index];
-            Bytecode_Function_Arg* formal_args = (Bytecode_Function_Arg*) (func + 1);
+            Bytecode_Function_Arg* formal_args = function_arg_types(func);
             
+            // TODO(Alexander): most of this is windows calling convention move this!
             int local_arg_stack_usage = 0;
             int first_arg_index = 0;
             if (target->ret_count == 1 && formal_args[target->arg_count].size > 8) {
@@ -257,7 +274,6 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                 local_arg_stack_usage += 8;
             }
             
-            // TODO(Alexander): this is part of windows calling convention, move this
             for (int i = (int) target->arg_count - 1; i >= 0; i--) {
                 int src_index = args[i].register_index;
                 int arg_index = first_arg_index + i;
@@ -278,6 +294,10 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             u32 return_virtual_register = 0;
             if (target->ret_count > 0) {
                 return_virtual_register = args[target->arg_count].register_index;
+            }
+            
+            if (first_arg_index == 1) {
+                
             }
             
 #if 0
@@ -330,7 +350,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_RETURN: {
-            Bytecode_Function_Arg* formal_args = (Bytecode_Function_Arg*) (func + 1);
+            Bytecode_Function_Arg* formal_args = function_arg_types(func);
             
             int res_index = bc_unary_first(insn).register_index;
             

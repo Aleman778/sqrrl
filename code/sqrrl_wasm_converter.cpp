@@ -73,13 +73,13 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
         
         case BC_CALL: {
             Bytecode_Call* call = (Bytecode_Call*) insn;
-            Bytecode_Operand* args = (Bytecode_Operand*) (call + 1);
             Bytecode_Function* call_func = bc->functions[call->func_index];
             Bytecode_Function_Arg* formal_args = function_arg_types(call_func);
             
+            int* args = bc_call_args(call);
             for (int i = 0; i < (int) call_func->arg_count; i++) {
-                int arg_index = args[i].register_index;
-                wasm_store_register(buf, register_type(func, arg_index), arg_index);
+                int arg_index = args[i];
+                wasm_load_register(func, buf, arg_index);
             }
             
             push_u8(buf, 0x10); // call
@@ -87,7 +87,7 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             
             if (call_func->ret_count > 0) {
                 assert(call_func->ret_count == 1 && "TODO: multiple returns");
-                int res_index = args[call_func->arg_count].register_index;
+                int res_index = args[call_func->arg_count];
                 wasm_prepare_store(buf, wasm->tmp_local_i64);
                 wasm_store_register(buf, register_type(func, res_index), res_index);
             }
@@ -264,13 +264,15 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
         //push_u8(buf, opcodes[insn->type - 1]);
         
         case BC_MEMSET: {
+            unimplemented;
+#if 0
             Bytecode_Memory* mem = (Bytecode_Memory*) insn;
             
             if (mem->src.kind == BytecodeOperand_register) {
                 push_u8(buf, 0x21); // local.set
                 push_leb128_u32(buf, wasm->tmp_local_i32);
             }
-            unimplemented;
+            
             //wasm_push_addr_of(wasm, buf, mem->dest, BytecodeType_i32);
             
             if (mem->src.kind == BytecodeOperand_register) {
@@ -287,6 +289,7 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             push_u8(buf, 0x41); // i32.const
             push_leb128_s32(buf, mem->size);
             push_u32(buf, 0x00000AFC); // memory.copy
+#endif
         } break;
         
         default: {

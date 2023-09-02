@@ -201,29 +201,6 @@ global cstring bc_memory_kind_names[] = {
 };
 
 
-// TODO: maybe we want to ecode the kind and type as part of the instruction?
-struct Bytecode_Operand {
-    Bytecode_Operand_Kind kind;
-    union {
-        s32 const_i32;
-        s64 const_i64;
-        f32 const_f32;
-        f64 const_f64;
-        
-        u32 register_index;
-        
-        struct {
-            Bytecode_Memory_Kind memory_kind;
-            union {
-                s32 memory_offset;
-                
-                // TODO(Alexander): hack!!! we need a way to remove this later (needed for X64 JIT)
-                void* memory_absolute;
-            };
-        };
-    };
-};
-
 //struct Bytecode_Instruction {
 
 
@@ -264,21 +241,6 @@ struct Bytecode_Instruction {
 
 global Bytecode_Instruction bc_empty = {};
 
-struct Bytecode_Alloca {
-    Bytecode_Instruction_Base;
-    
-    Bytecode_Operand dest;
-    u32 size, align;
-};
-
-struct Bytecode_Unary {
-    Bytecode_Instruction_Base;
-    
-    Bytecode_Operand first;
-};
-
-#define bc_unary_first(insn) (((Bytecode_Unary*) insn)->first)
-
 struct Bytecode_Binary {
     Bytecode_Instruction_Base;
     
@@ -294,15 +256,17 @@ struct Bytecode_Binary {
     };
 };
 
-#define bc_binary_first(insn) (((Bytecode_Binary*) insn)->first)
-#define bc_binary_second(insn) (((Bytecode_Binary*) insn)->second)
-
 struct Bytecode_Call {
     Bytecode_Instruction_Base;
     
     u32 func_index;
     // argument operands followed by return operands
 };
+
+int*
+bc_call_args(Bytecode_Call* call) {
+    return (int*) (call + 1);
+}
 
 struct Bytecode_Block {
     Bytecode_Instruction_Base;
@@ -317,18 +281,6 @@ struct Bytecode_Branch {
     int cond;
     
     u32 label_index;
-    // TODO(Alexander): maybe have a true and false label?
-};
-
-struct Bytecode_Memory {
-    Bytecode_Instruction_Base;
-    
-    Bytecode_Operand dest;
-    union {
-        Bytecode_Operand src;
-        u8 value;
-    };
-    s32 size;
     // TODO(Alexander): maybe have a true and false label?
 };
 

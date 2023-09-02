@@ -259,7 +259,6 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         
         case BC_CALL: {
             Bytecode_Call* call = (Bytecode_Call*) insn;
-            Bytecode_Operand* args = (Bytecode_Operand*) (call + 1);
             Bytecode_Function* target = x64->bytecode->functions[call->func_index];
             Bytecode_Function_Arg* formal_args = function_arg_types(func);
             
@@ -271,8 +270,9 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                 local_arg_stack_usage += 8;
             }
             
+            int* args = bc_call_args(call);
             for (int i = (int) target->arg_count - 1; i >= 0; i--) {
-                int src_index = args[i].register_index;
+                int src_index = args[i];
                 int arg_index = first_arg_index + i;
                 X64_Reg dest = X64_RAX;
                 if (arg_index < 4) {
@@ -290,11 +290,11 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             
             u32 return_virtual_register = 0;
             if (target->ret_count > 0) {
-                return_virtual_register = args[target->arg_count].register_index;
+                return_virtual_register = args[target->arg_count];
             }
             
             if (first_arg_index == 1) {
-                
+                unimplemented;
             }
             
 #if 0
@@ -349,7 +349,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         case BC_RETURN: {
             Bytecode_Function_Arg* formal_args = function_arg_types(func);
             
-            int res_index = bc_unary_first(insn).register_index;
+            int res_index = bc->arg0_index;
             
             Bytecode_Function_Arg arg = formal_args[func->arg_count];
             if (arg.size > 8) {
@@ -549,7 +549,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_MEMCPY: {
-            Bytecode_Memory* mem = (Bytecode_Memory*) insn;
+            //Bytecode_Memory* mem = (Bytecode_Memory*) insn;
             //Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, mem->dest, BytecodeType_i64);
             //Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, mem->src, BytecodeType_i64);
             
@@ -561,9 +561,6 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_X64_RDTSC: {
-            Bytecode_Operand dest = bc_unary_first(insn);
-            assert(dest.kind == BytecodeOperand_register);
-            
             //Ic_Raw_Type rt = convert_bytecode_type_to_x64(insn->type);
             //x64_alloc_register(x64, buf, dest.register_index, X64_RAX, rt);
             //x64_spill_register(x64, buf, X64_RDX);

@@ -214,33 +214,6 @@ wasm_memory_offset(WASM_Assembler* wasm, u32 offset, Bytecode_Memory_Kind kind) 
     return offset;
 }
 
-void
-wasm_load_value(WASM_Assembler* wasm, Buffer* buf, Bytecode_Operand op, Bytecode_Type type, int bitsize=0) {
-    push_u8(buf, 0x23); // global.get
-    push_leb128_u32(buf, 0);
-    
-    //wasm_push_load(buf, type, op.register_index * 8, bitsize);
-}
-
-void
-wasm_prepare_store_old(WASM_Assembler* wasm, Buffer* buf, Bytecode_Operand dest, Bytecode_Operand src, Bytecode_Type type, int swap_local_i64=-1) {
-    // Setup stack pointer
-    
-    if (swap_local_i64 >= 0) {
-        wasm_local_set(buf, swap_local_i64);
-    }
-    
-    // Push stack pointer
-    push_u8(buf, 0x23); // global.get
-    push_leb128_u32(buf, 0);
-    
-    if (swap_local_i64 >= 0) {
-        // Push src on top of the stack
-        wasm_local_get(buf, swap_local_i64);
-    }
-}
-
-
 #if 0
 void
 wasm_push_addr_of(WASM_Assembler* wasm, Buffer* buf, Bytecode_Operand op, Bytecode_Type type) {

@@ -316,22 +316,14 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 return result;
             }
             
-            
             array(int)* arg_operands = 0;
             for_compound(expr->Call_Expr.args, arg) {
-                int op = convert_expression_to_bytecode(bc, arg->Argument.assign);
+                int reg = convert_expression_to_bytecode(bc, arg->Argument.assign);
                 Type* arg_type = arg->Argument.assign->type;
-                if (arg_type->size > 8) {
-                    unimplemented;
-                    //Bytecode_Binary* arg_insn = add_insn_t(bc, BC_ADDR_OF, Binary);
-                    //arg_insn->type = to_bytecode_type(bc, arg_type);
-                    //arg_insn->first = add_bytecode_register(bc);
-                    //arg_insn->second = op;
-                    //op = arg_insn->first;
+                if (arg_type->size <= 8) {
+                    reg = add_load_instruction(bc, arg_type, reg);
                 }
-                // TODO(Alexander): add default args
-                
-                array_push(arg_operands, op);
+                array_push(arg_operands, reg);
             }
             
             umm arg_size = sizeof(int)*(func->ret_count + func->arg_count);
@@ -586,26 +578,20 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
                 src = convert_expression_to_bytecode(bc, stmt->Assign_Stmt.expr);
             }
             
-            if (stmt->Assign_Stmt.ident->kind == Ast_Ident) {
-                string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
-                
-                if (src == -1) {
-                    if (stmt->Assign_Stmt.mods & AstDeclModifier_Local_Persist) {
-                        src = push_bytecode_memory(bc, BytecodeMemory_read_write, 
-                                                   type->size, type->align);
-                        unimplemented;
-                    } else {
-                        // TODO(Alexander): all assign stmts should probably allocate as local, later on...
-                        src = add_bytecode_register(bc, type);
-                        bc_instruction(bc, BC_LOCAL, src, type->size, type->align);
-                        
-                    }
-                }
-                map_put(bc->locals, ident, src);
-                
-                //if (src.kind) {
-                //convert_assign_to_bytecode(bc, type, dest, src, true);
-                //}
+            int local = -1;
+            if (stmt->Assign_Stmt.mods & AstDeclModifier_Local_Persist) {
+                unimplemented;
+            } else {
+                local = add_bytecode_register(bc, t_void_ptr);
+                bc_instruction(bc, BC_LOCAL, local, type->size, type->align);
+            }
+            
+            assert(stmt->Assign_Stmt.ident->kind == Ast_Ident);
+            string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
+            map_put(bc->locals, ident, local);
+            
+            if (src != -1) {
+                bc_store_instruction(bc, local, src);
             }
         } break;
         
@@ -914,14 +900,13 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
             Bytecode_Function* func = bc->functions[call->func_index];
             int* args = (int*) (call + 1);
             
-            string_builder_dump_bytecode_opcode(sb, insn);
             if (func->ret_count == 1) {
                 // TODO(Alexander): multiple returns
                 string_builder_push_format(sb, "r%", f_int(args[func->arg_count]));
                 //string_builder_dump_bytecode_operand(sb, args[func->arg_count], insn->type);
-                string_builder_push(sb, ", ");
+                string_builder_push(sb, " = ");
             }
-            
+            string_builder_dump_bytecode_opcode(sb, insn);
             string_builder_dump_bytecode_function_name(sb, bc, func);
             string_builder_push(sb, "(");
             

@@ -2,8 +2,6 @@
 struct Bytecode_Builder {
     Memory_Arena arena;
     
-    array(Bytecode_Operand*)* register_stack;
-    
     map(string_id, int)* locals;
     map(string_id, int)* globals;
     
@@ -185,6 +183,7 @@ push_bytecode_memory(Bytecode_Builder* bc, Bytecode_Memory_Kind kind, smm size, 
         memcpy(data, init, size);
     }
     
+#if 0
     Bytecode_Operand result = {};
     result.kind = BytecodeOperand_memory;
     if (bc->use_absolute_memory) {
@@ -193,9 +192,10 @@ push_bytecode_memory(Bytecode_Builder* bc, Bytecode_Memory_Kind kind, smm size, 
         result.memory_offset = offset;
         result.memory_kind = kind;
     }
+    //return result;
+#endif
     unimplemented;
     return 0;
-    //return result;
 }
 
 inline void

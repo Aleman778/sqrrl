@@ -103,7 +103,6 @@ struct X64_Assembler {
     bool use_absolute_ptrs;
 };
 
-
 inline s64
 register_displacement(X64_Assembler* x64, int register_index) {
     // Each register is 8 bytes from RSP

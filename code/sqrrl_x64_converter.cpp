@@ -1,9 +1,16 @@
 
-u8*
+struct X64_Compiled_Code {
+    u8* main_function_ptr;
+    PE_Executable pe_executable;
+};
+
+X64_Compiled_Code
 convert_bytecode_to_x64_machine_code(Bytecode* bc, Buffer* buf, 
                                      Data_Packer* data_packer,
                                      Library_Import_Table* import_table,
                                      Compiler_Task compiler_task) {
+    
+    X64_Compiled_Code result;
     
     X64_Assembler x64 = {};
     x64.bytecode = bc;
@@ -12,7 +19,7 @@ convert_bytecode_to_x64_machine_code(Bytecode* bc, Buffer* buf,
     x64.functions = (X64_Function*) calloc(array_count(bc->functions), 
                                            sizeof(X64_Function));
     
-    u8* asm_buffer_main = buf->data;
+    result.main_function_ptr = buf->data;
     for_array_v(bc->functions, func, func_index) {
         if (compiler_task == CompilerTask_Build) {
             if (func_index < array_count(bc->imports)) {
@@ -25,7 +32,7 @@ convert_bytecode_to_x64_machine_code(Bytecode* bc, Buffer* buf,
         }
         
         if (bc->entry_func_index == func_index) {
-            asm_buffer_main = buf->data + buf->curr_used;
+            result.main_function_ptr = buf->data + buf->curr_used;
         }
         
         convert_bytecode_function_to_x64_machine_code(&x64, func, buf);
@@ -39,21 +46,21 @@ convert_bytecode_to_x64_machine_code(Bytecode* bc, Buffer* buf,
     }
     
     Memory_Arena build_arena = {};
-    PE_Executable pe;
     if (compiler_task == CompilerTask_Build) {
         // NOTE(Alexander): Build initial PE executable
-        pe = convert_to_pe_executable(&build_arena,
-                                      buf->data, (u32) buf->curr_used,
-                                      import_table,
-                                      data_packer,
-                                      asm_buffer_main);
-        s64 base_address = pe.text_section->virtual_address;
-        if (pe.rdata_section) {
-            x64.read_only_data_offset = (s64) buf->data + (pe.rdata_section->virtual_address - 
+        result.pe_executable = convert_to_pe_executable(&build_arena,
+                                                        buf->data, (u32) buf->curr_used,
+                                                        import_table,
+                                                        data_packer,
+                                                        result.main_function_ptr);
+        PE_Executable* pe = &result.pe_executable;
+        s64 base_address = pe->text_section->virtual_address;
+        if (pe->rdata_section) {
+            x64.read_only_data_offset = (s64) buf->data + (pe->rdata_section->virtual_address - 
                                                            base_address);
         }
-        if (pe.data_section) {
-            x64.read_write_data_offset = (s64) buf->data + (pe.data_section->virtual_address - 
+        if (pe->data_section) {
+            x64.read_write_data_offset = (s64) buf->data + (pe->data_section->virtual_address - 
                                                             base_address);
         }
         
@@ -75,18 +82,8 @@ convert_bytecode_to_x64_machine_code(Bytecode* bc, Buffer* buf,
         }
     }
     
-    if (compiler_task == CompilerTask_Build) {
-        // NOTE(Alexander): write the PE executable to file
-        File_Handle exe_file = DEBUG_open_file_for_writing("simple.exe");
-        write_pe_executable_to_file(exe_file, &pe);
-        DEBUG_close_file(exe_file);
-        pln("\nWrote executable: simple.exe");
-        
-        //Read_File_Result exe_data = DEBUG_read_entire_file("simple.exe");
-        //pe_dump_executable(create_string(exe_data.contents_size, (u8*) exe_data.contents));
-    }
     
-    return asm_buffer_main;
+    return result;
 }
 
 void

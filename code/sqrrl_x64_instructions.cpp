@@ -1,5 +1,5 @@
 
-void
+inline void
 x64_zero(Buffer* buf, X64_Reg reg) {
     // REX.W + 33 /r 	XOR r64, r/m64 	RM
     x64_rex(buf, REX_W, reg, reg);
@@ -7,7 +7,7 @@ x64_zero(Buffer* buf, X64_Reg reg) {
     x64_modrm_direct(buf, reg, reg);
 }
 
-void
+inline void
 x64_move_rax_u64(Buffer* buf, u64 disp) {
     // REX.W + B8+ rd io 	MOV r64, imm64 	OI
     x64_rex(buf, REX_W);
@@ -15,7 +15,41 @@ x64_move_rax_u64(Buffer* buf, u64 disp) {
     push_u64(buf, disp);
 }
 
-void
+inline void
+x64_move_immediate_to_register(Buffer* buf, X64_Reg dest, s32 immediate) { 
+    // REX.W + C7 /0 id 	MOV r/m64, imm32
+    x64_rex(buf, REX_W, 0, dest);
+    push_u8(buf, 0xC7);
+    x64_modrm_direct(buf, 0, dest);
+    push_u32(buf, (u32) immediate);
+}
+
+inline void
+x64_move8_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_Reg src) {
+    // 88 /r 	MOV r/m8, r8 	MR
+    if (src&8) x64_rex(buf, 0, src);
+    push_u8(buf, 0x88);
+    x64_modrm(buf, src, dest, disp, 0);
+}
+
+inline void
+x64_move16_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_Reg src) {
+    // 89 /r 	MOV r/m16, r16 	MR 	
+    push_u8(buf, X64_OP_SIZE_PREFIX);
+    if (src&8) x64_rex(buf, 0, src);
+    push_u8(buf, 0x89);
+    x64_modrm(buf, src, dest, disp, 0);
+}
+
+inline void
+x64_move32_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_Reg src) {
+    // 89 /r 	MOV r/m32, r32 	MR
+    if (src&8) x64_rex(buf, 0, src);
+    push_u8(buf, 0x89);
+    x64_modrm(buf, src, dest, disp, 0);
+}
+
+inline void
 x64_move_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_Reg src) {
     // 89 /r 	MOV r/m64,r64 	MR
     x64_rex(buf, REX_W, src);
@@ -23,7 +57,7 @@ x64_move_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_Reg src) {
     x64_modrm(buf, src, dest, disp, 0);
 }
 
-void
+inline void
 x64_move_memory_to_register(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp) {
     // REX.W + 8B /r 	MOV r64, r/m64 	RM
     x64_rex(buf, REX_W, dest);
@@ -209,6 +243,16 @@ x64_convert_float_to_int(Buffer* buf, X64_Reg dest, X64_Reg src, int size) {
     x64_rex(buf, REX_W);
     push_u16(buf, 0x2C0F);
     x64_modrm_direct(buf, dest, src);
+}
+
+inline void
+x64_rep_movsb(Buffer* buf, X64_Reg dest, X64_Reg src, X64_Reg count) {
+    assert(dest == X64_RDI);
+    assert(src == X64_RSI);
+    assert(count == X64_RCX);
+    
+    // F3 A4 	REP MOVS m8, m8 	ZO
+    push_u16(buf, 0xA4F3);
 }
 
 #if 0

@@ -1,25 +1,4 @@
 
-struct Bytecode_Function;
-
-struct Bytecode_Import;
-
-struct Bytecode {
-    array(Bytecode_Import)* imports;
-    
-    array(Bytecode_Function*)* functions;
-    array(string_id)* function_names;
-    
-    int entry_func_index;
-};
-
-struct Bytecode_Import {
-    string_id module;
-    string_id function;
-    
-    u32 rdata_offset;
-};
-
-
 enum Bytecode_Operator {
     BC_NOOP = 0,
     
@@ -152,27 +131,29 @@ struct Bytecode_Function {
     u32 insn_count;
     u32 block_count;
     
-    u32 arg_count;
-    u32 ret_count;
+    s32 arg_count;
+    s32 ret_count;
     
     u32 max_caller_arg_count;
     
     u32 first_insn; // relative pointer to first instruction
     
+    bool return_as_first_arg;
     bool is_imported;
     bool is_intrinsic;
     
-    // followed by array of Bytecode_Function_Arg, function arguments then return types and lastly instructions
+    // followed by array of Bytecode_Function_Arg, function returns followed by its
+    // arguments types and lastly instructions
 };
 
 inline Bytecode_Function_Arg*
-function_arg_types(Bytecode_Function* func) {
+function_ret_types(Bytecode_Function* func) {
     return (Bytecode_Function_Arg*) (func + 1);
 }
 
 inline Bytecode_Function_Arg*
-function_ret_types(Bytecode_Function* func) {
-    return (Bytecode_Function_Arg*) (func + 1) + func->arg_count;
+function_arg_types(Bytecode_Function* func) {
+    return (Bytecode_Function_Arg*) (func + 1) + func->ret_count;
 }
 
 inline Bytecode_Type
@@ -180,6 +161,21 @@ register_type(Bytecode_Function* func, int register_index) {
     return func->register_types[register_index];
 }
 
+struct Bytecode_Import {
+    string_id module;
+    string_id function;
+    
+    u32 rdata_offset;
+};
+
+struct Bytecode {
+    array(Bytecode_Import)* imports;
+    
+    array(Bytecode_Function*)* functions;
+    array(string_id)* function_names;
+    
+    int entry_func_index;
+};
 
 enum Bytecode_Operand_Kind {
     BytecodeOperand_empty,

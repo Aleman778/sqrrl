@@ -231,8 +231,12 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                     bc_store_instruction(bc, first, result);
                 }
             } else if (is_assign) {
-                result = add_load_instruction(bc, type, second);
-                bc_store_instruction(bc, first, result);
+                if (register_type(bc->curr_function, second).kind == BC_TYPE_PTR) {
+                    bc_instruction(bc, BC_MEMCPY, first, second, result_type->size);
+                } else {
+                    result = add_load_instruction(bc, type, second);
+                    bc_store_instruction(bc, first, result);
+                }
             }
             
         } break;
@@ -316,14 +320,27 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 return result;
             }
             
+            int arg_index = 0;
             array(int)* arg_operands = 0;
+            if (func->return_as_first_arg) {
+                Type* ret_type = type->Function.return_type;
+                result = add_bytecode_register(bc, t_void_ptr);
+                bc_instruction(bc, BC_LOCAL, result, ret_type->size, ret_type->align);
+                array_push(arg_operands, result);
+                arg_index++;
+            }
+            
+            Bytecode_Function_Arg* formal_args = function_arg_types(func);
             for_compound(expr->Call_Expr.args, arg) {
+                Bytecode_Function_Arg formal_arg = formal_args[arg_index];
                 int reg = convert_expression_to_bytecode(bc, arg->Argument.assign);
                 Type* arg_type = arg->Argument.assign->type;
-                if (arg_type->size <= 8) {
+                if (formal_arg.type.kind != BC_TYPE_PTR) {
                     reg = add_load_instruction(bc, arg_type, reg);
                 }
+                
                 array_push(arg_operands, reg);
+                arg_index++;
             }
             
             umm arg_size = sizeof(int)*(func->ret_count + func->arg_count);
@@ -338,7 +355,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             bc->curr_function->max_caller_arg_count = (u32) array_count(arg_operands);
             
             // TODO(Alexander): multiple args
-            if (is_valid_type(type->Function.return_type)) {
+            if (!func->return_as_first_arg && is_valid_type(type->Function.return_type)) {
                 result = add_bytecode_register(bc, type->Function.return_type);
                 array_push(arg_operands, result);
             }
@@ -682,7 +699,14 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
         case Ast_Return_Stmt: {
             int result = -1;
             if (is_valid_ast(stmt->Return_Stmt.expr)) {
-                result = convert_expression_to_bytecode(bc, stmt->Return_Stmt.expr);
+                int src = convert_expression_to_bytecode(bc, stmt->Return_Stmt.expr);
+                if (bc->curr_function->return_as_first_arg) {
+                    Bytecode_Function_Arg ret = function_ret_types(bc->curr_function)[0];
+                    bc_instruction(bc, BC_MEMCPY, 0, src, ret.size);
+                } else {
+                    result = src;
+                    result = add_load_instruction(bc, stmt->type, result);
+                }
             }
             bc_instruction(bc, BC_RETURN, -1, result, -1);
         } break;
@@ -742,6 +766,7 @@ add_bytecode_function(Bytecode_Builder* bc, Type* type) {
     
     int ret_count = is_valid_type(type->Function.return_type) ? 1 : 0;
     int arg_count = (int) array_count(type->Function.arg_types);
+    
     int size = (sizeof(Bytecode_Function) + 
                 (ret_count + arg_count)*sizeof(Bytecode_Function_Arg));
     
@@ -759,7 +784,22 @@ add_bytecode_function(Bytecode_Builder* bc, Type* type) {
         type->Function.unit->bytecode_function = func;
     }
     
-    Bytecode_Function_Arg* curr_arg = function_arg_types(func);
+    Bytecode_Function_Arg* curr_arg = function_ret_types(func);
+    if (ret_count == 1) {
+        Bytecode_Type ret_type = to_bytecode_type(bc, type->Function.return_type);
+        if (ret_type.kind == BC_TYPE_PTR) {
+            add_bytecode_register(bc, type->Function.return_type);
+            func->arg_count++;
+            func->ret_count--;
+            func->return_as_first_arg = true;
+        }
+        
+        curr_arg->type = to_bytecode_type(bc, type->Function.return_type);
+        curr_arg->size = type->Function.return_type->size;
+        curr_arg->align = type->Function.return_type->align;
+        curr_arg++;
+    }
+    
     for (int i = 0; i < arg_count; i++) {
         string_id arg_ident = type->Function.arg_idents[i];
         Type* arg_type = type->Function.arg_types[i];
@@ -769,15 +809,6 @@ add_bytecode_function(Bytecode_Builder* bc, Type* type) {
         
         int arg = add_bytecode_register(bc, arg_type);
         map_put(bc->locals, arg_ident, arg);
-        
-        curr_arg++;
-    }
-    
-    if (ret_count > 0) {
-        assert(ret_count == 1 && "TODO: multiple returns");
-        curr_arg->type = to_bytecode_type(bc, type->Function.return_type);
-        curr_arg->size = type->Function.return_type->size;
-        curr_arg->align = type->Function.return_type->align;
         
         curr_arg++;
     }
@@ -850,7 +881,7 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
         
         case BytecodeInstructionKind_Binary: {
             Bytecode_Binary* bc_insn = (Bytecode_Binary*) insn;
-            if (bc_insn->res_index >= 0) {
+            if (bc_insn->res_index >= 0 && insn->opcode != BC_MEMCPY) {
                 string_builder_push_format(sb, "r% = ", f_int(bc_insn->res_index));
             }
             
@@ -871,6 +902,13 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
                 
                 case BC_LOCAL: {
                     string_builder_push_format(sb, "size %, align %", f_int(bc_insn->arg0_index),
+                                               f_int(bc_insn->arg1_index));
+                } break;
+                
+                case BC_MEMCPY: {
+                    string_builder_push_format(sb, "r%, r%, size %",
+                                               f_int(bc_insn->res_index),
+                                               f_int(bc_insn->arg0_index),
                                                f_int(bc_insn->arg1_index));
                 } break;
                 
@@ -911,7 +949,7 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
             string_builder_push(sb, "(");
             
             Bytecode_Function_Arg* formal_args = function_arg_types(func);
-            for (u32 i = 0; i < func->arg_count; i++) {
+            for (int i = 0; i < func->arg_count; i++) {
                 string_builder_push_format(sb, "r%", f_int(args[i]));
                 if (i + 1 < func->arg_count) {
                     string_builder_push(sb, ", ");
@@ -991,16 +1029,18 @@ string_builder_dump_bytecode(String_Builder* sb, Bytecode* bc, Bytecode_Function
     
     Bytecode_Function_Arg* formal_args = function_arg_types(func);
     if (func->ret_count == 1) {
+        Bytecode_Function_Arg* formal_ret = function_ret_types(func);
         // TODO(Alexander): multiple returns
-        string_builder_dump_bytecode_type(sb, formal_args[func->arg_count].type);
+        string_builder_dump_bytecode_type(sb, formal_ret[0].type);
         string_builder_push(sb, " ");
     } else {
         string_builder_push(sb, "void ");
     }
     string_builder_dump_bytecode_function_name(sb, bc, func);
     string_builder_push(sb, "(");
-    for (u32 i = 0; i < func->arg_count; i++) {
+    for (int i = 0; i < func->arg_count; i++) {
         string_builder_dump_bytecode_type(sb, formal_args[i].type);
+        string_builder_push_format(sb, " r%", f_int(i));
         if (i + 1 < func->arg_count) {
             string_builder_push(sb, ", ");
         }

@@ -330,7 +330,7 @@ convert_bytecode_function_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* b
     
     // Save parameters to local variables
     Bytecode_Function_Arg* formal_args = function_arg_types(func);
-    for (u32 register_index = 0; register_index < func->arg_count; register_index++) {
+    for (int register_index = 0; register_index < func->arg_count; register_index++) {
         // TODO: copy larger structs
         //if (stk.size <= 8) {
         //wasm_prepare_store(buf, op, op, arg_types[i]);
@@ -509,14 +509,14 @@ convert_to_wasm_module(Bytecode* bc, Data_Packer* data_packer, s64 stk_usage, Bu
         // arguments
         Bytecode_Function_Arg* formal_args = function_arg_types(func);
         push_leb128_u32(buf, func->arg_count);
-        for (u32 i = 0; i < func->arg_count; i++) {
+        for (int i = 0; i < func->arg_count; i++) {
             wasm_push_valtype(buf, formal_args[i].type);
         }
         
         // return values
         Bytecode_Function_Arg* return_args = function_ret_types(func);
         push_leb128_u32(buf, func->ret_count);
-        for (u32 i = 0; i < func->ret_count; i++) {
+        for (int i = 0; i < func->ret_count; i++) {
             wasm_push_valtype(buf, return_args[i].type);
         }
     }

@@ -248,7 +248,25 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             // if we make it less then we will overwrite data outside our scope.
             x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index));
             x64_move_memory_to_register(buf, X64_RCX, X64_RSP, register_displacement(x64, bc->arg1_index));
-            x64_move_register_to_memory(buf, X64_RAX, 0, X64_RCX);
+            
+            Bytecode_Type type = register_type(func, bc->arg1_index);
+            switch (type.size) {
+                case 1: {
+                    x64_move8_register_to_memory(buf, X64_RAX, 0, X64_RCX);
+                } break;
+                
+                case 2: {
+                    x64_move16_register_to_memory(buf, X64_RAX, 0, X64_RCX);
+                } break;
+                
+                case 4: {
+                    x64_move32_register_to_memory(buf, X64_RAX, 0, X64_RCX);
+                } break;
+                
+                case 8: {
+                    x64_move_register_to_memory(buf, X64_RAX, 0, X64_RCX);
+                } break;
+            }
         } break;
         
         case BC_LOAD: {
@@ -262,18 +280,9 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             Bytecode_Function* target = x64->bytecode->functions[call->func_index];
             Bytecode_Function_Arg* formal_args = function_arg_types(func);
             
-            // TODO(Alexander): most of this is windows calling convention move this!
-            int local_arg_stack_usage = 0;
-            int first_arg_index = 0;
-            if (target->ret_count == 1 && formal_args[target->arg_count].size > 8) {
-                first_arg_index = 1;
-                local_arg_stack_usage += 8;
-            }
-            
             int* args = bc_call_args(call);
-            for (int i = (int) target->arg_count - 1; i >= 0; i--) {
-                int src_index = args[i];
-                int arg_index = first_arg_index + i;
+            for (int arg_index = target->arg_count - 1; arg_index >= 0; arg_index--) {
+                int src_index = args[arg_index];
                 X64_Reg dest = X64_RAX;
                 if (arg_index < 4) {
                     dest = int_arg_registers_ccall_windows[arg_index];
@@ -282,41 +291,15 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                 x64_move_memory_to_register(buf, dest, X64_RSP,
                                             register_displacement(x64, src_index));
                 if (arg_index >= 4) {
-                    x64_move_register_to_memory(buf, X64_RSP, i*8, dest);
+                    x64_move_register_to_memory(buf, X64_RSP, arg_index*8, dest);
                 }
             }
-            local_arg_stack_usage += target->arg_count*8;
             
             
             u32 return_virtual_register = 0;
             if (target->ret_count > 0) {
                 return_virtual_register = args[target->arg_count];
             }
-            
-            if (first_arg_index == 1) {
-                unimplemented;
-            }
-            
-#if 0
-            if (first_arg_index == 1) {
-                // Create temporary space for storing the return value of the function
-                Bytecode_Function_Arg arg = formal_args[target->arg_count];
-                local_arg_stack_usage = (int) align_forward(local_arg_stack_usage, arg.align);
-                
-                Ic_Arg result = ic_stk(IC_T64, local_arg_stack_usage);
-                
-                X64_Reg reg = int_arg_registers_ccall_windows[0];
-                x64_spill_register(x64, buf, reg);
-                x64_lea(buf, reg, result.reg, result.disp, rip);
-                
-                local_arg_stack_usage += arg.size;
-                
-                if (target->ret_count) {
-                    x64_spill_register(x64, buf, X64_RAX);
-                    //x64->virtual_registers[return_virtual_register] = result;
-                }
-            }
-#endif
             
             // NOTE(Alexander): make sure to allocate space for HOME registers even if they aren't used!
             if (target->is_imported) {
@@ -336,7 +319,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                 x64_jump_address(x64, buf, &x64->functions[call->func_index].code);
             }
             
-            if (first_arg_index == 0 && target->ret_count > 0) {
+            if (target->ret_count > 0) {
                 // TODO(Alexander): Add support for floats!
                 x64_move_register_to_memory(buf, X64_RSP,
                                             register_displacement(x64, return_virtual_register),
@@ -347,27 +330,8 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_RETURN: {
-            Bytecode_Function_Arg* formal_args = function_arg_types(func);
-            
             int res_index = bc->arg0_index;
-            
-            Bytecode_Function_Arg arg = formal_args[func->arg_count];
-            if (arg.size > 8) {
-                unimplemented;
-#if 0
-                s32 dest = x64->stack[func->arg_count];
-                
-                // TODO(Alexander): we should make a more general memcpy function
-                x64_mov(buf, IC_REG | IC_S64, X64_RCX, 0, IC_DISP | IC_S32, 0, arg.size, 0);
-                x64_mov(buf, IC_REG | IC_S64, X64_RDI, 0, IC_STK | IC_S64, X64_RSP, dest, 0);
-                if (val.type & IC_STK) {
-                    x64_lea(buf, X64_RSI, X64_RSP, val.disp, 0);
-                } else {
-                    unimplemented;
-                }
-                push_u16(buf, 0xA4F3); // F3 A4 	REP MOVS m8, m8 	ZO
-#endif
-            } else {
+            if (res_index > 0) {
                 x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, res_index));
             }
             
@@ -549,15 +513,10 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_MEMCPY: {
-            //Bytecode_Memory* mem = (Bytecode_Memory*) insn;
-            //Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, mem->dest, BytecodeType_i64);
-            //Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, mem->src, BytecodeType_i64);
-            
-            //x64_string_op(x64, buf, 
-            //dest.type, dest.reg, dest.disp, 
-            //src.type, src.reg, src.disp,
-            //mem->size, 0xA4F3, rip, X64_RSI);
-            unimplemented;
+            x64_move_memory_to_register(buf, X64_RDI, X64_RSP, register_displacement(x64, bc->res_index));
+            x64_move_memory_to_register(buf, X64_RSI, X64_RSP, register_displacement(x64, bc->arg0_index));
+            x64_move_immediate_to_register(buf, X64_RCX, bc->arg1_index);
+            x64_rep_movsb(buf, X64_RDI, X64_RSI, X64_RCX);
         } break;
         
         case BC_X64_RDTSC: {

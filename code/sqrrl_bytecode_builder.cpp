@@ -1041,6 +1041,9 @@ string_builder_dump_bytecode(String_Builder* sb, Bytecode* bc, Bytecode_Function
     for (int i = 0; i < func->arg_count; i++) {
         string_builder_dump_bytecode_type(sb, formal_args[i].type);
         string_builder_push_format(sb, " r%", f_int(i));
+        if (i == 0 && func->return_as_first_arg) {
+            string_builder_push_format(sb, " (ret)", f_int(i));
+        }
         if (i + 1 < func->arg_count) {
             string_builder_push(sb, ", ");
         }

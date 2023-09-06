@@ -170,18 +170,17 @@ wasm_load_register(Bytecode_Function* func, Buffer* buf, int register_index) {
 }
 
 void
-wasm_prepare_store(Buffer* buf, int swap_local_i64=-1) {
-    if (swap_local_i64 >= 0) {
-        wasm_local_set(buf, swap_local_i64);
+wasm_prepare_store(Buffer* buf, int swap_local=-1) {
+    if (swap_local >= 0) {
+        wasm_local_set(buf, swap_local);
     }
     
     // Push stack pointer
     push_u8(buf, 0x23); // global.get
     push_leb128_u32(buf, 0);
     
-    if (swap_local_i64 >= 0) {
-        // Push src on top of the stack
-        wasm_local_get(buf, swap_local_i64);
+    if (swap_local >= 0) {
+        wasm_local_get(buf, swap_local);
     }
 }
 

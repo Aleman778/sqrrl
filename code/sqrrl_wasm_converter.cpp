@@ -88,8 +88,9 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             if (call_func->ret_count > 0) {
                 assert(call_func->ret_count == 1 && "TODO: multiple returns");
                 int res_index = args[call_func->arg_count];
-                wasm_prepare_store(buf, wasm->tmp_local_i64);
-                wasm_store_register(buf, register_type(func, res_index), res_index);
+                Bytecode_Type res_type = register_type(func, res_index);
+                wasm_prepare_store(buf, wasm_tmp_local(wasm, res_type));
+                wasm_store_register(buf, res_type, res_index);
             }
         } break;
         
@@ -97,9 +98,12 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             //if (func->ret_count == 1 && func->stack[func->arg_count].size > 8) {
             //wasm_push_addr_of(wasm, buf, bc_unary_first(insn), insn->type);
             //} else {
-            wasm_load_register(func, buf, bc_insn->arg0_index);
-            // TODO(Alexander): add support for f32 and f64!!!
-            wasm_local_set(buf, wasm->tmp_local_i64);
+            
+            if (bc_insn->arg0_index >= 0) {
+                wasm_load_register(func, buf, bc_insn->arg0_index);
+                Bytecode_Type type = register_type(func, bc_insn->arg0_index);
+                wasm_local_set(buf, wasm_tmp_local(wasm, type));
+            }
             
             //push_u8(buf, 0x0F); // return
             push_u8(buf, 0x0C); // br
@@ -263,6 +267,17 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
         //const u8 opcodes[] = { 0xAA, 0xB0 };
         //push_u8(buf, opcodes[insn->type - 1]);
         
+        case BC_MEMCPY: {
+            wasm_push_stack_pointer(buf);
+            wasm_i32_load(buf, bc_insn->res_index*8);
+            
+            wasm_push_stack_pointer(buf);
+            wasm_i32_load(buf, bc_insn->arg0_index*8);
+            
+            wasm_i32_const(buf, bc_insn->arg1_index);
+            push_u32(buf, 0x00000AFC); // memory.copy [dest: i32, src: i32, size: i32]
+        } break;
+        
         case BC_MEMSET: {
             unimplemented;
 #if 0
@@ -389,9 +404,8 @@ convert_bytecode_function_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* b
     
     if (func->ret_count == 1) {
         // TODO(Alexander): multiple returns
-        Bytecode_Type type = formal_args[func->arg_count].type;
-        // TODO(Alexander): add support for f32 and f64!!!
-        wasm_local_get(buf, wasm->tmp_local_i64);
+        Bytecode_Type type = function_ret_types(func)[0].type;
+        wasm_local_get(buf, wasm_tmp_local(wasm, type));
     }
     
     push_u8(buf, 0x0F); // return
@@ -619,7 +633,7 @@ convert_to_wasm_module(Bytecode* bc, Data_Packer* data_packer, s64 stk_usage, Bu
         //}
         
         push_leb128_u32(buf, 1); 
-        push_u8(buf, 0x7D);
+        push_u8(buf, 0x7F);
         wasm.tmp_local_i32 = func->arg_count;
         
         push_leb128_u32(buf, 1); 
@@ -627,7 +641,7 @@ convert_to_wasm_module(Bytecode* bc, Data_Packer* data_packer, s64 stk_usage, Bu
         wasm.tmp_local_i64 = func->arg_count + 1;
         
         push_leb128_u32(buf, 1); 
-        push_u8(buf, 0x7B);
+        push_u8(buf, 0x7D);
         wasm.tmp_local_f32 = func->arg_count + 2;
         
         push_leb128_u32(buf, 1); 

@@ -68,7 +68,28 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             wasm_i32_load(buf, bc_insn->arg0_index*8); // [ptr]
             wasm_push_stack_pointer(buf);
             wasm_load_extend(buf, val_type, bc_insn->arg1_index*8); // [ptr (arg0), val (arg1)] 
-            wasm_store_register(buf, val_type, 0); // []: ptr <- val
+            
+            if (val_type.kind == BC_TYPE_FLOAT) {
+                wasm_store_register(buf, val_type, 0); // []: ptr <- val
+            } else {
+                switch (val_type.size) {
+                    case 1: {
+                        wasm_i64_store8(buf, 0);
+                    } break;
+                    
+                    case 2: {
+                        wasm_i64_store16(buf, 0);
+                    } break;
+                    
+                    case 4: {
+                        wasm_i64_store32(buf, 0);
+                    } break;
+                    
+                    default: {
+                        wasm_i64_store(buf, 0);
+                    } break;
+                }
+            }
         } break;
         
         case BC_CALL: {
@@ -229,10 +250,7 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             push_u8(buf, wasm_comparator_opcodes[opcode_index]);
             
             // Comparator always outputs a i32
-            int res_index = bc_insn->res_index;
-            push_u8(buf, 0x36); // i32.store
-            push_leb128_u32(buf, 2);
-            push_leb128_u32(buf, res_index*8);
+            wasm_i32_store(buf, bc_insn->res_index*8);
         } break;
         
         case BC_TRUNCATE: {

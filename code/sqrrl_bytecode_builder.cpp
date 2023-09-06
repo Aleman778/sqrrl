@@ -131,7 +131,16 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 //result = insn->first;
                 unimplemented;
                 
+            } else if (op == Op_Post_Increment || op == Op_Post_Decrement) {
+                result = add_load_instruction(bc, type, first);
+                int tmp = add_bytecode_register(bc, type);
+                bc_instruction(bc, op == Op_Post_Increment ? BC_INC : BC_DEC, tmp, result, -1);
+                bc_store_instruction(bc, first, tmp);
+                
             } else {
+                int first_value = add_load_instruction(bc, type, first);
+                result = add_bytecode_register(bc, type);
+                
                 Bytecode_Operator opcode = BC_NOOP;
                 switch (op) {
                     case Op_Negate:  opcode = BC_NEG; break;
@@ -140,25 +149,9 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                     case Op_Dereference: opcode = BC_DEREF; break;
                     case Op_Pre_Increment: opcode = BC_INC; break;
                     case Op_Pre_Decrement: opcode = BC_DEC; break;
-                    
-                    case Op_Post_Increment: {
-                        result = add_bytecode_register(bc, type);
-                        bc_store_instruction(bc, result, first);
-                        opcode = BC_INC;
-                    } break;
-                    
-                    case Op_Post_Decrement: {
-                        result = add_bytecode_register(bc, type);
-                        bc_store_instruction(bc, result, first);
-                        opcode = BC_DEC;
-                    } break;
                 }
                 
-                int tmp = add_bytecode_register(bc, expr->type);
-                bc_instruction(bc, opcode, tmp, first, -1);
-                if (!result) {
-                    result = tmp;
-                }
+                bc_instruction(bc, opcode, result, first, -1);
             }
         } break;
         
@@ -636,6 +629,7 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
             if (is_valid_ast(stmt->If_Stmt.else_block)) {
                 // Else case
                 Bytecode_Branch* else_branch = add_insn_t(bc, BC_BRANCH, Branch);
+                else_branch->cond = -1;
                 else_branch->label_index = bc->block_depth - 1;
                 
                 end_block(bc);
@@ -668,6 +662,7 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
             // Update
             convert_expression_to_bytecode(bc, stmt->For_Stmt.update);
             Bytecode_Branch* branch = add_insn_t(bc, BC_BRANCH, Branch);
+            branch->cond = -1;
             branch->label_index = bc->block_depth;
             
             // Exit

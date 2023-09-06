@@ -88,12 +88,10 @@ x64_move_extend(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp, int size, bool
                 push_u8(buf, 0x63);
             } break;
             
-            case 8: {
+            default: {
                 x64_rex(buf, REX_W, dest);
                 push_u8(buf, 0x8B);
             } break;
-            
-            default: unimplemented;
         }
     } else {
         switch (size) {
@@ -115,13 +113,11 @@ x64_move_extend(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp, int size, bool
                 push_u8(buf, 0x8B);
             } break;
             
-            case 8: {
+            default: {
                 //REX.W + 8B /r 	MOV r64, r/m64 	RM
                 x64_rex(buf, REX_W, dest);
                 push_u8(buf, 0x8B);
             } break;
-            
-            default: unimplemented;
         }
     }
     
@@ -134,6 +130,14 @@ x64_lea(Buffer* buf, X64_Reg a, X64_Reg b, s64 disp) {
     x64_rex(buf, REX_W, a, b);
     push_u8(buf, 0x8D);
     x64_modrm(buf, a, b, disp, 0);
+}
+
+inline void
+x64_inc(Buffer* buf, X64_Reg reg) {
+    // REX.W + FF /0 	INC r/m64 	M
+    x64_rex(buf, REX_W, 0, reg);
+    push_u8(buf, 0xFF);
+    x64_modrm_direct(buf, 0, reg);
 }
 
 inline void

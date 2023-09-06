@@ -68,6 +68,43 @@ wasm_i64_load(Buffer* buf, u32 offset) {
 }
 
 inline void
+wasm_i32_store(Buffer* buf, u32 offset) {
+    push_u8(buf, 0x36); // i32.store
+    push_leb128_u32(buf, 2);
+    push_leb128_u32(buf, offset);
+}
+
+inline void
+wasm_i64_store8(Buffer* buf, u32 offset) {
+    push_u8(buf, 0x3C); // i64.store8
+    push_leb128_u32(buf, 0);
+    push_leb128_u32(buf, offset);
+}
+
+inline void
+wasm_i64_store16(Buffer* buf, u32 offset) {
+    push_u8(buf, 0x3D); // i64.store16
+    push_leb128_u32(buf, 1);
+    push_leb128_u32(buf, offset);
+}
+
+
+inline void
+wasm_i64_store32(Buffer* buf, u32 offset) {
+    push_u8(buf, 0x3E); // i64.store32
+    push_leb128_u32(buf, 2);
+    push_leb128_u32(buf, offset);
+}
+
+
+inline void
+wasm_i64_store(Buffer* buf, u32 offset) {
+    push_u8(buf, 0x37); // i64.store
+    push_leb128_u32(buf, 3);
+    push_leb128_u32(buf, offset);
+}
+
+inline void
 wasm_i32_add(Buffer* buf) {
     push_u8(buf, 0x6A);
 }

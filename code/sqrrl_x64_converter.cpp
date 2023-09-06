@@ -342,62 +342,6 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             }
         } break;
         
-#if 0
-        case BC_MOV | flag_floating: {
-            Bytecode_Operand first = bc_binary_first(insn);
-            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
-            Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
-            
-            x64_fmov(buf, 
-                     dest.type, dest.reg, dest.disp,
-                     src.type, src.reg, src.disp, rip);
-        } break;
-        
-        case BC_MOV_8: {
-            Bytecode_Operand first = bc_binary_first(insn);
-            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
-            Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
-            dest.type = (IC_TF_MASK & dest.type) | IC_S8;
-            src.type = (IC_TF_MASK & src.type) | IC_S8;
-            
-            x64_mov(buf, 
-                    dest.type, dest.reg, dest.disp,
-                    src.type, src.reg, src.disp, rip);
-        } break;
-        
-        case BC_INC: {
-            Ic_Arg first = convert_bytecode_operand_to_x64(x64, buf, bc_unary_first(insn), insn->type);
-            x64_unary(buf, first.type, first.reg, first.disp, 0xFF, 0, rip);
-        } break;
-        
-        case BC_ADDR_OF: {
-            Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
-            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
-            assert(dest.type & IC_REG);
-            
-            if (src.type & IC_RIP_DISP32) {
-                //x64_lea(buf, dest.reg, X64_RIP, src.disp, rip);
-            } else {
-                //x64_lea(buf, dest.reg, src.reg, src.disp, rip);
-            }
-            unimplemented;
-        } break;
-        
-        case BC_DEREF: {
-            Ic_Arg src = convert_bytecode_operand_to_x64(x64, buf, bc_binary_second(insn), insn->type);
-            Ic_Arg dest = convert_bytecode_operand_to_x64(x64, buf, bc_binary_first(insn), insn->type);
-            assert(dest.type & IC_REG);
-            
-            if (src.type & IC_REG) {
-                src.type = (src.type & IC_RT_MASK) | IC_STK;
-            }
-            
-            x64_mov(buf, 
-                    dest.type, dest.reg, dest.disp,
-                    src.type, src.reg, src.disp, rip);
-        } break;
-#endif
-        
         // TODO(Alexander): with type flags we don't need separate instructions for U8. S8 etc.
         case BC_EXTEND: {
             Bytecode_Type type = register_type(func, bc->arg0_index);
@@ -410,6 +354,17 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             Bytecode_Type type = register_type(func, bc->arg0_index);
             x64_move_memory_to_float_register(buf, X64_XMM0, X64_RSP, register_displacement(x64, bc->arg0_index), type.size);
             x64_convert_float_to_int(buf, X64_RAX, X64_XMM0, type.size);
+            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
+        } break;
+        
+        
+        case BC_INC: {
+            Bytecode_Type type = register_type(func, bc->arg0_index);
+            assert(type.kind != BC_TYPE_FLOAT && "inc is not implemented for float types");
+            bool is_signed = type.flags & BC_FLAG_SIGNED;
+            
+            x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index), type.size, is_signed);
+            x64_inc(buf, X64_RAX);
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
         } break;
         
@@ -487,7 +442,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         case BC_BRANCH: {
             // NOTE(Alexander): conditional branch is handled by operations above
             Bytecode_Branch* branch = (Bytecode_Branch*) insn;
-            if (branch->cond == -1) {
+            if (branch->cond < 0) {
                 push_u8(buf, 0xE9);
                 x64_jump_address_for_label(x64, buf, func, branch->label_index);
             }

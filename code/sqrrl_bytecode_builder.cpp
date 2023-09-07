@@ -741,6 +741,7 @@ convert_function_to_bytecode(Bytecode_Builder* bc, Bytecode_Function* func, Ast*
     // Build the function
     bc->curr_function = func;
     bc->curr_insn = 0;
+    bc->block_depth = 0;
     if (is_main) {
         bc->bytecode.entry_func_index = func->type_index;
     }
@@ -864,14 +865,23 @@ string_builder_dump_bytecode_opcode(String_Builder* sb, Bytecode_Instruction* in
 }
 
 void
-string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Instruction* insn) {
+string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Instruction* insn, int block_depth) {
+    
     smm from_byte = sb->curr_used;
+    string_builder_pad(sb, sb->curr_used, block_depth*2);
     
     switch (insn->kind) {
         case BytecodeInstructionKind_None: break;
         
         case BytecodeInstructionKind_Base: {
             string_builder_dump_bytecode_opcode(sb, insn);
+            
+            switch (insn->opcode) {
+                case BC_BLOCK:
+                case BC_LOOP:{
+                    string_builder_push_format(sb, "(label = %)", f_int(block_depth));
+                } break;
+            }
         } break;
         
         case BytecodeInstructionKind_Binary: {
@@ -982,7 +992,7 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
     }
     
     if (insn->comment) {
-        string_builder_pad(sb, from_byte, 25);
+        string_builder_pad(sb, from_byte, 30);
         string_builder_push_format(sb, " // %", f_cstring(insn->comment));
     }
 }
@@ -1057,9 +1067,18 @@ string_builder_dump_bytecode(String_Builder* sb, Bytecode* bc, Bytecode_Function
     }
     
     Bytecode_Instruction* curr = iter_bytecode_instructions(func, 0);
+    int block_depth = 1;
     while (curr->kind) {
-        string_builder_push(sb, "\n    ");
-        string_builder_dump_bytecode_insn(sb, bc, curr);
+        if (curr->opcode == BC_END) {
+            block_depth--;
+        }
+        
+        string_builder_push(sb, "\n");
+        string_builder_dump_bytecode_insn(sb, bc, curr, block_depth);
+        
+        if (curr->opcode == BC_BLOCK || curr->opcode == BC_LOOP) {
+            block_depth++;
+        }
         curr = iter_bytecode_instructions(func, curr);
     }
     

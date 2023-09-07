@@ -116,17 +116,12 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
         } break;
         
         case BC_RETURN: {
-            //if (func->ret_count == 1 && func->stack[func->arg_count].size > 8) {
-            //wasm_push_addr_of(wasm, buf, bc_unary_first(insn), insn->type);
-            //} else {
-            
             if (bc_insn->arg0_index >= 0) {
-                wasm_load_register(func, buf, bc_insn->arg0_index);
+                wasm_load_register_extend(func, buf, bc_insn->arg0_index);
                 Bytecode_Type type = register_type(func, bc_insn->arg0_index);
                 wasm_local_set(buf, wasm_tmp_local(wasm, type));
             }
             
-            //push_u8(buf, 0x0F); // return
             push_u8(buf, 0x0C); // br
             push_leb128_u32(buf, (u32) block_depth - 1);
         } break;

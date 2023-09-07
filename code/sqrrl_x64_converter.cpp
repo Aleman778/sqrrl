@@ -272,7 +272,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         case BC_LOAD: {
             x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index));
             x64_move_memory_to_register(buf, X64_RAX, X64_RAX, 0);
-            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);;
+            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
         } break;
         
         case BC_CALL: {
@@ -332,7 +332,9 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         case BC_RETURN: {
             int res_index = bc->arg0_index;
             if (res_index > 0) {
-                x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, res_index));
+                Bytecode_Type type = register_type(func, res_index);
+                x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, res_index), 
+                                type.size, type.flags & BC_FLAG_SIGNED);
             }
             
             if (insn->next_insn) {

@@ -56,12 +56,21 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             wasm_store_register(buf, register_type(func, bc_insn->res_index), bc_insn->res_index);
         } break;
         
-        case BC_PTR_STRUCT_FIELD: {
-            // TODO(Alexander): 64-bit addressing support!
+        case BC_STRUCT_FIELD: {
             wasm_prepare_store(buf);
             wasm_push_stack_pointer(buf);
             wasm_i64_load(buf, bc_insn->arg0_index*8);
             wasm_i64_const(buf, bc_insn->arg1_index);
+            wasm_i64_add(buf);
+            wasm_store_register(buf, register_type(func, bc_insn->res_index), bc_insn->res_index);
+        } break;
+        
+        case BC_ARRAY_INDEX: {
+            Bytecode_Type ptr_type = register_type(func, bc_insn->arg0_index);
+            wasm_prepare_store(buf);
+            wasm_push_stack_pointer(buf);
+            wasm_i64_load(buf, bc_insn->arg0_index*8);
+            wasm_i64_const(buf, bc_insn->arg1_index * ptr_type.size);
             wasm_i64_add(buf);
             wasm_store_register(buf, register_type(func, bc_insn->res_index), bc_insn->res_index);
         } break;
@@ -188,18 +197,33 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             wasm_prepare_store(buf);
             wasm_load_register_extend(func, buf, bc_insn->arg0_index);
             wasm_i64_const(buf, 1);
-            push_u8(buf, 0x7D); // i64.sub
+            wasm_i64_sub(buf);
             wasm_store_register(buf, register_type(func, bc_insn->res_index), bc_insn->res_index);
         } break;
         
-        //case BC_ADDR_OF: {
-        //wasm_push_addr_of(wasm, buf, bc_binary_second(insn), insn->type);
-        //} break;
+        case BC_NEG: {
+            Bytecode_Type type = register_type(func, bc_insn->arg0_index);
+            if (type.kind & BC_TYPE_FLOAT) {
+                wasm_prepare_store(buf);
+                wasm_load_register_extend(func, buf, bc_insn->arg0_index);
+                wasm_float_neg(buf, type.size);
+                wasm_store_register(buf, register_type(func, bc_insn->res_index), bc_insn->res_index);
+                
+            } else {
+                wasm_prepare_store(buf);
+                wasm_i64_const(buf, 0);
+                wasm_load_register_extend(func, buf, bc_insn->arg0_index);
+                wasm_i64_sub(buf);
+                wasm_store_register(buf, register_type(func, bc_insn->res_index), bc_insn->res_index);
+            }
+        } break;
         
-        case BC_DEREF: {
-            unimplemented;
-            //wasm_load_value(wasm, buf, bc_binary_second(insn), BytecodeType_i32);
-            //wasm_push_load(buf, insn->type, 0);
+        case BC_NOT: {
+            wasm_prepare_store(buf);
+            wasm_i64_const(buf, -1);
+            wasm_load_register_extend(func, buf, bc_insn->arg0_index);
+            wasm_i64_xor(buf);
+            wasm_store_register(buf, register_type(func, bc_insn->res_index), bc_insn->res_index);
         } break;
         
         case BC_ADD:

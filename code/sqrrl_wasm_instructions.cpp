@@ -114,6 +114,21 @@ wasm_i64_add(Buffer* buf) {
     push_u8(buf, 0x7C);
 }
 
+inline void
+wasm_i64_sub(Buffer* buf) {
+    push_u8(buf, 0x7D);
+}
+
+inline void
+wasm_i64_xor(Buffer* buf) {
+    push_u8(buf, 0x85);
+}
+
+inline void
+wasm_float_neg(Buffer* buf, int size) {
+    push_u8(buf, (size == 8) ? 0x9A : 0x8C);
+}
+
 void
 wasm_load_extend(Buffer* buf, Bytecode_Type type, u32 offset) {
     // NOTE(Alexander): you have to first push i32 memory offset

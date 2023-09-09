@@ -19,8 +19,8 @@ enum Bytecode_Operator {
     // Pointers
     BC_LOCAL, // (int size, int align) -> void*
     BC_GLOBAL,
-    BC_PTR_ARRAY_INDEX,
-    BC_PTR_STRUCT_FIELD,
+    BC_ARRAY_INDEX,
+    BC_STRUCT_FIELD,
     
     // Memory
     BC_STORE,
@@ -75,6 +75,11 @@ enum Bytecode_Operator {
     BC_X64_RDTSC
 };
 
+bool
+bc_is_comparator(Bytecode_Operator op) {
+    return op >= BC_EQ && op <= BC_NEQ;
+}
+
 global const cstring bc_operator_names[] = {
     /*                   */ "noop",
     /* Control:          */ "debug_break", "loop", "block", "end", "branch", "call", "return",
@@ -106,8 +111,8 @@ enum Byytecode_Type_Flags {
 
 struct Bytecode_Type {
     u8 kind;
-    u8 size;
     u8 flags;
+    s32 size; // for BC_TYPE_PTR this is size of value adjusted for alignment
 };
 
 struct Bytecode_Function_Arg {
@@ -191,26 +196,9 @@ struct Bytecode {
     int entry_func_index;
 };
 
-enum Bytecode_Operand_Kind {
-    BytecodeOperand_empty,
-    
-    BytecodeOperand_const,
-    BytecodeOperand_register,
-    BytecodeOperand_memory,
-};
-
 global cstring bc_memory_kind_names[] = { 
     "", "rodata", "data"
 };
-
-
-//struct Bytecode_Instruction {
-
-
-//int res;
-//int arg0;
-//int arg1;
-//};
 
 
 enum Bytecode_Instruction_Kind {

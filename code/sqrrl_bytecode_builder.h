@@ -60,13 +60,17 @@ to_bytecode_type(Bytecode_Builder* bc, Type* type) {
             }
         } break;
         
-        case TypeKind_Struct:
-        case TypeKind_Union: // TODO(Alexander): should structs/ unions be a different type than 64-bit int?
         case TypeKind_Type:
         case TypeKind_Array:
-        case TypeKind_Function:
+        case TypeKind_Function: {
+            result.kind = BC_TYPE_PTR;
+        } break;
+        
+        case TypeKind_Struct:
+        case TypeKind_Union: // TODO(Alexander): should structs/ unions be a different type than 64-bit 
         case TypeKind_Pointer: {
             result.kind = BC_TYPE_PTR;
+            result.size = (s32) align_forward(type->Pointer->size, type->Pointer->align);
         } break;
         
         case TypeKind_Enum: {
@@ -119,12 +123,12 @@ _bc_instruction(Bytecode_Builder* bc, Bytecode_Operator opcode,
     return insn;
 }
 
-#define bc_const(bc, opcode, res, constant) \
-bc_const_instruction(bc, opcode, res, constant, __FILE__ ":" S2(__LINE__))
+#define bc_instruction_const(bc, opcode, res, constant) \
+_bc_instruction_const(bc, opcode, res, constant, __FILE__ ":" S2(__LINE__))
 
 inline void
-bc_const_instruction(Bytecode_Builder* bc, Bytecode_Operator opcode, 
-                     int res, s64 val, cstring comment) {
+_bc_instruction_const(Bytecode_Builder* bc, Bytecode_Operator opcode, 
+                      int res, s64 val, cstring comment) {
     
     Bytecode_Binary* insn = add_insn_t(bc, opcode, Binary);
     insn->res_index = res;
@@ -141,33 +145,28 @@ add_bytecode_register(Bytecode_Builder* bc, Type* type) {
     return result;
 }
 
-#define bc_load(bc, type, src) \
-bc_load_instruction(bc, type, src, __FILE__ ":" S2(__LINE__))
+#define bc_instruction_load(bc, type, src) \
+_bc_instruction_load(bc, type, src, __FILE__ ":" S2(__LINE__))
 
 inline int 
-bc_load_instruction(Bytecode_Builder* bc, Type* type, int src, cstring comment) {
-    int result = src;
-    
+_bc_instruction_load(Bytecode_Builder* bc, Type* type, int src, cstring comment) {
     Bytecode_Type bc_type = register_type(bc->curr_function, src);
-    if (bc_type.kind == BC_TYPE_PTR) {
-        result = add_bytecode_register(bc, type);
-        
-        Bytecode_Binary* insn = add_insn_t(bc, BC_LOAD, Binary);
-        insn->res_index = result;
-        insn->arg0_index = src;
-        insn->arg1_index = -1;
-        insn->comment = comment; // TODO(Alexander): add comment
-    }
+    assert(bc_type.kind == BC_TYPE_PTR && "expected lvalue to load");
     
-    return result;
+    Bytecode_Binary* insn = add_insn_t(bc, BC_LOAD, Binary);
+    insn->res_index = add_bytecode_register(bc, type);
+    insn->arg0_index = src;
+    insn->arg1_index = -1;
+    insn->comment = comment; // TODO(Alexander): add comment
+    return insn->res_index;
 }
 
-#define bc_store(bc, dest, src) \
-bc_store_instruction(bc, dest, src, __FILE__ ":" S2(__LINE__))
+#define bc_instruction_store(bc, dest, src) \
+_bc_instruction_store(bc, dest, src, __FILE__ ":" S2(__LINE__))
 
 inline void
-bc_store_instruction(Bytecode_Builder* bc, int dest, int src,
-                     cstring comment) {
+_bc_instruction_store(Bytecode_Builder* bc, int dest, int src,
+                      cstring comment) {
     Bytecode_Binary* result = add_insn_t(bc, BC_STORE, Binary);
     result->res_index = -1;
     result->arg0_index = dest;
@@ -175,11 +174,11 @@ bc_store_instruction(Bytecode_Builder* bc, int dest, int src,
     result->comment = comment;
 }
 
-#define bc_branch(bc, label_index, cond) \
-bc_branch_instruuction(bc, label_index, cond, __FILE__ ":" S2(__LINE__))
+#define bc_instruction_branch(bc, label_index, cond) \
+_bc_instruction_branch(bc, label_index, cond, __FILE__ ":" S2(__LINE__))
 
 inline void
-bc_branch_instruuction(Bytecode_Builder* bc, int label_index, int cond, cstring comment) {
+_bc_instruction_branch(Bytecode_Builder* bc, int label_index, int cond, cstring comment) {
     Bytecode_Branch* branch = add_insn_t(bc, BC_BRANCH, Branch);
     branch->label_index = label_index;
     branch->cond = cond;
@@ -187,8 +186,8 @@ bc_branch_instruuction(Bytecode_Builder* bc, int label_index, int cond, cstring 
 }
 
 inline int
-bc_global(Bytecode_Builder* bc, Bytecode_Memory_Kind kind, 
-          smm size, smm align, void* init=0) {
+bc_instruction_global(Bytecode_Builder* bc, Bytecode_Memory_Kind kind, 
+                      smm size, smm align, void* init=0) {
     Memory_Arena* arena = (kind == BC_MEM_READ_ONLY ? 
                            &bc->data_packer->rdata_arena : 
                            &bc->data_packer->data_arena);

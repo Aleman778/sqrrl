@@ -149,6 +149,22 @@ x64_dec(Buffer* buf, X64_Reg reg) {
 }
 
 inline void
+x64_not(Buffer* buf, X64_Reg reg) {
+    // F7 /2 	NOT r/m32 	M
+    x64_rex(buf, REX_W, 2, reg);
+    push_u8(buf, 0xF7);
+    x64_modrm_direct(buf, 2, reg);
+}
+
+inline void
+x64_neg(Buffer* buf, X64_Reg reg) {
+    // F7 /3 	NEG r/m32 	M
+    x64_rex(buf, REX_W, 3, reg);
+    push_u8(buf, 0xF7);
+    x64_modrm_direct(buf, 3, reg);
+}
+
+inline void
 x64_add64(Buffer* buf, X64_Reg a, X64_Reg b) {
     // REX.W + 03 /r 	ADD r64, r/m64 	RM
     x64_rex(buf, REX_W, a, b);
@@ -220,6 +236,14 @@ x64_move_memory_to_float_register(Buffer* buf, X64_Reg dest, X64_Reg src, s64 di
 }
 
 inline void
+x64_move_const_to_float_register(X64_Assembler* x64, Buffer* buf, X64_Reg dest, Exported_Data data, int size) {
+    // F3 0F 10 /r MOVSS xmm1, m32
+    // F2 0F 10 /r MOVSD xmm1, m64
+    push_u24(buf, (size == 8) ? 0x100FF2 : 0x100FF3);
+    x64_modrm_exported_data(x64, buf, dest, data);
+}
+
+inline void
 x64_addss(Buffer* buf, X64_Reg a, X64_Reg b, int size) {
     // F3 0F 58 /r ADDSS xmm1, xmm2/m32
     // F2 0F 58 /r ADDSD xmm1, xmm2/m64
@@ -244,6 +268,18 @@ x64_mulss(Buffer* buf, X64_Reg a, X64_Reg b, int size) {
 inline void
 x64_divss(Buffer* buf, X64_Reg a, X64_Reg b, int size) {
     push_u24(buf, (size == 8) ? 0x5E0FF2 : 0x5E0FF3);
+    x64_modrm_direct(buf, a, b);
+}
+
+inline void
+x64_xorps(Buffer* buf, X64_Reg a, X64_Reg b, int size) {
+    // NP 0F 57 /r XORPS xmm1, xmm2/m128 	A
+    // 66 0F 57 /r XORPD xmm1, xmm2/m128 	A
+    if (size == 8) {
+        push_u24(buf, 0x570F66);
+    } else {
+        push_u16(buf, 0x570F);
+    }
     x64_modrm_direct(buf, a, b);
 }
 

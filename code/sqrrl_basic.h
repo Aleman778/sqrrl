@@ -469,15 +469,16 @@ string_builder_push_char(String_Builder* sb, u8 c) {
 inline void
 string_builder_push_u8_hex(String_Builder* sb, u8 c) {
     string_builder_ensure_capacity(sb, 1);
+    if (c > 0xF) {
+        char hc = ((c >> 4) & 0xF);
+        if (hc < 10) {
+            *(sb->data + sb->curr_used++) = '0' + hc;
+        } else {
+            *(sb->data + sb->curr_used++) = 'A' + (hc - 10);
+        }
+    }
     
     char lc = (c & 0xF);
-    char hc = ((c >> 4) & 0xF);
-    
-    if (hc < 10) {
-        *(sb->data + sb->curr_used++) = '0' + hc;
-    } else {
-        *(sb->data + sb->curr_used++) = 'A' + (hc - 10);
-    }
     if (lc < 10) {
         *(sb->data + sb->curr_used++) = '0' + lc;
     } else {
@@ -485,9 +486,22 @@ string_builder_push_u8_hex(String_Builder* sb, u8 c) {
     }
 }
 
+
 void
 string_builder_push(String_Builder* sb, cstring str) {
     string_builder_push(sb, string_lit(str));
+}
+
+inline void
+string_builder_push_char_literal(String_Builder* sb, u8 c) {
+    if (c < 32 || c > 126) {
+        string_builder_push(sb, "\\");
+        string_builder_push_u8_hex(sb, c);
+    } else {
+        string_builder_ensure_capacity(sb, 1);
+        *(sb->data + sb->curr_used) = c;
+        sb->curr_used += 1;
+    }
 }
 
 void

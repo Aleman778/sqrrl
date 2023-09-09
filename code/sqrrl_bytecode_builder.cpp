@@ -62,13 +62,13 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 value_store_in_memory(expr->type, &constant, expr->Value.data);
                 switch (type.kind) {
                     case BC_TYPE_INT: {
-                        bc_const_instruction(bc, BC_INT_CONST, result, constant);
+                        bc_const(bc, BC_INT_CONST, result, constant);
                     } break;
                     
                     case BC_TYPE_FLOAT: {
-                        bc_const_instruction(bc, 
-                                             (type.size == 8) ? BC_F64_CONST : BC_F32_CONST,
-                                             result, constant);
+                        bc_const(bc, 
+                                 (type.size == 8) ? BC_F64_CONST : BC_F32_CONST,
+                                 result, constant);
                     } break;
                 }
             } else if (is_string(expr->Value)) {
@@ -132,13 +132,13 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 unimplemented;
                 
             } else if (op == Op_Post_Increment || op == Op_Post_Decrement) {
-                result = add_load_instruction(bc, type, first);
+                result = bc_load(bc, type, first);
                 int tmp = add_bytecode_register(bc, type);
                 bc_instruction(bc, op == Op_Post_Increment ? BC_INC : BC_DEC, tmp, result, -1);
-                bc_store_instruction(bc, first, tmp);
+                bc_store(bc, first, tmp);
                 
             } else {
-                int first_value = add_load_instruction(bc, type, first);
+                int first_value = bc_load(bc, type, first);
                 result = add_bytecode_register(bc, type);
                 
                 Bytecode_Operator opcode = BC_NOOP;
@@ -215,20 +215,20 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             int second = convert_expression_to_bytecode(bc, expr->Binary_Expr.second);
             
             if (opcode != BC_NOOP) {
-                int arg0 = add_load_instruction(bc, type, first);
-                int arg1 = add_load_instruction(bc, type, second);
+                int arg0 = bc_load(bc, type, first);
+                int arg1 = bc_load(bc, type, second);
                 result = add_bytecode_register(bc, result_type);
                 bc_instruction(bc, opcode, result, arg0, arg1);
                 
                 if (is_assign) {
-                    bc_store_instruction(bc, first, result);
+                    bc_store(bc, first, result);
                 }
             } else if (is_assign) {
                 if (register_type(bc->curr_function, second).kind == BC_TYPE_PTR) {
                     bc_instruction(bc, BC_MEMCPY, first, second, result_type->size);
                 } else {
-                    result = add_load_instruction(bc, type, second);
-                    bc_store_instruction(bc, first, result);
+                    result = bc_load(bc, type, second);
+                    bc_store(bc, first, result);
                 }
             }
             
@@ -329,7 +329,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 int reg = convert_expression_to_bytecode(bc, arg->Argument.assign);
                 Type* arg_type = arg->Argument.assign->type;
                 if (formal_arg.type.kind != BC_TYPE_PTR) {
-                    reg = add_load_instruction(bc, arg_type, reg);
+                    reg = bc_load(bc, arg_type, reg);
                 }
                 
                 array_push(arg_operands, reg);
@@ -405,31 +405,31 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                            t_src->Basic.flags & BasicFlag_Integer) {
                     
                     if (t_dest->size < t_src->size) {
-                        src = add_load_instruction(bc, t_src, src);
+                        src = bc_load(bc, t_src, src);
                         result = add_bytecode_register(bc, t_dest);
                         bc_instruction(bc, BC_TRUNCATE, result, src, -1);
                         
                     } else if (t_dest->size > t_src->size) {
-                        src = add_load_instruction(bc, t_src, src);
+                        src = bc_load(bc, t_src, src);
                         result = add_bytecode_register(bc, t_dest);
                         bc_instruction(bc, BC_EXTEND, result, src, -1);
                     }
                 } else if (t_dest->Basic.flags & BasicFlag_Integer &&
                            t_src->Basic.flags & BasicFlag_Floating) {
                     
-                    src = add_load_instruction(bc, t_src, src);
+                    src = bc_load(bc, t_src, src);
                     result = add_bytecode_register(bc, t_dest);
                     bc_instruction(bc, BC_FLOAT_TO_INT, result, src, -1);
                     
                 } else if (t_dest->Basic.flags & BasicFlag_Floating &&
                            t_src->Basic.flags & BasicFlag_Integer) {
-                    src = add_load_instruction(bc, t_src, src);
+                    src = bc_load(bc, t_src, src);
                     result = add_bytecode_register(bc, t_dest);
                     bc_instruction(bc, BC_INT_TO_FLOAT, result, src, -1);
                     
                 } else if (t_dest->Basic.flags & BasicFlag_Floating &&
                            t_src->Basic.flags & BasicFlag_Floating) {
-                    src = add_load_instruction(bc, t_src, src);
+                    src = bc_load(bc, t_src, src);
                     result = add_bytecode_register(bc, t_dest);
                     bc_instruction(bc, BC_FLOAT_TO_FLOAT, result, src, -1);
                     
@@ -454,7 +454,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                         //copy_ptr->type = bc_pointer_type(bc);
                         //copy_ptr->first = add_bytecode_register(bc);
                         //copy_ptr->second = src;
-                        //bc_store_instruction(bc, t_void_ptr, result, copy_ptr->first);
+                        //bc_store(bc, t_void_ptr, result, copy_ptr->first);
                         
                         //Bytecode_Binary* store_count = add_insn_t(bc, BC_MOV, Binary);
                         //store_count->type = BytecodeType_i64;
@@ -601,7 +601,7 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
             map_put(bc->locals, ident, local);
             
             if (src != -1) {
-                bc_store_instruction(bc, local, src);
+                bc_store(bc, local, src);
             }
         } break;
         
@@ -693,7 +693,7 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
                     bc_instruction(bc, BC_MEMCPY, 0, src, ret.size);
                 } else {
                     result = src;
-                    result = add_load_instruction(bc, stmt->type, result);
+                    result = bc_load(bc, stmt->type, result);
                 }
             }
             bc_instruction(bc, BC_RETURN, -1, result, -1);

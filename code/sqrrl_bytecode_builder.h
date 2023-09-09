@@ -119,7 +119,7 @@ add_bc_instruction(Bytecode_Builder* bc, Bytecode_Operator opcode,
     return insn;
 }
 
-#define bc_const_instruction(bc, opcode, res, constant) \
+#define bc_const(bc, opcode, res, constant) \
 add_bc_const_instruction(bc, opcode, res, constant, __FILE__ ":" S2(__LINE__))
 
 inline void
@@ -141,8 +141,11 @@ add_bytecode_register(Bytecode_Builder* bc, Type* type) {
     return result;
 }
 
+#define bc_load(bc, type, src) \
+_add_load_instruction(bc, type, src, __FILE__ ":" S2(__LINE__))
+
 inline int 
-add_load_instruction(Bytecode_Builder* bc, Type* type, int src) {
+_add_load_instruction(Bytecode_Builder* bc, Type* type, int src, cstring comment) {
     int result = src;
     
     Bytecode_Type bc_type = register_type(bc->curr_function, src);
@@ -153,13 +156,13 @@ add_load_instruction(Bytecode_Builder* bc, Type* type, int src) {
         insn->res_index = result;
         insn->arg0_index = src;
         insn->arg1_index = -1;
-        //insn->comment = comment; // TODO(Alexander): add comment
+        insn->comment = comment; // TODO(Alexander): add comment
     }
     
     return result;
 }
 
-#define bc_store_instruction(bc, dest, src) \
+#define bc_store(bc, dest, src) \
 add_store_instruction(bc, dest, src, __FILE__ ":" S2(__LINE__))
 
 inline void

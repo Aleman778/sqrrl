@@ -649,9 +649,7 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
             // Condition
             if (is_valid_ast(stmt->For_Stmt.cond)) {
                 int cond = convert_expression_to_bytecode(bc, stmt->For_Stmt.cond);
-                Bytecode_Branch* branch = add_insn_t(bc, BC_BRANCH, Branch);
-                branch->label_index = bc->block_depth - 1;
-                branch->cond = cond;
+                bc_branch(bc, bc->block_depth - 1, cond);
             }
             
             // Block
@@ -661,9 +659,7 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
             
             // Update
             convert_expression_to_bytecode(bc, stmt->For_Stmt.update);
-            Bytecode_Branch* branch = add_insn_t(bc, BC_BRANCH, Branch);
-            branch->cond = -1;
-            branch->label_index = bc->block_depth;
+            bc_branch(bc, bc->block_depth, -1);
             
             // Exit
             end_block(bc);
@@ -677,14 +673,11 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
             // Condition
             if (is_valid_ast(stmt->While_Stmt.cond)) {
                 int cond = convert_expression_to_bytecode(bc, stmt->While_Stmt.cond);
-                Bytecode_Branch* branch = add_insn_t(bc, BC_BRANCH, Branch);
-                branch->label_index = bc->block_depth - 1;
-                branch->cond = cond;
+                bc_branch(bc, bc->block_depth - 1, cond);
             }
             
             convert_statement_to_bytecode(bc, stmt->While_Stmt.block, bc->block_depth - 1, bc->block_depth);
-            Bytecode_Branch* branch = add_insn_t(bc, BC_BRANCH, Branch);
-            branch->label_index = bc->block_depth;
+            bc_branch(bc, bc->block_depth, -1);
             
             // Exit
             end_block(bc);

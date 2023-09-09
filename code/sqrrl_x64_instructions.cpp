@@ -141,6 +141,14 @@ x64_inc(Buffer* buf, X64_Reg reg) {
 }
 
 inline void
+x64_dec(Buffer* buf, X64_Reg reg) {
+    // REX.W + FF /1 	DEC r/m64 	M
+    x64_rex(buf, REX_W, 1, reg);
+    push_u8(buf, 0xFF);
+    x64_modrm_direct(buf, 1, reg);
+}
+
+inline void
 x64_add64(Buffer* buf, X64_Reg a, X64_Reg b) {
     // REX.W + 03 /r 	ADD r64, r/m64 	RM
     x64_rex(buf, REX_W, a, b);

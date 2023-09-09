@@ -172,6 +172,17 @@ add_store_instruction(Bytecode_Builder* bc, int dest, int src,
     result->comment = comment;
 }
 
+#define bc_branch(bc, label_index, cond) \
+add_branch_instruuction(bc, label_index, cond, __FILE__ ":" S2(__LINE__))
+
+inline void
+add_branch_instruuction(Bytecode_Builder* bc, int label_index, int cond, cstring comment) {
+    Bytecode_Branch* branch = add_insn_t(bc, BC_BRANCH, Branch);
+    branch->label_index = label_index;
+    branch->cond = cond;
+    branch->comment = comment;
+}
+
 inline int
 push_bytecode_memory(Bytecode_Builder* bc, Bytecode_Memory_Kind kind, smm size, smm align, void* init=0) {
     Memory_Arena* arena = (kind == BytecodeMemory_read_only ? 

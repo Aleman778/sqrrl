@@ -359,14 +359,18 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
         } break;
         
-        
-        case BC_INC: {
+        case BC_INC:
+        case BC_DEC: {
             Bytecode_Type type = register_type(func, bc->arg0_index);
             assert(type.kind != BC_TYPE_FLOAT && "inc is not implemented for float types");
             bool is_signed = type.flags & BC_FLAG_SIGNED;
             
             x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index), type.size, is_signed);
-            x64_inc(buf, X64_RAX);
+            if (bc->opcode == BC_INC) {
+                x64_inc(buf, X64_RAX);
+            } else {
+                x64_dec(buf, X64_RAX);
+            }
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
         } break;
         

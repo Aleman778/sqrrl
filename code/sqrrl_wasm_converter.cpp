@@ -41,6 +41,21 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             wasm_store_register(buf, register_type(func, bc_insn->res_index), bc_insn->res_index);
         } break;
         
+        case BC_GLOBAL: {
+            Bytecode_Global* g = &bc->globals[bc_insn->arg0_index];
+            wasm_prepare_store(buf);
+            switch (g->kind) {
+                case BC_MEM_READ_ONLY: {
+                    wasm_i64_const(buf, wasm->rdata_offset + g->offset);
+                } break;
+                
+                case BC_MEM_READ_WRITE: {
+                    wasm_i64_const(buf, wasm->data_offset + g->offset);
+                } break;
+            }
+            wasm_store_register(buf, register_type(func, bc_insn->res_index), bc_insn->res_index);
+        } break;
+        
         case BC_PTR_STRUCT_FIELD: {
             // TODO(Alexander): 64-bit addressing support!
             wasm_prepare_store(buf);

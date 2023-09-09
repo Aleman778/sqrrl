@@ -104,12 +104,12 @@ __FILE__ ":" S2(__LINE__));
 
 
 #define bc_instruction(bc, opcode, res, arg0, arg1) \
-add_bc_instruction(bc, opcode, res, arg0, arg1, __FILE__ ":" S2(__LINE__))
+_bc_instruction(bc, opcode, res, arg0, arg1, __FILE__ ":" S2(__LINE__))
 
 inline Bytecode_Binary*
-add_bc_instruction(Bytecode_Builder* bc, Bytecode_Operator opcode, 
-                   int res, int arg0, int arg1,
-                   cstring comment) {
+_bc_instruction(Bytecode_Builder* bc, Bytecode_Operator opcode, 
+                int res, int arg0, int arg1,
+                cstring comment) {
     
     Bytecode_Binary* insn = add_insn_t(bc, opcode, Binary);
     insn->res_index = res;
@@ -120,11 +120,11 @@ add_bc_instruction(Bytecode_Builder* bc, Bytecode_Operator opcode,
 }
 
 #define bc_const(bc, opcode, res, constant) \
-add_bc_const_instruction(bc, opcode, res, constant, __FILE__ ":" S2(__LINE__))
+bc_const_instruction(bc, opcode, res, constant, __FILE__ ":" S2(__LINE__))
 
 inline void
-add_bc_const_instruction(Bytecode_Builder* bc, Bytecode_Operator opcode, 
-                         int res, s64 val, cstring comment) {
+bc_const_instruction(Bytecode_Builder* bc, Bytecode_Operator opcode, 
+                     int res, s64 val, cstring comment) {
     
     Bytecode_Binary* insn = add_insn_t(bc, opcode, Binary);
     insn->res_index = res;
@@ -142,10 +142,10 @@ add_bytecode_register(Bytecode_Builder* bc, Type* type) {
 }
 
 #define bc_load(bc, type, src) \
-_add_load_instruction(bc, type, src, __FILE__ ":" S2(__LINE__))
+bc_load_instruction(bc, type, src, __FILE__ ":" S2(__LINE__))
 
 inline int 
-_add_load_instruction(Bytecode_Builder* bc, Type* type, int src, cstring comment) {
+bc_load_instruction(Bytecode_Builder* bc, Type* type, int src, cstring comment) {
     int result = src;
     
     Bytecode_Type bc_type = register_type(bc->curr_function, src);
@@ -163,11 +163,11 @@ _add_load_instruction(Bytecode_Builder* bc, Type* type, int src, cstring comment
 }
 
 #define bc_store(bc, dest, src) \
-add_store_instruction(bc, dest, src, __FILE__ ":" S2(__LINE__))
+bc_store_instruction(bc, dest, src, __FILE__ ":" S2(__LINE__))
 
 inline void
-add_store_instruction(Bytecode_Builder* bc, int dest, int src,
-                      cstring comment) {
+bc_store_instruction(Bytecode_Builder* bc, int dest, int src,
+                     cstring comment) {
     Bytecode_Binary* result = add_insn_t(bc, BC_STORE, Binary);
     result->res_index = -1;
     result->arg0_index = dest;
@@ -176,10 +176,10 @@ add_store_instruction(Bytecode_Builder* bc, int dest, int src,
 }
 
 #define bc_branch(bc, label_index, cond) \
-add_branch_instruuction(bc, label_index, cond, __FILE__ ":" S2(__LINE__))
+bc_branch_instruuction(bc, label_index, cond, __FILE__ ":" S2(__LINE__))
 
 inline void
-add_branch_instruuction(Bytecode_Builder* bc, int label_index, int cond, cstring comment) {
+bc_branch_instruuction(Bytecode_Builder* bc, int label_index, int cond, cstring comment) {
     Bytecode_Branch* branch = add_insn_t(bc, BC_BRANCH, Branch);
     branch->label_index = label_index;
     branch->cond = cond;
@@ -187,30 +187,36 @@ add_branch_instruuction(Bytecode_Builder* bc, int label_index, int cond, cstring
 }
 
 inline int
-push_bytecode_memory(Bytecode_Builder* bc, Bytecode_Memory_Kind kind, smm size, smm align, void* init=0) {
-    Memory_Arena* arena = (kind == BytecodeMemory_read_only ? 
+bc_global(Bytecode_Builder* bc, Bytecode_Memory_Kind kind, 
+          smm size, smm align, void* init=0) {
+    Memory_Arena* arena = (kind == BC_MEM_READ_ONLY ? 
                            &bc->data_packer->rdata_arena : 
                            &bc->data_packer->data_arena);
     void* data = arena_push_size(arena, size, align);
-    u32 offset = (s32) arena_relative_pointer(arena, data);
+    int offset = (int) arena_relative_pointer(arena, data);
     if (init) {
         memcpy(data, init, size);
     }
     
-#if 0
-    Bytecode_Operand result = {};
-    result.kind = BytecodeOperand_memory;
-    if (bc->use_absolute_memory) {
-        result.memory_absolute = data;
-    } else {
-        result.memory_offset = offset;
-        result.memory_kind = kind;
-    }
-    //return result;
-#endif
-    unimplemented;
-    return 0;
+    Bytecode_Global global_var = {};
+    global_var.address = data;
+    global_var.offset = offset;
+    global_var.size = (u32) size;
+    global_var.align = (u32) align;
+    global_var.kind = kind;
+    
+    
+    int global_index = (int) array_count(bc->bytecode.globals);
+    array_push(bc->bytecode.globals, global_var);
+    
+    Bytecode_Binary* result = add_insn_t(bc, BC_GLOBAL, Binary);
+    result->res_index = add_bytecode_register(bc, t_void_ptr);
+    result->arg0_index = global_index;
+    result->comment = 0; // TODO(Alexander): add comment
+    
+    return result->res_index;
 }
+
 
 inline void
 begin_block(Bytecode_Builder* bc, Bytecode_Operator opcode=BC_BLOCK) {

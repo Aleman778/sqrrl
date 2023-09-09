@@ -240,12 +240,10 @@ wasm_store_register(Buffer* buf, Bytecode_Type type, int register_index) {
 
 u32
 wasm_memory_offset(WASM_Assembler* wasm, u32 offset, Bytecode_Memory_Kind kind) {
-    if (kind == BytecodeMemory_read_only) {
-        offset += wasm->rdata_offset;
-    } else if (kind == BytecodeMemory_read_write) {
-        offset += wasm->data_offset;
-    } else {
-        unimplemented;
+    switch (kind) {
+        case BC_MEM_READ_ONLY: offset += wasm->rdata_offset; break;
+        case BC_MEM_READ_WRITE: offset += wasm->data_offset; break;
+        default: unimplemented;
     }
     return offset;
 }

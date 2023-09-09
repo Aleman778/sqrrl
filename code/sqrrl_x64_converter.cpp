@@ -5,7 +5,7 @@ struct X64_Compiled_Code {
 };
 
 X64_Compiled_Code
-convert_bytecode_to_x64_machine_code(Bytecode* bc, Buffer* buf, 
+convert_bytecode_to_x64_machine_code(Bytecode* bytecode, Buffer* buf, 
                                      Data_Packer* data_packer,
                                      Library_Import_Table* import_table,
                                      Compiler_Task compiler_task) {
@@ -13,17 +13,19 @@ convert_bytecode_to_x64_machine_code(Bytecode* bc, Buffer* buf,
     X64_Compiled_Code result;
     
     X64_Assembler x64 = {};
-    x64.bytecode = bc;
+    x64.bytecode = bytecode;
     x64.data_packer = data_packer;
     x64.use_absolute_ptrs = compiler_task == CompilerTask_Run;
-    x64.functions = (X64_Function*) calloc(array_count(bc->functions), 
+    // TODO(Alexander): employ better allocation strategy!
+    x64.functions = (X64_Function*) calloc(array_count(bytecode->functions), 
                                            sizeof(X64_Function));
+    x64.global_code_ptrs = (u8**) calloc(array_count(bytecode->globals), sizeof(u8*));
     
     result.main_function_ptr = buf->data;
-    for_array_v(bc->functions, func, func_index) {
+    for_array_v(bytecode->functions, func, func_index) {
         if (compiler_task == CompilerTask_Build) {
-            if (func_index < array_count(bc->imports)) {
-                s64 jump_src = bc->imports[func_index].rdata_offset;
+            if (func_index < array_count(bytecode->imports)) {
+                s64 jump_src = bytecode->imports[func_index].rdata_offset;
                 
                 // Indirect jump to library function
                 push_u8(buf, 0xFF); // FF /4 	JMP r/m64 	M
@@ -31,14 +33,14 @@ convert_bytecode_to_x64_machine_code(Bytecode* bc, Buffer* buf,
             }
         }
         
-        if (bc->entry_func_index == func_index) {
+        if (bytecode->entry_func_index == func_index) {
             result.main_function_ptr = buf->data + buf->curr_used;
         }
         
         convert_bytecode_function_to_x64_machine_code(&x64, func, buf);
     }
     
-    // Patch relative operands
+    // Patch relative jump addresses
     for_array_v(x64.jump_patches, patch, _pi) {
         s32 rel32 = (s32) (*patch.target - (patch.origin + 4));
         //pln("% - % = %", f_u64_HEX(*patch.target), f_u64_HEX(patch.origin + 4), f_int(rel32));
@@ -75,6 +77,25 @@ convert_bytecode_to_x64_machine_code(Bytecode* bc, Buffer* buf,
                 
                 case Data_Section: {
                     *((u32*) patch.origin) = (u32) (x64.read_write_data_offset + section_offset);
+                } break;
+                
+                default: unimplemented;
+            }
+        }
+        
+        // Patch global variable addresses
+        for (int global_index = 0; global_index < array_count(bytecode->globals); global_index++) {
+            Bytecode_Global* g = &bytecode->globals[global_index];
+            u8* origin = x64.global_code_ptrs[global_index];
+            
+            s64 section_offset = (s64) g->offset - (s64) (origin + 4);
+            switch (g->kind) {
+                case BC_MEM_READ_ONLY: {
+                    *((u32*) origin) = (u32) (x64.read_only_data_offset + section_offset);
+                } break;
+                
+                case BC_MEM_READ_WRITE: {
+                    *((u32*) origin) = (u32) (x64.read_write_data_offset + section_offset);
                 } break;
                 
                 default: unimplemented;
@@ -234,6 +255,14 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             disp = (s64) align_forward(disp, bc->arg1_index);
             x64->current_stack_displacement_for_locals = disp + bc->arg0_index;
             x64_lea(buf, X64_RAX, X64_RSP, disp);
+            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
+        } break;
+        
+        case BC_GLOBAL: {
+            // REX.W + 8D /r 	LEA r64,m 	RM
+            x64_rex(buf, REX_W);
+            push_u8(buf, 0x8D);
+            x64_modrm_global_data(x64, buf, X64_RAX, bc->arg0_index);
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
         } break;
         

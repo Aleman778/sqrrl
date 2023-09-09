@@ -355,11 +355,13 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                               cu->ast->type->kind == TypeKind_Function &&
                               cu->ast->type->Function.dump_bytecode)) {
             
-            string_builder_dump_bytecode(&sb, &bytecode_builder.bytecode, 
-                                         cu->bytecode_function);
+            string_builder_dump_bytecode_function(&sb, &bytecode_builder.bytecode,
+                                                  cu->bytecode_function);
         }
     }
     if (sb.data) {
+        string_builder_dump_bytecode_globals(&sb, &bytecode_builder.bytecode);
+        
         string s = string_builder_to_string_nocopy(&sb);
         pln("\nBytecode:\n%", f_string(s));
         string_builder_free(&sb);

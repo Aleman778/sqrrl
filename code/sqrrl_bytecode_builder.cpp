@@ -38,8 +38,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                             assert(0);
                         }
                         
-                        result = push_bytecode_memory(bc, BytecodeMemory_read_write, 
-                                                      type->size, type->align, data);
+                        result = bc_global(bc, BC_MEM_READ_WRITE, type->size, type->align, data);
                         map_put(bc->globals, ident, result);
                     }
                 }
@@ -73,7 +72,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 }
             } else if (is_string(expr->Value)) {
                 //smm string_count = expr->Value.data.str.count;
-                //int str_data = push_bytecode_memory(bc, BytecodeMemory_read_only, 
+                //int str_data = bc_global(bc, BytecodeMemory_read_only, 
                 //string_count, 1, 
                 //expr->Value.data.str.data);
                 //result = push_bytecode_stack_t(bc, string);
@@ -99,9 +98,9 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             } else if (is_cstring(expr->Value)) {
                 if (expr->Value.data.cstr) {
                     smm string_count = cstring_count(expr->Value.data.cstr);
-                    result = push_bytecode_memory(bc, BytecodeMemory_read_only, 
-                                                  string_count, 1, 
-                                                  (void*) expr->Value.data.cstr);
+                    result = bc_global(bc, BC_MEM_READ_ONLY, 
+                                       string_count, 1,
+                                       (void*) expr->Value.data.cstr);
                     
                 } else {
                     //result.kind = BytecodeOperand_const;
@@ -246,7 +245,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             
             if (base.data) {
                 //result.kind = BytecodeOperand_memory;
-                //result.memory_kind = BytecodeMemory_read_only;
+                //result.memory_kind = BC_MEM_READ_ONLY;
                 //result.memory_offset = base.relative_ptr;
                 
                 // Write non-constant fields to stack
@@ -903,6 +902,10 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
                                                f_int(bc_insn->arg1_index));
                 } break;
                 
+                case BC_GLOBAL: {
+                    string_builder_push_format(sb, "%", f_int(bc_insn->arg0_index));
+                } break;
+                
                 case BC_MEMCPY: {
                     string_builder_push_format(sb, "r%, r%, size %",
                                                f_int(bc_insn->res_index),
@@ -1014,7 +1017,7 @@ string_builder_dump_bytecode_type(String_Builder* sb, Bytecode_Type type) {
 }
 
 void
-string_builder_dump_bytecode(String_Builder* sb, Bytecode* bc, Bytecode_Function* func) {
+string_builder_dump_bytecode_function(String_Builder* sb, Bytecode* bc, Bytecode_Function* func) {
     if (!func) return;
     
     if (func->is_intrinsic || func->is_imported) {
@@ -1083,11 +1086,41 @@ string_builder_dump_bytecode(String_Builder* sb, Bytecode* bc, Bytecode_Function
 }
 
 void
+string_builder_dump_bytecode_globals(String_Builder* sb, Bytecode* bc) {
+    if (array_count(bc->globals) > 0) {
+        string_builder_push(sb, "globals:");
+        for_array(bc->globals, g, global_index) {
+            const cstring bc_memory_names[] = { "read only", "read write" };
+            string_builder_push_format(sb, "\n  %: size %, align %, kind \"%\" ",
+                                       f_int(global_index),
+                                       f_int(g->size),
+                                       f_int(g->align),
+                                       f_cstring(bc_memory_names[g->kind]));
+            
+            if (g->address) {
+                string_builder_push(sb, "\"");
+                u8* curr = (u8*) g->address;
+                for (u32 i = 0; i < g->size; i++) {
+                    string_builder_push_u8_hex(sb, *curr++);
+                    if (i < g->size - 1) {
+                        string_builder_push(sb, " ");
+                    }
+                }
+                string_builder_push(sb, "\"");
+            }
+        }
+    }
+    
+}
+
+void
 dump_bytecode(Bytecode* bc) {
     String_Builder sb = {};
     for_array_v(bc->functions, func, _) {
-        string_builder_dump_bytecode(&sb, bc, func);
+        string_builder_dump_bytecode_function(&sb, bc, func);
     }
+    string_builder_dump_bytecode_globals(&sb, bc);
+    
     string s = string_builder_to_string_nocopy(&sb);
     pln("%", f_string(s));
     string_builder_free(&sb);

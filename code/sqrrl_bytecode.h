@@ -79,7 +79,7 @@ global const cstring bc_operator_names[] = {
     /*                   */ "noop",
     /* Control:          */ "debug_break", "loop", "block", "end", "branch", "call", "return",
     /* Constants:        */ "i64.const", "f32.const", "f64.const",
-    /* Pointers:         */ "local", "global", "ptr.array_index", "ptr.struct_field",
+    /* Pointers:         */ "ptr.local", "ptr.global", "ptr.array_index", "ptr.struct_field",
     /* Memory:           */ "store", "load", "memcpy", "memset",
     /* Conversions:      */ "truncate", "extend", "int_to_float", "float_to_int", "float_to_float",
     /*                   */ "reinterpret_f2i",
@@ -168,11 +168,25 @@ struct Bytecode_Import {
     u32 rdata_offset;
 };
 
+enum Bytecode_Memory_Kind {
+    BC_MEM_READ_ONLY,
+    BC_MEM_READ_WRITE,
+};
+
+struct Bytecode_Global {
+    void* address; // for JIT
+    u32 offset;
+    u32 size, align;
+    Bytecode_Memory_Kind kind;
+};
+
 struct Bytecode {
     array(Bytecode_Import)* imports;
     
     array(Bytecode_Function*)* functions;
     array(string_id)* function_names;
+    
+    array(Bytecode_Global)* globals;
     
     int entry_func_index;
 };
@@ -183,13 +197,6 @@ enum Bytecode_Operand_Kind {
     BytecodeOperand_const,
     BytecodeOperand_register,
     BytecodeOperand_memory,
-};
-
-enum Bytecode_Memory_Kind {
-    BytecodeMemory_absolute,
-    
-    BytecodeMemory_read_only,
-    BytecodeMemory_read_write,
 };
 
 global cstring bc_memory_kind_names[] = { 

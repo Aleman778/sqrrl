@@ -120,6 +120,11 @@ wasm_i64_sub(Buffer* buf) {
 }
 
 inline void
+wasm_i64_mul(Buffer* buf) {
+    push_u8(buf, 0x7E);
+}
+
+inline void
 wasm_i64_xor(Buffer* buf) {
     push_u8(buf, 0x85);
 }

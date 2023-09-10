@@ -70,7 +70,12 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             wasm_prepare_store(buf);
             wasm_push_stack_pointer(buf);
             wasm_i64_load(buf, bc_insn->arg0_index*8);
-            wasm_i64_const(buf, bc_insn->arg1_index * ptr_type.size);
+            wasm_push_stack_pointer(buf);
+            wasm_i64_load(buf, bc_insn->arg1_index*8);
+            if (ptr_type.size > 1) {
+                wasm_i64_const(buf, ptr_type.size);
+                wasm_i64_mul(buf);
+            }
             wasm_i64_add(buf);
             wasm_store_register(buf, register_type(func, bc_insn->res_index), bc_insn->res_index);
         } break;

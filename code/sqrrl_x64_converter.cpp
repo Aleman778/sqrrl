@@ -259,9 +259,13 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         
         case BC_ARRAY_INDEX: {
             // TODO(Alexander): HACK we should utilize SIB somehow!
-            Bytecode_Type type = register_type(func, bc->arg0_index);
             x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index));
-            x64_add64_immediate(buf, X64_RAX, bc->arg1_index * type.size);
+            x64_move_memory_to_register(buf, X64_RCX, X64_RSP, register_displacement(x64, bc->arg1_index));
+            Bytecode_Type type = register_type(func, bc->arg0_index);
+            if (type.size > 1) {
+                x64_mul64_immediate(buf, X64_RCX, X64_RCX, type.size);
+            }
+            x64_add64(buf, X64_RAX, X64_RCX);
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
         } break;
         

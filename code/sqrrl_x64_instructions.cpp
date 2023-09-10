@@ -198,6 +198,15 @@ x64_mul64(Buffer* buf, X64_Reg a, X64_Reg b) {
 }
 
 inline void
+x64_mul64_immediate(Buffer* buf, X64_Reg a, X64_Reg b, s32 imm) {
+    // REX.W + 69 /r id 	IMUL r64, r/m64, imm32 	RMI 	Valid
+    x64_rex(buf, REX_W, a, b);
+    push_u8(buf, 0x69);
+    x64_modrm_direct(buf, a, b);
+    push_u32(buf, imm);
+}
+
+inline void
 x64_div64(Buffer* buf, X64_Reg a, X64_Reg b, bool is_signed) {
     assert(a == X64_RAX);
     

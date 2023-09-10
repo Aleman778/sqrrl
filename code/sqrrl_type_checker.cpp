@@ -1070,7 +1070,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                         result = type->Array.type;
                     } else if (type->kind == TypeKind_Pointer) {
                         result = type->Pointer;
-                    } else if (type->kind == TypeKind_Basic && type->Basic.kind == Basic_string) {
+                    } else if (type->kind == TypeKind_Basic && type->Basic.flags & BasicFlag_String) {
                         result = t_u8;
                     } else {
                         if (report_error) {

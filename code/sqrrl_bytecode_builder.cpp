@@ -5,7 +5,42 @@ convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
     switch (expr->kind) {
         case Ast_Ident: {
             string_id ident = ast_unwrap_ident(expr);
-            result = map_get(bc->locals, ident); 
+            if (map_key_exists(bc->locals, ident)) {
+                result = map_get(bc->locals, ident);
+            } else if (map_key_exists(bc->globals, ident)) { 
+                int global_index = map_get(bc->globals, ident);
+                result = bc_instruction_global(bc, global_index);
+            } else {
+                unimplemented;
+            }
+        } break;
+        
+        case Ast_Field_Expr: {
+            Type* type = expr->Field_Expr.var->type;
+            result = convert_lvalue_expression_to_bytecode(bc, expr->Field_Expr.var);
+            string_id ident = ast_unwrap_ident(expr->Field_Expr.field);
+            
+            switch (type->kind) {
+                case TypeKind_Struct:
+                case TypeKind_Union: {
+                    Struct_Field_Info info = get_field_info(&type->Struct_Like, ident);
+                    int tmp = add_bytecode_register(bc, type);
+                    bc_instruction(bc, BC_STRUCT_FIELD, tmp, result, (int) info.offset);
+                    result = tmp;
+                } break;
+                
+                case TypeKind_Array:
+                case TypeKind_Basic: {
+                    assert(type->kind == TypeKind_Array ||
+                           type->Basic.kind == Basic_string && "unsupported type");
+                    if (ident == Sym_count) {
+                        Struct_Field_Info info = get_field_info(&type->Struct_Like, ident);
+                        int tmp = add_bytecode_register(bc, type);
+                        bc_instruction(bc, BC_STRUCT_FIELD, tmp, result, 8);
+                        result = tmp;
+                    }
+                } break;
+            }
         } break;
         
         default: unimplemented;
@@ -13,7 +48,6 @@ convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
     
     return result;
 }
-
 
 int
 convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
@@ -29,7 +63,14 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             string_id ident = ast_unwrap_ident(expr);
             if (map_key_exists(bc->locals, ident)) {
                 result = map_get(bc->locals, ident);
-                result = bc_instruction_load(bc, type, result);
+                pln("%, %", f_var(ident), f_int(register_type(bc->curr_function, result).flags));
+                
+                //result = bc_instruction_load(bc, type, result);
+                
+                
+                if (!(register_type(bc->curr_function, result).flags & BC_FLAG_FUNC_ARG)) {
+                    result = bc_instruction_load(bc, type, result);
+                }
                 
             } else {
                 if (type->kind == TypeKind_Function && type->Function.unit) {
@@ -43,21 +84,12 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 } else {
                     // Global variable
                     if (map_key_exists(bc->globals, ident)) {
-                        result = map_get(bc->globals, ident);
+                        int global_index = map_get(bc->globals, ident);
+                        result = bc_instruction_global(bc, global_index);
                         result = bc_instruction_load(bc, type, result);
                         
                     } else {
-                        Ic_Raw_Type raw_type = convert_type_to_raw_type(type);
-                        void* data = get_interp_value_pointer(bc->interp, ident);
-                        if (!data) {
-                            Type_Context tcx = {};
-                            type_error(&tcx, string_print("compiler bug: value of `%` is void", f_var(ident)), expr->span);
-                            assert(0);
-                        }
-                        
-                        result = bc_instruction_global(bc, BC_MEM_READ_WRITE, type->size, type->align, data);
-                        result = bc_instruction_load(bc, type, result);
-                        map_put(bc->globals, ident, result);
+                        unimplemented;
                     }
                 }
             }
@@ -117,9 +149,11 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 result = add_bytecode_register(bc, t_cstring);
                 if (expr->Value.data.cstr) {
                     smm string_count = cstring_count(expr->Value.data.cstr);
-                    result = bc_instruction_global(bc, BC_MEM_READ_ONLY, 
-                                                   string_count + 1, 1,
-                                                   (void*) expr->Value.data.cstr);
+                    
+                    int global_index = add_bytecode_global(bc, BC_MEM_READ_ONLY,
+                                                           string_count + 1, 1,
+                                                           (void*) expr->Value.data.cstr);
+                    result = bc_instruction_global(bc, global_index);
                 } else {
                     bc_instruction_const(bc, BC_INT_CONST, result, 0);
                 }
@@ -177,70 +211,6 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 
                 default: unimplemented;
             }
-            
-#if 0
-            int first = convert_expression_to_bytecode(bc, expr->Unary_Expr.first);
-            if (op == Op_Address_Of) {
-                
-                //int addr_index = add_bytecode_register(bc, t_void_ptr);
-                result = first;
-                //bc_instruction(bc, BC_LOCAL, addr_index, 8, 8);
-                //bc_instruction_store(bc, addr_index, first);
-                
-                //Bytecode_Binary* insn = add_insn_t(bc, BC_ADDR_OF, Binary);
-                //insn->type  = to_bytecode_type(bc, type);
-                //insn->first = add_bytecode_register(bc);
-                //insn->second = first;
-                //result = insn->first;
-                
-            } else if (op == Op_Dereference) {
-                assert(register_type(bc->curr_function, first).kind == BC_TYPE_PTR);
-                
-                Ast* first_ast = expr->Unary_Expr.first;
-                if (first_ast->kind == Ast_Unary_Expr &&
-                    (first_ast->Unary_Expr.op == Op_Post_Increment ||
-                     first_ast->Unary_Expr.op == Op_Post_Decrement ||
-                     first_ast->Unary_Expr.op == Op_Pre_Increment ||
-                     first_ast->Unary_Expr.op == Op_Pre_Decrement)) {
-                    result = first;
-                } else {
-                    //result = bc_instruction_load(bc, expr->Unary_Expr.first->type, first);
-                }
-                //result = bc_instruction_load(bc, type, result);
-                
-            } else if (op == Op_Post_Increment || op == Op_Post_Decrement) {
-                result = bc_instruction_load(bc, type, first);
-                int tmp = add_bytecode_register(bc, type);
-                if (type->kind == TypeKind_Pointer) {
-                    bc_instruction(bc, BC_ARRAY_INDEX, tmp, result, 1);
-                } else {
-                    bc_instruction(bc, op == Op_Post_Increment ? BC_INC : BC_DEC, tmp, result, -1);
-                }
-                bc_instruction_store(bc, first, tmp);
-                
-            } else if (op == Op_Pre_Increment || op == Op_Pre_Decrement) {
-                first = bc_instruction_load(bc, type, first);
-                result = add_bytecode_register(bc, type);
-                if (type->kind == TypeKind_Pointer) {
-                    bc_instruction(bc, BC_ARRAY_INDEX, result, first, 1);
-                } else {
-                    bc_instruction(bc, op == Op_Post_Increment ? BC_INC : BC_DEC, result, first, -1);
-                }
-                
-            } else {
-                first = bc_instruction_load(bc, type, first);
-                result = add_bytecode_register(bc, type);
-                
-                Bytecode_Operator opcode = BC_NOOP;
-                switch (op) {
-                    case Op_Negate:  opcode = BC_NEG; break;
-                    case Op_Bitwise_Not: opcode = BC_NOT; break;
-                    default: unimplemented;
-                }
-                
-                bc_instruction(bc, opcode, result, first, -1);
-            }
-#endif
         } break;
         
         case Ast_Binary_Expr: {
@@ -415,7 +385,13 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             Bytecode_Function_Arg* formal_args = function_arg_types(func);
             for_compound(expr->Call_Expr.args, arg) {
                 Bytecode_Function_Arg formal_arg = formal_args[arg_index];
-                int reg = convert_expression_to_bytecode(bc, arg->Argument.assign);
+                int reg;
+                pln("arg %, size %", f_int(arg_index), f_int(formal_arg.size));
+                if (formal_arg.size > 8) {
+                    reg = convert_lvalue_expression_to_bytecode(bc, arg->Argument.assign);
+                } else {
+                    reg = convert_expression_to_bytecode(bc, arg->Argument.assign);
+                }
                 array_push(arg_operands, reg);
                 arg_index++;
             }
@@ -552,31 +528,8 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
         } break;
         
         case Ast_Field_Expr: {
-            Type* type = expr->Field_Expr.var->type;
-            result = convert_expression_to_bytecode(bc, expr->Field_Expr.var);
-            string_id ident = ast_unwrap_ident(expr->Field_Expr.field);
-            
-            switch (type->kind) {
-                case TypeKind_Struct:
-                case TypeKind_Union: {
-                    Struct_Field_Info info = get_field_info(&type->Struct_Like, ident);
-                    int tmp = add_bytecode_register(bc, type);
-                    bc_instruction(bc, BC_STRUCT_FIELD, tmp, result, (int) info.offset);
-                    result = tmp;
-                } break;
-                
-                case TypeKind_Array:
-                case TypeKind_Basic: {
-                    assert(type->kind == TypeKind_Array ||
-                           type->Basic.kind == Basic_string && "unsupported type");
-                    if (ident == Sym_count) {
-                        Struct_Field_Info info = get_field_info(&type->Struct_Like, ident);
-                        int tmp = add_bytecode_register(bc, type);
-                        bc_instruction(bc, BC_STRUCT_FIELD, tmp, result, 8);
-                        result = tmp;
-                    }
-                } break;
-            }
+            result = convert_lvalue_expression_to_bytecode(bc, expr);
+            result = bc_instruction_load(bc, expr->type, result);
         } break;
         
         case Ast_Index_Expr: {
@@ -647,7 +600,6 @@ int
 convert_condition_to_bytecode(Bytecode_Builder* bc, Ast* cond) {
     Type* type = cond->type;
     int result = convert_expression_to_bytecode(bc, cond);
-    //result = bc_instruction_load(bc, type, result);
     
     if (!bc_is_comparator(bc->curr_insn->opcode)) {
         int zero = add_bytecode_register(bc, cond->type);
@@ -793,12 +745,12 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
         case Ast_Return_Stmt: {
             int result = -1;
             if (is_valid_ast(stmt->Return_Stmt.expr)) {
-                int src = convert_expression_to_bytecode(bc, stmt->Return_Stmt.expr);
                 if (bc->curr_function->return_as_first_arg) {
-                    Bytecode_Function_Arg ret = function_ret_types(bc->curr_function)[0];
-                    bc_instruction(bc, BC_MEMCPY, 0, src, ret.size);
+                    int src_ptr = convert_lvalue_expression_to_bytecode(bc, stmt->Return_Stmt.expr);
+                    Bytecode_Function_Arg src_type = function_ret_types(bc->curr_function)[0];
+                    bc_instruction(bc, BC_MEMCPY, 0, src_ptr, src_type.size);
                 } else {
-                    result = src;
+                    result = convert_expression_to_bytecode(bc, stmt->Return_Stmt.expr);
                 }
             }
             bc_instruction(bc, BC_RETURN, -1, result, -1);
@@ -898,10 +850,11 @@ add_bytecode_function(Bytecode_Builder* bc, Type* type) {
         string_id arg_ident = type->Function.arg_idents[i];
         Type* arg_type = type->Function.arg_types[i];
         curr_arg->type = to_bytecode_type(bc, arg_type);
-        curr_arg->size = type->size;
-        curr_arg->align = type->align;
+        curr_arg->size = arg_type->size;
+        curr_arg->align = arg_type->align;
         
         int arg = add_bytecode_register(bc, arg_type);
+        func->register_types[arg].flags |= BC_FLAG_FUNC_ARG;
         map_put(bc->locals, arg_ident, arg);
         
         curr_arg++;
@@ -911,6 +864,33 @@ add_bytecode_function(Bytecode_Builder* bc, Type* type) {
     array_push(bc->bytecode.function_names, type->Function.ident);
     
     return func;
+}
+
+int
+add_bytecode_global(Bytecode_Builder* bc, 
+                    Bytecode_Memory_Kind kind, 
+                    smm size, smm align, void* init) {
+    
+    Memory_Arena* arena = (kind == BC_MEM_READ_ONLY ? 
+                           &bc->data_packer->rdata_arena : 
+                           &bc->data_packer->data_arena);
+    void* data = arena_push_size(arena, size, align);
+    int offset = (int) arena_relative_pointer(arena, data);
+    if (init) {
+        memcpy(data, init, size);
+    }
+    
+    Bytecode_Global global_var = {};
+    global_var.address = data;
+    global_var.offset = offset;
+    global_var.size = (u32) size;
+    global_var.align = (u32) align;
+    global_var.kind = kind;
+    
+    int global_index = (int) array_count(bc->bytecode.globals);
+    pln("global_index = %", f_int(global_index));
+    array_push(bc->bytecode.globals, global_var);
+    return global_index;
 }
 
 Bytecode_Instruction*

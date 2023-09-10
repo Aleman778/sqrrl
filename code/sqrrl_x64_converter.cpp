@@ -19,7 +19,6 @@ convert_bytecode_to_x64_machine_code(Bytecode* bytecode, Buffer* buf,
     // TODO(Alexander): employ better allocation strategy!
     x64.functions = (X64_Function*) calloc(array_count(bytecode->functions), 
                                            sizeof(X64_Function));
-    x64.global_code_ptrs = (u8**) calloc(array_count(bytecode->globals), sizeof(u8*));
     
     result.main_function_ptr = buf->data;
     for_array_v(bytecode->functions, func, func_index) {
@@ -77,25 +76,6 @@ convert_bytecode_to_x64_machine_code(Bytecode* bytecode, Buffer* buf,
                 
                 case Data_Section: {
                     *((u32*) patch.origin) = (u32) (x64.read_write_data_offset + section_offset);
-                } break;
-                
-                default: unimplemented;
-            }
-        }
-        
-        // Patch global variable addresses
-        for (int global_index = 0; global_index < array_count(bytecode->globals); global_index++) {
-            Bytecode_Global* g = &bytecode->globals[global_index];
-            u8* origin = x64.global_code_ptrs[global_index];
-            
-            s64 section_offset = (s64) g->offset - (s64) (origin + 4);
-            switch (g->kind) {
-                case BC_MEM_READ_ONLY: {
-                    *((u32*) origin) = (u32) (x64.read_only_data_offset + section_offset);
-                } break;
-                
-                case BC_MEM_READ_WRITE: {
-                    *((u32*) origin) = (u32) (x64.read_write_data_offset + section_offset);
                 } break;
                 
                 default: unimplemented;
@@ -253,10 +233,21 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_GLOBAL: {
+            Bytecode_Global* g = &x64->bytecode->globals[bc->arg0_index];
+            
+            Exported_Data data = {};
+            data.data = g->address;
+            data.relative_ptr = g->offset;
+            switch (g->kind) {
+                case BC_MEM_READ_ONLY:  data.section = Read_Data_Section; break;
+                case BC_MEM_READ_WRITE: data.section = Data_Section; break;
+                default: unimplemented;
+            }
+            
             // REX.W + 8D /r 	LEA r64,m 	RM
             x64_rex(buf, REX_W);
             push_u8(buf, 0x8D);
-            x64_modrm_global_data(x64, buf, X64_RAX, bc->arg0_index);
+            x64_modrm_exported_data(x64, buf, X64_RAX, data);
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
         } break;
         

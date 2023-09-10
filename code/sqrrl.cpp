@@ -335,6 +335,22 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     main_cu = cu;
                 }
             }
+            
+        } else if (cu->ast->kind == Ast_Assign_Stmt) {
+            Type* type = cu->ast->type;
+            string_id ident = ast_unwrap_ident(cu->ast->Assign_Stmt.ident);
+            
+            void* data = get_interp_value_pointer(&interp, ident);
+            if (!data) {
+                type_error(&tcx, string_print("compiler bug: value of `%` is void", f_var(ident)),
+                           cu->ast->span);
+                assert(0);
+            }
+            
+            int global_index = add_bytecode_global(&bytecode_builder, BC_MEM_READ_WRITE,
+                                                   type->size, type->align, data);
+            map_put(bytecode_builder.globals, ident, global_index);
+            
         }
     }
     assert(main_cu && "no main function"); // TODO: turn this into an actual error

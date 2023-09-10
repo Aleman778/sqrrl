@@ -60,14 +60,14 @@ to_bytecode_type(Bytecode_Builder* bc, Type* type) {
             }
         } break;
         
-        case TypeKind_Type:
         case TypeKind_Array:
-        case TypeKind_Function: {
-            result.kind = BC_TYPE_PTR;
-        } break;
-        
         case TypeKind_Struct:
         case TypeKind_Union: // TODO(Alexander): should structs/ unions be a different type than 64-bit 
+        case TypeKind_Function: {
+            result.kind = BC_TYPE_PTR;
+            result.size = (s32) align_forward(type->size, type->align);
+        } break;
+        
         case TypeKind_Pointer: {
             result.kind = BC_TYPE_PTR;
             result.size = (s32) align_forward(type->Pointer->size, type->Pointer->align);
@@ -92,6 +92,10 @@ Bytecode_Instruction* add_bytecode_insn(Bytecode_Builder* bc,
                                         Bytecode_Instruction_Kind kind, 
                                         umm size, umm align, cstring loc);
 
+int add_bytecode_global(Bytecode_Builder* bc, 
+                        Bytecode_Memory_Kind kind, 
+                        smm size, smm align, 
+                        void* init=0);
 #define S1(x) #x
 #define S2(x) S1(x)
 #define add_insn(bc, opcode) add_bytecode_insn(bc, opcode, \
@@ -186,28 +190,7 @@ _bc_instruction_branch(Bytecode_Builder* bc, int label_index, int cond, cstring 
 }
 
 inline int
-bc_instruction_global(Bytecode_Builder* bc, Bytecode_Memory_Kind kind, 
-                      smm size, smm align, void* init=0) {
-    Memory_Arena* arena = (kind == BC_MEM_READ_ONLY ? 
-                           &bc->data_packer->rdata_arena : 
-                           &bc->data_packer->data_arena);
-    void* data = arena_push_size(arena, size, align);
-    int offset = (int) arena_relative_pointer(arena, data);
-    if (init) {
-        memcpy(data, init, size);
-    }
-    
-    Bytecode_Global global_var = {};
-    global_var.address = data;
-    global_var.offset = offset;
-    global_var.size = (u32) size;
-    global_var.align = (u32) align;
-    global_var.kind = kind;
-    
-    
-    int global_index = (int) array_count(bc->bytecode.globals);
-    array_push(bc->bytecode.globals, global_var);
-    
+bc_instruction_global(Bytecode_Builder* bc, int global_index) {
     Bytecode_Binary* result = add_insn_t(bc, BC_GLOBAL, Binary);
     result->res_index = add_bytecode_register(bc, t_void_ptr);
     result->arg0_index = global_index;

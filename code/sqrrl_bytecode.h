@@ -107,6 +107,7 @@ enum Bytecode_Type_Kind {
 
 enum Byytecode_Type_Flags {
     BC_FLAG_SIGNED = bit(0),
+    BC_FLAG_FUNC_ARG = bit(1),
 };
 
 struct Bytecode_Type {

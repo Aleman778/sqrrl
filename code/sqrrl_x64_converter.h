@@ -77,7 +77,6 @@ struct X64_Data_Patch {
 
 struct X64_Assembler {
     Bytecode* bytecode;
-    u8** global_code_ptrs;
     u32* stack;
     
     Data_Packer* data_packer;
@@ -229,17 +228,6 @@ x64_modrm_exported_data(X64_Assembler* x64, Buffer* buf, X64_Reg reg, Exported_D
         patch.origin = buf->data + buf->curr_used;
         patch.data = data;
         array_push(x64->data_patches, patch);
-        push_u32(buf, 0);
-    }
-}
-
-inline void
-x64_modrm_global_data(X64_Assembler* x64, Buffer* buf, X64_Reg reg, int global_index) {
-    push_u8(buf, ((u8) (reg&7)<<3) | (u8) X64_RBP);
-    if (x64->use_absolute_ptrs) {
-        x64_modrm_rip_relative(buf, x64->bytecode->globals[global_index].address);
-    } else {
-        x64->global_code_ptrs[global_index] = buf->data + buf->curr_used;
         push_u32(buf, 0);
     }
 }

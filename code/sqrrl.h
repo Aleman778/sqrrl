@@ -52,9 +52,9 @@ enum Compiler_Task {
 #include "sqrrl_preprocessor.h"
 #include "sqrrl_interp.h"
 #include "sqrrl_bytecode_builder.h"
+#include "sqrrl_pe_converter.h"
 #include "sqrrl_x64_converter.h"
 #include "sqrrl_wasm_converter.h"
-#include "sqrrl_pe_converter.h"
 #include "sqrrl_test.h"
 
 extern "C" int compiler_main_entry(int argc, char* argv[]);

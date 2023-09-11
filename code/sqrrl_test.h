@@ -4,7 +4,7 @@
 typedef s32 Test_Execution_Modes;
 enum {
     TestExecutionMode_Interp = bit(0),
-    TestExecutionMode_X64 = bit(1),
+    TestExecutionMode_X64_JIT = bit(1),
 };
 
 struct Test_Result {

@@ -288,10 +288,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     bytecode_builder.interp = &interp;
     
     
-    if (target_backend == Backend_X64) {
-        bytecode_builder.use_absolute_memory = compiler_task == CompilerTask_Run;
-    }
-    
     // First create functions imported from libraries
     for_map(tcx.import_table.libs, it) {
         for_array(it->value.functions, function, function_index) {
@@ -350,7 +346,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             int global_index = add_bytecode_global(&bytecode_builder, BC_MEM_READ_WRITE,
                                                    type->size, type->align, data);
             map_put(bytecode_builder.globals, ident, global_index);
-            
         }
     }
     assert(main_cu && "no main function"); // TODO: turn this into an actual error

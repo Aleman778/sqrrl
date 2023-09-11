@@ -82,68 +82,62 @@ run_compiler_tests(string filename,
         return 1;
     }
     
-#if 0
-    // Convert to intermediate code
-    Ic_Arg_Map* x64_globals = 0;
-    for_array(ast_file.units, cu, _) {
-        
-        if (cu->ident == Sym___assert && cu->ast->type->kind == TypeKind_Function) {
-            // Route the __assert to our test case assert
-            cu->ast->type->Function.unit = 0;
-            cu->ast->type->Function.intrinsic = &intrinsic_test_proc_assert;
-            continue;
-        }
-        
-        cu->data_packer = &data_packer;
-        cu->globals = x64_globals;
-        
-        cu->use_absolute_ptrs = true; // TODO(Alexander): this is needed for JIT compilation
-        if (cu->ast->kind == Ast_Decl_Stmt) {
+    // Build the bytecode
+    Bytecode_Builder bytecode_builder = {};
+    bytecode_builder.data_packer = &data_packer;
+    bytecode_builder.interp = &interp;
+    
+    for_array(ast_file.units, cu, _2) {
+        if (!cu->bytecode_function && cu->ast->kind == Ast_Decl_Stmt) {
+            
             Type* type = cu->ast->type;
             if (type->kind == TypeKind_Function) {
-                convert_procedure_to_intermediate_code(cu, false);
-            }
-        }
-        
-        x64_globals = cu->globals;
-    }
-    
-    // Compute the actual stack displacement for each Ic_Arg
-    for_array(ast_file.units, cu, _2) {
-        Intermediate_Code* ic = cu->ic_first;
-        while (ic) {
-            // TODO: robustness we need a better way to know what the instruction data is!
-            if (ic->opcode >= IC_NEG && ic->opcode <= IC_SETNE) {
-                if (ic->dest.type & IC_STK) {
-                    ic->dest.disp = compute_stk_displacement(cu, ic->dest);
+                
+                Bytecode_Function* func = add_bytecode_function(&bytecode_builder, type);
+                
+                if (cu->ident == Sym___assert) {
+                    // Route the __assert to our test case assert
+                    func->is_imported = true;
+                    func->code_ptr = &intrinsic_test_proc_assert;
                 }
-                if (ic->src0.type & IC_STK) {
-                    ic->src0.disp = compute_stk_displacement(cu, ic->src0);
-                }
-                if (ic->src1.type & IC_STK) {
-                    ic->src1.disp = compute_stk_displacement(cu, ic->src1);
-                }
+                
+                
             }
             
-            ic = ic->next;
+        } else if (cu->ast->kind == Ast_Assign_Stmt) {
+            Type* type = cu->ast->type;
+            string_id ident = ast_unwrap_ident(cu->ast->Assign_Stmt.ident);
+            
+            void* data = get_interp_value_pointer(&interp, ident);
+            if (!data) {
+                type_error(&tcx, string_print("compiler bug: value of `%` is void", f_var(ident)),
+                           cu->ast->span);
+                assert(0);
+            }
+            
+            int global_index = add_bytecode_global(&bytecode_builder, BC_MEM_READ_WRITE,
+                                                   type->size, type->align, data);
+            map_put(bytecode_builder.globals, ident, global_index);
         }
     }
     
-    
-    // Convert to X64 machine code
-    s64 rip = 0;
     for_array(ast_file.units, cu, _3) {
-        rip = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage, 0, 0, 0, rip);
+        if (cu->bytecode_function) {
+            bool is_main = cu->ident == Sym_main;
+            convert_function_to_bytecode(&bytecode_builder, cu->bytecode_function, cu->ast,
+                                         is_main, is_debugger_present && is_main);
+        }
     }
     
-    s64 rip2 = 0;
-    for_array(ast_file.units, cu, _4) {
-        rip2 = convert_to_x64_machine_code(cu->ic_first, cu->stk_usage,
-                                           (u8*) asm_buffer, (s64) asm_buffer, (s64) asm_size, rip2);
-    }
-    assert(rip == rip2);
+    // Compile to x64 code
+    Buffer buf = {};
+    buf.data = (u8*) asm_buffer;
+    buf.size = asm_size;
+    X64_Compiled_Code code = convert_bytecode_to_x64_machine_code(&bytecode_builder.bytecode, 
+                                                                  &buf, &data_packer, 
+                                                                  &tcx.import_table, 
+                                                                  CompilerTask_Run);
     
-#endif
     asm_make_executable(asm_buffer, asm_size);
     
     // Collect all the test to run
@@ -163,7 +157,7 @@ run_compiler_tests(string filename,
                 if (attr_ident == Sym_test_proc) {
                     // TODO(Alexander): check the expr part for exec mode
                     Test_Execution_Modes modes = (TestExecutionMode_Interp |
-                                                  TestExecutionMode_X64);
+                                                  TestExecutionMode_X64_JIT);
                     
                     Test_Result test = {};
                     test.unit = unit;
@@ -227,8 +221,8 @@ run_compiler_tests(string filename,
             }
         }
         
-        // X64
-        if (is_bitflag_set(test->modes, TestExecutionMode_X64)) {
+        // X64 JIT
+        if (is_bitflag_set(test->modes, TestExecutionMode_X64_JIT)) {
             u32 prev_num_failed = test->num_failed;
             
             s64 offset = 0;//unit->bb_first->addr;

@@ -17,13 +17,16 @@ struct Bytecode_Builder {
     
     u32 next_type_index;
     u32 next_register_index;
-    
-    bool use_absolute_memory;
 };
 
 int convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr);
+
 int convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr);
+
 void convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, s32 continue_label);
+
+Bytecode_Function* convert_function_to_bytecode(Bytecode_Builder* bc, Bytecode_Function* func, Ast* ast,
+                                                bool is_main, bool insert_debug_break);
 
 Bytecode_Type
 to_bytecode_type(Bytecode_Builder* bc, Type* type) {

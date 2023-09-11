@@ -392,7 +392,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             for_compound(expr->Call_Expr.args, arg) {
                 Bytecode_Function_Arg formal_arg = formal_args[arg_index];
                 int reg;
-                pln("arg %, size %", f_int(arg_index), f_int(formal_arg.size));
+                //pln("arg %, size %", f_int(arg_index), f_int(formal_arg.size));
                 if (formal_arg.size > 8) {
                     reg = convert_lvalue_expression_to_bytecode(bc, arg->Argument.assign);
                 } else {
@@ -842,7 +842,6 @@ add_bytecode_global(Bytecode_Builder* bc,
     global_var.kind = kind;
     
     int global_index = (int) array_count(bc->bytecode.globals);
-    pln("global_index = %", f_int(global_index));
     array_push(bc->bytecode.globals, global_var);
     return global_index;
 }

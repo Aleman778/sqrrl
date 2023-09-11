@@ -1,9 +1,4 @@
 
-struct X64_Compiled_Code {
-    u8* main_function_ptr;
-    PE_Executable pe_executable;
-};
-
 X64_Compiled_Code
 convert_bytecode_to_x64_machine_code(Bytecode* bytecode, Buffer* buf, 
                                      Data_Packer* data_packer,

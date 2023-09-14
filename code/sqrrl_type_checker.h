@@ -81,13 +81,8 @@ struct Type_Context {
     s32 warning_count;
 };
 
-inline void
-type_error(Type_Context* tcx, string message, Span span) {
-    //Span_Data span = {};
-    string filename = string_lit("examples/demo.sq"); // TODO: store names of source files somewhere!
-    
-    bool multiline = tcx->error_count < 3;
-    
+void
+print_span_location(Span span) {
     if (span.file_index > 0) {
         Loaded_Source_File* file = get_source_file_by_index(span.file_index);
         if (file) {
@@ -95,9 +90,14 @@ type_error(Type_Context* tcx, string message, Span span) {
             print("%:%:%: ", f_string(file->abspath), f_u32(result.begin_line + 1), f_u32(result.begin_column + 1));
         }
     }
+}
+
+inline void
+type_error(Type_Context* tcx, string message, Span span) {
     
+    print_span_location(span);
     pln("error: %", f_string(message));
-    if (multiline) {
+    if (tcx->error_count < 3) {
         DEBUG_log_backtrace();
         print("\n");
     }
@@ -113,8 +113,12 @@ type_error_mismatch(Type_Context* tcx, Type* expected, Type* found, Span span) {
 inline void
 type_warning(Type_Context* tcx, string message, Span span) {
     Span_Data spand = {};
-    string filename = string_lit("examples/demo.sq"); // TODO: store names of source files somewhere!
-    pln("%:%:%: warning: %\n", f_string(filename), f_smm(spand.begin_line), f_smm(spand.begin_column), f_string(message));
+    print_span_location(span);
+    pln("warning: %\n", f_string(message));
+    if (tcx->error_count < 3) {
+        DEBUG_log_backtrace();
+        print("\n");
+    }
     DEBUG_log_backtrace();
     tcx->warning_count++;
 }

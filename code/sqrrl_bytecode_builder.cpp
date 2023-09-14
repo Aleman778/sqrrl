@@ -15,6 +15,15 @@ convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             }
         } break;
         
+        case Ast_Unary_Expr: {
+            if (expr->Unary_Expr.op == Op_Dereference) {
+                result = convert_lvalue_expression_to_bytecode(bc, expr->Unary_Expr.first);
+                result = bc_instruction_load(bc, expr->type, result);
+            } else {
+                unimplemented;
+            }
+        } break;
+        
         case Ast_Field_Expr: {
             Type* type = expr->Field_Expr.var->type;
             result = convert_lvalue_expression_to_bytecode(bc, expr->Field_Expr.var);
@@ -80,6 +89,9 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 int flags = register_type(bc->curr_function, result).flags;
                 //pln("%: % (%)", f_var(ident), f_int(flags), f_bool(is_bitflag_set(flags, BC_FLAG_FUNC_ARG)));
                 if (!is_bitflag_set(flags, BC_FLAG_FUNC_ARG)) {
+                    if (register_type(bc->curr_function, result).kind != BC_TYPE_PTR) {
+                        pln("%", f_ast(expr));
+                    }
                     result = bc_instruction_load(bc, type, result);
                 }
                 
@@ -750,6 +762,11 @@ convert_function_to_bytecode(Bytecode_Builder* bc, Bytecode_Function* func, Ast*
         bc->bytecode.entry_func_index = func->type_index;
     }
     
+    for (int i = 0; i < func->arg_count; i++) {
+        string_id arg_ident = type->Function.arg_idents[i];
+        map_put(bc->locals, arg_ident, i);
+    }
+    
     if (insert_debug_break) {
         add_insn(bc, BC_DEBUG_BREAK);
     }
@@ -809,7 +826,6 @@ add_bytecode_function(Bytecode_Builder* bc, Type* type) {
         
         int arg = add_bytecode_register(bc, arg_type);
         func->register_types[arg].flags |= BC_FLAG_FUNC_ARG;
-        map_put(bc->locals, arg_ident, arg);
         
         curr_arg++;
     }

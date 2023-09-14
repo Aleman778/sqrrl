@@ -124,8 +124,9 @@ run_compiler_tests(string filename,
     for_array(ast_file.units, cu, _3) {
         if (cu->bytecode_function) {
             bool is_main = cu->ident == Sym_main;
+            pln("Building function `%`...", f_type(cu->ast->type));
             convert_function_to_bytecode(&bytecode_builder, cu->bytecode_function, cu->ast,
-                                         is_main, is_debugger_present && is_main);
+                                         false, is_debugger_present);
         }
     }
     
@@ -163,9 +164,13 @@ run_compiler_tests(string filename,
                     test.unit = unit;
                     test.modes = modes;
                     
-                    if (decl->type->Function.dump_bytecode) {
-                        unimplemented;
-                        //dump_bytecode(bytecode_builder);
+                    if (decl->type->Function.dump_bytecode && unit->bytecode_function) {
+                        String_Builder sb = {};
+                        string_builder_dump_bytecode_function(&sb, &bytecode_builder.bytecode, 
+                                                              unit->bytecode_function);
+                        string s = string_builder_to_string_nocopy(&sb);
+                        pln("\nBytecode:\n%", f_string(s));
+                        string_builder_free(&sb);
                     }
                     
                     assert(!map_key_exists(tests, unit->ident) && "duplicate test name");
@@ -225,10 +230,13 @@ run_compiler_tests(string filename,
         if (is_bitflag_set(test->modes, TestExecutionMode_X64_JIT)) {
             u32 prev_num_failed = test->num_failed;
             
-            s64 offset = 0;//unit->bb_first->addr;
             //pln("Running `%` at memory location: 0x%", f_string(vars_load_string(test->ident)),
             //f_u64_HEX((u8*) asm_buffer + offset));
-            asm_test* test_func = (asm_test*) ((u8*) asm_buffer + offset);
+            if (!unit->bytecode_function->code_ptr) {
+                pln("Failed to run test `%`, invalid function pointer", f_string(vars_load_string(it->key)));
+            }
+            
+            asm_test* test_func = (asm_test*) unit->bytecode_function->code_ptr;
             test_func();
             if (prev_num_failed != test->num_failed) {
                 string_builder_push(sb_failure_log, "\n\xE2\x9D\x8C ");
@@ -249,6 +257,7 @@ run_compiler_tests(string filename,
         
         if (test->num_tests == 0) {
             string_builder_push_format(sb_test_result, " WARN! No asserts found!");
+            totals.num_skipped++;
         } else if (test->num_failed == 0) {
             totals.num_passed++;
             string_builder_push_format(sb_test_result, " OK!");

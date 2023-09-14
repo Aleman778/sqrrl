@@ -270,12 +270,16 @@ x64_subss(Buffer* buf, X64_Reg a, X64_Reg b, int size) {
 
 inline void
 x64_mulss(Buffer* buf, X64_Reg a, X64_Reg b, int size) {
-    push_u24(buf, (size == 8) ? 0x590FF2 : 0x5C0FF3);
+    // F3 0F 59 /r MULSS xmm1,xmm2/m32 	A
+    // F2 0F 59 /r MULSD xmm1,xmm2/m64 	A
+    push_u24(buf, (size == 8) ? 0x590FF2 : 0x590FF3);
     x64_modrm_direct(buf, a, b);
 }
 
 inline void
 x64_divss(Buffer* buf, X64_Reg a, X64_Reg b, int size) {
+    // F3 0F 5E /r DIVSS xmm1, xmm2/m32 	A
+    // F2 0F 5E /r DIVSD xmm1, xmm2/m64 	A
     push_u24(buf, (size == 8) ? 0x5E0FF2 : 0x5E0FF3);
     x64_modrm_direct(buf, a, b);
 }

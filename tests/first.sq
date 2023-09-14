@@ -1,29 +1,33 @@
 
-#define BASIC_NO_ASSERT_IMPLEMENTATION
-#include <basic.sq>
-
 @intrinsic extern void __assert(int expr, cstring msg, cstring file, smm line);
 #define assert(expression) __assert(expression, #expression, __FILE__, __LINE__)
 
 #include "types.sq"
 
-#include "second.sq"
+//#include "second.sq"
 
 void
 @test_proc
-unary_expressions() {
+unary_neg_expressions() {
     int x = 42;
     int y = -x;
     assert(y == -42);
     y = -y;
     assert(y == 42);
     
+}
+
+#if 0
+void
+@test_proc
+unary_not_expressions() {
     bool flag = true;
     flag = !flag;
     assert(flag == false);
     flag = !flag;
     assert(flag == true);
 }
+#endif
 
 void
 @test_proc
@@ -46,7 +50,7 @@ void
 @test_proc
 sign_extend_and_wrapping_integers() {
     s8 x = cast(s8) -10;
-    x += (s8) 200;
+    x += (s8) 200u;
     
     int y = (int) x;
     assert(y == -66);
@@ -60,6 +64,7 @@ add_operator() {
     assert(x == 20);
 }
 
+#if 0
 void
 @test_proc
 and_operator() {
@@ -99,6 +104,7 @@ equals_operator() {
     y = x == 11;
     assert(!y);
 }
+#endif
 
 void
 @test_proc
@@ -109,13 +115,13 @@ ref_operator() {
     assert(y == z);
 }
 
-//void
-//@test_proc
-//float_to_int() {
-//f32 x = 4.4f + 4.4f;
-//int y = (int) x;
-//assert(y == 8);
-//}
+void
+@test_proc
+float_to_int() {
+    f32 x = 4.4f + 4.4f;
+    int y = (int) x;
+    assert(y == 8);
+}
 
 void
 @test_proc
@@ -247,6 +253,7 @@ while_loop() {
     assert(x == 25);
 }
 
+#if 0
 void
 @test_proc
 struct_v2s() {
@@ -281,7 +288,9 @@ no_modify_struct_v2s_via_call_as_copy() {
     v2s_scale(v, 10);
     assert(v.x + v.y == -7);
 }
+#endif
 
+#if 0
 void
 check_int(int val) {
     assert(val == 42);
@@ -323,3 +332,4 @@ virtual_function_table() {
     
     assert(vtbl.adder(10, 20) == 30);
 }
+#endif

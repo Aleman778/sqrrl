@@ -841,25 +841,6 @@ struct Memory_Arena {
     Arena_Push_Flags flags;
 };
 
-inline void
-arena_grow(Memory_Arena* arena, umm block_size = 0) {
-    if (block_size == 0) {
-        if (arena->min_block_size == 0) {
-            arena->min_block_size = ARENA_DEFAULT_BLOCK_SIZE;
-        }
-        
-        block_size = arena->min_block_size;
-    }
-    
-    Memory_Block* block = allocate_memory_block(block_size);
-    if (arena->current_block) {
-        arena->total_used_minus_current += arena->current_block->used;
-        block->prev_block = arena->current_block;
-    }
-    arena->current_block = block;
-    arena->prev_used = 0;
-}
-
 // NOTE(Alexander): the absolute_ptr has to be the most recent allocation
 // returned from arena_push_size/_struct, if old allocation is used then
 // it can potentially be wrong due newer memory blocks being created.
@@ -881,6 +862,29 @@ inline umm
 arena_total_used(Memory_Arena* arena) {
     if (!arena->current_block) return 0;
     return arena->current_block->used + arena->total_used_minus_current;
+}
+
+inline void
+arena_grow(Memory_Arena* arena, umm block_size = 0) {
+    if (block_size == 0) {
+        if (arena->min_block_size == 0) {
+            arena->min_block_size = ARENA_DEFAULT_BLOCK_SIZE;
+        }
+        
+        block_size = arena->min_block_size;
+    }
+    
+    Memory_Block* block = allocate_memory_block(block_size);
+    if (arena->current_block) {
+        arena->total_used_minus_current += arena->current_block->used;
+        block->prev_block = arena->current_block;
+    }
+    
+    arena->current_block = block;
+    arena->prev_used = 0;
+    
+    //pln("arena_grow: requested block size %, size used = %", f_umm(block_size), f_umm(arena_total_used(arena)));
+    //DEBUG_log_backtrace();
 }
 
 inline umm
@@ -908,6 +912,7 @@ arena_push_size(Memory_Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT) {
     }
     
     if (offset + size > arena_size) {
+        //pln("offset (%) + size (%) > arena_size (%)", f_umm(offset), f_umm(size), f_umm(arena_size));
         arena_grow(arena);
         offset = arena_aligned_offset(arena, size, align);
     }

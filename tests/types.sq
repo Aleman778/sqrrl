@@ -34,10 +34,10 @@ struct Game_Button_State {
     s32 ended_down;
 };
 
-inline bool
-is_down(Game_Button_State state) {
-    return (bool) state.ended_down;
-}
+//inline bool
+//is_down(Game_Button_State state) {
+//return (bool) state.ended_down;
+//}
 
 struct Game_Controller {
     s32 is_connected; // NOTE(Alexander): controller 0 is always connected

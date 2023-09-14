@@ -452,6 +452,7 @@ match_function_args(Type_Context* tcx,
     
     Function_Match_Result result = {};
     result.accepted = true;
+    result.score = 1;
     
     Type_Function* t_func = &function_type->Function;
     array(Type*)* formal_args = t_func->arg_types;
@@ -460,6 +461,7 @@ match_function_args(Type_Context* tcx,
     
     if (actual_arg_count < t_func->first_default_arg_index ||
         (actual_arg_count > formal_arg_count && !t_func->is_variadic)) {
+        result.score = 0;
         result.accepted = false;
     }
     
@@ -896,7 +898,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 Overloaded_Function_List* overload = &map_get(tcx->overloaded_functions, ident);
                 if (overload && overload->is_valid) {
                     for_array_v(overload->functions, overload_func, _) {
-                        //if (ident == vars_save_cstring("DEBUG_read_tmx_map_data")) {
+                        //if (ident == vars_save_cstring("foo")) {
                         //__debugbreak();
                         //}
                         Function_Match_Result match = match_function_args(tcx, 
@@ -3358,7 +3360,7 @@ type_check_ast_file(Type_Context* tcx, Ast_File* ast_file, Interp* interp) {
                 // but `typedef u32 string_id;` in this case string_id is a type.
                 map_put(tcx->global_type_table, cu->ident, type);
                 map_put(tcx->globals, cu->ident, type);
-            }
+            } 
         }
     }
     // After this we don't mess with the global_type_table anymore!

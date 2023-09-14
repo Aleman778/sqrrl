@@ -90,6 +90,8 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
         return;
     }
     
+    func->code_ptr = buf->data + buf->curr_used;
+    
     Bytecode_Function_Arg* formal_args = function_arg_types(func);
     
     // TODO(Alexander): most  of the code here is windows x64 calling convention specific
@@ -270,7 +272,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index));
             x64_move_memory_to_register(buf, X64_RCX, X64_RSP, register_displacement(x64, bc->arg1_index));
             
-            Bytecode_Type type = register_type(func, bc->arg1_index);
+            Bytecode_Type type = register_type(func, bc->arg0_index);
             switch (type.size) {
                 case 1: {
                     x64_move8_register_to_memory(buf, X64_RAX, 0, X64_RCX);
@@ -352,7 +354,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         
         case BC_RETURN: {
             int res_index = bc->arg0_index;
-            if (res_index > 0) {
+            if (res_index >= 0) {
                 Bytecode_Type type = register_type(func, res_index);
                 x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, res_index), 
                                 type.size, type.flags & BC_FLAG_SIGNED);
@@ -368,6 +370,13 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         // TODO(Alexander): with type flags we don't need separate instructions for U8. S8 etc.
         case BC_EXTEND: {
             Bytecode_Type type = register_type(func, bc->arg0_index);
+            x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index),
+                            type.size, type.flags & BC_FLAG_SIGNED);
+            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
+        } break;
+        
+        case BC_TRUNCATE: {
+            Bytecode_Type type = register_type(func, bc->res_index);
             x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index),
                             type.size, type.flags & BC_FLAG_SIGNED);
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
@@ -494,6 +503,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             } else {
                 // setcc
                 push_u24(buf, x64_setcc_opcodes[insn->opcode - BC_EQ]); 
+                x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
             }
         } break;
         

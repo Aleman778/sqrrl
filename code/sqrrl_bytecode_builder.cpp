@@ -4,14 +4,23 @@ convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
     int result = -1;
     switch (expr->kind) {
         case Ast_Ident: {
+            Type* type = expr->type;
             string_id ident = ast_unwrap_ident(expr);
             if (map_key_exists(bc->locals, ident)) {
                 result = map_get(bc->locals, ident);
-            } else if (map_key_exists(bc->globals, ident)) { 
-                int global_index = map_get(bc->globals, ident);
-                result = bc_instruction_global(bc, global_index);
+                
             } else {
-                unimplemented;
+                if (type->kind == TypeKind_Function && type->Function.unit) {
+                    
+                    //bc_instruction
+                    unimplemented;
+                    
+                } else if (map_key_exists(bc->globals, ident)) { 
+                    int global_index = map_get(bc->globals, ident);
+                    result = bc_instruction_global(bc, global_index);
+                } else {
+                    unimplemented;
+                }
             }
         } break;
         

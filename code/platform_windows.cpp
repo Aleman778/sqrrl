@@ -332,6 +332,103 @@ DEBUG_get_external_procedure_address(cstring library, cstring procedure_name) {
     return GetProcAddress(mod, procedure_name);
 }
 
+global void (*custom_exception_handler)(void) = 0;
+
+cstring
+windows_exception_code_to_string(DWORD exceptionCode) {
+    switch (exceptionCode) {
+        case EXCEPTION_ACCESS_VIOLATION:
+        return "Access violation";
+        case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:
+        return "Array bounds exceeded";
+        case EXCEPTION_BREAKPOINT:
+        return "Breakpoint encountered";
+        case EXCEPTION_DATATYPE_MISALIGNMENT:
+        return "Datatype misalignment";
+        case EXCEPTION_FLT_DENORMAL_OPERAND:
+        return "Floating-point denormal operand";
+        case EXCEPTION_FLT_DIVIDE_BY_ZERO:
+        return "Floating-point divide by zero";
+        case EXCEPTION_FLT_INEXACT_RESULT:
+        return "Floating-point inexact result";
+        case EXCEPTION_FLT_INVALID_OPERATION:
+        return "Floating-point invalid operation";
+        case EXCEPTION_FLT_OVERFLOW:
+        return "Floating-point overflow";
+        case EXCEPTION_FLT_STACK_CHECK:
+        return "Floating-point stack check";
+        case EXCEPTION_FLT_UNDERFLOW:
+        return "Floating-point underflow";
+        case EXCEPTION_ILLEGAL_INSTRUCTION:
+        return "Illegal instruction";
+        case EXCEPTION_IN_PAGE_ERROR:
+        return "In-page I/O error";
+        case EXCEPTION_INT_DIVIDE_BY_ZERO:
+        return "Integer divide by zero";
+        case EXCEPTION_INT_OVERFLOW:
+        return "Integer overflow";
+        case EXCEPTION_PRIV_INSTRUCTION:
+        return "Privileged instruction";
+        case EXCEPTION_STACK_OVERFLOW:
+        return "Stack overflow";
+        // Add more cases for other exception codes as needed
+        default:
+        return "Unknown exception";
+    }
+}
+
+int
+windows_error_handler(_EXCEPTION_POINTERS* info) {
+    DWORD code = info->ExceptionRecord->ExceptionCode;
+    cstring code_message = windows_exception_code_to_string(code);
+    
+    string_builder_push_format(&curr_execution->output,
+                               "Unhandled exception: % (code %)\n",
+                               f_cstring(code_message), f_u64_HEX(code));
+    
+    curr_test->num_failed++;
+    curr_execution->failed = true;
+    //curr_execution->fatal_error = true;
+    if (curr_execution->context) {
+        DEBUG_restore_context(curr_execution->context);
+    }
+    return EXCEPTION_CONTINUE_SEARCH;//EXCEPTION_CONTINUE_EXECUTION;
+}
+
+void*
+DEBUG_create_thread(int (*proc)(void*), void* data) {
+    DWORD thread_id;
+    return CreateThread(0, 0, (LPTHREAD_START_ROUTINE) proc, data, 0, &thread_id);
+}
+
+bool
+DEBUG_join_thread(void* thread_handle, u32 timeout_ms) {
+    DWORD status = WaitForSingleObject(thread_handle, timeout_ms);
+    if (status != WAIT_OBJECT_0) {
+        TerminateThread(thread_handle, 1);
+    }
+    return status == WAIT_OBJECT_0;
+}
+
+void*
+DEBUG_capture_context() {
+    PCONTEXT context = (PCONTEXT) malloc(sizeof(CONTEXT));
+    RtlCaptureContext(context);
+    return context;
+}
+
+void
+DEBUG_restore_context(void* exec_context) {
+    RtlRestoreContext((PCONTEXT) exec_context, 0);
+    free(exec_context);
+}
+
+void
+set_custom_exception_handler(int (*handler)(void)) {
+    AddVectoredExceptionHandler(1, (PVECTORED_EXCEPTION_HANDLER) windows_error_handler);
+    //SetUnhandledExceptionFilter((LPTOP_LEVEL_EXCEPTION_FILTER) handler);
+}
+
 void
 asm_buffer_prepare_for_execute(void* data, umm size) {
     DWORD prev_protect = 0;
@@ -406,6 +503,11 @@ int
 main(int argc, char* argv[]) {
     // Enable UTF-8 encoding
     SetConsoleOutputCP(65001);
+    
+    
+    //LPVOID thread_param = (LPVOID) "hello world";
+    //DWORD thread_id;
+    //HANDLE thread = CreateThread(0, 0, ThreadProc, thread_param, 0, &thread_id);
     
     umm asm_buffer_size = megabytes(3);
     void* asm_buffer = VirtualAlloc(0, asm_buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);

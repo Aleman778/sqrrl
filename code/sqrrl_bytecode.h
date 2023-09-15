@@ -142,7 +142,7 @@ struct Bytecode_Function {
     
     u32 max_caller_arg_count;
     
-    u32 first_insn; // relative pointer to first instruction
+    s32 first_insn; // relative pointer to first instruction
     
     bool return_as_first_arg;
     bool is_imported;
@@ -218,7 +218,7 @@ enum Bytecode_Instruction_Kind {
 #define Bytecode_Instruction_Base \
 Bytecode_Operator opcode; \
 Bytecode_Instruction_Kind kind; \
-u32 next_insn; \
+s32 next_insn; \
 cstring comment
 
 // NOTE(Alexander): this is just a base structure, most are extended

@@ -2,6 +2,7 @@
 @intrinsic extern void __assert(int expr, cstring msg, cstring file, smm line);
 #define assert(expression) __assert(expression, #expression, __FILE__, __LINE__)
 
+
 #include "types.sq"
 
 //#include "second.sq"

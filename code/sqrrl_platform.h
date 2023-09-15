@@ -67,6 +67,16 @@ struct Ast_File;
 
 void DEBUG_add_debug_symbols(Ast_File* ast_file, u8* base_address_ptr);
 
+// NOTE(Alexander): Similar to setjmp/ longjmp
+void* DEBUG_capture_context();
+void DEBUG_restore_context(void* exec_context);
+
+// TODO(Alexander): this is probably not how we want to do multithreading!!!
+void* DEBUG_create_thread(int (*proc)(void*), void* data);
+bool DEBUG_join_thread(void* thread_handle, u32 timeout_ms);
+
+void set_custom_exception_handler(int (*handler)(void));
+
 
 // TODO:
 // * We want to be able to handle virtual memory allocations here.

@@ -29,7 +29,7 @@ intrinsic_test_proc_assert(int expr, cstring msg, cstring file, smm line) {
 
 extern "C" void
 intrinsic_print(cstring format, Var_Args args) {
-    string_builder_push_format(&curr_execution->output, "%, num args = 0", 
+    string_builder_push_format(&curr_execution->output, "%", 
                                f_cstring(format));
 }
 

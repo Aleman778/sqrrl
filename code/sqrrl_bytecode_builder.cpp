@@ -296,20 +296,18 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 int second = -1;
                 
                 if (opcode != BC_NOOP) {
-                    int first = add_bytecode_register(bc, type);
-                    bc_instruction(bc, BC_LOAD, -1, first, first_ptr);
-                    
+                    int first = bc_instruction_load(bc, type, first_ptr);
                     second = convert_expression_to_bytecode(bc, expr->Binary_Expr.second);
-                    int tmp = add_bytecode_register(bc, result_type);
-                    bc_instruction(bc, opcode, tmp, first, second);
+                    result = add_bytecode_register(bc, result_type);
+                    bc_instruction(bc, opcode, result, first, second);
                 } else {
-                    second = convert_expression_to_bytecode(bc, expr->Binary_Expr.second);
+                    result = convert_expression_to_bytecode(bc, expr->Binary_Expr.second);
                 }
                 
                 if (result_type->size > 8) {
-                    bc_instruction(bc, BC_MEMCPY, first_ptr, second, result_type->size);
+                    bc_instruction(bc, BC_MEMCPY, first_ptr, result, result_type->size);
                 } else {
-                    bc_instruction_store(bc, first_ptr, second);
+                    bc_instruction_store(bc, first_ptr, result);
                 }
                 
             } else {

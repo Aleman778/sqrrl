@@ -137,7 +137,7 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     
     // Save HOME registers (TODO: move this it's windows calling convention only)
     // TODO(Alexander): this doens't handle returns larger than 8 bytes
-    for (int i = min((int) func->arg_count - 1, 4); i >= 0; i--) {
+    for (int i = min((int) func->arg_count - 1, 3); i >= 0; i--) {
         X64_Reg dest = int_arg_registers_ccall_windows[i];
         x64_move_register_to_memory(buf, X64_RSP, i*8 + 8, dest);
     }

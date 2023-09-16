@@ -75,7 +75,8 @@ void DEBUG_sleep(u32 time_ms);
 
 // TODO(Alexander): this is probably not how we want to do multithreading!!!
 void* DEBUG_create_thread(int (*proc)(void*), void* data);
-bool DEBUG_join_thread(void* thread_handle, u32 timeout_ms);
+bool DEBUG_join_thread(void* thread_handle);
+bool DEBUG_join_thread_with_timeout(void* thread_handle, u32 timeout_ms);
 
 void set_custom_exception_handler(int (*handler)(void));
 

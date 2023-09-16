@@ -408,7 +408,16 @@ DEBUG_create_thread(int (*proc)(void*), void* data) {
 }
 
 bool
-DEBUG_join_thread(void* thread_handle, u32 timeout_ms) {
+DEBUG_join_thread(void* thread_handle) {
+    DWORD status = WaitForSingleObject(thread_handle, INFINITE);
+    if (status != WAIT_OBJECT_0) {
+        TerminateThread(thread_handle, 1);
+    }
+    return status == WAIT_OBJECT_0;
+}
+
+bool
+DEBUG_join_thread_with_timeout(void* thread_handle, u32 timeout_ms) {
     DWORD status = WaitForSingleObject(thread_handle, timeout_ms);
     if (status != WAIT_OBJECT_0) {
         TerminateThread(thread_handle, 1);

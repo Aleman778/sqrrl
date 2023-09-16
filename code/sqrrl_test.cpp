@@ -296,7 +296,14 @@ run_compiler_tests(string filename,
         fflush(stdout);
         
         void* thread = DEBUG_create_thread(run_test, test);
-        if (!DEBUG_join_thread(thread, 2000)) {
+        
+        bool killed = false;
+        if (is_debugger_present) {
+            DEBUG_join_thread(thread);
+        } else {
+            killed = !DEBUG_join_thread_with_timeout(thread, 2000);
+        }
+        if (killed) {
             if (curr_test) {
                 curr_test->num_failed++;
             }

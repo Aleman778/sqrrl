@@ -440,7 +440,9 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                                                                      __FILE__ ":" S2(__LINE__));
             insn->func_index = func->type_index;
             
-            bc->curr_function->max_caller_arg_count = (u32) array_count(arg_operands);
+            u32 arg_count = (u32) array_count(arg_operands);
+            bc->curr_function->max_caller_arg_count = max(bc->curr_function->max_caller_arg_count,
+                                                          arg_count);
             
             // TODO(Alexander): multiple args
             if (!func->return_as_first_arg && is_valid_type(type->Function.return_type)) {

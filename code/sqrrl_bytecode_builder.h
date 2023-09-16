@@ -73,7 +73,8 @@ to_bytecode_type(Bytecode_Builder* bc, Type* type) {
         
         case TypeKind_Struct:
         case TypeKind_Union: // TODO(Alexander): should structs/ unions be a different type than 64-bit 
-        case TypeKind_Function: {
+        case TypeKind_Function:
+        case TypeKind_Type:{
             result.kind = BC_TYPE_PTR;
             result.size = (s32) align_forward(type->size, type->align);
         } break;

@@ -385,20 +385,30 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             Type* type = expr->Call_Expr.function_type;
             assert(type && type->kind == TypeKind_Function);
             
-            Compilation_Unit* target_cu = type->Function.unit;
-            assert(target_cu && target_cu->bytecode_function);
-            Bytecode_Function* func = target_cu->bytecode_function;
-            
-            if (func->is_intrinsic) {
-                switch (func->intrinsic_id) {
+            if (type->Function.is_intrinsic) {
+                bool handled = false;
+                
+                switch (type->Function.ident) {
                     case Sym_rdtsc: {
                         result = add_bytecode_register(bc, t_s64);
                         bc_instruction(bc, BC_X64_RDTSC, result, -1, -1);
+                        handled = true;
+                    } break;
+                    
+                    case Sym_debug_break: {
+                        bc_instruction(bc, BC_DEBUG_BREAK, -1, -1, -1);
+                        handled = true;
                     } break;
                 }
                 
-                return result;
+                if (handled) {
+                    return result;
+                }
             }
+            
+            Compilation_Unit* target_cu = type->Function.unit;
+            assert(target_cu && target_cu->bytecode_function);
+            Bytecode_Function* func = target_cu->bytecode_function;
             
             int arg_index = 0;
             array(int)* arg_operands = 0;

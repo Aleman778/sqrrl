@@ -2,6 +2,10 @@
 @intrinsic extern void __assert(int expr, cstring msg, cstring file, smm line);
 #define assert(expression) __assert(expression, #expression, __FILE__, __LINE__)
 
+@intrinsic extern void print(cstring format, ...);
+#define pln(format, ...) print(format ## "\n", __VA_ARGS__)
+
+//@intrinsic extern void debug_break();
 
 #include "types.sq"
 

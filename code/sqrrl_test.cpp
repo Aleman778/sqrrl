@@ -27,6 +27,12 @@ intrinsic_test_proc_assert(int expr, cstring msg, cstring file, smm line) {
     return false;
 }
 
+extern "C" void
+intrinsic_print(cstring format, Var_Args args) {
+    string_builder_push_format(&curr_execution->output, "%, num args = 0", 
+                               f_cstring(format));
+}
+
 int
 run_test(void* param) {
     Test_Result* test = (Test_Result*) param;
@@ -158,6 +164,12 @@ run_compiler_tests(string filename,
                     func->is_imported = true;
                     func->code_ptr = &intrinsic_test_proc_assert;
                 }
+                
+                if (cu->ident == Sym_print) {
+                    // Route the __assert to our test case assert
+                    func->is_imported = true;
+                    func->code_ptr = &intrinsic_print;
+                }
             }
             
         } else if (cu->ast->kind == Ast_Assign_Stmt) {
@@ -182,7 +194,7 @@ run_compiler_tests(string filename,
             bool is_main = cu->ident == Sym_main;
             //pln("Building function `%`...", f_type(cu->ast->type));
             convert_function_to_bytecode(&bytecode_builder, cu->bytecode_function, cu->ast,
-                                         false, is_debugger_present && false);
+                                         false, false);
         }
     }
     
@@ -196,6 +208,9 @@ run_compiler_tests(string filename,
                                                                   CompilerTask_Run);
     
     asm_make_executable(asm_buffer, asm_size);
+    
+    String_Builder string_builder_dump_bytecode = {};
+    String_Builder* sb_dump_bytecode = &string_builder_dump_bytecode;
     
     // Collect all the test to run
     map(string_id, Test_Result)* tests = 0;
@@ -222,12 +237,10 @@ run_compiler_tests(string filename,
                     test.interp = &interp;
                     
                     if (decl->type->Function.dump_bytecode && unit->bytecode_function) {
-                        String_Builder sb = {};
-                        string_builder_dump_bytecode_function(&sb, &bytecode_builder.bytecode, 
+                        string_builder_dump_bytecode_function(sb_dump_bytecode,
+                                                              &bytecode_builder.bytecode, 
                                                               unit->bytecode_function);
-                        string s = string_builder_to_string_nocopy(&sb);
-                        pln("\nBytecode:\n%", f_string(s));
-                        string_builder_free(&sb);
+                        
                     }
                     
                     assert(!map_key_exists(tests, unit->ident) && "duplicate test name");
@@ -241,8 +254,12 @@ run_compiler_tests(string filename,
         }
     }
     
-    String_Builder string_builder_test_result = {};
-    String_Builder* sb_test_result = &string_builder_test_result;
+    if (sb_dump_bytecode->data) {
+        string s = string_builder_to_string_nocopy(sb_dump_bytecode);
+        pln("\nBytecode:\n%", f_string(s));
+        string_builder_free(sb_dump_bytecode);
+    }
+    
     
     String_Builder string_builder_failure_log = {};
     String_Builder* sb_failure_log = &string_builder_failure_log;
@@ -250,12 +267,34 @@ run_compiler_tests(string filename,
     // Run tests
     pln("Running % tests...\n", f_smm(map_count(tests)));
     
-    set_custom_exception_handler(0);
+    if (!is_debugger_present) {
+        set_custom_exception_handler(0);
+    }
+    
+    // String builder for building result of particular test
+    String_Builder string_builder_test_result = {};
+    String_Builder* sb_test_result = &string_builder_test_result;
+    string_builder_alloc(sb_test_result, 80);
+    const umm test_name_max_count = 50;;
     
     Test_Result totals = {};
     totals.num_tests = (u32) map_count(tests);
     for_map(tests, it) {
         Test_Result* test = &it->value;
+        string test_name = vars_load_string(it->key);
+        if (test_name.count > test_name_max_count) {
+            test_name.count = test_name_max_count;
+        }
+        
+        // Print out summary for a particular test case
+        string_builder_push_format(sb_test_result, "%", f_string(test_name));
+        for (umm i = test_name.count; i < test_name_max_count + 3; i++) {
+            string_builder_push_char(sb_test_result, '.');
+        }
+        print("%", f_string(string_builder_to_string_nocopy(sb_test_result)));
+        string_builder_clear(sb_test_result);
+        fflush(stdout);
+        
         void* thread = DEBUG_create_thread(run_test, test);
         if (!DEBUG_join_thread(thread, 2000)) {
             if (curr_test) {
@@ -267,56 +306,56 @@ run_compiler_tests(string filename,
                                     "Test ran for too long, possibly an infinte loop\n");
             }
         }
-    }
-    
-    const umm test_name_max_count = 50;;
-    for_map(tests, it) {
-        Test_Result* test = &it->value;
-        string test_name = vars_load_string(it->key);
-        if (test_name.count > test_name_max_count) {
-            test_name.count = test_name_max_count;
-        }
-        
-        for (int mode_index = 0; mode_index < TestExecutionMode_Count; mode_index++) {
-            Test_Execution* exec = &test->exec[mode_index];
-            if ((test->modes & bit(mode_index)) && exec->failed) {
-                string_builder_push(sb_failure_log, "\n\xE2\x9D\x8C ");
-                string_builder_push_format(sb_failure_log, 
-                                           "% failed procedure `%`\n",
-                                           f_cstring(test_execution_names[mode_index]),
-                                           f_string(test_name));
-                
-                if (exec->output.data) {
-                    string s = string_builder_to_string_nocopy(&exec->output);
-                    string_builder_push(sb_failure_log, s);
-                    string_builder_free(&exec->output);
-                }
-            }
-        }
-        
-        // Print out summary for a particular test case
-        string_builder_push_format(sb_test_result, "%", f_string(test_name));
-        for (umm i = test_name.count; i < test_name_max_count + 3; i++) {
-            string_builder_push_char(sb_test_result, '.');
-        }
         
         //if (test->fatal_error) {
         //totals.num_failed++;
         //string_builder_push_format(sb_test_result, " FATAL ERROR! Test crashed!\n");
         if (test->num_tests == 0) {
-            string_builder_push_format(sb_test_result, " WARN! No asserts found!\n");
+            string_builder_push_format(sb_test_result, " WARN! No asserts found!");
             totals.num_skipped++;
         } else if (test->num_failed == 0) {
             totals.num_passed++;
-            string_builder_push_format(sb_test_result, " OK!\n");
+            string_builder_push_format(sb_test_result, " OK!");
         } else {
             totals.num_failed++;
-            string_builder_push_format(sb_test_result, " Failed [%/%]\n", f_u32(test->num_passed), f_u32(test->num_tests));
+            string_builder_push_format(sb_test_result, " Failed [%/%]", f_u32(test->num_passed), f_u32(test->num_tests));
         }
+        pln("%", f_string(string_builder_to_string_nocopy(sb_test_result)));
+        string_builder_clear(sb_test_result);
     }
     
-    pln("%", f_string(string_builder_to_string_nocopy(sb_test_result)));
-    pln("%", f_string(string_builder_to_string_nocopy(sb_failure_log)));
+    for_map(tests, it) {
+        Test_Result* test = &it->value;
+        string test_name = vars_load_string(it->key);
+        
+        for (int mode_index = 0; mode_index < TestExecutionMode_Count; mode_index++) {
+            Test_Execution* exec = &test->exec[mode_index];
+            if ((test->modes & bit(mode_index)) && exec->failed) {
+                string_builder_push_format(sb_failure_log, 
+                                           "- `%` failed (%) with output:\n",
+                                           f_string(test_name),
+                                           f_cstring(test_execution_names[mode_index]));
+            } else if (exec->output.data) {
+                string_builder_push_format(sb_failure_log, 
+                                           "- `%` succeded (%) with output:\n",
+                                           f_string(test_name),
+                                           f_cstring(test_execution_names[mode_index]));
+            }
+            
+            if (exec->output.data) {
+                string s = string_builder_to_string_nocopy(&exec->output);
+                string_builder_push(sb_failure_log, s);
+                if (s.data && s.count > 0 && s.data[s.count - 1] != '\n') {
+                    string_builder_push_char(sb_failure_log, '\n');
+                }
+                string_builder_push_char(sb_failure_log, '\n');
+                string_builder_free(&exec->output);
+            }
+        }
+        
+    }
+    
+    pln("\n%", f_string(string_builder_to_string_nocopy(sb_failure_log)));
     pln("Finished % tests: % passed - % failed - % skipped", 
         f_u32(totals.num_tests),
         f_u32(totals.num_passed), 

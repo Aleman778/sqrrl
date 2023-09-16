@@ -3246,6 +3246,7 @@ type->Function.ident = ident; \
 type->Function.unit = 0; \
 type->Function.interp_intrinsic = interp_intrinsic_fp; \
 type->Function.intrinsic = intrinsic_fp; \
+type->Function.is_intrinsic = true; \
 type->Function.return_type = normalize_basic_types(_return_type); \
 map_put(tcx->global_type_table, ident, type); \
 map_put(tcx->globals, ident, type); \

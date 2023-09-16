@@ -86,6 +86,7 @@ VAR(line)     \
 VAR(undef)    \
 VAR(error)    \
 VAR(main)     \
+VAR(print)    \
 VAR(__string) \
 VAR(__const)  \
 VAR(test_proc) \
@@ -124,6 +125,7 @@ VAR(link)     \
 VAR(link_dynamic) \
 VAR(extern_name) \
 VAR(intrinsic) \
+VAR(debug_break) \
 VAR(rdtsc) \
 VAR(dump_bytecode) \
 VAR(dump_ast) \

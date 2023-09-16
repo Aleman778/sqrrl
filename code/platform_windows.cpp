@@ -395,6 +395,12 @@ windows_error_handler(_EXCEPTION_POINTERS* info) {
     return EXCEPTION_CONTINUE_SEARCH;//EXCEPTION_CONTINUE_EXECUTION;
 }
 
+void
+set_custom_exception_handler(int (*handler)(void)) {
+    AddVectoredExceptionHandler(1, (PVECTORED_EXCEPTION_HANDLER) windows_error_handler);
+    //SetUnhandledExceptionFilter((LPTOP_LEVEL_EXCEPTION_FILTER) handler);
+}
+
 void*
 DEBUG_create_thread(int (*proc)(void*), void* data) {
     DWORD thread_id;
@@ -417,16 +423,15 @@ DEBUG_capture_context() {
     return context;
 }
 
+void 
+DEBUG_sleep(u32 time_ms) {
+    Sleep(time_ms);
+}
+
 void
 DEBUG_restore_context(void* exec_context) {
     RtlRestoreContext((PCONTEXT) exec_context, 0);
     free(exec_context);
-}
-
-void
-set_custom_exception_handler(int (*handler)(void)) {
-    AddVectoredExceptionHandler(1, (PVECTORED_EXCEPTION_HANDLER) windows_error_handler);
-    //SetUnhandledExceptionFilter((LPTOP_LEVEL_EXCEPTION_FILTER) handler);
 }
 
 void

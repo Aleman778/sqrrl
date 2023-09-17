@@ -4,7 +4,7 @@ struct s128 {
     s64 low;
 }
 
-struct v2s {
+struct v2_s32 {
     s32 x;
     s32 y;
 }

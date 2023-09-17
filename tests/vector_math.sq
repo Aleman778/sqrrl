@@ -1,0 +1,20 @@
+#include <test_support.sq>
+
+struct v2 {
+    f32 x, y;
+}
+
+struct v3 {
+    f32 x, y, z;
+}
+
+
+void
+@test_proc
+v3_sum_components() {
+    v3 v;
+    v.x = 2.4f;
+    v.y = 4.8f;
+    v.z = 3.3f;
+    assert(v.x + v.y + v.z == 10.5f);
+}

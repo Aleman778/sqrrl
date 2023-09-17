@@ -52,10 +52,11 @@ convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                     assert(type->kind == TypeKind_Array ||
                            type->Basic.kind == Basic_string && "unsupported type");
                     if (ident == Sym_count) {
-                        Struct_Field_Info info = get_field_info(&type->Struct_Like, ident);
                         int tmp = add_bytecode_register(bc, type);
                         bc_instruction(bc, BC_STRUCT_FIELD, tmp, result, 8);
                         result = tmp;
+                    } else {
+                        unimplemented;
                     }
                 } break;
             }
@@ -72,6 +73,10 @@ convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             int array_index = convert_expression_to_bytecode(bc, expr->Index_Expr.index);
             result = add_bytecode_register(bc, expr->Index_Expr.array->type);
             bc_instruction(bc, BC_ARRAY_INDEX, result, array_ptr, array_index);
+        } break;
+        
+        case Ast_Cast_Expr: {
+            result = convert_type_cast_to_bytecode(bc, expr);
         } break;
         
         default: unimplemented;
@@ -321,7 +326,6 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
         
         case Ast_Aggregate_Expr: {
             Type* type = expr->type;
-            unimplemented;
             
             Exported_Data base = {};
             if (is_valid_ast(expr->Aggregate_Expr.elements->Compound.node)) {
@@ -358,6 +362,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                     
                     if (assign->kind != Ast_Value && 
                         assign->kind != Ast_Aggregate_Expr) {
+                        unimplemented;
                         //pln("Adding non-constant field: %", f_ast(assign));
                         
                         //if (result.kind == BytecodeOperand_memory) { 
@@ -458,110 +463,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
         } break;
         
         case Ast_Cast_Expr: {
-            Type* t_dest = expr->type;
-            Type* t_src = expr->Cast_Expr.expr->type;
-            if (t_src->kind == TypeKind_Pointer) {
-                t_src = t_s64;
-            }
-            
-            if (t_dest->kind == TypeKind_Pointer) {
-                t_dest = t_s64;
-            }
-            
-            if (t_src->kind == TypeKind_Enum) { 
-                t_src = t_src->Enum.type;
-            }
-            
-            if (t_dest->kind == TypeKind_Enum) { 
-                t_dest = t_dest->Enum.type;
-            }
-            
-            Bytecode_Type dest_type = to_bytecode_type(bc, expr->type);
-            int src = convert_expression_to_bytecode(bc, expr->Cast_Expr.expr);
-            result = src;
-            
-            if (t_dest->kind == TypeKind_Basic && t_src->kind == TypeKind_Basic) {
-                if (t_dest->Basic.flags & BasicFlag_Boolean &&
-                    t_src->Basic.flags & BasicFlag_Integer) {
-#if 0 
-                    result = ic_reg(IC_U8);
-                    
-                    Ic_Basic_Block* bb_else = ic_basic_block();
-                    Ic_Basic_Block* bb_exit = ic_basic_block();
-                    
-                    convert_ic_to_conditional_jump(cu, cu->ic_last, src, bb_else);
-                    ic_mov(cu, result, ic_imm(IC_U8, 1));
-                    ic_jump(cu, IC_JMP, bb_exit);
-                    ic_label(cu, bb_else);
-                    ic_mov(cu, result, ic_imm(IC_U8, 0));
-                    ic_label(cu, bb_exit);
-#endif
-                    unimplemented;
-                    
-                } else if (t_dest->Basic.flags & BasicFlag_Integer &&
-                           t_src->Basic.flags & BasicFlag_Integer) {
-                    if (t_dest->size < t_src->size) {
-                        result = add_bytecode_register(bc, t_dest);
-                        bc_instruction(bc, BC_TRUNCATE, result, src, -1);
-                        
-                    } else if (t_dest->size > t_src->size) {
-                        result = add_bytecode_register(bc, t_dest);
-                        bc_instruction(bc, BC_EXTEND, result, src, -1);
-                    }
-                    
-                } else if (t_dest->Basic.flags & BasicFlag_Integer &&
-                           t_src->Basic.flags & BasicFlag_Floating) {
-                    result = add_bytecode_register(bc, t_dest);
-                    bc_instruction(bc, BC_FLOAT_TO_INT, result, src, -1);
-                    
-                } else if (t_dest->Basic.flags & BasicFlag_Floating &&
-                           t_src->Basic.flags & BasicFlag_Integer) {
-                    result = add_bytecode_register(bc, t_dest);
-                    bc_instruction(bc, BC_INT_TO_FLOAT, result, src, -1);
-                    
-                } else if (t_dest->Basic.flags & BasicFlag_Floating &&
-                           t_src->Basic.flags & BasicFlag_Floating) {
-                    result = add_bytecode_register(bc, t_dest);
-                    bc_instruction(bc, BC_FLOAT_TO_FLOAT, result, src, -1);
-                    
-                } else if (t_src->Basic.kind == Basic_cstring) {
-                    // noop
-                    
-                } else {
-                    unimplemented;
-                }
-                
-            } else if (t_dest->kind == TypeKind_Array && 
-                       t_src->kind == TypeKind_Array) {
-                
-                if (t_src->Array.capacity > 0) {
-                    if (t_dest->Array.capacity == 0) {
-                        // convert inplace array to "wide"-pointer array
-                        // TODO(Alexander): we can improve this by e.g. clearing it and 
-                        // also passing multiple values as arguments
-                        //result = push_bytecode_stack(bc, 16, 8);
-                        
-                        //Bytecode_Binary* copy_ptr = add_insn_t(bc, BC_ADDR_OF, Binary);
-                        //copy_ptr->type = bc_instruction_pointer_type(bc);
-                        //copy_ptr->first = add_bytecode_register(bc);
-                        //copy_ptr->second = src;
-                        //bc_instruction_store(bc, t_void_ptr, result, copy_ptr->first);
-                        
-                        //Bytecode_Binary* store_count = add_insn_t(bc, BC_MOV, Binary);
-                        //store_count->type = BytecodeType_i64;
-                        //store_count->first = result;
-                        //store_count->first.memory_offset += 8;
-                        //store_count->second.kind = BytecodeOperand_const;
-                        //store_count->second.const_i64 = t_src->Array.capacity;
-                        unimplemented;
-                        // TODO(Alexander): set capacity if dynamic array
-                    }
-                } else {
-                    unimplemented;
-                }
-            } else {
-                unimplemented;
-            }
+            result = convert_type_cast_to_bytecode(bc, expr);
         } break;
         
         case Ast_Index_Expr:
@@ -577,6 +479,116 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
         default: {
             unimplemented;
         } break;
+    }
+    
+    return result;
+}
+
+int
+convert_type_cast_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
+    Type* t_dest = expr->type;
+    Type* t_src = expr->Cast_Expr.expr->type;
+    if (t_src->kind == TypeKind_Pointer) {
+        t_src = t_s64;
+    }
+    
+    if (t_dest->kind == TypeKind_Pointer) {
+        t_dest = t_s64;
+    }
+    
+    if (t_src->kind == TypeKind_Enum) { 
+        t_src = t_src->Enum.type;
+    }
+    
+    if (t_dest->kind == TypeKind_Enum) { 
+        t_dest = t_dest->Enum.type;
+    }
+    
+    Bytecode_Type dest_type = to_bytecode_type(bc, expr->type);
+    int src = convert_expression_to_bytecode(bc, expr->Cast_Expr.expr);
+    int result = src;
+    
+    if (t_dest->kind == TypeKind_Basic && t_src->kind == TypeKind_Basic) {
+        if (t_dest->Basic.flags & BasicFlag_Boolean &&
+            t_src->Basic.flags & BasicFlag_Integer) {
+#if 0 
+            result = ic_reg(IC_U8);
+            
+            Ic_Basic_Block* bb_else = ic_basic_block();
+            Ic_Basic_Block* bb_exit = ic_basic_block();
+            
+            convert_ic_to_conditional_jump(cu, cu->ic_last, src, bb_else);
+            ic_mov(cu, result, ic_imm(IC_U8, 1));
+            ic_jump(cu, IC_JMP, bb_exit);
+            ic_label(cu, bb_else);
+            ic_mov(cu, result, ic_imm(IC_U8, 0));
+            ic_label(cu, bb_exit);
+#endif
+            unimplemented;
+            
+        } else if (t_dest->Basic.flags & BasicFlag_Integer &&
+                   t_src->Basic.flags & BasicFlag_Integer) {
+            if (t_dest->size < t_src->size) {
+                result = add_bytecode_register(bc, t_dest);
+                bc_instruction(bc, BC_TRUNCATE, result, src, -1);
+                
+            } else if (t_dest->size > t_src->size) {
+                result = add_bytecode_register(bc, t_dest);
+                bc_instruction(bc, BC_EXTEND, result, src, -1);
+            }
+            
+        } else if (t_dest->Basic.flags & BasicFlag_Integer &&
+                   t_src->Basic.flags & BasicFlag_Floating) {
+            result = add_bytecode_register(bc, t_dest);
+            bc_instruction(bc, BC_FLOAT_TO_INT, result, src, -1);
+            
+        } else if (t_dest->Basic.flags & BasicFlag_Floating &&
+                   t_src->Basic.flags & BasicFlag_Integer) {
+            result = add_bytecode_register(bc, t_dest);
+            bc_instruction(bc, BC_INT_TO_FLOAT, result, src, -1);
+            
+        } else if (t_dest->Basic.flags & BasicFlag_Floating &&
+                   t_src->Basic.flags & BasicFlag_Floating) {
+            result = add_bytecode_register(bc, t_dest);
+            bc_instruction(bc, BC_FLOAT_TO_FLOAT, result, src, -1);
+            
+        } else if (t_src->Basic.kind == Basic_cstring) {
+            // noop
+            
+        } else {
+            unimplemented;
+        }
+        
+    } else if (t_dest->kind == TypeKind_Array && 
+               t_src->kind == TypeKind_Array) {
+        
+        if (t_src->Array.capacity > 0) {
+            if (t_dest->Array.capacity == 0) {
+                // convert inplace array to "wide"-pointer array
+                // TODO(Alexander): we can improve this by e.g. clearing it and 
+                // also passing multiple values as arguments
+                //result = push_bytecode_stack(bc, 16, 8);
+                
+                //Bytecode_Binary* copy_ptr = add_insn_t(bc, BC_ADDR_OF, Binary);
+                //copy_ptr->type = bc_instruction_pointer_type(bc);
+                //copy_ptr->first = add_bytecode_register(bc);
+                //copy_ptr->second = src;
+                //bc_instruction_store(bc, t_void_ptr, result, copy_ptr->first);
+                
+                //Bytecode_Binary* store_count = add_insn_t(bc, BC_MOV, Binary);
+                //store_count->type = BytecodeType_i64;
+                //store_count->first = result;
+                //store_count->first.memory_offset += 8;
+                //store_count->second.kind = BytecodeOperand_const;
+                //store_count->second.const_i64 = t_src->Array.capacity;
+                unimplemented;
+                // TODO(Alexander): set capacity if dynamic array
+            }
+        } else {
+            unimplemented;
+        }
+    } else {
+        unimplemented;
     }
     
     return result;

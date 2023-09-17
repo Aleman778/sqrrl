@@ -1,0 +1,41 @@
+
+int
+find_smallest_in_fixed_array([]int v) {
+    if (v.count == 0) {
+        return 0;
+    }
+    
+    int result = v[0];
+    for (int i = 1; i < v.count; i++) {
+        if (v[i] < result) {
+            result = v[i];
+        }
+    }
+    return result;
+}
+
+int
+sum_of_fixed_array([]int v) {
+    int sum = 0;
+    for (int i = 0; i < v.count; i++) {
+        sum += v[i];
+    }
+    return sum;
+}
+
+void
+@test_proc
+fixed_array_compute_sum() {
+    []int v = { 10, 20, 30, 40 };
+    int sum = sum_of_fixed_array(([]int) v);
+    assert(sum == 100);
+}
+
+
+void
+@test_proc
+fixed_array_compute_smallest() {
+    []int v = { 20, 10, 4, 30 };
+    int smallest = find_smallest_in_fixed_array(([]int) v);
+    assert(smallest == 4);
+}

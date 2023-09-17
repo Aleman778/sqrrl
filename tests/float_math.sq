@@ -1,0 +1,20 @@
+#include <test_support.sq>
+
+void
+@test_proc
+f64_add_assign() {
+    f64 x = 342.663;
+    x += 432.55;
+    assert(x == 775.213);
+}
+
+void
+@test_proc
+f64_compare() {
+    f64 x = 435.342;
+    int y = (int) x;
+    if (x == 435.342) {
+        y = 500;
+    }
+    assert(y == 500);
+}

@@ -56,16 +56,7 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             wasm_store_register(buf, register_type(func, bc_insn->res_index), bc_insn->res_index);
         } break;
         
-        case BC_STRUCT_FIELD: {
-            wasm_prepare_store(buf);
-            wasm_push_stack_pointer(buf);
-            wasm_i64_load(buf, bc_insn->arg0_index*8);
-            wasm_i64_const(buf, bc_insn->arg1_index);
-            wasm_i64_add(buf);
-            wasm_store_register(buf, register_type(func, bc_insn->res_index), bc_insn->res_index);
-        } break;
-        
-        case BC_ARRAY_INDEX: {
+        case BC_ARRAY_ACCESS: {
             Bytecode_Type ptr_type = register_type(func, bc_insn->arg0_index);
             wasm_prepare_store(buf);
             wasm_push_stack_pointer(buf);
@@ -76,6 +67,15 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
                 wasm_i64_const(buf, ptr_type.size);
                 wasm_i64_mul(buf);
             }
+            wasm_i64_add(buf);
+            wasm_store_register(buf, register_type(func, bc_insn->res_index), bc_insn->res_index);
+        } break;
+        
+        case BC_FIELD_ACCESS: {
+            wasm_prepare_store(buf);
+            wasm_push_stack_pointer(buf);
+            wasm_i64_load(buf, bc_insn->arg0_index*8);
+            wasm_i64_const(buf, bc_insn->arg1_index);
             wasm_i64_add(buf);
             wasm_store_register(buf, register_type(func, bc_insn->res_index), bc_insn->res_index);
         } break;

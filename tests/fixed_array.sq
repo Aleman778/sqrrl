@@ -1,4 +1,74 @@
 
+void
+@test_proc
+fixed_array_count() {
+    []int v = { 10, 20, 30, 40 };
+    []int w = cast([]int) v; // trick the compiler into thinking it's not known sized array
+    assert(w.count == 4);
+}
+
+void
+@test_proc
+fixed_array_count_inplace() {
+    []int v = { 10, 20, 30, 40 };
+    assert(v.count == 4);
+}
+
+void
+@test_proc
+fixed_array_access() {
+    []int v = { 10, 20, 30, 40 };
+    []int w = cast([]int) v; // trick the compiler into thinking it's not known sized array
+    assert(w[0] == 10);
+    assert(w[2] == 30);
+}
+
+void
+@test_proc
+fixed_array_access_inplace() {
+    []int v = { 10, 20, 30, 40 };
+    assert(v[0] == 10);
+    assert(v[2] == 30);
+}
+
+void
+@test_proc
+fixed_array_access_var_index() {
+    []int v = { 10, 20, 30, 40 };
+    []int w = cast([]int) v; // trick the compiler into thinking it's not known sized array
+    int i0 = 0;
+    int i2 = 2;
+    assert(w[i0] == 10);
+    assert(w[i2] == 30);
+}
+
+void
+@test_proc
+fixed_array_access_var_index_inplace() {
+    []int v = { 10, 20, 30, 40 };
+    int i0 = 0;
+    int i2 = 2;
+    assert(v[i0] == 10);
+    assert(v[i2] == 30);
+}
+
+void
+@test_proc
+fixed_array_access_via_ptr() {
+    []int v = { 10, 20, 30, 40 };
+    []int w = cast([]int) v; // trick the compiler into thinking it's not known sized array
+    assert(*(w.data + 2) == 30);
+    assert(*(w.data + 2) == 30);
+}
+
+void
+@test_proc
+fixed_array_access_via_ptr_inplace() {
+    []int v = { 10, 20, 30, 40 };
+    assert(*(v.data + 2) == 30);
+    assert(*(v.data + 2) == 30);
+}
+
 int
 find_smallest_in_fixed_array([]int v) {
     if (v.count == 0) {
@@ -30,7 +100,6 @@ fixed_array_compute_sum() {
     int sum = sum_of_fixed_array(([]int) v);
     assert(sum == 100);
 }
-
 
 void
 @test_proc

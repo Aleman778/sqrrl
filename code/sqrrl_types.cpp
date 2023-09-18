@@ -127,7 +127,8 @@ export_type_info(Data_Packer* packer, Type* type) {
                 push_relocation(packer, add_offset(result, offset), exported_type);
                 
                 type_info->Array.elem_size = type->Array.type->size;
-                type_info->Array.fixed_count = type->Array.is_inplace ? type->Array.capacity : -1;
+                type_info->Array.fixed_count = (type->Array.kind == ArrayKind_Fixed_Inplace ?
+                                                type->Array.capacity : -1);
             } break;
             
             case TypeKind_Enum: {

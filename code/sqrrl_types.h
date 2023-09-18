@@ -156,11 +156,16 @@ struct Type_Function {
     b32 dump_ast;
 };
 
+enum Array_Kind {
+    ArrayKind_Fixed_Inplace,
+    ArrayKind_Fixed,
+    ArrayKind_Dynamic,
+};
+
 struct Type_Array {
     Type* type;
     smm capacity;
-    b32 is_dynamic;
-    b32 is_inplace; // NOTE(Alexander): meaning we store array directly rather than a pointer
+    Array_Kind kind;
 };
 
 struct Type {
@@ -317,7 +322,7 @@ string_builder_push(String_Builder* sb, Type* type, bool multiline=false) {
             if (type->Array.capacity > 0) {
                 string_builder_push_format(sb, "%", f_smm(type->Array.capacity));
             }
-            if (type->Array.is_dynamic) {
+            if (type->Array.kind == ArrayKind_Dynamic) {
                 string_builder_push(sb, "..");
             }
             string_builder_push(sb, "]");

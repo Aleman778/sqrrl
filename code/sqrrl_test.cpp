@@ -33,6 +33,20 @@ intrinsic_print(cstring format, Var_Args args) {
                                f_cstring(format));
 }
 
+void
+test_exception_handler(u32 exception_code, string message) {
+    string_builder_push_format(&curr_execution->output,
+                               "Unhandled exception: % (code %)\n",
+                               f_string(message), f_u64_HEX(exception_code));
+    
+    curr_test->num_failed++;
+    curr_execution->failed = true;
+    //curr_execution->fatal_error = true;
+    if (curr_execution->context) {
+        DEBUG_restore_context(curr_execution->context);
+    }
+}
+
 int
 run_test(void* param) {
     Test_Result* test = (Test_Result*) param;
@@ -268,7 +282,7 @@ run_compiler_tests(string filename,
     pln("Running % tests...\n", f_smm(map_count(tests)));
     
     if (!is_debugger_present) {
-        set_custom_exception_handler(0);
+        DEBUG_begin_test_exception_handler();
     }
     
     // String builder for building result of particular test

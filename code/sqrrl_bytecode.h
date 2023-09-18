@@ -19,8 +19,8 @@ enum Bytecode_Operator {
     // Pointers
     BC_LOCAL, // (int size, int align) -> void*
     BC_GLOBAL,
-    BC_ARRAY_INDEX,
-    BC_STRUCT_FIELD,
+    BC_ARRAY_ACCESS,
+    BC_FIELD_ACCESS,
     
     // Memory
     BC_STORE,
@@ -107,7 +107,7 @@ enum Bytecode_Type_Kind {
 
 enum Byytecode_Type_Flags {
     BC_FLAG_SIGNED = bit(0),
-    BC_FLAG_FUNC_ARG = bit(1),
+    BC_FLAG_RVALUE = bit(1), // TODO(Alexander): this maybe stupid but it's used to tell if BC_TYPE_PTR already loaded and don't need another load instruction.
 };
 
 struct Bytecode_Type {
@@ -187,6 +187,7 @@ struct Bytecode_Global {
 };
 
 struct Bytecode {
+    
     array(Bytecode_Import)* imports;
     
     array(Bytecode_Function*)* functions;
@@ -246,6 +247,7 @@ struct Bytecode_Binary {
         f32 const_f32;
         f64 const_f64;
     };
+    int stride; // TODO(Alexander): optimize this, only used for ARRAY_INDEX
 };
 
 struct Bytecode_Call {

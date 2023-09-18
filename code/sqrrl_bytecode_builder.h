@@ -23,6 +23,8 @@ int convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr);
 
 int convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr);
 
+int convert_type_cast_to_bytecode(Bytecode_Builder* bc, Ast* expr);
+
 void convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, s32 continue_label);
 
 Bytecode_Function* convert_function_to_bytecode(Bytecode_Builder* bc, Bytecode_Function* func, Ast* ast,
@@ -60,11 +62,12 @@ to_bytecode_type(Bytecode_Builder* bc, Type* type) {
                 
                 case Basic_string: {
                     result.kind = BC_TYPE_PTR;
+                    result.size = 8;
                 } break;
                 
                 case Basic_cstring: {
                     result.kind = BC_TYPE_PTR;
-                    result.size = 1;
+                    result.size = 8;
                 } break;
                 
                 default: unimplemented; break;
@@ -72,22 +75,13 @@ to_bytecode_type(Bytecode_Builder* bc, Type* type) {
         } break;
         
         case TypeKind_Struct:
-        case TypeKind_Union: // TODO(Alexander): should structs/ unions be a different type than 64-bit 
+        case TypeKind_Union: 
         case TypeKind_Function:
-        case TypeKind_Type:{
+        case TypeKind_Type:
+        case TypeKind_Array:
+        case TypeKind_Pointer:{
             result.kind = BC_TYPE_PTR;
-            result.size = (s32) align_forward(type->size, type->align);
-        } break;
-        
-        case TypeKind_Array: {
-            Type* elem_type = type->Array.type;
-            result.kind = BC_TYPE_PTR;
-            result.size = (s32) align_forward(elem_type->size, elem_type->align);
-        } break;
-        
-        case TypeKind_Pointer: {
-            result.kind = BC_TYPE_PTR;
-            result.size = (s32) align_forward(type->Pointer->size, type->Pointer->align);
+            result.size = type->size;
         } break;
         
         case TypeKind_Enum: {
@@ -197,13 +191,13 @@ _bc_instruction_load(bc, type, src, __FILE__ ":" S2(__LINE__))
 inline int 
 _bc_instruction_load(Bytecode_Builder* bc, Type* type, int src, cstring comment) {
     Bytecode_Type bc_type = register_type(bc->curr_function, src);
-    assert(bc_type.kind == BC_TYPE_PTR && "expected lvalue to load");
+    assert(bc_type.kind == BC_TYPE_PTR && "expected BC_TYPE_PTR to load");
     
     Bytecode_Binary* insn = add_insn_t(bc, BC_LOAD, Binary);
     insn->res_index = add_bytecode_register(bc, type);
     insn->arg0_index = src;
     insn->arg1_index = -1;
-    insn->comment = comment; // TODO(Alexander): add comment
+    insn->comment = comment;
     return insn->res_index;
 }
 
@@ -218,6 +212,23 @@ _bc_instruction_store(Bytecode_Builder* bc, int dest, int src,
     result->arg0_index = dest;
     result->arg1_index = src;
     result->comment = comment;
+}
+
+#define bc_instruction_array_accesss(bc, type, base, index) \
+_bc_instruction_array_accesss(bc, type, base, index, __FILE__ ":" S2(__LINE__))
+
+inline int 
+_bc_instruction_array_accesss(Bytecode_Builder* bc, Type* type, int base, int index, cstring comment) {
+    Bytecode_Type bc_type = register_type(bc->curr_function, base);
+    assert(bc_type.kind == BC_TYPE_PTR && "expected array base to be BC_TYPE_PTR");
+    
+    Bytecode_Binary* insn = add_insn_t(bc, BC_ARRAY_ACCESS, Binary);
+    insn->res_index = add_bytecode_register(bc, t_void_ptr);
+    insn->arg0_index = base;
+    insn->arg1_index = index;
+    insn->stride = (int) align_forward(type->size, type->align);
+    insn->comment = comment;
+    return insn->res_index;
 }
 
 #define bc_instruction_branch(bc, label_index, cond) \
@@ -241,16 +252,23 @@ bc_instruction_global(Bytecode_Builder* bc, int global_index) {
     return result->res_index;
 }
 
+#define bc_instruction_local(bc, type) \
+_bc_instruction_local(bc, type, __FILE__ ":" S2(__LINE__))
+
 inline int
-add_bytecode_local(Bytecode_Builder* bc, Type* type) {
+_bc_instruction_local(Bytecode_Builder* bc, Type* type, cstring comment) {
     assert(bc->curr_function);
     int result = bc->curr_function->register_count++;
     Bytecode_Type reg_type = {};
     reg_type.kind = BC_TYPE_PTR;
-    reg_type.size = (s32) align_forward(type->size, type->align);
+    if (type->kind == TypeKind_Array && type->Array.kind == ArrayKind_Fixed_Inplace) {
+        reg_type.size = (s32) align_forward(type->Array.type->size, type->Array.type->align);
+    } else {
+        reg_type.size = (s32) align_forward(type->size, type->align);
+    }
     array_push(bc->curr_function->register_types, reg_type);
     
-    bc_instruction(bc, BC_LOCAL, result, type->size, type->align);
+    _bc_instruction(bc, BC_LOCAL, result, type->size, type->align, comment);
     return result;
 }
 

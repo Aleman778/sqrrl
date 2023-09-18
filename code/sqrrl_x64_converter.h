@@ -153,7 +153,7 @@ global const X64_Reg float_arg_registers_ccall_windows[] {
 
 global const u32 x64_setcc_opcodes[] = {
     0xC0940F, 0xC0950F, 0xC0970F, 0xC0930F, 0xC0920F,
-    0xC0960F, 0xC09F0F, 0xC09D0F, 0xC09C0F, 0xC09E0F
+    0xC0960F, 0xC09F0F, 0xC09D0F, 0xC09C0F, 0xC0950F
 };
 
 global const u16 x64_jcc_opcodes[] = {

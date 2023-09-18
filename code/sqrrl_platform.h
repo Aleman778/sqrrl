@@ -78,8 +78,11 @@ void* DEBUG_create_thread(int (*proc)(void*), void* data);
 bool DEBUG_join_thread(void* thread_handle);
 bool DEBUG_join_thread_with_timeout(void* thread_handle, u32 timeout_ms);
 
-void set_custom_exception_handler(int (*handler)(void));
-
+#if BUILD_TEST
+void* windows_test_handler = 0;
+void DEBUG_begin_test_exception_handler();
+void DEBUG_end_test_exception_handler();
+#endif // BUILD_TEST
 
 // TODO:
 // * We want to be able to handle virtual memory allocations here.
@@ -90,6 +93,8 @@ void set_custom_exception_handler(int (*handler)(void));
 /***************************************************************************
  * Services that the compiler provides to the platform layer
  ***************************************************************************/
+
+void test_exception_handler(u32 exception_code, string message);
 
 void
 platform_error(string message) {

@@ -198,6 +198,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                 x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
             } else {
                 // REX.W + C7 /0 id 	MOV r/m64, imm32 	MI
+                x64_rex(buf, REX_W);
                 push_u8(buf, 0xC7);
                 s64 displacement = register_displacement(x64, bc->res_index);
                 x64_modrm(buf, 0, X64_RSP, displacement, 0);
@@ -248,21 +249,22 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
         } break;
         
-        case BC_STRUCT_FIELD: {
+        case BC_ARRAY_ACCESS: {
+            // TODO(Alexander): HACK we should utilize SIB somehow!
             x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index));
-            x64_add64_immediate(buf, X64_RAX, bc->arg1_index);
+            Bytecode_Type index_type = register_type(func, bc->arg1_index);
+            bool is_signed = index_type.flags & BC_FLAG_SIGNED;
+            x64_move_extend(buf, X64_RCX, X64_RSP, register_displacement(x64, bc->arg1_index), index_type.size, is_signed);
+            if (bc->stride > 1) {
+                x64_mul64_immediate(buf, X64_RCX, X64_RCX, bc->stride);
+            }
+            x64_add64(buf, X64_RAX, X64_RCX);
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
         } break;
         
-        case BC_ARRAY_INDEX: {
-            // TODO(Alexander): HACK we should utilize SIB somehow!
+        case BC_FIELD_ACCESS: {
             x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index));
-            x64_move_memory_to_register(buf, X64_RCX, X64_RSP, register_displacement(x64, bc->arg1_index));
-            Bytecode_Type type = register_type(func, bc->arg0_index);
-            if (type.size > 1) {
-                x64_mul64_immediate(buf, X64_RCX, X64_RCX, type.size);
-            }
-            x64_add64(buf, X64_RAX, X64_RCX);
+            x64_add64_immediate(buf, X64_RAX, bc->arg1_index);
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
         } break;
         

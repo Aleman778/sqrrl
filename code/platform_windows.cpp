@@ -377,29 +377,30 @@ windows_exception_code_to_string(DWORD exceptionCode) {
     }
 }
 
+#if BUILD_TEST
 int
-windows_error_handler(_EXCEPTION_POINTERS* info) {
+windows_test_exception_handler(_EXCEPTION_POINTERS* info) {
     DWORD code = info->ExceptionRecord->ExceptionCode;
     cstring code_message = windows_exception_code_to_string(code);
-    
-    string_builder_push_format(&curr_execution->output,
-                               "Unhandled exception: % (code %)\n",
-                               f_cstring(code_message), f_u64_HEX(code));
-    
-    curr_test->num_failed++;
-    curr_execution->failed = true;
-    //curr_execution->fatal_error = true;
-    if (curr_execution->context) {
-        DEBUG_restore_context(curr_execution->context);
-    }
+    test_exception_handler(code, string_lit(code_message));
     return EXCEPTION_CONTINUE_SEARCH;//EXCEPTION_CONTINUE_EXECUTION;
 }
 
 void
-set_custom_exception_handler(int (*handler)(void)) {
-    AddVectoredExceptionHandler(1, (PVECTORED_EXCEPTION_HANDLER) windows_error_handler);
-    //SetUnhandledExceptionFilter((LPTOP_LEVEL_EXCEPTION_FILTER) handler);
+DEBUG_begin_test_exception_handler() {
+    if (!windows_test_handler) {
+        windows_test_handler =
+            AddVectoredExceptionHandler(1, (PVECTORED_EXCEPTION_HANDLER) windows_test_exception_handler);
+    }
 }
+
+void
+DEBUG_end_test_exception_handler() {
+    if (windows_test_handler) {
+        RemoveVectoredExceptionHandler(windows_test_handler);
+    }
+} 
+#endif // BUILD_TEST
 
 void*
 DEBUG_create_thread(int (*proc)(void*), void* data) {

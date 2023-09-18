@@ -34,7 +34,7 @@ value_store_in_memory(Type* type, void* dest, Value_Data src) {
         } break;
         
         case TypeKind_Array: {
-            if (type->Array.is_inplace) {
+            if (type->Array.kind == ArrayKind_Fixed_Inplace) {
                 memcpy(dest, src.data, type->size);
             } else {
                 // NOTE(Alexander): ugh little bit ugly hack to get this to work

@@ -1148,7 +1148,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                         } break;
                         
                         case Sym_capacity: {
-                            if (type->Array.is_dynamic) {
+                            if (type->Array.kind == ArrayKind_Dynamic) {
                                 result = normalize_basic_types(t_smm);
                             }
                         } break;
@@ -1211,7 +1211,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     }
                 }
                 
-                if (parent_type->Array.capacity > 0) {
+                if (parent_type->Array.kind == ArrayKind_Fixed_Inplace) {
                     if (parent_type->Array.capacity < count) {
                         if (report_error) {
                             type_error(tcx, string_print("array literal expects at least `%` values, found `%`",
@@ -1222,11 +1222,12 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     }
                 } else {
                     parent_type->Array.capacity = count;
-                    if (!parent_type->Array.is_dynamic) {
+                    if (parent_type->Array.kind != ArrayKind_Dynamic) {
                         if (parent_type->Array.capacity > 0) {
-                            parent_type->Array.is_inplace = true;
+                            parent_type->Array.kind = ArrayKind_Fixed_Inplace;
                             parent_type->size = (s32) (parent_type->Array.type->size * 
                                                        parent_type->Array.capacity);
+                            parent_type->align = parent_type->Array.type->align;
                         } else {
                             if (report_error) {
                                 // TODO(Alexander): improve this error message
@@ -1234,6 +1235,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                                            expr->span);
                             }
                         }
+                    } else {
+                        unimplemented;
                     }
                 }
                 
@@ -1826,11 +1829,10 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             if (ast->Array_Type.shape) {
                 Value capacity_value = constant_folding_of_expressions(tcx, ast->Array_Type.shape);
                 
-                if (is_integer(capacity_value)) {
-                    capacity = value_to_smm(capacity_value);
-                } else {
+                capacity = value_to_smm(capacity_value);
+                if (!is_integer(capacity_value) || capacity_value.data.signed_int <= 0) {
                     if (report_error) {
-                        type_error(tcx, string_lit("array shape should be an integer"), ast->span);
+                        type_error(tcx, string_lit("array shape should be an integer larger than 0"), ast->span);
                     }
                     result.type = 0;
                     return result;
@@ -1842,21 +1844,24 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 result.type->kind = TypeKind_Array;
                 result.type->Array.type = elem_type;
                 result.type->Array.capacity = capacity;
-                result.type->Array.is_dynamic = ast->Array_Type.is_dynamic;
                 
-                if (!result.type->Array.is_dynamic && result.type->Array.capacity > 0) {
+                bool is_dynamic = ast->Array_Type.is_dynamic;
+                if (!is_dynamic && capacity > 0) {
+                    result.type->Array.kind = ArrayKind_Fixed_Inplace;
                     // NOTE(Alexander): fixed size arrays with known size should be allocated directly
                     // TODO(Alexander): arch dep
                     result.type->size = (s32) (elem_type->size*result.type->Array.capacity);
                     result.type->align = elem_type->align;
-                    result.type->Array.is_inplace = true;
+                    
                     //result.type->size = elem_type->size * (s32) result.type->Array.capacity;
                     //result.type->align = elem_type->align;
                 } else {
+                    
+                    result.type->Array.kind = is_dynamic ? ArrayKind_Dynamic : ArrayKind_Fixed;
                     result.type->size = sizeof(void*) + sizeof(smm);
                     // TODO(Alexander): for dynamic arrays we probably just want a pointer to this struct
                     //                  to avoid dangling pointers from reallocations!
-                    if (result.type->Array.is_dynamic) {
+                    if (is_dynamic) {
                         result.type->size += sizeof(smm);
                     }
                     result.type->align = alignof(void*);
@@ -2704,11 +2709,12 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool is_rhs_value
         case TypeKind_Array: {
             bool success = type_equals(lhs->Array.type, rhs->Array.type);
             
-            if (lhs->Array.capacity != rhs->Array.capacity) {
+            if (lhs->Array.kind != rhs->Array.kind) {
                 success = false;
             }
             
-            if (lhs->Array.is_dynamic != rhs->Array.is_dynamic) {
+            if (lhs->Array.kind == ArrayKind_Fixed_Inplace &&
+                lhs->Array.capacity != rhs->Array.capacity) {
                 success = false;
             }
             

@@ -386,6 +386,7 @@ main() {
                 discard_buffer = true;
             }
             
+#if 0
             // Mouse control
             POINT mouse_pos;
             GetCursorPos(&mouse_pos);
@@ -407,6 +408,7 @@ main() {
                 discard_buffer = true;
             }
             prev_mouse_pos = mouse_pos;
+#endif
             
             // Discard buffer if change was made
             if (discard_buffer) {

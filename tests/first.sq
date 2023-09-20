@@ -6,57 +6,34 @@
 
 void
 @test_proc
-unary_neg_expressions() {
+int_neg() {
     int x = 42;
     int y = -x;
     assert(y == -42);
     y = -y;
     assert(y == 42);
-    
+    assert(-(-y) == 42);
 }
 
-#if 0
 void
 @test_proc
-unary_not_expressions() {
+bool_logical_not() {
     bool flag = true;
-    flag = !flag;
-    assert(flag == false);
-    flag = !flag;
-    assert(flag == true);
-}
-#endif
-
-void
-@test_proc
-truncating_integer() {
-    s64 x = (s64) 140234230023;
-    assert((s32) x == -1499690745);
-}
-
-typedef void my_void;
-
-void
-@test_proc
-void_ptr_assign_and_int_casting() {
-    my_void* x = (my_void*) 1000;
-    int* y = (int*) x;
-    assert((int) y == 1000);
+    assert(!flag == false);
+    assert(!!flag == true);
 }
 
 void
 @test_proc
-sign_extend_and_wrapping_integers() {
-    s8 x = cast(s8) -10;
-    x += (s8) 200u;
-    
-    int y = (int) x;
-    assert(y == -66);
+int_logical_not() {
+    int flag = 1123123;
+    assert(!flag == false);
+    assert(!!flag == true);
 }
 
 void
 @test_proc
-add_operator() {
+int_add_operator() {
     int x = 10;
     x = x + 10;
     assert(x == 20);
@@ -65,7 +42,7 @@ add_operator() {
 #if 0
 void
 @test_proc
-and_operator() {
+bool_and_operator() {
     bool x = true;
     x = x && true;
     assert(x);
@@ -73,7 +50,7 @@ and_operator() {
 
 void
 @test_proc
-or_operator() {
+bool_or_operator() {
     bool x = true;
     x = x || true;
     assert(x);
@@ -103,6 +80,33 @@ equals_operator() {
     assert(!y);
 }
 #endif
+
+void
+@test_proc
+truncating_integer() {
+    s64 x = (s64) 140234230023;
+    assert((s32) x == -1499690745);
+}
+
+typedef void my_void;
+
+void
+@test_proc
+void_ptr_assign_and_int_casting() {
+    my_void* x = (my_void*) 1000;
+    int* y = (int*) x;
+    assert((int) y == 1000);
+}
+
+void
+@test_proc
+sign_extend_and_wrapping_integers() {
+    s8 x = cast(s8) -10;
+    x += (s8) 200u;
+    
+    int y = (int) x;
+    assert(y == -66);
+}
 
 void
 @test_proc

@@ -248,6 +248,13 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                     bc_instruction(bc, BC_NOT, result, first, -1);
                 } break;
                 
+                case Op_Logical_Not: {
+                    int first = convert_expression_to_bytecode(bc, expr->Unary_Expr.first);
+                    int second = bc_instruction_const_int(bc, type, 0);
+                    result = add_bytecode_register(bc, t_bool);
+                    bc_instruction(bc, BC_EQ, result, first, second);
+                } break;
+                
                 case Op_Negate: {
                     int first = convert_expression_to_bytecode(bc, expr->Unary_Expr.first);
                     result = add_bytecode_register(bc, type);
@@ -699,19 +706,14 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
             }
             
             int cond = convert_condition_to_bytecode(bc, stmt->If_Stmt.cond);
-            Bytecode_Branch* if_branch = add_insn_t(bc, BC_BRANCH, Branch);
-            if_branch->cond = cond;
-            if_branch->label_index = bc->block_depth;
-            
+            bc_instruction_branch(bc, bc->block_depth, cond);
             
             // Then case
             convert_statement_to_bytecode(bc, stmt->If_Stmt.then_block, break_label, continue_label);
             
             if (is_valid_ast(stmt->If_Stmt.else_block)) {
                 // Else case
-                Bytecode_Branch* else_branch = add_insn_t(bc, BC_BRANCH, Branch);
-                else_branch->cond = -1;
-                else_branch->label_index = bc->block_depth - 1;
+                bc_instruction_branch(bc, bc->block_depth - 1, -1);
                 
                 end_block(bc);
                 convert_statement_to_bytecode(bc, stmt->If_Stmt.else_block, break_label, continue_label);

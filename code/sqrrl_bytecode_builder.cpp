@@ -102,6 +102,87 @@ convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
 }
 
 int
+convert_function_call_to_bytecode(Bytecode_Builder* bc, Type* type, array(Ast*)* args) {
+    assert(type && type->kind == TypeKind_Function);
+    
+    int result = -1;
+    
+    if (type->Function.is_intrinsic) {
+        bool handled = false;
+        
+        switch (type->Function.ident) {
+            case Sym_rdtsc: {
+                result = add_bytecode_register(bc, t_s64);
+                bc_instruction(bc, BC_X64_RDTSC, result, -1, -1);
+                handled = true;
+            } break;
+            
+            case Sym_debug_break: {
+                bc_instruction(bc, BC_DEBUG_BREAK, -1, -1, -1);
+                handled = true;
+            } break;
+        }
+        
+        if (handled) {
+            return result;
+        }
+    }
+    
+    Compilation_Unit* target_cu = type->Function.unit;
+    assert(target_cu && target_cu->bytecode_function);
+    Bytecode_Function* func = target_cu->bytecode_function;
+    
+    int arg_index = 0;
+    array(int)* arg_operands = 0;
+    if (func->return_as_first_arg) {
+        Type* ret_type = type->Function.return_type;
+        result = bc_instruction_local(bc, type);
+        array_push(arg_operands, result);
+        arg_index++;
+    }
+    
+    Bytecode_Function_Arg* formal_args = function_arg_types(func);
+    for_array_v(args, arg, _) {
+        Bytecode_Function_Arg formal_arg = formal_args[arg_index];
+        //pln("arg %, size %", f_int(arg_index), f_int(formal_arg.size));
+        int reg;
+        if (formal_arg.size > 8) {
+            reg = convert_lvalue_expression_to_bytecode(bc, arg);
+        } else {
+            reg = convert_expression_to_bytecode(bc, arg);
+        }
+        array_push(arg_operands, reg);
+        arg_index++;
+    }
+    
+    umm arg_size = sizeof(int)*(func->ret_count + func->arg_count);
+    umm insn_size = sizeof(Bytecode_Call) + arg_size;
+    umm insn_align = max(alignof(Bytecode_Call), alignof(int));
+    Bytecode_Call* insn = (Bytecode_Call*) add_bytecode_insn(bc, BC_CALL, 
+                                                             BytecodeInstructionKind_Call, 
+                                                             insn_size, insn_align,
+                                                             __FILE__ ":" S2(__LINE__));
+    insn->func_index = func->type_index;
+    
+    u32 arg_count = (u32) array_count(arg_operands);
+    bc->curr_function->max_caller_arg_count = max(bc->curr_function->max_caller_arg_count,
+                                                  arg_count);
+    
+    // TODO(Alexander): multiple args
+    if (!func->return_as_first_arg && is_valid_type(type->Function.return_type)) {
+        result = add_bytecode_register(bc, type->Function.return_type);
+        array_push(arg_operands, result);
+    }
+    
+    if (arg_operands) {
+        memcpy((int*) (insn + 1), arg_operands, arg_size);
+        array_free(arg_operands);
+    }
+    
+    return result;
+}
+
+int
 convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
     int result = -1;
     
@@ -271,6 +352,15 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             Operator op = expr->Binary_Expr.op;
             bool is_assign = operator_is_assign(op);
             
+            if (expr->Binary_Expr.overload) {
+                array(Ast*)* args = 0;
+                array_push(args, expr->Binary_Expr.first);
+                array_push(args, expr->Binary_Expr.second);
+                result = convert_function_call_to_bytecode(bc, expr->Binary_Expr.overload, args);
+                array_free(args);
+                return result;
+            }
+            
             Type* result_type = expr->type;
             Type* type = expr->Binary_Expr.first->type;
             
@@ -412,81 +502,12 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
         } break;
         
         case Ast_Call_Expr: {
-            Type* type = expr->Call_Expr.function_type;
-            assert(type && type->kind == TypeKind_Function);
-            
-            if (type->Function.is_intrinsic) {
-                bool handled = false;
-                
-                switch (type->Function.ident) {
-                    case Sym_rdtsc: {
-                        result = add_bytecode_register(bc, t_s64);
-                        bc_instruction(bc, BC_X64_RDTSC, result, -1, -1);
-                        handled = true;
-                    } break;
-                    
-                    case Sym_debug_break: {
-                        bc_instruction(bc, BC_DEBUG_BREAK, -1, -1, -1);
-                        handled = true;
-                    } break;
-                }
-                
-                if (handled) {
-                    return result;
-                }
-            }
-            
-            Compilation_Unit* target_cu = type->Function.unit;
-            assert(target_cu && target_cu->bytecode_function);
-            Bytecode_Function* func = target_cu->bytecode_function;
-            
-            int arg_index = 0;
-            array(int)* arg_operands = 0;
-            if (func->return_as_first_arg) {
-                Type* ret_type = type->Function.return_type;
-                result = bc_instruction_local(bc, type);
-                array_push(arg_operands, result);
-                arg_index++;
-            }
-            
-            Bytecode_Function_Arg* formal_args = function_arg_types(func);
+            array(Ast*)* args = 0;
             for_compound(expr->Call_Expr.args, arg) {
-                Bytecode_Function_Arg formal_arg = formal_args[arg_index];
-                int reg;
-                //pln("arg %, size %", f_int(arg_index), f_int(formal_arg.size));
-                if (formal_arg.size > 8) {
-                    reg = convert_lvalue_expression_to_bytecode(bc, arg->Argument.assign);
-                } else {
-                    reg = convert_expression_to_bytecode(bc, arg->Argument.assign);
-                }
-                array_push(arg_operands, reg);
-                arg_index++;
+                array_push(args, arg->Argument.assign);
             }
-            
-            umm arg_size = sizeof(int)*(func->ret_count + func->arg_count);
-            umm insn_size = sizeof(Bytecode_Call) + arg_size;
-            umm insn_align = max(alignof(Bytecode_Call), alignof(int));
-            Bytecode_Call* insn = (Bytecode_Call*) add_bytecode_insn(bc, BC_CALL, 
-                                                                     BytecodeInstructionKind_Call, 
-                                                                     insn_size, insn_align,
-                                                                     __FILE__ ":" S2(__LINE__));
-            insn->func_index = func->type_index;
-            
-            u32 arg_count = (u32) array_count(arg_operands);
-            bc->curr_function->max_caller_arg_count = max(bc->curr_function->max_caller_arg_count,
-                                                          arg_count);
-            
-            // TODO(Alexander): multiple args
-            if (!func->return_as_first_arg && is_valid_type(type->Function.return_type)) {
-                result = add_bytecode_register(bc, type->Function.return_type);
-                array_push(arg_operands, result);
-            }
-            
-            if (arg_operands) {
-                memcpy((int*) (insn + 1), arg_operands, arg_size);
-                array_free(arg_operands);
-            }
-            
+            result = convert_function_call_to_bytecode(bc, expr->Call_Expr.function_type, args);
+            array_free(args);
         } break;
         
         case Ast_Cast_Expr: {

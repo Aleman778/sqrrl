@@ -4,10 +4,28 @@ struct v2 {
     f32 x, y;
 }
 
+v2
+operator+(v2 a, v2 b) {
+    v2 result;
+    result.x = a.x + b.x;
+    result.y = a.y + b.y;
+    return result;
+}
+
+void
+@test_proc
+v2_add_overload() {
+    v2 a = { 4.2f, 5.3f };
+    v2 b = { 1.9f, 2.1f };
+    debug_break(); // FIXME: code below has a serious bug
+    v2 c = a + b;
+    assert(c.x + c.y == 13.5f);
+}
+
+
 struct v3 {
     f32 x, y, z;
 }
-
 
 void
 @test_proc

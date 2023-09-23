@@ -305,7 +305,10 @@ while_loop() {
     assert(x == 25);
 }
 
-#if 0
+struct v2s {
+    int x, y;
+}
+
 void
 @test_proc
 struct_v2s() {
@@ -340,9 +343,8 @@ no_modify_struct_v2s_via_call_as_copy() {
     v2s_scale(v, 10);
     assert(v.x + v.y == -7);
 }
-#endif
 
-#if 0
+//#if 0
 void
 check_int(int val) {
     assert(val == 42);
@@ -384,4 +386,4 @@ virtual_function_table() {
     
     assert(vtbl.adder(10, 20) == 30);
 }
-#endif
+//#endif

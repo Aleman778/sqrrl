@@ -11,13 +11,14 @@ convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 
             } else {
                 if (type->kind == TypeKind_Function && type->Function.unit) {
-                    
-                    //bc_instruction
-                    unimplemented;
+                    Bytecode_Function* func = type->Function.unit->bytecode_function;
+                    result = add_bytecode_register(bc, t_void_ptr);
+                    bc_instruction(bc, BC_FUNCTION, result, func->type_index, -1);
                     
                 } else if (map_key_exists(bc->globals, ident)) { 
                     int global_index = map_get(bc->globals, ident);
                     result = bc_instruction_global(bc, global_index);
+                    
                 } else {
                     unimplemented;
                 }
@@ -37,6 +38,15 @@ convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             Type* type = expr->Field_Expr.var->type;
             result = convert_lvalue_expression_to_bytecode(bc, expr->Field_Expr.var);
             string_id ident = ast_unwrap_ident(expr->Field_Expr.field);
+            
+            if (type->kind == TypeKind_Pointer) {
+                type = type->Pointer;
+                int flags = register_type(bc->curr_function, result).flags;
+                if (!is_bitflag_set(flags, BC_FLAG_RVALUE)) {
+                    result = bc_instruction_load(bc, type, result);
+                }
+                
+            }
             
             switch (type->kind) {
                 case TypeKind_Struct:
@@ -70,6 +80,8 @@ convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                         unimplemented;
                     }
                 } break;
+                
+                default: unimplemented;
             }
         } break;
         
@@ -103,7 +115,7 @@ convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
 }
 
 int
-convert_function_call_to_bytecode(Bytecode_Builder* bc, Type* type, array(Ast*)* args) {
+convert_function_call_to_bytecode(Bytecode_Builder* bc, Type* type, array(Ast*)* args, int function_ptr) {
     assert(type && type->kind == TypeKind_Function);
     
     int result = -1;
@@ -129,24 +141,20 @@ convert_function_call_to_bytecode(Bytecode_Builder* bc, Type* type, array(Ast*)*
         }
     }
     
-    Compilation_Unit* target_cu = type->Function.unit;
-    assert(target_cu && target_cu->bytecode_function);
-    Bytecode_Function* func = target_cu->bytecode_function;
-    
-    int arg_index = 0;
+    int arg_count = 0;
     array(int)* arg_operands = 0;
-    if (func->return_as_first_arg) {
-        Type* ret_type = type->Function.return_type;
+    
+    bool ret_as_first_arg = false;
+    Type* ret_type = type->Function.return_type;
+    if (ret_type && is_aggregate_type(ret_type)) {
         result = bc_instruction_local(bc, ret_type);
         array_push(arg_operands, result);
-        arg_index++;
+        ret_as_first_arg = true;
+        arg_count++;
     }
     
-    Bytecode_Function_Arg* formal_args = function_arg_types(func);
     for_array_v(args, arg, _) {
         Type* arg_type = arg->type;
-        Bytecode_Function_Arg formal_arg = formal_args[arg_index];
-        //pln("arg %, size %", f_int(arg_index), f_int(formal_arg.size));
         int reg;
         if (is_aggregate_type(arg_type)) {
             // Create copy (except for ARRAY types) and pass it via ptr
@@ -161,30 +169,33 @@ convert_function_call_to_bytecode(Bytecode_Builder* bc, Type* type, array(Ast*)*
             reg = convert_expression_to_bytecode(bc, arg);
         }
         array_push(arg_operands, reg);
-        arg_index++;
+        arg_count++;
     }
     
-    umm arg_size = sizeof(int)*(func->ret_count + func->arg_count);
-    umm insn_size = sizeof(Bytecode_Call) + arg_size;
-    umm insn_align = max(alignof(Bytecode_Call), alignof(int));
-    Bytecode_Call* insn = (Bytecode_Call*) add_bytecode_insn(bc, BC_CALL, 
-                                                             BytecodeInstructionKind_Call, 
-                                                             insn_size, insn_align,
-                                                             __FILE__ ":" S2(__LINE__));
-    insn->func_index = func->type_index;
+    Compilation_Unit* cu = type->Function.unit;
+    Bytecode_Binary* call = bc_instruction_call(bc, cu, arg_count); 
+    if (cu) {
+        assert(cu->bytecode_function);
+        Bytecode_Function* func = cu->bytecode_function;
+        call->arg0_index = func->type_index;
+    } else {
+        call->arg0_index = function_ptr;
+    }
+    assert(call->arg0_index >= 0);
+    call->arg1_index = arg_count;
     
-    u32 arg_count = (u32) array_count(arg_operands);
-    bc->curr_function->max_caller_arg_count = max(bc->curr_function->max_caller_arg_count,
-                                                  arg_count);
+    bc->curr_function->max_caller_arg_count = max(bc->curr_function->max_caller_arg_count, (u32) arg_count);
     
     // TODO(Alexander): multiple args
-    if (!func->return_as_first_arg && is_valid_type(type->Function.return_type)) {
-        result = add_bytecode_register(bc, type->Function.return_type);
-        array_push(arg_operands, result);
+    if (!ret_as_first_arg && is_valid_type(ret_type)) {
+        result = add_bytecode_register(bc, ret_type);
+        call->res_index = result;
     }
     
     if (arg_operands) {
-        memcpy((int*) (insn + 1), arg_operands, arg_size);
+        int arg_size = sizeof(int)*arg_count;
+        memcpy((int*) (call + 1), arg_operands, arg_size);
+        arena_push_size(&bc->arena, arg_size, 1);
         array_free(arg_operands);
     }
     
@@ -558,7 +569,15 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             for_compound(expr->Call_Expr.args, arg) {
                 array_push(args, arg->Argument.assign);
             }
-            result = convert_function_call_to_bytecode(bc, expr->Call_Expr.function_type, args);
+            
+            Type* type = expr->Call_Expr.function_type;
+            assert(type->kind == TypeKind_Function);
+            
+            int function_ptr = -1;
+            if (!type->Function.unit) {
+                function_ptr = convert_expression_to_bytecode(bc, expr->Call_Expr.ident);
+            }
+            result = convert_function_call_to_bytecode(bc, type, args, function_ptr);
             array_free(args);
         } break;
         
@@ -1076,6 +1095,35 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
                     string_builder_push_format(sb, "%", f_float(bc_instruction_insn->const_f64));
                 } break;
                 
+                case BC_CALL:
+                case BC_CALL_INDIRECT: {
+                    Bytecode_Binary* bc_insn = (Bytecode_Binary*) insn;
+                    
+                    // target
+                    Bytecode_Function* func = 0;
+                    if (insn->opcode == BC_CALL) {
+                        func = bc->functions[bc_insn->arg0_index];
+                    }
+                    
+                    if (func) {
+                        string_builder_dump_bytecode_function_name(sb, bc, func);
+                        
+                    } else {
+                        string_builder_push_format(sb, "r%", f_int(bc_insn->arg0_index));
+                    }
+                    
+                    // args
+                    string_builder_push(sb, "(");
+                    int* args = (int*) (bc_insn + 1);
+                    for (int i = 0; i < bc_insn->arg1_index; i++) {
+                        string_builder_push_format(sb, "r%", f_int(args[i]));
+                        if (i + 1 < bc_insn->arg1_index) {
+                            string_builder_push(sb, ", ");
+                        }
+                    }
+                    string_builder_push(sb, ")");
+                } break;
+                
                 case BC_LOCAL: {
                     string_builder_push_format(sb, "size %, align %", f_int(bc_instruction_insn->arg0_index),
                                                f_int(bc_instruction_insn->arg1_index));
@@ -1117,32 +1165,6 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
                     }
                 } break;
             }
-        } break;
-        
-        case BytecodeInstructionKind_Call: {
-            Bytecode_Call* call = (Bytecode_Call*) insn;
-            
-            Bytecode_Function* func = bc->functions[call->func_index];
-            int* args = (int*) (call + 1);
-            
-            if (func->ret_count == 1) {
-                // TODO(Alexander): multiple returns
-                string_builder_push_format(sb, "r%", f_int(args[func->arg_count]));
-                //string_builder_dump_bytecode_operand(sb, args[func->arg_count], insn->type);
-                string_builder_push(sb, " = ");
-            }
-            string_builder_dump_bytecode_opcode(sb, insn);
-            string_builder_dump_bytecode_function_name(sb, bc, func);
-            string_builder_push(sb, "(");
-            
-            Bytecode_Function_Arg* formal_args = function_arg_types(func);
-            for (int i = 0; i < func->arg_count; i++) {
-                string_builder_push_format(sb, "r%", f_int(args[i]));
-                if (i + 1 < func->arg_count) {
-                    string_builder_push(sb, ", ");
-                }
-            }
-            string_builder_push(sb, ")");
         } break;
         
         case BytecodeInstructionKind_Block: {

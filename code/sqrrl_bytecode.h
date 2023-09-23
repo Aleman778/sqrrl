@@ -9,6 +9,7 @@ enum Bytecode_Operator {
     BC_END,
     BC_BRANCH,
     BC_CALL,
+    BC_CALL_INDIRECT,
     BC_RETURN,
     
     // Constants
@@ -17,10 +18,11 @@ enum Bytecode_Operator {
     BC_F64_CONST,
     
     // Pointers
-    BC_LOCAL, // (int size, int align) -> void*
-    BC_GLOBAL,
-    BC_ARRAY_ACCESS,
-    BC_FIELD_ACCESS,
+    BC_LOCAL,        // void* <- (int size, int align)
+    BC_GLOBAL,       // void* <- (int global_index)
+    BC_FUNCTION,     // void* <- (int function_index)
+    BC_ARRAY_ACCESS, // void* <- (void* array, int base, int index, int stride)
+    BC_FIELD_ACCESS, // void* <- (void* object, int offset)
     
     // Memory
     BC_STORE,
@@ -82,9 +84,11 @@ bc_is_comparator(Bytecode_Operator op) {
 
 global const cstring bc_operator_names[] = {
     /*                   */ "noop",
-    /* Control:          */ "debug_break", "loop", "block", "end", "branch", "call", "return",
+    /* Control:          */ "debug_break", "loop", "block", "end", "branch", "call", "call_indirect",
+    /*                   */ "return",
     /* Constants:        */ "i64.const", "f32.const", "f64.const",
-    /* Pointers:         */ "ptr.local", "ptr.global", "ptr.array_index", "ptr.struct_field",
+    /* Pointers:         */ "ptr.local", "ptr.global", "ptr.function", "ptr.array_index",
+    /*                   */ "ptr.struct_field",
     /* Memory:           */ "store", "load", "memcpy", "memset",
     /* Conversions:      */ "truncate", "extend", "int_to_float", "float_to_int", "float_to_float",
     /*                   */ "reinterpret_f2i",
@@ -257,11 +261,6 @@ struct Bytecode_Call {
     u32 func_index;
     // argument operands followed by return operands
 };
-
-int*
-bc_call_args(Bytecode_Call* call) {
-    return (int*) (call + 1);
-}
 
 struct Bytecode_Block {
     Bytecode_Instruction_Base;

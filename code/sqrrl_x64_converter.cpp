@@ -124,7 +124,6 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     stack_size = (s32) align_forward(stack_size + 8, 16) - 8;
     s32 stack_callee_args = stack_size + 8;
     
-    
     // Save HOME registers (TODO: move this it's windows calling convention only)
     // TODO(Alexander): this doens't handle returns larger than 8 bytes
     for (int i = min((int) func->arg_count - 1, 3); i >= 0; i--) {
@@ -239,6 +238,17 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
         } break;
         
+        case BC_FUNCTION: {
+            int func_index = bc->arg0_index;
+            
+            // REX.W + 8D /r 	LEA r64,m 	RM
+            x64_rex(buf, REX_W);
+            push_u8(buf, 0x8D);
+            push_u8(buf, X64_RBP);
+            x64_jump_address(x64, buf, &x64->functions[func_index].code);
+            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
+        } break;
+        
         case BC_ARRAY_ACCESS: {
             // TODO(Alexander): HACK we should utilize SIB somehow!
             x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index));
@@ -290,13 +300,14 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
         } break;
         
-        case BC_CALL: {
-            Bytecode_Call* call = (Bytecode_Call*) insn;
-            Bytecode_Function* target = x64->bytecode->functions[call->func_index];
-            Bytecode_Function_Arg* formal_args = function_arg_types(func);
+        case BC_CALL: 
+        case BC_CALL_INDIRECT: {
             
-            int* args = bc_call_args(call);
-            for (int arg_index = target->arg_count - 1; arg_index >= 0; arg_index--) {
+            int target_index = bc->arg0_index;
+            int arg_count = bc->arg1_index;
+            
+            int* args = (int*) (bc + 1);
+            for (int arg_index = arg_count - 1; arg_index >= 0; arg_index--) {
                 int src_index = args[arg_index];
                 X64_Reg dest = X64_RAX;
                 if (arg_index < 4) {
@@ -310,37 +321,39 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                 }
             }
             
-            
-            u32 return_virtual_register = 0;
-            if (target->ret_count > 0) {
-                return_virtual_register = args[target->arg_count];
-            }
-            
-            // NOTE(Alexander): make sure to allocate space for HOME registers even if they aren't used!
-            if (target->is_imported) {
-                
-                // Indirect function call from pointer
-                //x64_spill_register(x64, buf, X64_RAX);
-                x64_move_rax_u64(buf, (u64) target->code_ptr);
+            if (bc->opcode == BC_CALL_INDIRECT) {
+                // Indirect function call from register
+                x64_move_memory_to_register(buf, X64_RAX, X64_RSP,
+                                            register_displacement(x64, target_index));
                 
                 // FF /2 	CALL r/m64 	M 	
                 push_u8(buf, 0xFF);
                 x64_modrm_direct(buf, 2, X64_RAX);
+                
             } else {
                 
-                // Direct function call
-                // E8 cd 	CALL rel32 	D
-                push_u8(buf, 0xE8);
-                x64_jump_address(x64, buf, &x64->functions[call->func_index].code);
+                Bytecode_Function* target = x64->bytecode->functions[target_index];
+                if (target->is_imported) {
+                    // Indirect function call from pointer
+                    //x64_spill_register(x64, buf, X64_RAX);
+                    x64_move_rax_u64(buf, (u64) target->code_ptr);
+                    
+                    // FF /2 	CALL r/m64 	M 	
+                    push_u8(buf, 0xFF);
+                    x64_modrm_direct(buf, 2, X64_RAX);
+                } else {
+                    
+                    // Direct function call
+                    // E8 cd 	CALL rel32 	D
+                    push_u8(buf, 0xE8);
+                    x64_jump_address(x64, buf, &x64->functions[target_index].code);
+                }
             }
             
-            if (target->ret_count > 0) {
+            if (bc->res_index >= 0) {
                 // TODO(Alexander): Add support for floats!
-                x64_move_register_to_memory(buf, X64_RSP,
-                                            register_displacement(x64, return_virtual_register),
+                x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index),
                                             X64_RAX);
-                
-                //x64_alloc_register(x64, buf, return_virtual_register, X64_RAX, return_rt);
             }
         } break;
         

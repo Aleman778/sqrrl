@@ -122,6 +122,7 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
         } break;
         
         case BC_CALL: {
+#if 0
             Bytecode_Call* call = (Bytecode_Call*) insn;
             Bytecode_Function* call_func = bc->functions[call->func_index];
             Bytecode_Function_Arg* formal_args = function_arg_types(call_func);
@@ -142,6 +143,8 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
                 wasm_prepare_store(buf, wasm_tmp_local(wasm, res_type));
                 wasm_store_register(buf, res_type, res_index);
             }
+#endif
+            unimplemented;
         } break;
         
         case BC_RETURN: {

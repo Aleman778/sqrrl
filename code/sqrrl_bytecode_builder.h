@@ -34,6 +34,8 @@ int convert_condition_to_bytecode(Bytecode_Builder* bc, Ast* cond, bool invert_c
 
 int convert_type_cast_to_bytecode(Bytecode_Builder* bc, Ast* expr);
 
+int convert_function_call_to_bytecode(Bytecode_Builder* bc, Type* type, array(Ast*)* args, int function_ptr=-1);
+
 void convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, s32 continue_label);
 
 Bytecode_Function* convert_function_to_bytecode(Bytecode_Builder* bc, Bytecode_Function* func, Ast* ast,
@@ -140,6 +142,12 @@ sizeof(Bytecode_##T), \
 alignof(Bytecode_##T), \
 __FILE__ ":" S2(__LINE__));
 
+#define bc_instruction_call(bc, target_cu, arg_count) \
+(Bytecode_Binary*) add_bytecode_insn(bc, target_cu ? BC_CALL : BC_CALL_INDIRECT, \
+BytecodeInstructionKind_Binary, \
+sizeof(Bytecode_Binary) + sizeof(int)*arg_count, \
+alignof(Bytecode_Binary), \
+__FILE__ ":" S2(__LINE__))
 
 #define bc_instruction(bc, opcode, res, arg0, arg1) \
 _bc_instruction(bc, opcode, res, arg0, arg1, __FILE__ ":" S2(__LINE__))

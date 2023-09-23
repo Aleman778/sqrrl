@@ -526,16 +526,6 @@ parse_atom(Parser* parser, bool report_error, u8 min_prec) {
             }
         } break;
         
-        case Token_Open_Brace: {
-            result = push_ast_node(parser, &token);
-            result->kind = Ast_Aggregate_Expr;
-            result->Aggregate_Expr.elements = parse_compound(parser, 
-                                                             Token_Open_Brace, 
-                                                             Token_Close_Brace, 
-                                                             Token_Comma, 
-                                                             &parse_actual_struct_or_union_argument);
-        } break;
-        
         default: {
             Operator unop = parse_unary_op(parser);
             
@@ -764,8 +754,24 @@ parse_assign_statement(Parser* parser, Ast* type, Ast* ident=0) {
     }
     
     if (next_token_if_matched(parser, Token_Assign, false)) {
+        Token token = peek_token(parser);
+        if (token.type == Token_Open_Brace) {
+            // Aggregate type initializer
+            Ast* expr = push_ast_node(parser, &token);
+            expr->kind = Ast_Aggregate_Expr;
+            expr->Aggregate_Expr.elements = parse_compound(parser, 
+                                                           Token_Open_Brace, 
+                                                           Token_Close_Brace, 
+                                                           Token_Comma, 
+                                                           &parse_actual_struct_or_union_argument);
+            peek_token_match(parser, Token_Semi, true);
+            
+            result->Assign_Stmt.expr = expr;
+        } else {
+            result->Assign_Stmt.expr = parse_expression(parser);
+        }
         // TODO(alexander): add support for int x = 5, y = 10;
-        result->Assign_Stmt.expr = parse_expression(parser);
+        
     } else {
         result->Assign_Stmt.expr = push_ast_node(parser);
     }

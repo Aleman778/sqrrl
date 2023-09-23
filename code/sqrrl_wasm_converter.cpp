@@ -86,7 +86,7 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             wasm_push_stack_pointer(buf);
             wasm_i32_load(buf, bc_insn->arg0_index*8);
             wasm_i64_load(buf, 0);
-            Bytecode_Type ptr_type = { BC_TYPE_PTR, 8, 0 };
+            Bytecode_Type ptr_type = { BC_TYPE_INT, 8, 0 };
             wasm_store_register(buf, ptr_type, bc_insn->res_index);
         } break;
         

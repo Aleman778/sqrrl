@@ -1315,11 +1315,12 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 
             } else {
                 if (report_error) {
-                    pln("%", f_ast(expr));
-                    pln("%", f_type(parent_type));
+                    //pln("%", f_ast(expr));
+                    //pln("%", f_type(parent_type));
+                    
                     type_error(tcx, string_print("cannot assign aggregate initializer to non-aggregate type `%`",
                                                  f_type(parent_type)), 
-                               expr->span);
+                               expr->span); 
                 }
             }
         } break;

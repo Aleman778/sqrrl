@@ -110,20 +110,10 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     x64->current_stack_displacement_for_bytecode_registers = stack_caller_args;
     
     s32 stack_size = stack_caller_args + register_count*8;
-    
-    // Push larger structures in our stack frame
-    s32 stack_callee_args_copy = stack_size;
-    for (int arg_index = 0; arg_index < (int) func->arg_count; arg_index++) {
-        Bytecode_Type arg_type = formal_args[arg_index].type;
-        // TODO(Alexander): we need a better way to know when to copy a pointers data!!!
-        if (arg_type.kind == BC_TYPE_PTR) {
-            stack_size += arg_type.size;
-        }
-    }
-    
     x64->current_stack_displacement_for_locals = stack_size;
     for_bc_insn(func, insn) {
         if (insn->opcode == BC_LOCAL) {
+            // TODO(Alexander): This is too confusing, here arg0 is size and arg1 is align, we should use a different instruction type.
             Bytecode_Binary* bc_insn = (Bytecode_Binary*) insn;
             stack_size = (s32) align_forward(stack_size, bc_insn->arg1_index);
             stack_size += bc_insn->arg0_index;
@@ -274,7 +264,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index));
             x64_move_memory_to_register(buf, X64_RCX, X64_RSP, register_displacement(x64, bc->arg1_index));
             
-            Bytecode_Type type = register_type(func, bc->arg0_index);
+            Bytecode_Type type = register_type(func, bc->arg1_index);
             switch (type.size) {
                 case 1: {
                     x64_move8_register_to_memory(buf, X64_RAX, 0, X64_RCX);

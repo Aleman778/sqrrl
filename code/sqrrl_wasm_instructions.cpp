@@ -3,7 +3,7 @@ void
 wasm_push_valtype(Buffer* buf, Bytecode_Type type) {
     switch (type.kind) {
         case BC_TYPE_INT: 
-        case BC_TYPE_PTR: push_u8(buf, 0x7E); break;
+        case BC_TYPE_PTR: unimplemented; break;// push_u8(buf, 0x7E); break;
         case BC_TYPE_FLOAT: push_u8(buf, (type.size == 8) ? 0x7C : 0x7D); break;
         default: unimplemented;
     }

@@ -41,9 +41,10 @@ convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             switch (type->kind) {
                 case TypeKind_Struct:
                 case TypeKind_Union: {
-                    Struct_Field_Info info = get_field_info(&type->Struct_Like, ident);
-                    int tmp = add_bytecode_register(bc, type);
-                    bc_instruction(bc, BC_FIELD_ACCESS, tmp, result, (int) info.offset);
+                    Struct_Field_Info field = get_field_info(&type->Struct_Like, ident);
+                    
+                    int tmp = add_bytecode_register(bc, t_void_ptr);
+                    bc_instruction(bc, BC_FIELD_ACCESS, tmp, result, (int) field.offset);
                     result = tmp;
                 } break;
                 
@@ -136,18 +137,26 @@ convert_function_call_to_bytecode(Bytecode_Builder* bc, Type* type, array(Ast*)*
     array(int)* arg_operands = 0;
     if (func->return_as_first_arg) {
         Type* ret_type = type->Function.return_type;
-        result = bc_instruction_local(bc, type);
+        result = bc_instruction_local(bc, ret_type);
         array_push(arg_operands, result);
         arg_index++;
     }
     
     Bytecode_Function_Arg* formal_args = function_arg_types(func);
     for_array_v(args, arg, _) {
+        Type* arg_type = arg->type;
         Bytecode_Function_Arg formal_arg = formal_args[arg_index];
         //pln("arg %, size %", f_int(arg_index), f_int(formal_arg.size));
         int reg;
-        if (formal_arg.size > 8) {
+        if (is_aggregate_type(arg_type)) {
+            // Create copy (except for ARRAY types) and pass it via ptr
             reg = convert_lvalue_expression_to_bytecode(bc, arg);
+            if (arg_type->kind != TypeKind_Array) {
+                int copy = bc_instruction_local(bc, arg_type);
+                bc_instruction(bc, BC_MEMCPY, copy, reg, arg_type->size);
+                reg = copy;
+            }
+            
         } else {
             reg = convert_expression_to_bytecode(bc, arg);
         }
@@ -291,6 +300,8 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             switch (op) {
                 case Op_Address_Of: {
                     result = convert_lvalue_expression_to_bytecode(bc, expr->Unary_Expr.first);
+                    //result = bc_instruction_local(bc, t_void_ptr);
+                    //bc_instruction_store(bc, result, address);
                 } break;
                 
                 case Op_Dereference: {
@@ -410,7 +421,9 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             int first = -1;
             if (is_assign) {
                 first_ptr = convert_lvalue_expression_to_bytecode(bc, expr->Binary_Expr.first);
-                first = bc_instruction_load(bc, type, first_ptr);
+                if (opcode != BC_NOOP) {
+                    first = bc_instruction_load(bc, result_type, first_ptr);
+                }
             } else {
                 first = convert_expression_to_bytecode(bc, expr->Binary_Expr.first);
             }
@@ -611,6 +624,7 @@ convert_type_cast_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             unimplemented;
         }
         
+        
     } else if (t_dest->kind == TypeKind_Array && 
                t_src->kind == TypeKind_Array) {
         int src_ptr = convert_lvalue_expression_to_bytecode(bc, expr->Cast_Expr.expr);
@@ -631,6 +645,12 @@ convert_type_cast_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
         } else {
             unimplemented;
         }
+        
+    } else if (t_dest->kind == TypeKind_Struct && 
+               t_src->kind == TypeKind_Struct) {
+        // NOTE(Alexander): this is a NOOP, not possible to cast to different struct
+        result = convert_expression_to_bytecode(bc, expr->Cast_Expr.expr);
+        
     } else {
         unimplemented;
     }
@@ -683,21 +703,23 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
         case Ast_Assign_Stmt: {
             Type* type = stmt->type;
             
-            int src = -1;
-            if (is_valid_ast(stmt->Assign_Stmt.expr)) {
-                src = convert_expression_to_bytecode(bc, stmt->Assign_Stmt.expr);
-            }
             
-            int local = -1;
+            int local;
             if (stmt->Assign_Stmt.mods & AstDeclModifier_Local_Persist) {
+                local = -1;
                 unimplemented;
             } else {
-                if (src != -1 && type->size > 8) {
-                    // TODO(Alexander): HACK if we have size > 8 then src would have allocated a local to store it so we can just go ahead and reuse it for our assignment.
-                    local = src;
-                    src = -1;
+                local = bc_instruction_local(bc, type);
+            }
+            
+            if (is_valid_ast(stmt->Assign_Stmt.expr)) {
+                int src = convert_expression_to_bytecode(bc, stmt->Assign_Stmt.expr);
+                assert(src != -1);
+                
+                if (is_aggregate_type(type)) {
+                    bc_instruction(bc, BC_MEMCPY, local, src, type->size);
                 } else {
-                    local = bc_instruction_local(bc, type);
+                    bc_instruction_store(bc, local, src);
                 }
             }
             
@@ -705,13 +727,6 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
             string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
             map_put(bc->locals, ident, local);
             
-            if (src != -1) {
-                if (type->size > 8) {
-                    bc_instruction(bc, BC_MEMCPY, local, src, type->size);
-                } else {
-                    bc_instruction_store(bc, local, src);
-                }
-            }
         } break;
         
         case Ast_Block_Stmt: {
@@ -842,9 +857,9 @@ convert_function_to_bytecode(Bytecode_Builder* bc, Bytecode_Function* func, Ast*
         bc->bytecode.entry_func_index = func->type_index;
     }
     
-    for (int i = 0; i < func->arg_count; i++) {
-        string_id arg_ident = type->Function.arg_idents[i];
-        map_put(bc->locals, arg_ident, i);
+    for_array_v(type->Function.arg_idents, arg_ident, i) {
+        int arg_index = func->return_as_first_arg ? (i + 1) : i;
+        map_put(bc->locals, arg_ident, arg_index);
     }
     
     if (insert_debug_break) {
@@ -883,17 +898,17 @@ add_bytecode_function(Bytecode_Builder* bc, Type* type) {
     
     Bytecode_Function_Arg* curr_arg = function_ret_types(func);
     if (ret_count == 1) {
-        Bytecode_Type ret_type = to_bytecode_type(bc, type->Function.return_type);
-        if (ret_type.kind == BC_TYPE_PTR) {
+        Type* ret_type = type->Function.return_type;
+        if (is_aggregate_type(ret_type)) {
             add_bytecode_register(bc, type->Function.return_type);
             func->arg_count++;
             func->ret_count--;
             func->return_as_first_arg = true;
         }
         
-        curr_arg->type = to_bytecode_type(bc, type->Function.return_type);
-        curr_arg->size = type->Function.return_type->size;
-        curr_arg->align = type->Function.return_type->align;
+        curr_arg->type = to_bytecode_type(bc, ret_type);
+        curr_arg->size = ret_type->size;
+        curr_arg->align = ret_type->align;
         curr_arg++;
     }
     

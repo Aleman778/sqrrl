@@ -108,6 +108,7 @@ enum Bytecode_Type_Kind {
 enum Byytecode_Type_Flags {
     BC_FLAG_SIGNED = bit(0),
     BC_FLAG_RVALUE = bit(1), // TODO(Alexander): this maybe stupid but it's used to tell if BC_TYPE_PTR already loaded and don't need another load instruction.
+    BC_FLAG_LOCAL = bit(2),
 };
 
 struct Bytecode_Type {

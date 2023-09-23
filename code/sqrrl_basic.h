@@ -775,6 +775,7 @@ _binary_search(arr, &(val), array_count(arr), sizeof(arr), compare)
 // NOTE(Alexander): align has to be a power of two.
 inline umm
 align_forward(umm address, umm align) {
+    assert(align > 0);
     assert_power_of_two(align);
     umm modulo = address & (align - 1);
     if (modulo != 0) {

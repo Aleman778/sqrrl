@@ -19,6 +19,13 @@ struct Bytecode_Builder {
     u32 next_register_index;
 };
 
+bool
+is_aggregate_type(Type* type) {
+    return (type->kind == TypeKind_Struct ||
+            type->kind == TypeKind_Union ||
+            type->kind == TypeKind_Array);
+}
+
 int convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr);
 
 int convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr);
@@ -62,12 +69,12 @@ to_bytecode_type(Bytecode_Builder* bc, Type* type) {
                 
                 case Basic_string: {
                     result.kind = BC_TYPE_PTR;
-                    result.size = 8;
+                    result.size = 0;
                 } break;
                 
                 case Basic_cstring: {
                     result.kind = BC_TYPE_PTR;
-                    result.size = 8;
+                    result.size = 0;
                 } break;
                 
                 default: unimplemented; break;
@@ -79,9 +86,8 @@ to_bytecode_type(Bytecode_Builder* bc, Type* type) {
         case TypeKind_Function:
         case TypeKind_Type:
         case TypeKind_Array:
-        case TypeKind_Pointer:{
+        case TypeKind_Pointer: {
             result.kind = BC_TYPE_PTR;
-            result.size = type->size;
         } break;
         
         case TypeKind_Enum: {
@@ -258,16 +264,18 @@ _bc_instruction_local(bc, type, __FILE__ ":" S2(__LINE__))
 inline int
 _bc_instruction_local(Bytecode_Builder* bc, Type* type, cstring comment) {
     assert(bc->curr_function);
-    int result = bc->curr_function->register_count++;
-    Bytecode_Type reg_type = {};
-    reg_type.kind = BC_TYPE_PTR;
-    if (type->kind == TypeKind_Array && type->Array.kind == ArrayKind_Fixed_Inplace) {
-        reg_type.size = (s32) align_forward(type->Array.type->size, type->Array.type->align);
-    } else {
-        reg_type.size = (s32) align_forward(type->size, type->align);
-    }
-    array_push(bc->curr_function->register_types, reg_type);
+    //int result = bc->curr_function->register_count++;
+    //Bytecode_Type reg_type = {};
+    //reg_type.kind = BC_TYPE_PTR;
+    //if (type->kind == TypeKind_Array && type->Array.kind == ArrayKind_Fixed_Inplace) {
+    //reg_type.size = (s32) align_forward(type->Array.type->size, type->Array.type->align);
+    //} else {
+    //reg_type.size = (s32) align_forward(type->size, type->align);
+    //}
+    //array_push(bc->curr_function->register_types, reg_type);
     
+    int result = add_bytecode_register(bc, t_void_ptr);
+    bc->curr_function->register_types[result].flags |= BC_FLAG_LOCAL;
     _bc_instruction(bc, BC_LOCAL, result, type->size, type->align, comment);
     return result;
 }

@@ -30,6 +30,8 @@ int convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr);
 
 int convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr);
 
+int convert_condition_to_bytecode(Bytecode_Builder* bc, Ast* cond, bool invert_condition=false);
+
 int convert_type_cast_to_bytecode(Bytecode_Builder* bc, Ast* expr);
 
 void convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, s32 continue_label);
@@ -155,13 +157,13 @@ _bc_instruction(Bytecode_Builder* bc, Bytecode_Operator opcode,
     return insn;
 }
 
-#define bc_instruction_const_int(bc, type, val) \
-_bc_instruction_const_int(bc, type, val, __FILE__ ":" S2(__LINE__))
+#define bc_instruction_const_int(bc, type, val, ...) \
+_bc_instruction_const_int(bc, type, val, __FILE__ ":" S2(__LINE__), __VA_ARGS__)
 
 inline int
-_bc_instruction_const_int(Bytecode_Builder* bc, Type* type, s64 val, cstring comment) {
+_bc_instruction_const_int(Bytecode_Builder* bc, Type* type, s64 val, cstring comment, int res_index=-1) {
     Bytecode_Binary* insn = add_insn_t(bc, BC_INT_CONST, Binary);
-    insn->res_index = add_bytecode_register(bc, type);
+    insn->res_index = res_index >= 0 ? res_index : add_bytecode_register(bc, type);
     insn->const_i64 = val;
     insn->comment = comment;
     return insn->res_index;

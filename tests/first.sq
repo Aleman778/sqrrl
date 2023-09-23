@@ -39,13 +39,44 @@ int_add_operator() {
     assert(x == 20);
 }
 
-#if 0
 void
 @test_proc
 bool_and_operator() {
     bool x = true;
     x = x && true;
     assert(x);
+    
+    x = false;
+    x = x && true;
+    assert(!x);
+    
+    x = true;
+    x = x && false;
+    assert(!x);
+    
+    x = false;
+    x = x && false;
+    assert(!x);
+}
+
+void
+@test_proc
+int_and_operator() {
+    int x = 4234;
+    x = x && 0xFF0000;
+    assert(x);
+    
+    x = 0x0;
+    x = x && 1231;
+    assert(!x);
+    
+    x = 0xFF0000;
+    x = x && 0;
+    assert(!x);
+    
+    x = 0;
+    x = x && 0;
+    assert(!x);
 }
 
 void
@@ -64,14 +95,33 @@ bool_or_operator() {
     assert(x);
     
     x = false;
-    bool y = false;
-    x = x || y;
+    x = x || false;
     assert(!x);
 }
 
 void
 @test_proc
-equals_operator() {
+int_or_operator() {
+    int x = 1231;
+    x = x || 0xFF0000;
+    assert(x);
+    
+    x = 0x0;
+    x = x || 633;
+    assert(x);
+    
+    x = 0xFF0000;
+    x = x || 0;
+    assert(x);
+    
+    x = 0;
+    x = x || 0;
+    assert(!x);
+} 
+
+void
+@test_proc
+int_equals_operator() {
     int x = 10;
     bool y = x == 10;
     assert(y);
@@ -79,7 +129,6 @@ equals_operator() {
     y = x == 11;
     assert(!y);
 }
-#endif
 
 void
 @test_proc

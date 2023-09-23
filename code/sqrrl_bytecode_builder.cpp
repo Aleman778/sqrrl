@@ -361,96 +361,135 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             // TODO(Alexander): operator overloading
             // TODO(Alexander): add proper AND/ OR logical operator
             Operator op = expr->Binary_Expr.op;
-            bool is_assign = operator_is_assign(op);
-            
-            if (expr->Binary_Expr.overload) {
-                array(Ast*)* args = 0;
-                array_push(args, expr->Binary_Expr.first);
-                array_push(args, expr->Binary_Expr.second);
-                result = convert_function_call_to_bytecode(bc, expr->Binary_Expr.overload, args);
-                array_free(args);
-                return result;
-            }
             
             Type* result_type = expr->type;
             Type* type = expr->Binary_Expr.first->type;
             
-            if (is_assign) {
-                switch (op) {
-                    case Op_Assign:             op = Op_None; break;
-                    case Op_Add_Assign:         op = Op_Add; break;
-                    case Op_Subtract_Assign:    op = Op_Subtract; break;
-                    case Op_Multiply_Assign:    op = Op_Multiply; break;
-                    case Op_Divide_Assign:      op = Op_Divide; break;
-                    case Op_Modulo_Assign:      op = Op_Modulo; break;
-                    case Op_Bitwise_And_Assign: op = Op_Bitwise_And; break;
-                    case Op_Bitwise_Or_Assign:  op = Op_Bitwise_Or; break;
-                    case Op_Bitwise_Xor_Assign: op = Op_Bitwise_Xor; break;
-                    case Op_Shift_Left_Assign:  op = Op_Shift_Left; break;
-                    case Op_Shift_Right_Assign: op = Op_Shift_Right; break;
-                    
-                    default: assert(0 && "invalid assign op");
-                }
-            }
-            
-            bool is_signed = !(type->kind == TypeKind_Basic && 
-                               type->Basic.flags & (BasicFlag_Unsigned | BasicFlag_Floating));
-            Bytecode_Operator opcode = BC_NOOP;
-            switch (op) {
-                case Op_None: break;
-                case Op_Add:            opcode = BC_ADD; break;
-                case Op_Subtract:       opcode = BC_SUB; break;
-                case Op_Multiply:       opcode = BC_MUL; break;
-                case Op_Divide:         opcode = is_signed ? BC_DIV_S : BC_DIV_U; break;
-                case Op_Modulo:         opcode = is_signed ? BC_MOD_S : BC_MOD_U; break;
-                case Op_Bitwise_And:    opcode = BC_AND; break;
-                case Op_Bitwise_Or:     opcode = BC_OR; break;
-                case Op_Bitwise_Xor:    opcode = BC_XOR; break;
-                case Op_Shift_Left:     opcode = BC_SHL; break;
-                case Op_Shift_Right:    opcode = BC_SHR; break;
-                case Op_Equals:         opcode = BC_EQ; break;
-                case Op_Not_Equals:     opcode = BC_NEQ; break;
-                case Op_Greater_Than:   opcode = is_signed ? BC_GT_S : BC_GT_U; break;
-                case Op_Greater_Equals: opcode = is_signed ? BC_GE_S : BC_GE_U; break;
-                case Op_Less_Than:      opcode = is_signed ? BC_LT_S : BC_LT_U; break;
-                case Op_Less_Equals:    opcode = is_signed ? BC_LE_S : BC_LE_U; break;
-                default: unimplemented;
-            }
-            
-            int first_ptr = -1;
-            int first = -1;
-            if (is_assign) {
-                first_ptr = convert_lvalue_expression_to_bytecode(bc, expr->Binary_Expr.first);
-                if (opcode != BC_NOOP) {
-                    first = bc_instruction_load(bc, result_type, first_ptr);
-                }
-            } else {
-                first = convert_expression_to_bytecode(bc, expr->Binary_Expr.first);
-            }
-            int second = convert_expression_to_bytecode(bc, expr->Binary_Expr.second);
-            result = second;
-            
-            if (result_type->kind == TypeKind_Pointer) {
-                // Pointer arithmetic
-                assert(opcode == BC_ADD || opcode == BC_SUB);
-                if (opcode == BC_SUB) {
-                    // Negate `second` 
-                    int tmp = add_bytecode_register(bc, expr->Binary_Expr.second->type);
-                    bc_instruction(bc, BC_NEG, tmp, second, -1);
-                    second = tmp;
-                }
-                result = bc_instruction_array_accesss(bc, result_type->Pointer, first, second);
+            if (op == Op_Logical_And) {
+                begin_block(bc);
+                begin_block(bc);
                 
-            } else if (opcode != BC_NOOP) {
+                int first = convert_condition_to_bytecode(bc, expr->Binary_Expr.first);
+                bc_instruction_branch(bc, bc->block_depth, first);
+                
+                int second = convert_condition_to_bytecode(bc, expr->Binary_Expr.second);
+                bc_instruction_branch(bc, bc->block_depth, second);
+                
                 result = add_bytecode_register(bc, result_type);
-                bc_instruction(bc, opcode, result, first, second);
-            }
-            
-            if (first_ptr != -1) {
-                if (result_type->size > 8) {
-                    bc_instruction(bc, BC_MEMCPY, first_ptr, result, result_type->size);
+                bc_instruction_const_int(bc, t_bool, true, result);
+                bc_instruction_branch(bc, bc->block_depth - 1, -1);
+                end_block(bc);
+                
+                bc_instruction_const_int(bc, t_bool, false, result);
+                end_block(bc);
+                
+            } else if (op == Op_Logical_Or) {
+                begin_block(bc);
+                begin_block(bc);
+                
+                int first = convert_condition_to_bytecode(bc, expr->Binary_Expr.first, true);
+                bc_instruction_branch(bc, bc->block_depth, first);
+                
+                int second = convert_condition_to_bytecode(bc, expr->Binary_Expr.second, true);
+                bc_instruction_branch(bc, bc->block_depth, second);
+                
+                result = add_bytecode_register(bc, result_type);
+                bc_instruction_const_int(bc, t_bool, false, result);
+                bc_instruction_branch(bc, bc->block_depth - 1, -1);
+                end_block(bc);
+                
+                bc_instruction_const_int(bc, t_bool, true, result);
+                end_block(bc);
+                
+            } else {
+                bool is_assign = operator_is_assign(op);
+                
+                if (expr->Binary_Expr.overload) {
+                    array(Ast*)* args = 0;
+                    array_push(args, expr->Binary_Expr.first);
+                    array_push(args, expr->Binary_Expr.second);
+                    result = convert_function_call_to_bytecode(bc, expr->Binary_Expr.overload, args);
+                    array_free(args);
+                    return result;
+                }
+                
+                if (is_assign) {
+                    switch (op) {
+                        case Op_Assign:             op = Op_None; break;
+                        case Op_Add_Assign:         op = Op_Add; break;
+                        case Op_Subtract_Assign:    op = Op_Subtract; break;
+                        case Op_Multiply_Assign:    op = Op_Multiply; break;
+                        case Op_Divide_Assign:      op = Op_Divide; break;
+                        case Op_Modulo_Assign:      op = Op_Modulo; break;
+                        case Op_Bitwise_And_Assign: op = Op_Bitwise_And; break;
+                        case Op_Bitwise_Or_Assign:  op = Op_Bitwise_Or; break;
+                        case Op_Bitwise_Xor_Assign: op = Op_Bitwise_Xor; break;
+                        case Op_Shift_Left_Assign:  op = Op_Shift_Left; break;
+                        case Op_Shift_Right_Assign: op = Op_Shift_Right; break;
+                        
+                        default: assert(0 && "invalid assign op");
+                    }
+                }
+                
+                bool is_signed = !(type->kind == TypeKind_Basic && 
+                                   type->Basic.flags & (BasicFlag_Unsigned | BasicFlag_Floating));
+                Bytecode_Operator opcode = BC_NOOP;
+                switch (op) {
+                    case Op_None: break;
+                    case Op_Add:            opcode = BC_ADD; break;
+                    case Op_Subtract:       opcode = BC_SUB; break;
+                    case Op_Multiply:       opcode = BC_MUL; break;
+                    case Op_Divide:         opcode = is_signed ? BC_DIV_S : BC_DIV_U; break;
+                    case Op_Modulo:         opcode = is_signed ? BC_MOD_S : BC_MOD_U; break;
+                    case Op_Bitwise_And:    opcode = BC_AND; break;
+                    case Op_Bitwise_Or:     opcode = BC_OR; break;
+                    case Op_Bitwise_Xor:    opcode = BC_XOR; break;
+                    case Op_Shift_Left:     opcode = BC_SHL; break;
+                    case Op_Shift_Right:    opcode = BC_SHR; break;
+                    case Op_Equals:         opcode = BC_EQ; break;
+                    case Op_Not_Equals:     opcode = BC_NEQ; break;
+                    case Op_Greater_Than:   opcode = is_signed ? BC_GT_S : BC_GT_U; break;
+                    case Op_Greater_Equals: opcode = is_signed ? BC_GE_S : BC_GE_U; break;
+                    case Op_Less_Than:      opcode = is_signed ? BC_LT_S : BC_LT_U; break;
+                    case Op_Less_Equals:    opcode = is_signed ? BC_LE_S : BC_LE_U; break;
+                    default: unimplemented;
+                }
+                
+                int first_ptr = -1;
+                int first = -1;
+                if (is_assign) {
+                    first_ptr = convert_lvalue_expression_to_bytecode(bc, expr->Binary_Expr.first);
+                    if (opcode != BC_NOOP) {
+                        first = bc_instruction_load(bc, result_type, first_ptr);
+                    }
                 } else {
-                    bc_instruction_store(bc, first_ptr, result);
+                    first = convert_expression_to_bytecode(bc, expr->Binary_Expr.first);
+                }
+                int second = convert_expression_to_bytecode(bc, expr->Binary_Expr.second);
+                result = second;
+                
+                if (result_type->kind == TypeKind_Pointer) {
+                    // Pointer arithmetic
+                    assert(opcode == BC_ADD || opcode == BC_SUB);
+                    if (opcode == BC_SUB) {
+                        // Negate `second` 
+                        int tmp = add_bytecode_register(bc, expr->Binary_Expr.second->type);
+                        bc_instruction(bc, BC_NEG, tmp, second, -1);
+                        second = tmp;
+                    }
+                    result = bc_instruction_array_accesss(bc, result_type->Pointer, first, second);
+                    
+                } else if (opcode != BC_NOOP) {
+                    result = add_bytecode_register(bc, result_type);
+                    bc_instruction(bc, opcode, result, first, second);
+                }
+                
+                if (first_ptr != -1) {
+                    if (result_type->size > 8) {
+                        bc_instruction(bc, BC_MEMCPY, first_ptr, result, result_type->size);
+                    } else {
+                        bc_instruction_store(bc, first_ptr, result);
+                    }
                 }
             }
         } break;
@@ -576,20 +615,7 @@ convert_type_cast_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
         
         if (t_dest->Basic.flags & BasicFlag_Boolean &&
             t_src->Basic.flags & BasicFlag_Integer) {
-#if 0 
-            result = ic_reg(IC_U8);
-            
-            Ic_Basic_Block* bb_else = ic_basic_block();
-            Ic_Basic_Block* bb_exit = ic_basic_block();
-            
-            convert_ic_to_conditional_jump(cu, cu->ic_last, src, bb_else);
-            ic_mov(cu, result, ic_imm(IC_U8, 1));
-            ic_jump(cu, IC_JMP, bb_exit);
-            ic_label(cu, bb_else);
-            ic_mov(cu, result, ic_imm(IC_U8, 0));
-            ic_label(cu, bb_exit);
-#endif
-            unimplemented;
+            result = convert_condition_to_bytecode(bc, expr->Cast_Expr.expr);
             
         } else if (t_dest->Basic.flags & BasicFlag_Integer &&
                    t_src->Basic.flags & BasicFlag_Integer) {
@@ -659,7 +685,7 @@ convert_type_cast_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
 }
 
 int
-convert_condition_to_bytecode(Bytecode_Builder* bc, Ast* cond) {
+convert_condition_to_bytecode(Bytecode_Builder* bc, Ast* cond, bool invert_condition) {
     Type* type = cond->type;
     int result = convert_expression_to_bytecode(bc, cond);
     
@@ -678,8 +704,11 @@ convert_condition_to_bytecode(Bytecode_Builder* bc, Ast* cond) {
             zero = bc_instruction_const_int(bc, type, 0);
         }
         int tmp = add_bytecode_register(bc, t_bool);
-        bc_instruction(bc, BC_NEQ, tmp, result, zero);
+        bc_instruction(bc, invert_condition ? BC_EQ : BC_NEQ, tmp, result, zero);
         result = tmp;
+        
+    } else if (invert_condition) {
+        bc->curr_insn->opcode = (Bytecode_Operator) (BC_EQ + BC_NEQ - bc->curr_insn->opcode);
     }
     
     

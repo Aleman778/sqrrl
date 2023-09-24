@@ -21,7 +21,8 @@ struct Bytecode_Builder {
 
 bool
 is_aggregate_type(Type* type) {
-    return (type->kind == TypeKind_Struct ||
+    return ((type->kind == TypeKind_Basic && type->Basic.kind == Basic_string) ||
+            type->kind == TypeKind_Struct ||
             type->kind == TypeKind_Union ||
             type->kind == TypeKind_Array);
 }

@@ -1,6 +1,8 @@
 #include <test_support.sq>
 
+#include "string.sq"
 #include "float_math.sq"
+#include "struct.sq"
 #include "vector_math.sq"
 #include "fixed_array.sq"
 

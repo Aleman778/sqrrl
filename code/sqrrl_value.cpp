@@ -76,15 +76,19 @@ convert_aggregate_literal_to_memory(Ast* expr, void* dest) {
         // TODO(Alexander): temporary use Memory_Arena
         smm size = capacity*type->size;
         
+        smm element_size = align_forward(type->size, type->align);
         u8* curr = (u8*) dest;
-        for_compound(expr->Aggregate_Expr.elements, e) {
-            assert(e->kind == Ast_Argument);
-            e = e->Argument.assign;
+        for_compound(expr->Aggregate_Expr.elements, element) {
+            assert(element->kind == Ast_Argument);
+            Ast* assign = element->Argument.assign;
             
-            if (e->kind == Ast_Value) {
-                value_store_in_memory(e->type, curr, e->Value.data);
+            if (assign->kind == Ast_Aggregate_Expr) {
+                convert_aggregate_literal_to_memory(assign, curr);
+            } else if (assign->kind == Ast_Value) {
+                value_store_in_memory(assign->type, curr, assign->Value.data);
             }
-            curr += type->size;
+            
+            curr += element_size;
         }
         
     } else if (type->kind == TypeKind_Struct || type->kind == TypeKind_Union) {

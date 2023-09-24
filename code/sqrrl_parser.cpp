@@ -628,29 +628,6 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
                 next_token_if_matched(parser, Token_Close_Bracket);
                 update_span(parser, lhs_expr);
             } continue;
-            
-#if 0
-            // TODO(Alexander): do we still care about this syntax: v3 {x: 10.0f, y: 20.0f, z: 30.0f} ?
-            //                                                      ^^
-            case Token_Open_Brace: {
-                if (rhs_expr->kind == Ast_Ident) {
-                    lhs_expr = push_ast_node(parser);
-                    
-                    lhs_expr = push_ast_node(parser, &token);
-                    lhs_expr->kind = Ast_Aggregate_Expr;
-                    lhs_expr->Aggregate_Expr.ident = rhs_expr;
-                    lhs_expr->Aggregate_Expr.elements = parse_compound(parser, 
-                                                                       Token_Open_Brace, 
-                                                                       Token_Close_Brace, 
-                                                                       Token_Comma, 
-                                                                       &parse_actual_struct_or_union_argument);
-                } else {
-                    parse_error(parser, token, string_lit("struct literals expects identifier before `{`"));
-                    return rhs_expr;
-                }
-                update_span(parser, lhs_expr);
-            } continue;
-#endif
         }
         
         break;
@@ -754,27 +731,12 @@ parse_assign_statement(Parser* parser, Ast* type, Ast* ident=0) {
     }
     
     if (next_token_if_matched(parser, Token_Assign, false)) {
-        Token token = peek_token(parser);
-        if (token.type == Token_Open_Brace) {
-            // Aggregate type initializer
-            Ast* expr = push_ast_node(parser, &token);
-            expr->kind = Ast_Aggregate_Expr;
-            expr->Aggregate_Expr.elements = parse_compound(parser, 
-                                                           Token_Open_Brace, 
-                                                           Token_Close_Brace, 
-                                                           Token_Comma, 
-                                                           &parse_actual_struct_or_union_argument);
-            peek_token_match(parser, Token_Semi, true);
-            
-            result->Assign_Stmt.expr = expr;
-        } else {
-            result->Assign_Stmt.expr = parse_expression(parser);
-        }
-        // TODO(alexander): add support for int x = 5, y = 10;
+        result->Assign_Stmt.expr = parse_aggregate_or_expression(parser);
         
     } else {
         result->Assign_Stmt.expr = push_ast_node(parser);
     }
+    // TODO(alexander): maybe add support for int x = 5, y = 10; ?
     
     return result;
 }
@@ -1112,6 +1074,24 @@ parse_formal_struct_or_union_argument(Parser* parser) {
 }
 
 Ast*
+parse_aggregate_or_expression(Parser* parser, bool report_error, Ast* atom) {
+    Token token = peek_token(parser);
+    if (!atom && token.type == Token_Open_Brace) {
+        // Aggregate type initializer
+        Ast* expr = push_ast_node(parser, &token);
+        expr->kind = Ast_Aggregate_Expr;
+        expr->Aggregate_Expr.elements = parse_compound(parser, 
+                                                       Token_Open_Brace, 
+                                                       Token_Close_Brace, 
+                                                       Token_Comma, 
+                                                       &parse_actual_struct_or_union_argument);
+        return expr;
+    } else {
+        return parse_expression(parser, report_error, 1, atom);
+    }
+}
+
+Ast*
 parse_actual_struct_or_union_argument(Parser* parser) {
     Ast* result = push_ast_node(parser);
     result->kind = Ast_Argument;
@@ -1119,13 +1099,13 @@ parse_actual_struct_or_union_argument(Parser* parser) {
     if (peek_token_match(parser, Token_Ident, false)) {
         result->Argument.ident = parse_identifier(parser, true);
         if (next_token_if_matched(parser, Token_Colon, false)) {
-            result->Argument.assign = parse_expression(parser);
+            result->Argument.assign = parse_aggregate_or_expression(parser);
         } else {
-            result->Argument.assign = parse_expression(parser, true, 1, result->Argument.ident);
+            result->Argument.assign = parse_aggregate_or_expression(parser, true, result->Argument.ident);
             result->Argument.ident = 0;
         }
     } else {
-        result->Argument.assign = parse_expression(parser);
+        result->Argument.assign = parse_aggregate_or_expression(parser);
     }
     return result;
 }

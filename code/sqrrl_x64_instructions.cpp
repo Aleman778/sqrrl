@@ -307,6 +307,16 @@ x64_convert_float_to_int(Buffer* buf, X64_Reg dest, X64_Reg src, int size) {
 }
 
 inline void
+x64_convert_int_to_float(Buffer* buf, X64_Reg dest, X64_Reg src, int size) {
+    // F3 REX.W 0F 2A /r CVTSI2SS xmm1, r/m64
+    // F2 REX.W 0F 2A /r CVTSI2SD xmm1, r/m64
+    push_u8(buf, (size == 8) ? 0xF2 : 0xF3);
+    x64_rex(buf, REX_W);
+    push_u16(buf, 0x2A0F);
+    x64_modrm_direct(buf, dest, src);
+}
+
+inline void
 x64_rep_movsb(Buffer* buf, X64_Reg dest, X64_Reg src, X64_Reg count) {
     assert(dest == X64_RDI);
     assert(src == X64_RSI);

@@ -102,6 +102,7 @@ Ast* parse_atom(Parser* parser, bool report_error=true, u8 min_prec=1);
 Ast* parse_expression(Parser* parser, bool report_error=true, u8 min_prec=1, Ast* atom_expr=0);
 Ast* parse_statement(Parser* parser, bool report_error=true);
 Ast* parse_block_or_single_statement(Parser* parser, bool report_error=true);
+Ast* parse_aggregate_or_expression(Parser* parser, bool report_error=true, Ast* atom=0);
 
 inline Ast* parse_array_type(Parser* parser, Ast* elem_type, Ast_Decl_Modifier mods=0);
 Ast* parse_type(Parser* parser, bool report_error=true, Ast_Decl_Modifier mods=0);

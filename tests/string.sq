@@ -1,0 +1,17 @@
+
+
+void
+@test_proc
+string_count() {
+    string s = "Hello World!";
+    assert(s.count == 12);
+}
+
+void
+@test_proc
+string_get_char() {
+    string s = "Hello World!";
+    assert(s[0] == 'H');
+    assert(s[2] == 'l');
+    assert(s[s.count - 1] == '!');
+}

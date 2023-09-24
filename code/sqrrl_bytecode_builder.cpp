@@ -88,16 +88,37 @@ convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
         case Ast_Index_Expr: {
             Type* array_type = expr->Index_Expr.array->type;
             
+            Type* type;
+            if (array_type->kind == TypeKind_Array) {
+                type = array_type->Array.type;
+                
+            } else if (array_type->kind == TypeKind_Pointer) {
+                type = array_type->Pointer;
+                
+            } else if (array_type->kind == TypeKind_Basic &&
+                       array_type->Basic.flags & BasicFlag_String) {
+                type = t_u8;
+                
+            } else {
+                type = 0;
+                unimplemented;
+            }
+            
             int array_ptr = convert_lvalue_expression_to_bytecode(bc, expr->Index_Expr.array);
             if ((array_type->kind == TypeKind_Array &&
                  array_type->Array.kind != ArrayKind_Fixed_Inplace) ||
                 array_type == t_cstring) {
                 array_ptr = bc_instruction_load(bc, array_type, array_ptr);
+                
+            } else if (array_type == t_string) {
+                int tmp = add_bytecode_register(bc, t_cstring);
+                bc_instruction(bc, BC_FIELD_ACCESS, tmp, array_ptr, 0);
+                array_ptr = bc_instruction_load(bc, array_type, tmp);
             }
             
             int array_index = convert_expression_to_bytecode(bc, expr->Index_Expr.index);
             result = add_bytecode_register(bc, expr->Index_Expr.array->type);
-            result = bc_instruction_array_accesss(bc, array_type->Array.type, array_ptr, array_index);
+            result = bc_instruction_array_accesss(bc, type, array_ptr, array_index);
         } break;
         
         case Ast_Cast_Expr: {
@@ -203,13 +224,111 @@ convert_function_call_to_bytecode(Bytecode_Builder* bc, Type* type, array(Ast*)*
     return result;
 }
 
+internal void
+convert_non_constant_aggregate_initializer_to_bytecode(Bytecode_Builder* bc, Ast* expr, int base, int offset) {
+    Type* type = expr->type;
+    
+    int field_index = (int) expr->Aggregate_Expr.first_index;
+    for_compound(expr->Aggregate_Expr.elements, field) {
+        assert(field->kind == Ast_Argument);
+        
+        string_id ident = try_unwrap_ident(field->Argument.ident);
+        Ast* assign = field->Argument.assign;
+        
+        Struct_Field_Info field_info = {};
+        if (type->kind == TypeKind_Struct || type->kind == TypeKind_Union)  {
+            if (ident) {
+                field_info = get_field_info(&type->Struct_Like, ident);
+            } else {
+                field_info = get_field_info_by_index(&type->Struct_Like, field_index);
+            }
+        } else if (type->kind == TypeKind_Array) {
+            Type* elem_type = type->Array.type;
+            smm aligned_size = align_forward(elem_type->size, elem_type->align);
+            field_info.type = elem_type;
+            field_info.offset = field_index*aligned_size;
+        } else {
+            compiler_bug("unexpected aggregate type");
+        }
+        field_info.offset += offset;
+        
+        if (assign->kind == Ast_Aggregate_Expr) {
+            //pln("Adding recursive field % (offset = %", f_ast(assign), f_int(field_info.offset));
+            convert_non_constant_aggregate_initializer_to_bytecode(bc, assign, base, (int) field_info.offset);
+            
+        } else if (assign->kind != Ast_Value) {
+            //pln("Adding non-constant field: %", f_ast(assign));
+            
+            int dest = add_bytecode_register(bc, t_void_ptr);
+            bc_instruction(bc, BC_FIELD_ACCESS, dest, base, (int) field_info.offset);
+            if (is_aggregate_type(field_info.type)) {
+                int src = convert_lvalue_expression_to_bytecode(bc, assign);
+                bc_instruction(bc, BC_MEMCPY, dest, src, field_info.type->size);
+            } else {
+                int src = convert_expression_to_bytecode(bc, assign);
+                bc_instruction_store(bc, dest, src);
+            }
+        }
+        
+        field_index++;
+    }
+}
+
+bool
+convert_initializer_to_bytecode(Bytecode_Builder* bc, Ast* expr, int dest_ptr) {
+    bool initialized = false;
+    
+    switch (expr->kind) {
+        case Ast_Value: {
+            if (is_string(expr->Value)) {
+                smm string_count = expr->Value.data.str.count;
+                int global_index = add_bytecode_global(bc, BC_MEM_READ_ONLY, 
+                                                       string_count, 1,
+                                                       expr->Value.data.str.data);
+                int src_data_ptr = bc_instruction_global(bc, global_index);
+                
+                int tmp = add_bytecode_register(bc, t_void_ptr);
+                bc_instruction(bc, BC_FIELD_ACCESS, tmp, dest_ptr, 0);
+                bc_instruction_store(bc, tmp, src_data_ptr);
+                
+                int src_count = bc_instruction_const_int(bc, t_s64, string_count);
+                tmp = add_bytecode_register(bc, t_void_ptr);
+                bc_instruction(bc, BC_FIELD_ACCESS, tmp, dest_ptr, 8);
+                bc_instruction_store(bc, tmp, src_count);
+                initialized = true;
+            }
+        } break;
+        
+        case Ast_Aggregate_Expr: {
+            Type* type = expr->type;
+            
+            int global_index = -1;
+            if (is_valid_ast(expr->Aggregate_Expr.elements->Compound.node)) {
+                global_index = add_bytecode_global(bc, BC_MEM_READ_ONLY, type->size, type->align);
+                Bytecode_Global* g = &bc->bytecode.globals[global_index];
+                convert_aggregate_literal_to_memory(expr, g->address);
+            }
+            
+            if (global_index >= 0) {
+                int data = bc_instruction_global(bc, global_index);
+                bc_instruction(bc, BC_MEMCPY, dest_ptr, data, type->size);
+                convert_non_constant_aggregate_initializer_to_bytecode(bc, expr, dest_ptr, 0);
+                initialized = true;
+            }
+            
+        } break;
+    }
+    
+    return initialized;
+}
+
 int
 convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
     int result = -1;
     
     switch (expr->kind) {
-        case Ast_None: {
-        } break;
+        case Ast_None:
+        case Ast_Aggregate_Expr: break;
         
         case Ast_Ident: {
             Type* type = expr->type;
@@ -254,29 +373,21 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                     result = bc_instruction_const_f32(bc, (f32) expr->Value.data.floating);
                 }
             } else if (is_string(expr->Value)) {
-                //smm string_count = expr->Value.data.str.count;
-                //int str_data = bc_instruction_global(bc, BytecodeMemory_read_only, 
-                //string_count, 1, 
-                //expr->Value.data.str.data);
-                //result = push_bytecode_stack_t(bc, string);
+                smm string_count = expr->Value.data.str.count;
+                int global_index = add_bytecode_global(bc, BC_MEM_READ_ONLY, 
+                                                       string_count, 1,
+                                                       expr->Value.data.str.data);
+                int src_data_ptr = bc_instruction_global(bc, global_index);
+                result = bc_instruction_local(bc, t_string);
                 
-                //Bytecode_Binary* store_data = add_insn_t(bc, BC_ADDR_OF, Binary);
-                //store_data->type = bc_instruction_pointer_type(bc);
-                //store_data->first = add_bytecode_register(bc);
-                //store_data->second = str_data;
-                //store_instruction(bc, t_void_ptr, result, store_data->first);
+                int tmp = add_bytecode_register(bc, t_void_ptr);
+                bc_instruction(bc, BC_FIELD_ACCESS, tmp, result, 0);
+                bc_instruction_store(bc, tmp, src_data_ptr);
                 
-                
-                unimplemented;
-                //Bytecode_Instruction insn = bc_instruction_insn_int(func, (s64) string_count);
-                
-                //Bytecode_Binary* store_count = add_insn_t(bc, BC_MOV, Binary);
-                //store_count->type = BytecodeType_i64;
-                //store_count->first = result;
-                //store_count->first.memory_offset += 8;
-                //store_count->second = result;
-                //store_count->second.kind = BytecodeOperand_const;
-                //store_count->second.const_i64 = (s64) string_count;
+                int src_count = bc_instruction_const_int(bc, t_s64, string_count);
+                tmp = add_bytecode_register(bc, t_void_ptr);
+                bc_instruction(bc, BC_FIELD_ACCESS, tmp, result, 8);
+                bc_instruction_store(bc, tmp, src_count);
                 
             } else if (is_cstring(expr->Value)) {
                 result = add_bytecode_register(bc, t_cstring);
@@ -495,65 +606,6 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             }
         } break;
         
-        case Ast_Aggregate_Expr: {
-            Type* type = expr->type;
-            
-            int global_index = -1;
-            if (is_valid_ast(expr->Aggregate_Expr.elements->Compound.node)) {
-                global_index = add_bytecode_global(bc, BC_MEM_READ_ONLY, type->size, type->align);
-                Bytecode_Global* g = &bc->bytecode.globals[global_index];
-                convert_aggregate_literal_to_memory(expr, g->address);
-            }
-            
-            if (global_index >= 0) {
-                result = bc_instruction_global(bc, global_index);
-                
-                // Write non-constant fields to stack
-                int field_index = (int) expr->Aggregate_Expr.first_index;
-                for_compound(expr->Aggregate_Expr.elements, field) {
-                    assert(field->kind == Ast_Argument);
-                    
-                    string_id ident = try_unwrap_ident(field->Argument.ident);
-                    Ast* assign = field->Argument.assign;
-                    
-                    Struct_Field_Info field_info = {};
-                    if (type->kind == TypeKind_Struct || type->kind == TypeKind_Union)  {
-                        if (ident) {
-                            field_info = get_field_info(&type->Struct_Like, ident);
-                        } else {
-                            field_info = get_field_info_by_index(&type->Struct_Like, field_index);
-                        }
-                    } else if (type->kind == TypeKind_Array) {
-                        field_info.type = type->Array.type;
-                        field_info.offset = field_index * field_info.type->size;
-                    } else {
-                        compiler_bug("unexpected aggregate type");
-                    }
-                    
-                    if (assign->kind != Ast_Value && 
-                        assign->kind != Ast_Aggregate_Expr) {
-                        unimplemented;
-                        //pln("Adding non-constant field: %", f_ast(assign));
-                        
-                        //if (result.kind == BytecodeOperand_memory) { 
-                        // Allocate stack space for storing the aggregate type
-                        //int tmp = push_bytecode_stack(bc, type->size, type->align);
-                        //convert_assign_to_bytecode(bc, type, tmp, result, true);
-                        //result = tmp;
-                        //}
-                        //
-                        //int src = convert_expression_to_bytecode(bc, assign);
-                        //int dest = result;
-                        //dest.memory_offset += (u32) field_info.offset;
-                        //convert_assign_to_bytecode(bc, field_info.type, dest, src, true);
-                    }
-                    
-                    field_index++;
-                }
-            }
-            
-        } break;
-        
         case Ast_Call_Expr: {
             array(Ast*)* args = 0;
             for_compound(expr->Call_Expr.args, arg) {
@@ -750,22 +802,28 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
             }
             
             int src = -1;
+            bool initialized = false;
             if (is_valid_ast(stmt->Assign_Stmt.expr)) {
-                src = convert_expression_to_bytecode(bc, stmt->Assign_Stmt.expr);
+                initialized = convert_initializer_to_bytecode(bc, stmt->Assign_Stmt.expr, local);
+                if (!initialized) {
+                    src = convert_expression_to_bytecode(bc, stmt->Assign_Stmt.expr);
+                }
             }
             
-            if (src >= 0) {
-                if (is_aggregate_type(type)) {
-                    bc_instruction(bc, BC_MEMCPY, local, src, type->size);
+            if (!initialized) {
+                if (src >= 0) {
+                    if (is_aggregate_type(type)) {
+                        bc_instruction(bc, BC_MEMCPY, local, src, type->size);
+                    } else {
+                        bc_instruction_store(bc, local, src);
+                    }
                 } else {
-                    bc_instruction_store(bc, local, src);
-                }
-            } else {
-                if (is_aggregate_type(type)) {
-                    bc_instruction(bc, BC_MEMSET, local, 0, type->size);
-                } else {
-                    src = bc_instruction_const_int(bc, t_s64, 0);
-                    bc_instruction_store(bc, local, src);
+                    if (is_aggregate_type(type)) {
+                        bc_instruction(bc, BC_MEMSET, local, 0, type->size);
+                    } else {
+                        src = bc_instruction_const_int(bc, t_s64, 0);
+                        bc_instruction_store(bc, local, src);
+                    }
                 }
             }
             

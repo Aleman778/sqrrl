@@ -388,10 +388,20 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_FLOAT_TO_INT: {
-            Bytecode_Type type = register_type(func, bc->arg0_index);
-            x64_move_memory_to_float_register(buf, X64_XMM0, X64_RSP, register_displacement(x64, bc->arg0_index), type.size);
-            x64_convert_float_to_int(buf, X64_RAX, X64_XMM0, type.size);
+            Bytecode_Type float_type = register_type(func, bc->arg0_index);
+            x64_move_memory_to_float_register(buf, X64_XMM0, X64_RSP, register_displacement(x64, bc->arg0_index), float_type.size);
+            x64_convert_float_to_int(buf, X64_RAX, X64_XMM0, float_type.size);
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
+        } break;
+        
+        case BC_INT_TO_FLOAT: {
+            Bytecode_Type float_type = register_type(func, bc->res_index);
+            Bytecode_Type int_type = register_type(func, bc->arg0_index);
+            bool is_signed = int_type.flags & BC_FLAG_SIGNED;
+            x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index), int_type.size, is_signed);
+            x64_convert_int_to_float(buf, X64_XMM0, X64_RAX, float_type.size);
+            x64_move_float_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index),
+                                              X64_XMM0, float_type.size);
         } break;
         
         case BC_INC:
@@ -574,7 +584,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         default: {
-            assert(0 && "invalid bytecode instruction");
+            assert(0 && "invalid X64 instruction");
         } break;
     }
 }

@@ -1,0 +1,40 @@
+#include <test_support.sq>
+
+struct Soa {
+    [3]int ints;
+    [3]f32 floats;
+}
+
+int
+@test_proc
+soa_struct_initializer() {
+    int x = 50;
+    f32 y = 20.5f;
+    Soa s = { ints: { 55, 20, x }, floats: { 10.5f, y, 30.5f } };
+    assert(s.ints[2] == x);
+    assert(s.floats[1] == y);
+}
+
+struct Game_Summary {
+    int id;
+    string name;
+    f32 review_score;
+}
+
+int
+@test_proc
+aos_struct_initializer() {
+    f32 review_scope0 = 4.3f;
+    string name1 = "My awesome game!";
+    int id2 = 609;
+    
+    []Game_Summary catalog = {
+        { id: 131, review_score: review_scope0 },
+        { id: 552, name: name1, review_score: 3.2f },
+        { id: id2, review_score:  3.7f },
+    };
+    
+    assert(catalog[0].review_score == review_scope0);
+    assert(catalog[1].name.data == name1.data);
+    assert(catalog[2].id == 609);
+}

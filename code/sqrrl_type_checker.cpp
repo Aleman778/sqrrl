@@ -1225,8 +1225,9 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     if (parent_type->Array.kind != ArrayKind_Dynamic) {
                         if (parent_type->Array.capacity > 0) {
                             parent_type->Array.kind = ArrayKind_Fixed_Inplace;
-                            parent_type->size = (s32) (parent_type->Array.type->size * 
-                                                       parent_type->Array.capacity);
+                            smm aligned_element_size = align_forward(parent_type->Array.type->size, 
+                                                                     parent_type->Array.type->align);
+                            parent_type->size = (s32) (aligned_element_size*parent_type->Array.capacity);
                             parent_type->align = parent_type->Array.type->align;
                         } else {
                             if (report_error) {
@@ -1372,6 +1373,7 @@ match_struct_like_args(Type_Context* tcx, Type* formal_type, int first_field, in
     Type_Struct_Like formal = convert_type_to_struct_like(formal_type);
     int formal_field_count = last_field - first_field;
     
+    //pln("%", f_ast(args));
     //pln("%: % - %", f_type(formal_type), f_int(last_field), f_int(first_field));
     
     cstring entity_name = formal_type->kind == TypeKind_Struct ? "struct" : "union";
@@ -1851,7 +1853,8 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     result.type->Array.kind = ArrayKind_Fixed_Inplace;
                     // NOTE(Alexander): fixed size arrays with known size should be allocated directly
                     // TODO(Alexander): arch dep
-                    result.type->size = (s32) (elem_type->size*result.type->Array.capacity);
+                    smm aligned_size = align_forward(elem_type->size, elem_type->align);
+                    result.type->size = (s32) (aligned_size*result.type->Array.capacity);
                     result.type->align = elem_type->align;
                     
                     //result.type->size = elem_type->size * (s32) result.type->Array.capacity;
@@ -3185,9 +3188,6 @@ type_infer_ast(Type_Context* tcx, Interp* interp, Compilation_Unit* cu,
         string_id ident = cu->ident;
         
         Type* type = save_type_declaration_from_ast(tcx, ident, ast, report_error);
-        if (ident == vars_save_cstring("Game_State")) {
-            pln("Game_State = %", f_type(type));//__debugbreak();
-        }
         if (!type) {
             result = false;
         }

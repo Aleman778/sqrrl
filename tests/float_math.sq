@@ -2,6 +2,62 @@
 
 void
 @test_proc
+int_to_f32_implicit_conversion() {
+    int x = 100;
+    f32 y = 100.0f;
+    y += x * 0.5f;
+    assert(y == 150.0f);
+}
+
+void
+@test_proc
+int_to_f64_implicit_conversion() {
+    int x = 100;
+    f64 y = 100.0;
+    y += x * 0.5;
+    assert(y == 150.0);
+}
+
+void
+@test_proc
+f32_to_int_explicit_conversion() {
+    f32 x = 100.0f;
+    int y = 100;
+    y -= (int) x * 2;
+    assert(y == -100);
+}
+
+void
+@test_proc
+f64_to_int_explicit_conversion() {
+    f64 x = 100.0;
+    int y = 100;
+    y -= (int) x * 2;
+    assert(y == -100);
+}
+
+f32
+f32_slow_round(f32 num) {
+    f32 frac = num - (int) num;
+    if (frac < 0.5f) {
+        return (int) num;
+    } else {
+        return (int) num + 1;
+    }
+}
+
+f32
+@test_proc
+f32_int_conversion_example() {
+    f32 x = f32_slow_round(43.55f);
+    assert(x == 44.0f);
+    
+    x = f32_slow_round(22.32f);
+    assert(x == 22.0f);
+}
+
+void
+@test_proc
 f64_add_assign() {
     f64 x = 342.663;
     x += 432.55;

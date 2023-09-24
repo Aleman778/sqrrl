@@ -547,6 +547,13 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             x64_rep_movsb(buf, X64_RDI, X64_RSI, X64_RCX);
         } break;
         
+        case BC_MEMSET: {
+            x64_move_memory_to_register(buf, X64_RDI, X64_RSP, register_displacement(x64, bc->res_index));
+            x64_move_immediate_to_register(buf, X64_RAX, bc->arg0_index);
+            x64_move_immediate_to_register(buf, X64_RCX, bc->arg1_index);
+            x64_rep_stosb(buf, X64_RDI, X64_RAX, X64_RCX);
+        } break;
+        
         case BC_X64_RDTSC: {
             //Ic_Raw_Type rt = convert_bytecode_type_to_x64(insn->type);
             //x64_alloc_register(x64, buf, dest.register_index, X64_RAX, rt);

@@ -344,7 +344,6 @@ no_modify_struct_v2s_via_call_as_copy() {
     assert(v.x + v.y == -7);
 }
 
-//#if 0
 void
 check_int(int val) {
     assert(val == 42);
@@ -386,4 +385,74 @@ virtual_function_table() {
     
     assert(vtbl.adder(10, 20) == 30);
 }
-//#endif
+
+int
+fill_stack_with_nonsense() {
+    int x = 10;
+    int y = 20;
+    int x1 = 10;
+    int y1 = 20;
+    return x + y + x1 + y1;
+}
+
+int
+uninitialized_value_add() {
+    int x;
+    int y;
+    return x + y;
+}
+
+void
+@test_proc
+int_uninitialized_is_always_zero() {
+    fill_stack_with_nonsense();
+    int x = uninitialized_value_add();
+    assert(x == 0);
+}
+
+int
+uninitialized_value_a_less_10(int a) {
+    int x;
+    if (a > 10) {
+        x = 10;
+    }
+    return x;
+}
+
+void
+@test_proc
+int_uninitialized_conditionally_is_always_zero() {
+    fill_stack_with_nonsense();
+    int x = uninitialized_value_a_less_10(5);
+    assert(x == 0);
+    x = uninitialized_value_a_less_10(20);
+    assert(x == 10);
+}
+
+int
+uninitialized_v2s_struct_add() {
+    v2s v;
+    return v.x + v.y;
+}
+
+void
+@test_proc
+v2s_uninitialized_struct_is_always_zero() {
+    fill_stack_with_nonsense();
+    int x = uninitialized_v2s_struct_add();
+    assert(x == 0);
+}
+
+int
+uninitialized_array_add() {
+    [2]int v;
+    return v[0] + v[1];
+}
+
+void
+@test_proc
+v2s_uninitialized_array_is_always_zero() {
+    fill_stack_with_nonsense();
+    int x = uninitialized_array_add();
+    assert(x == 0);
+}

@@ -174,6 +174,7 @@ convert_function_call_to_bytecode(Bytecode_Builder* bc, Type* type, array(Ast*)*
     
     Compilation_Unit* cu = type->Function.unit;
     Bytecode_Binary* call = bc_instruction_call(bc, cu, arg_count); 
+    call->res_index = -1;
     if (cu) {
         assert(cu->bytecode_function);
         Bytecode_Function* func = cu->bytecode_function;
@@ -222,24 +223,14 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 }
                 
             } else {
-                if (type->kind == TypeKind_Function && type->Function.unit) {
-                    //Bytecode_Binary* insn = add_insn_t(bc, BC_LOAD_FUNCTION_PTR, Binary);
-                    // TODO(Alexander): need to give each compilation unit a unique ID at start!!!
-                    // TODO(Alexander): function pointer type?
-                    //insn->first = push_bytecode_register(bc);
-                    //insn->second = {}; // type->Function.unit;
-                    unimplemented;
+                // Global variable
+                if (map_key_exists(bc->globals, ident)) {
+                    int global_index = map_get(bc->globals, ident);
+                    result = bc_instruction_global(bc, global_index);
+                    result = bc_instruction_load(bc, type, result);
                     
                 } else {
-                    // Global variable
-                    if (map_key_exists(bc->globals, ident)) {
-                        int global_index = map_get(bc->globals, ident);
-                        result = bc_instruction_global(bc, global_index);
-                        result = bc_instruction_load(bc, type, result);
-                        
-                    } else {
-                        unimplemented;
-                    }
+                    unimplemented;
                 }
             }
         } break;
@@ -254,7 +245,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
         case Ast_Value: {
             Type* type = expr->type;
             if (is_integer(expr->Value)) {
-                result = bc_instruction_const_int(bc, type, (s64) expr->Value.data.signed_int);
+                result = bc_instruction_const_int(bc, type, value_to_s64(expr->Value));
                 
             } else if (is_floating(expr->Value)) {
                 if (type->size == 8) {
@@ -479,9 +470,8 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 int second = convert_expression_to_bytecode(bc, expr->Binary_Expr.second);
                 result = second;
                 
-                if (result_type->kind == TypeKind_Pointer) {
-                    // Pointer arithmetic
-                    assert(opcode == BC_ADD || opcode == BC_SUB);
+                if (result_type->kind == TypeKind_Pointer && (opcode == BC_ADD || opcode == BC_SUB)) {
+                    // NOTE(Alexander): pointer arithmetic uses array access instead of add/sub
                     if (opcode == BC_SUB) {
                         // Negate `second` 
                         int tmp = add_bytecode_register(bc, expr->Binary_Expr.second->type);
@@ -574,7 +564,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             assert(type->kind == TypeKind_Function);
             
             int function_ptr = -1;
-            if (!type->Function.unit) {
+            if (!type->Function.unit && !type->Function.is_intrinsic) {
                 function_ptr = convert_expression_to_bytecode(bc, expr->Call_Expr.ident);
             }
             result = convert_function_call_to_bytecode(bc, type, args, function_ptr);
@@ -751,7 +741,6 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
         case Ast_Assign_Stmt: {
             Type* type = stmt->type;
             
-            
             int local;
             if (stmt->Assign_Stmt.mods & AstDeclModifier_Local_Persist) {
                 local = -1;
@@ -760,13 +749,22 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
                 local = bc_instruction_local(bc, type);
             }
             
+            int src = -1;
             if (is_valid_ast(stmt->Assign_Stmt.expr)) {
-                int src = convert_expression_to_bytecode(bc, stmt->Assign_Stmt.expr);
-                assert(src != -1);
-                
+                src = convert_expression_to_bytecode(bc, stmt->Assign_Stmt.expr);
+            }
+            
+            if (src >= 0) {
                 if (is_aggregate_type(type)) {
                     bc_instruction(bc, BC_MEMCPY, local, src, type->size);
                 } else {
+                    bc_instruction_store(bc, local, src);
+                }
+            } else {
+                if (is_aggregate_type(type)) {
+                    bc_instruction(bc, BC_MEMSET, local, 0, type->size);
+                } else {
+                    src = bc_instruction_const_int(bc, t_s64, 0);
                     bc_instruction_store(bc, local, src);
                 }
             }

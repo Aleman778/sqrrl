@@ -313,7 +313,19 @@ x64_rep_movsb(Buffer* buf, X64_Reg dest, X64_Reg src, X64_Reg count) {
     assert(count == X64_RCX);
     
     // F3 A4 	REP MOVS m8, m8 	ZO
-    push_u16(buf, 0xA4F3);
+    // F3 REX.W A4 	REP MOVS m8, m8 	ZO
+    push_u24(buf, 0xA448F3);
+}
+
+
+inline void
+x64_rep_stosb(Buffer* buf, X64_Reg dest, X64_Reg byte, X64_Reg count) {
+    assert(dest == X64_RDI);
+    assert(byte == X64_RAX);
+    assert(count == X64_RCX);
+    
+    // F3 REX.W AA 	REP STOS m8 	ZO 	Valid
+    push_u24(buf, 0xAA48F3);
 }
 
 #if 0

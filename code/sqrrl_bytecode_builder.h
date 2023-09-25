@@ -31,6 +31,8 @@ int convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr);
 
 int convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr);
 
+bool convert_initializer_to_bytecode(Bytecode_Builder* bc, Ast* expr, int dest_ptr);
+
 int convert_condition_to_bytecode(Bytecode_Builder* bc, Ast* cond, bool invert_condition=false);
 
 int convert_type_cast_to_bytecode(Bytecode_Builder* bc, Ast* expr);

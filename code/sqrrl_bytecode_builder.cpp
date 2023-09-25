@@ -3,6 +3,7 @@ int
 convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
     int result = -1;
     switch (expr->kind) {
+        
         case Ast_Ident: {
             Type* type = expr->type;
             string_id ident = ast_unwrap_ident(expr);
@@ -176,19 +177,31 @@ convert_function_call_to_bytecode(Bytecode_Builder* bc, Type* type, array(Ast*)*
     
     for_array_v(args, arg, _) {
         Type* arg_type = arg->type;
-        int reg;
+        int reg = -1;
         if (is_aggregate_type(arg_type)) {
             // Create copy (except for ARRAY types) and pass it via ptr
-            reg = convert_lvalue_expression_to_bytecode(bc, arg);
+            int copy = -1;
             if (arg_type->kind != TypeKind_Array) {
-                int copy = bc_instruction_local(bc, arg_type);
-                bc_instruction(bc, BC_MEMCPY, copy, reg, arg_type->size);
-                reg = copy;
+                copy = bc_instruction_local(bc, arg_type);
+                
+                if (convert_initializer_to_bytecode(bc, arg, copy)) {
+                    reg = copy;
+                }
+            }
+            
+            if (reg == -1) {
+                reg = convert_lvalue_expression_to_bytecode(bc, arg);
+                if (copy != -1) {
+                    bc_instruction(bc, BC_MEMCPY, copy, reg, arg_type->size);
+                    reg = copy;
+                }
             }
             
         } else {
             reg = convert_expression_to_bytecode(bc, arg);
         }
+        
+        assert(reg >= 0);
         array_push(arg_operands, reg);
         arg_count++;
     }

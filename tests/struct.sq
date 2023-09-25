@@ -10,7 +10,7 @@ int
 soa_struct_initializer() {
     int x = 50;
     f32 y = 20.5f;
-    Soa s = { ints: { 55, 20, x }, floats: { 10.5f, y, 30.5f } };
+    Soa s = { floats: { 10.5f, y, 30.5f }, ints: { 55, 20, x } };
     assert(s.ints[2] == x);
     assert(s.floats[1] == y);
 }

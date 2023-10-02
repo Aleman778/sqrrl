@@ -6,6 +6,7 @@
 #include "vector_math.sq"
 #include "fixed_array.sq"
 
+
 void
 @test_proc
 int_neg() {

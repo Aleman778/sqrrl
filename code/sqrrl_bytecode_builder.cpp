@@ -972,6 +972,10 @@ convert_function_to_bytecode(Bytecode_Builder* bc, Bytecode_Function* func, Ast*
     bc->block_depth = 0;
     if (is_main) {
         bc->bytecode.entry_func_index = func->type_index;
+        Bytecode_Export main_export = {};
+        main_export.function = ast_unwrap_ident(ast->Decl_Stmt.ident);
+        main_export.func_index = func->type_index;;
+        array_push(bc->bytecode.exports, main_export);
     }
     
     for_array_v(type->Function.arg_idents, arg_ident, i) {

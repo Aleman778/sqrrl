@@ -301,6 +301,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             Bytecode_Import import = {};
             import.module = it->key;
             import.function = function->name;
+            import.func_index = func->type_index;
             
             // TODO(Alexander): hack this doesn't really belong here
             // but this is needed for now to make this data appear first in the rdata section.
@@ -319,17 +320,11 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         }
     }
     
-    Compilation_Unit* main_cu = 0;
     for_array(ast_file.units, cu, _2) {
         if (!cu->bytecode_function && cu->ast->kind == Ast_Decl_Stmt) {
             Type* type = cu->ast->type;
             if (type->kind == TypeKind_Function) {
                 add_bytecode_function(&bytecode_builder, type);
-                
-                bool is_main = cu->ident == Sym_main;
-                if (is_main) {
-                    main_cu = cu;
-                }
             }
             
         } else if (cu->ast->kind == Ast_Assign_Stmt) {
@@ -348,7 +343,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             map_put(bytecode_builder.globals, ident, global_index);
         }
     }
-    assert(main_cu && "no main function"); // TODO: turn this into an actual error
     
     // Build the bytecode
     for_array(ast_file.units, cu, _3) {
@@ -380,19 +374,14 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     switch (target_backend) {
         case Backend_X64: {
-            Type* main_func_return_type = main_cu->ast->type;
-            if (main_func_return_type && main_func_return_type->kind == TypeKind_Function) {
-                main_func_return_type = main_func_return_type->Function.return_type;
-            }
-            
             Buffer buf = {};
             buf.data = (u8*) asm_buffer;
             buf.size = asm_size;
             
-            X64_Compiled_Code code = convert_bytecode_to_x64_machine_code(&bytecode_builder.bytecode, 
-                                                                          &buf, &data_packer, 
-                                                                          &tcx.import_table, 
-                                                                          compiler_task);
+            PE_Executable pe = convert_bytecode_to_x64_machine_code(&bytecode_builder.bytecode, 
+                                                                    &buf, &data_packer, 
+                                                                    &tcx.import_table, 
+                                                                    compiler_task);
             
 #if 1
             pln("\nX64 Machine Code (% bytes):", f_umm(buf.curr_used));
@@ -425,17 +414,24 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     cstring_free(dir);
                 }
                 
-                u8* asm_buffer_main = code.main_function_ptr;
-                if (main_func_return_type == t_s32) {
-                    asm_main* func = (asm_main*) asm_buffer_main;
-                    int jit_exit_code = (int) func();
-                    pln("\nJIT exited with code: %", f_int(jit_exit_code));
-                } else if (main_func_return_type == t_f32) {
-                    asm_f32_main* func = (asm_f32_main*) asm_buffer_main;
-                    f32 jit_exit_code = (f32) func();
-                    pln("\nJIT exited with code: %", f_float(jit_exit_code));
+                Bytecode* bc = &bytecode_builder.bytecode;
+                Bytecode_Function* main_func = bc->functions[bc->entry_func_index];
+                u8* code_entry_point = (u8*) main_func->code_ptr;
+                if (main_func->ret_count == 1) {
+                    Bytecode_Type ret_type = function_ret_types(main_func)->type;
+                    
+                    if (ret_type.kind == BC_TYPE_INT) {
+                        asm_main* func = (asm_main*) code_entry_point;
+                        int jit_exit_code = (int) func();
+                        pln("\nJIT exited with code: %", f_int(jit_exit_code));
+                        
+                    } else if (ret_type.kind == BC_TYPE_FLOAT) {
+                        asm_f32_main* func = (asm_f32_main*) code_entry_point;
+                        f32 jit_exit_code = (f32) func();
+                        pln("\nJIT exited with code: %", f_float(jit_exit_code));
+                    } 
                 } else {
-                    asm_main* func = (asm_main*) asm_buffer_main;
+                    asm_main* func = (asm_main*) code_entry_point;
                     func();
                     pln("\nJIT exited with code: 0");
                 }
@@ -444,7 +440,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 // NOTE(Alexander): write the PE executable to file
                 cstring exe_filename = string_to_cstring(output_filename);
                 File_Handle exe_file = DEBUG_open_file_for_writing(exe_filename);
-                write_pe_executable_to_file(exe_file, &code.pe_executable);
+                write_pe_executable_to_file(exe_file, &pe);
                 DEBUG_close_file(exe_file);
                 pln("\nWrote executable: %", f_string(output_filename));
                 

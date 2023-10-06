@@ -176,7 +176,14 @@ struct Bytecode_Import {
     string_id module;
     string_id function;
     
+    u32 func_index;
+    
     u32 rdata_offset;
+};
+
+struct Bytecode_Export {
+    string_id function;
+    u32 func_index;
 };
 
 enum Bytecode_Memory_Kind {
@@ -194,6 +201,7 @@ struct Bytecode_Global {
 struct Bytecode {
     
     array(Bytecode_Import)* imports;
+    array(Bytecode_Export)* exports;
     
     array(Bytecode_Function*)* functions;
     array(string_id)* function_names;

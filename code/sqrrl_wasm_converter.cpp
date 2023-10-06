@@ -122,29 +122,23 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
         } break;
         
         case BC_CALL: {
-#if 0
-            Bytecode_Call* call = (Bytecode_Call*) insn;
-            Bytecode_Function* call_func = bc->functions[call->func_index];
-            Bytecode_Function_Arg* formal_args = function_arg_types(call_func);
+            int target_index = bc_insn->arg0_index;
+            int arg_count = bc_insn->arg1_index;
             
-            int* args = bc_call_args(call);
-            for (int i = 0; i < (int) call_func->arg_count; i++) {
-                int arg_index = args[i];
-                wasm_load_register(func, buf, arg_index);
+            int* args = (int*) (bc + 1);
+            for (int arg_index = arg_count - 1; arg_index >= 0; arg_index--) {
+                int src_index = args[arg_index];
+                wasm_load_register(func, buf, src_index);
             }
             
             push_u8(buf, 0x10); // call
-            push_leb128_u32(buf, call_func->type_index);
+            push_leb128_u32(buf, target_index);
             
-            if (call_func->ret_count > 0) {
-                assert(call_func->ret_count == 1 && "TODO: multiple returns");
-                int res_index = args[call_func->arg_count];
-                Bytecode_Type res_type = register_type(func, res_index);
+            if (bc_insn->res_index >= 0) {
+                Bytecode_Type res_type = register_type(func, bc_insn->res_index);
                 wasm_prepare_store(buf, wasm_tmp_local(wasm, res_type));
-                wasm_store_register(buf, res_type, res_index);
+                wasm_store_register(buf, res_type, bc_insn->res_index);
             }
-#endif
-            unimplemented;
         } break;
         
         case BC_RETURN: {
@@ -653,14 +647,16 @@ convert_to_wasm_module(Bytecode* bc, Data_Packer* data_packer, s64 stk_usage, Bu
     push_u32(buf, 0); // reserve space for the size
     push_leb128_u32(buf, 2); // number of exports
     
-    // - export[0] (for funcidx 1)
-    wasm_push_string(buf, string_lit("main")); // name of export
-    push_u8(buf, 0x00); // 0x00 = funcidx
-    push_leb128_u32(buf, bc->entry_func_index); // funcidx of entrypoint
+    // - export relevant functions
+    for_array(bc->exports, ex, _11) {
+        wasm_push_string(buf, vars_load_string(ex->function)); // name of export
+        push_u8(buf, 0x00); // 0x00 = funcidx
+        push_leb128_u32(buf, ex->func_index); // funcidx of entrypoint
+    }
     
     // - export[1] (for memidx 0)
     wasm_push_string(buf, string_lit("memory")); // name of export
-    push_u8(buf, 0x02); // 0x00 = memidx
+    push_u8(buf, 0x02); // 0x02 = memidx
     push_leb128_u32(buf, 0); // main memidx
     wasm_set_vec_size(buf, export_section_start);
     

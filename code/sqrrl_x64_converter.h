@@ -109,16 +109,12 @@ register_displacement(X64_Assembler* x64, int register_index) {
     return x64->current_stack_displacement_for_bytecode_registers + register_index * 8;
 }
 
-struct X64_Compiled_Code {
-    u8* main_function_ptr;
-    PE_Executable pe_executable;
-};
-
-X64_Compiled_Code convert_bytecode_to_x64_machine_code(Bytecode* bytecode, 
-                                                       Buffer* buf, 
-                                                       Data_Packer* data_packer,
-                                                       Library_Import_Table* import_table,
-                                                       Compiler_Task compiler_task);
+// TODO(Alexander): we should probably return something more approporiate.
+PE_Executable convert_bytecode_to_x64_machine_code(Bytecode* bytecode, 
+                                                   Buffer* buf, 
+                                                   Data_Packer* data_packer,
+                                                   Library_Import_Table* import_table,
+                                                   Compiler_Task compiler_task);
 
 void convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64,
                                                    Bytecode_Function* func,

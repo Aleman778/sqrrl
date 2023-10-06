@@ -6,10 +6,12 @@ enum {
     TestExecutionMode_None = 0,
     TestExecutionMode_Interp = bit(0),
     TestExecutionMode_X64_JIT = bit(1),
+    TestExecutionMode_WASM = bit(2),
     
-    TestExecutionMode_Count = 2,
+    TestExecutionMode_Count = 3,
     TestExecutionMode_All = (TestExecutionMode_Interp |
-                             TestExecutionMode_X64_JIT),
+                             TestExecutionMode_X64_JIT |
+                             TestExecutionMode_WASM),
 };
 
 const cstring test_execution_names[] = {

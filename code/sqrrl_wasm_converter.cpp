@@ -125,7 +125,7 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             int target_index = bc_insn->arg0_index;
             int arg_count = bc_insn->arg1_index;
             
-            int* args = (int*) (bc + 1);
+            int* args = (int*) (bc_insn + 1);
             for (int arg_index = arg_count - 1; arg_index >= 0; arg_index--) {
                 int src_index = args[arg_index];
                 wasm_load_register(func, buf, src_index);
@@ -274,15 +274,7 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
                 type_index = (type.size == 8) ? 3 : 2;
             }
             
-            int opcode_index;
-            if (branch->opcode == BC_BRANCH) {
-                // Invert the condition for the branch
-                int op = BC_NEQ - insn->opcode;
-                opcode_index = (BC_NEQ - insn->opcode)*4 + type_index;
-            } else {
-                opcode_index = (insn->opcode - BC_EQ)*4 + type_index;
-            }
-            
+            int opcode_index = (insn->opcode - BC_EQ)*4 + type_index;
             push_u8(buf, wasm_comparator_opcodes[opcode_index]);
             
             // Comparator always outputs a i32

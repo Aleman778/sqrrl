@@ -481,6 +481,15 @@ void string_builder_push(String_Builder* sb, Value* value) {
             string_builder_push(sb, value->data.boolean ? "true" : "false");
         } break;
         
+        case Value_character: {
+            if (value->data.character.num_bytes == 1) {
+                string_builder_push_format(sb, "'%'", f_char(value->data.character.bytes[0]));
+            } else {
+                unimplemented;
+                //string_builder_push_format(sb, "'%'", f_string(value->data.characters));
+            }
+        } break;
+        
         case Value_signed_int: {
             string_builder_push_format(sb, "%", f_s64(value->data.signed_int));
         } break;

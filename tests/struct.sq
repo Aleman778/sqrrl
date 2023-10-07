@@ -5,7 +5,7 @@ struct Soa {
     [3]f32 floats;
 }
 
-int
+void
 @test_proc
 soa_struct_initializer() {
     int x = 50;
@@ -21,7 +21,7 @@ struct Game_Summary {
     f32 review_score;
 }
 
-int
+void
 @test_proc
 aos_struct_initializer() {
     f32 review_scope0 = 4.3f;

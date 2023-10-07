@@ -46,7 +46,7 @@ f32_slow_round(f32 num) {
     }
 }
 
-f32
+void
 @test_proc
 f32_int_conversion_example() {
     f32 x = f32_slow_round(43.55f);

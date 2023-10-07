@@ -100,6 +100,7 @@ struct Array_Value {
 enum Value_Type {
     Value_void,
     Value_boolean,
+    Value_character,
     Value_signed_int,
     Value_unsigned_int,
     Value_floating,
@@ -110,8 +111,17 @@ enum Value_Type {
     Value_memory_string,
 };
 
+struct Character_Value {
+    union {
+        u8 bytes[4];
+        u32 unicode;
+    };
+    u32 num_bytes;
+};
+
 union Value_Data {
     bool boolean;
+    Character_Value character;
     s64 signed_int;
     u64 unsigned_int;
     f64 floating;
@@ -149,6 +159,15 @@ create_signed_int_value(s64 value) {
     Value result;
     result.type = Value_signed_int;
     result.data.signed_int = value;
+    return result;
+}
+
+inline Value
+create_character_value(u32 unicode, u32 num_bytes) {
+    Value result;
+    result.type = Value_character;
+    result.data.character.unicode = unicode;
+    result.data.character.num_bytes = num_bytes;
     return result;
 }
 
@@ -201,6 +220,7 @@ inline bool
 is_integer(Value value) {
     switch (value.type) {
         case Value_boolean:
+        case Value_character:
         case Value_signed_int:
         case Value_unsigned_int:
         case Value_pointer:
@@ -233,6 +253,7 @@ inline bool
 value_to_bool(Value value) {
     switch (value.type) {
         case Value_boolean: return value.data.boolean;
+        case Value_character: return value.data.character.bytes[0] != 0;
         case Value_unsigned_int: return value.data.unsigned_int != 0;
         case Value_signed_int: return value.data.signed_int != 0;
         case Value_pointer: return value.data.pointer != 0;
@@ -246,6 +267,7 @@ inline u64
 value_to_u64(Value value) {
     switch (value.type) {
         case Value_boolean: return value.data.boolean == true ? 1 : 0;
+        case Value_character: return (u64) value.data.character.bytes[0];
         case Value_signed_int: return (u64) value.data.signed_int;
         case Value_floating: return (u64) value.data.floating;
         case Value_pointer: return (u64) value.data.pointer;
@@ -257,6 +279,7 @@ inline s64
 value_to_s64(Value value) {
     switch (value.type) {
         case Value_boolean: return value.data.boolean == true ? 1 : 0;
+        case Value_character: return (s64) value.data.character.bytes[0];
         case Value_unsigned_int: return (s64) value.data.unsigned_int;
         case Value_floating: return (s64) value.data.floating;
         case Value_pointer: return (s64) value.data.pointer;
@@ -268,6 +291,7 @@ inline smm
 value_to_smm(Value value) {
     switch (value.type) {
         case Value_boolean: return value.data.boolean == true ? 1 : 0;
+        case Value_character: return (smm) value.data.character.bytes[0];
         case Value_signed_int: return (smm) value.data.signed_int;
         case Value_floating: return (smm) value.data.floating;
         case Value_pointer: return value.data.pointer;
@@ -279,6 +303,7 @@ inline f64
 value_to_f64(Value value) {
     switch (value.type) {
         case Value_boolean: return value.data.boolean == true ? 1.0 : 0.0;
+        case Value_character: return (f64) value.data.character.bytes[0];
         case Value_signed_int: return (f64) value.data.signed_int;
         case Value_unsigned_int: return (f64) value.data.unsigned_int;
         case Value_pointer: return (f64) value.data.pointer;

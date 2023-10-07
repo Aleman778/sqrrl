@@ -1,0 +1,160 @@
+
+int
+switch_test(int x) {
+    switch (x) {
+        case 'h': {
+            return x * 2;
+        }
+        
+        case 20: {
+            return x - 10;
+        }
+        
+        case: {
+            return 42;
+        }
+    }
+}
+
+int
+switch_test_multi_case(int x) {
+    switch (x) {
+        case 2:
+        case 22:
+        case 222:
+        case 2222: {
+            return 2;
+        }
+        
+        case 3:
+        case 33:
+        case 333:
+        case 3333: {
+            return 3;
+        }
+        
+        case: {
+            return 0;
+        }
+    }
+}
+
+int
+switch_test_no_default(int x) {
+    switch (x) {
+        case 'a': {
+            return 'A';
+        }
+        
+        case 'b': {
+            return 'B';
+        }
+    }
+    return '0';
+}
+
+int
+switch_test_recursion(int x) {
+    switch (x) {
+        case 1:
+        case 2: 
+        case 3: {
+            return switch_test_recursion(x + 1);
+        }
+        
+        case: {
+            return x;
+        }
+    }
+}
+
+
+enum Op_Type {
+    Add,
+    Sub,
+    Div,
+    Mul
+}
+
+int
+switch_test_enum(Op_Type op, int left, int right) {
+    switch (op) {
+        case Op_Type.Add: {
+            return left + right;
+        }
+        
+        case Op_Type.Sub: {
+            return left - right;
+        }
+        
+        case Op_Type.Div: {
+            return left / right;
+        }
+        
+        case Op_Type.Mul: {
+            return left * right;
+        }
+    }
+}
+
+void
+@test_proc
+switch_on_char_literal() {
+    assert(switch_test('h') == 208);
+}
+
+void
+@test_proc
+switch_on_integer_literal() {
+    assert(switch_test(20) == 10);
+}
+
+void
+@test_proc
+switch_on_default_case() {
+    assert(switch_test(1232131) == 42);
+}
+
+void
+@test_proc
+switch_on_multi_cases() {
+    assert(switch_test_multi_case(11)    == 0);
+    assert(switch_test_multi_case(2)     == 2);
+    assert(switch_test_multi_case(22)    == 2);
+    assert(switch_test_multi_case(222)   == 2);
+    assert(switch_test_multi_case(2222)  == 2);
+    assert(switch_test_multi_case(22222) == 0);
+    assert(switch_test_multi_case(3)     == 3);
+    assert(switch_test_multi_case(33)    == 3);
+    assert(switch_test_multi_case(333)   == 3);
+    assert(switch_test_multi_case(3333)  == 3);
+    assert(switch_test_multi_case(33333) == 0);
+}
+
+void
+@test_proc
+switch_on_incomplete_cases() {
+    assert(switch_test_no_default('a') == (int) 'A');
+    assert(switch_test_no_default('b') == (int) 'B');
+    assert(switch_test_no_default('c') == (int) '0');
+}
+
+
+void
+@test_proc
+switch_on_recursively() {
+    assert(switch_test_recursion(0) == 0);
+    assert(switch_test_recursion(2) == 4);
+    assert(switch_test_recursion(3) == 4);
+    assert(switch_test_recursion(1) == 4);
+    assert(switch_test_recursion(5) == 5);
+}
+
+void
+@test_proc
+switch_on_enum() {
+    assert(switch_test_enum(Op_Type.Add, 6, 7)  == 13);
+    assert(switch_test_enum(Op_Type.Sub, 3, 12) == -9);
+    assert(switch_test_enum(Op_Type.Mul, 3, 4)  == 12);
+    assert(switch_test_enum(Op_Type.Div, 21, 7) == 3);
+}

@@ -2531,10 +2531,13 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
             
             bool has_default = false;
             
+            // TODO(Alexander): hack to figure out duplicates case conditions
+            map(s64, bool)* occupancy = 0;
+            
             for_compound(stmt->Switch_Stmt.cases, it) {
                 assert(it->kind == Ast_Switch_Case);
                 
-                if (!it->Switch_Case.cond || it->Switch_Case.cond->kind == Ast_None) {
+                if (!is_valid_ast(it->Switch_Case.cond)) {
                     if (has_default) {
                         if (report_error) {
                             type_error(tcx, string_lit("cannot define more than one default case"),
@@ -2546,15 +2549,33 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                     
                 } else {
                     Value case_cond = constant_folding_of_expressions(tcx, it->Switch_Case.cond);
+                    type_infer_expression(tcx, it->Switch_Case.cond, 0, true);
+                    
                     if (!is_integer(case_cond)) {
                         if (report_error) {
-                            if (!type_infer_expression(tcx, it->Switch_Case.cond, 0, true)) {
-                                type_error(tcx, string_print("expected integral case condition, found `%`",
+                            if (case_cond.type != Value_void) {
+                                type_error(tcx, string_print("expected constant integral case condition, found %",
                                                              f_value(&case_cond)),
+                                           it->Switch_Case.cond->span);
+                            } else {
+                                type_error(tcx, string_print("expected constant case condition"),
                                            it->Switch_Case.cond->span);
                             }
                         }
                         return 0;
+                    }
+                    
+                    // Check ocupancy to avoid duplicate cases
+                    s64 val = value_to_s64(case_cond);
+                    if (map_get(occupancy, val)) {
+                        if (report_error) {
+                            type_error(tcx, string_print("duplicate case condition, found %",
+                                                         f_value(&case_cond)),
+                                       it->Switch_Case.cond->span);
+                        }
+                        return 0;
+                    } else {
+                        map_put(occupancy, val, true);
                     }
                 }
                 
@@ -2564,6 +2585,8 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                     return 0;
                 }
             }
+            
+            map_free(occupancy);
             
         } break;
         
@@ -3212,16 +3235,107 @@ type_infer_ast(Type_Context* tcx, Interp* interp, Compilation_Unit* cu,
 }
 
 bool
+check_if_statement_will_return(Ast* stmt) {
+    if (!is_valid_ast(stmt)) {
+        return false;
+    }
+    
+    switch (stmt->kind) {
+        case Ast_If_Stmt: {
+            return (check_if_statement_will_return(stmt->If_Stmt.then_block) &&
+                    check_if_statement_will_return(stmt->If_Stmt.else_block));
+            
+        } break;
+        
+        case Ast_For_Stmt: {
+            return check_if_statement_will_return(stmt->For_Stmt.block);
+        } break;
+        
+        case Ast_While_Stmt: {
+            return check_if_statement_will_return(stmt->For_Stmt.block);
+        } break;
+        
+        case Ast_Switch_Stmt: {
+            bool all_cases_return = true;
+            bool has_default_case = false;
+            
+            {
+                for_compound(stmt->Switch_Stmt.cases, it) {
+                    if (is_valid_ast(it->Switch_Case.stmt)) {
+                        if (!check_if_statement_will_return(it->Switch_Case.stmt)) {
+                            all_cases_return = false;
+                        }
+                    }
+                    
+                    if (!is_valid_ast(it->Switch_Case.cond)) {
+                        has_default_case = true;
+                    }
+                }
+            }
+            
+            Type* cond_type = stmt->Switch_Case.cond->type;
+            if (cond_type && cond_type->kind == TypeKind_Enum) {
+                int cond_count = 0;
+                for_compound(stmt->Switch_Stmt.cases, it) {
+                    if (is_valid_ast(it->Switch_Case.cond)) {
+                        cond_count++;
+                    }
+                }
+                
+                if (cond_count == map_count(cond_type->Enum.values)) {
+                    // NOTE(Alexander): no need to have a default case whenever
+                    // all possible enum variants are used.
+                    has_default_case = true;
+                }
+            }
+            
+            // TODO(Alexander): improve e.g. with enums check that all variants have been tested for
+            return all_cases_return && has_default_case;
+        } break;
+        
+        case Ast_Block_Stmt: {
+            for_compound(stmt->Block_Stmt.stmts, it) {
+                if (check_if_statement_will_return(it)) {
+                    return true;
+                }
+            }
+        } break;
+        
+        case Ast_Return_Stmt: {
+            return true;
+        } break;
+    }
+    
+    return false;
+} 
+
+bool
 type_check_ast(Type_Context* tcx, Compilation_Unit* cu) {
+    tcx->return_type = t_void;
+    
     Ast* ast = cu->ast;
+    Type* type = ast->type;
     if (ast->kind == Ast_Decl_Stmt) {
-        Type* type = ast->Decl_Stmt.type->type;
+        type = ast->Decl_Stmt.type->type;
         if (type && type->kind == TypeKind_Function) {
             tcx->return_type = type->Function.return_type;
         }
     }
     
     bool result = type_check_statement(tcx, ast);
+    
+    if (result && is_valid_type(tcx->return_type)) {
+        result = check_if_statement_will_return(ast->Decl_Stmt.stmt);
+        if (!result) {
+            Span span = ast->span;
+            span.offset += span.count;
+            span.count = 1;
+            pln("offset = %, count = %", f_int(span.offset), f_int(span.count));
+            type_error(tcx, string_print("not all control paths return a value in `%`",
+                                         f_var(type->Function.ident)), span);
+        }
+    }
+    
     if (result) {
         
         if (cu->ast->kind != Ast_Decl_Stmt) {
@@ -3276,13 +3390,6 @@ intrin_name->Function.first_default_arg_index++; \
     // the ability to create these functions yet, need FFI!
     // We will still have intrinsics but these intrinsics are just for debugging
     
-#if 0
-    // Intrinsic syntax: void print_format(string format...)
-    // e.g. print_format %, lucky number is %\n", "world", 7);
-    push_intrinsic(print, true, &interp_intrinsic_print, &print, t_void);
-    push_intrinsic_arg(print, format, t_cstring);
-#endif
-    
     // Intrinsic syntax: void debug_break()
     // Inserts a breakpoint (e.g. int3 on x64) to enable debugger
     push_intrinsic(debug_break, false, &interp_intrinsic_debug_break, &interp_intrinsic_debug_break, t_void);
@@ -3290,16 +3397,6 @@ intrin_name->Function.first_default_arg_index++; \
     // Intrinsic syntax: void __debugbreak()
     // Inserts a breakpoint (e.g. int3 on x64) to enable debugger
     push_intrinsic(__debug_break, false, &interp_intrinsic_debug_break, &interp_intrinsic_debug_break, t_void);
-    
-#if 0
-    // Intrinsic syntax: void __assert(int test, cstring msg cstring file, smm line)
-    // Assets that expr is true, used as test case
-    push_intrinsic(__assert, false, &interp_intrinsic_assert, &intrinsic_assert, t_bool);
-    push_intrinsic_arg(__assert, test, t_int);
-    push_intrinsic_arg(__assert, msg, t_cstring);
-    push_intrinsic_arg(__assert, file, t_cstring);
-    push_intrinsic_arg(__assert, line, t_smm);
-#endif
     
     // Intrinsic syntax: umm sizeof(T)
     push_intrinsic(sizeof, false, 0, &type_sizeof, t_umm);

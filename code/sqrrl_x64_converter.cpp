@@ -513,7 +513,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             Bytecode_Branch* branch = (Bytecode_Branch*) ((u8*) insn + insn->next_insn);
             if (branch->opcode == BC_BRANCH) {
                 // jcc
-                push_u16(buf, x64_jcc_opcodes[BC_NEQ - insn->opcode]);
+                push_u16(buf, x64_jcc_opcodes[insn->opcode - BC_EQ]);
                 x64_jump_address_for_label(x64, buf, func, branch->label_index);
             } else {
                 // setcc

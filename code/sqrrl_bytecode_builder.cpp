@@ -495,10 +495,10 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 begin_block(bc);
                 begin_block(bc);
                 
-                int first = convert_condition_to_bytecode(bc, expr->Binary_Expr.first);
+                int first = convert_condition_to_bytecode(bc, expr->Binary_Expr.first, true);
                 bc_instruction_branch(bc, bc->block_depth, first);
                 
-                int second = convert_condition_to_bytecode(bc, expr->Binary_Expr.second);
+                int second = convert_condition_to_bytecode(bc, expr->Binary_Expr.second, true);
                 bc_instruction_branch(bc, bc->block_depth, second);
                 
                 result = add_bytecode_register(bc, result_type);
@@ -513,10 +513,10 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 begin_block(bc);
                 begin_block(bc);
                 
-                int first = convert_condition_to_bytecode(bc, expr->Binary_Expr.first, true);
+                int first = convert_condition_to_bytecode(bc, expr->Binary_Expr.first, false);
                 bc_instruction_branch(bc, bc->block_depth, first);
                 
-                int second = convert_condition_to_bytecode(bc, expr->Binary_Expr.second, true);
+                int second = convert_condition_to_bytecode(bc, expr->Binary_Expr.second, false);
                 bc_instruction_branch(bc, bc->block_depth, second);
                 
                 result = add_bytecode_register(bc, result_type);
@@ -858,7 +858,7 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
                 begin_block(bc);
             }
             
-            int cond = convert_condition_to_bytecode(bc, stmt->If_Stmt.cond);
+            int cond = convert_condition_to_bytecode(bc, stmt->If_Stmt.cond, true);
             bc_instruction_branch(bc, bc->block_depth, cond);
             
             // Then case
@@ -884,7 +884,7 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
             
             // Condition
             if (is_valid_ast(stmt->For_Stmt.cond)) {
-                int cond = convert_condition_to_bytecode(bc, stmt->For_Stmt.cond);
+                int cond = convert_condition_to_bytecode(bc, stmt->For_Stmt.cond, true);
                 bc_instruction_branch(bc, bc->block_depth - 1, cond);
             }
             
@@ -908,7 +908,7 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
             
             // Condition
             if (is_valid_ast(stmt->While_Stmt.cond)) {
-                int cond = convert_condition_to_bytecode(bc, stmt->While_Stmt.cond);
+                int cond = convert_condition_to_bytecode(bc, stmt->While_Stmt.cond, true);
                 bc_instruction_branch(bc, bc->block_depth - 1, cond);
             }
             
@@ -918,6 +918,67 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
             // Exit
             end_block(bc);
             end_block(bc);
+        } break;
+        
+        case Ast_Switch_Stmt: {
+            begin_block(bc);
+            Ast* default_stmt = 0;
+            int outer_block = bc->block_depth;
+            int switch_cond = convert_expression_to_bytecode(bc, stmt->Switch_Stmt.cond);
+            
+            {
+                for_compound(stmt->Switch_Stmt.cases, it) {
+                    if (!is_valid_ast(it->Switch_Case.cond)) {
+                        assert(default_stmt == 0 && "two default statements");
+                        default_stmt = it->Switch_Case.stmt;
+                    } else if (is_valid_ast(it->Switch_Case.stmt)) {
+                        begin_block(bc);
+                    }
+                }
+            }
+            
+            int multi_case_block = -1;
+            for_compound(stmt->Switch_Stmt.cases, it) {
+                if (is_valid_ast(it->Switch_Case.cond)) {
+                    int case_cond = convert_expression_to_bytecode(bc, it->Switch_Case.cond);
+                    int branch_cond = add_bytecode_register(bc, t_bool);
+                    
+                    if (is_valid_ast(it->Switch_Case.stmt)) {
+                        bc_instruction(bc, BC_NEQ, branch_cond, switch_cond, case_cond);
+                        if (multi_case_block == -1) {
+                            bc_instruction_branch(bc, bc->block_depth, branch_cond);
+                        } else {
+                            bc_instruction_branch(bc, bc->block_depth - 1, branch_cond);
+                            end_block(bc);
+                            multi_case_block = -1;
+                        }
+                        
+                        convert_statement_to_bytecode(bc, it->Switch_Case.stmt, break_label, continue_label);
+                        
+                        if (bc->curr_insn->opcode != BC_RETURN) {
+                            bc_instruction_branch(bc, outer_block, -1);
+                        }
+                        end_block(bc);
+                        
+                    } else {
+                        // Case contains multiple cases (similar to logical or)
+                        if (multi_case_block == -1) {
+                            begin_block(bc);
+                            multi_case_block = bc->block_depth;
+                        }
+                        
+                        bc_instruction(bc, BC_EQ, branch_cond, switch_cond, case_cond);
+                        bc_instruction_branch(bc, multi_case_block, branch_cond);
+                    }
+                }
+            }
+            
+            if (default_stmt) {
+                convert_statement_to_bytecode(bc, default_stmt, break_label, continue_label);
+            }
+            
+            end_block(bc);
+            
         } break;
         
         case Ast_Return_Stmt: {
@@ -1141,7 +1202,8 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
             
             switch (insn->opcode) {
                 case BC_BLOCK:
-                case BC_LOOP:{
+                case BC_LOOP:
+                case BC_END: {
                     string_builder_push_format(sb, "(label = %)", f_int(block_depth));
                 } break;
             }

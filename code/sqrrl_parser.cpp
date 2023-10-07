@@ -180,6 +180,7 @@ parse_char(Parser* parser) {
     u8* curr = str.data;
     u8* end = str.data + str.count;
     verify(*curr++ == '\'');
+    u8 num_bytes = 1;
     
     u32 character = 0;
     if (*curr == '\\') {
@@ -187,7 +188,7 @@ parse_char(Parser* parser) {
         character = parse_escape_character(parser, curr, end, false);
     } else {
         // NOTE(alexander): extracts utf-32 character, simplified from advance_utf8_character
-        u8 num_bytes = utf8_calculate_num_bytes(*curr);
+        num_bytes = utf8_calculate_num_bytes(*curr);
         character = *curr++ & utf8_first_byte_mask[num_bytes - 1];
         for (int i = 1; i < num_bytes; i++) {
             character <<= 6;
@@ -196,12 +197,15 @@ parse_char(Parser* parser) {
     }
     
     if (*curr++ != '\'' && curr < end) {
-        __debugbreak();
         parse_error(parser, parser->current_token, string_lit("character literal may only contain one codepoint"));
     }
     
+    if (num_bytes != 1) {
+        parse_error(parser, parser->current_token, string_lit("unsupported character literals with unicode, use string instead"));
+    }
+    
     // TODO(alexander): should we create a char value type?
-    return push_ast_value(parser, create_unsigned_int_value(character), t_u8);
+    return push_ast_value(parser, create_character_value(character, num_bytes), t_u8);
 }
 
 internal Ast*
@@ -1189,6 +1193,12 @@ parse_switch_case(Parser* parser) {
         next_token_if_matched(parser, Token_Colon);
         if (peek_token_match(parser, Token_Open_Brace, false)) {
             result->Switch_Case.stmt = parse_block_statement(parser, false);
+        } else {
+            Token token = peek_token(parser);
+            if (!(token.type == Token_Ident && vars_save_string(token.source) == Kw_case)) {
+                parse_error(parser, token, string_print("expected `case` or `{` found `%`",
+                                                        f_token(token.type)));
+            }
         }
     } else {
         Token token = next_token(parser);

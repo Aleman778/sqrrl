@@ -1843,7 +1843,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             }
             
             Type* elem_type = create_type_from_ast(tcx, ast->Array_Type.elem_type, report_error).type;
-            if (elem_type) {
+            if (elem_type && elem_type->size > 0 && elem_type->align > 0) {
                 result.type->kind = TypeKind_Array;
                 result.type->Array.type = elem_type;
                 result.type->Array.capacity = capacity;
@@ -3252,7 +3252,7 @@ check_if_statement_will_return(Ast* stmt) {
         } break;
         
         case Ast_While_Stmt: {
-            return check_if_statement_will_return(stmt->For_Stmt.block);
+            return check_if_statement_will_return(stmt->While_Stmt.block);
         } break;
         
         case Ast_Switch_Stmt: {
@@ -3324,7 +3324,7 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* cu) {
     
     bool result = type_check_statement(tcx, ast);
     
-    if (result && is_valid_type(tcx->return_type)) {
+    if (result && is_valid_type(tcx->return_type) && is_valid_ast(ast->Decl_Stmt.stmt)) {
         result = check_if_statement_will_return(ast->Decl_Stmt.stmt);
         if (!result) {
             Span span = ast->span;

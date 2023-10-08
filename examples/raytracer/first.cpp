@@ -430,4 +430,5 @@ main() {
         pln("Failed to create a window")
     }
     
+    return 0;
 }

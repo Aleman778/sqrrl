@@ -530,6 +530,16 @@ parse_atom(Parser* parser, bool report_error, u8 min_prec) {
             }
         } break;
         
+        case Token_Open_Brace: {
+            result = push_ast_node(parser, &token);
+            result->kind = Ast_Aggregate_Expr;
+            result->Aggregate_Expr.elements = parse_compound(parser, 
+                                                             Token_Open_Brace, 
+                                                             Token_Close_Brace, 
+                                                             Token_Comma, 
+                                                             &parse_actual_struct_or_union_argument);
+        } break;
+        
         default: {
             Operator unop = parse_unary_op(parser);
             
@@ -735,7 +745,7 @@ parse_assign_statement(Parser* parser, Ast* type, Ast* ident=0) {
     }
     
     if (next_token_if_matched(parser, Token_Assign, false)) {
-        result->Assign_Stmt.expr = parse_aggregate_or_expression(parser);
+        result->Assign_Stmt.expr = parse_expression(parser);
         
     } else {
         result->Assign_Stmt.expr = push_ast_node(parser);
@@ -1078,24 +1088,6 @@ parse_formal_struct_or_union_argument(Parser* parser) {
 }
 
 Ast*
-parse_aggregate_or_expression(Parser* parser, bool report_error, Ast* atom) {
-    Token token = peek_token(parser);
-    if (!atom && token.type == Token_Open_Brace) {
-        // Aggregate type initializer
-        Ast* expr = push_ast_node(parser, &token);
-        expr->kind = Ast_Aggregate_Expr;
-        expr->Aggregate_Expr.elements = parse_compound(parser, 
-                                                       Token_Open_Brace, 
-                                                       Token_Close_Brace, 
-                                                       Token_Comma, 
-                                                       &parse_actual_struct_or_union_argument);
-        return expr;
-    } else {
-        return parse_expression(parser, report_error, 1, atom);
-    }
-}
-
-Ast*
 parse_actual_struct_or_union_argument(Parser* parser) {
     Ast* result = push_ast_node(parser);
     result->kind = Ast_Argument;
@@ -1103,13 +1095,13 @@ parse_actual_struct_or_union_argument(Parser* parser) {
     if (peek_token_match(parser, Token_Ident, false)) {
         result->Argument.ident = parse_identifier(parser, true);
         if (next_token_if_matched(parser, Token_Colon, false)) {
-            result->Argument.assign = parse_aggregate_or_expression(parser);
+            result->Argument.assign = parse_expression(parser);
         } else {
-            result->Argument.assign = parse_aggregate_or_expression(parser, true, result->Argument.ident);
+            result->Argument.assign = parse_expression(parser, true, 1, result->Argument.ident);
             result->Argument.ident = 0;
         }
     } else {
-        result->Argument.assign = parse_aggregate_or_expression(parser);
+        result->Argument.assign = parse_expression(parser);
     }
     return result;
 }

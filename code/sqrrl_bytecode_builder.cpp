@@ -610,10 +610,15 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 }
                 
                 if (first_ptr != -1) {
-                    if (result_type->size > 8) {
-                        bc_instruction(bc, BC_MEMCPY, first_ptr, result, result_type->size);
+                    if (result == -1) {
+                        convert_initializer_to_bytecode(bc, expr->Binary_Expr.second, first_ptr);
+                        
                     } else {
-                        bc_instruction_store(bc, first_ptr, result);
+                        if (result_type->size > 8) {
+                            bc_instruction(bc, BC_MEMCPY, first_ptr, result, result_type->size);
+                        } else {
+                            bc_instruction_store(bc, first_ptr, result);
+                        }
                     }
                 }
             }

@@ -447,7 +447,7 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                         int index = bc_instruction_const_int(bc, t_s64, 
                                                              (op == Op_Post_Increment ||
                                                               op == Op_Pre_Increment) ? 1 : -1);
-                        first_modified = bc_instruction_array_accesss(bc, type, first, index);
+                        first_modified = bc_instruction_array_accesss(bc, type->Pointer, first, index);
                     } else {
                         first_modified = add_bytecode_register(bc, type);
                         bc_instruction(bc, (op == Op_Post_Increment ||
@@ -584,7 +584,14 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 int first_ptr = -1;
                 int first = -1;
                 if (is_assign) {
-                    first_ptr = convert_lvalue_expression_to_bytecode(bc, expr->Binary_Expr.first);
+                    Ast* ast = expr->Binary_Expr.first;
+                    if (ast->kind == Ast_Unary_Expr && ast->Unary_Expr.op == Op_Dereference) {
+                        // Skip the dereference part to get the pointer directly
+                        first_ptr = convert_expression_to_bytecode(bc, ast->Unary_Expr.first);
+                    } else {
+                        first_ptr = convert_lvalue_expression_to_bytecode(bc, ast);
+                    }
+                    
                     if (opcode != BC_NOOP) {
                         first = bc_instruction_load(bc, result_type, first_ptr);
                     }

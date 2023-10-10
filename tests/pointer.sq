@@ -1,0 +1,67 @@
+
+struct Two_Int_Pointers  {
+    int* ptr1;
+    int* ptr2;
+};
+
+void
+@test_proc
+pointer_assign_through_struct_access() {
+    int num1 = 10;
+    int num2 = 20;
+    Two_Int_Pointers s = { &num1, &num2 };
+    
+    *s.ptr1 = 50;
+    *s.ptr2 = 60;
+    int result = num1 + num2;
+    assert(result == 110);
+}
+
+void
+@test_proc
+pointer_assign_through_nested_dereference() {
+    int x = 10;
+    int* p1 = &x;
+    int** p2 = &p1;
+    int*** p3 = &p2;
+    
+    ***p3 = 20;
+    int result = ***p3;
+    assert(result == 20);
+}
+
+void
+@test_proc
+pointer_assign_through_subscript() {
+    []int a = { 10, 20 };
+    int* x = a.data;
+    
+    x[0] = 40;
+    x[1] = 50;
+    int result = a[0] + a[1];
+    assert(result == 90);
+}
+
+void
+@test_proc
+pointer_assign_through_dereference() {
+    []int a = { 10, 20 };
+    int* x = a.data;
+    
+    *x = 30;
+    *(x + 1) = 50;
+    int result = a[0] + a[1];
+    assert(result == 80);
+}
+
+void
+@test_proc
+pointer_assign_through_dereference_post_increment() {
+    []int a = { 10, 20 };
+    int* x = a.data;
+    
+    *x++ = 20;
+    *x++ = 50;
+    int result = a[0] + a[1];
+    assert(result == 70);
+}

@@ -690,6 +690,10 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                         }
                     } break;
                     
+                    case Op_Logical_Not: {
+                        result = t_bool;
+                    } break;
+                    
                     case Op_Address_Of: {
                         result = type_wrap_pointer(tcx, type);
                     } break;

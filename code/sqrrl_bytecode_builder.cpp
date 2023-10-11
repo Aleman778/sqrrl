@@ -108,6 +108,7 @@ convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             int array_ptr = convert_lvalue_expression_to_bytecode(bc, expr->Index_Expr.array);
             if ((array_type->kind == TypeKind_Array &&
                  array_type->Array.kind != ArrayKind_Fixed_Inplace) ||
+                array_type->kind == TypeKind_Pointer ||
                 array_type == t_cstring) {
                 array_ptr = bc_instruction_load(bc, array_type, array_ptr);
                 

@@ -38,6 +38,19 @@ int_logical_not() {
 
 void
 @test_proc
+float_logical_not() {
+    f64 x0 = 10.0;
+    assert(!x0 == 0);
+    f64 x1 = 0.001;
+    assert(!x1 == 0);
+    f64 x2 = 0.0;
+    assert(!x2 == 1);
+    f64 x3;
+    assert(!x3 == 1);
+}
+
+void
+@test_proc
 int_add_operator() {
     int x = 10;
     x = x + 10;

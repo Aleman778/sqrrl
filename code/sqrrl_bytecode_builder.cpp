@@ -678,11 +678,11 @@ int
 convert_type_cast_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
     Type* t_dest = expr->type;
     Type* t_src = expr->Cast_Expr.expr->type;
-    if (t_src->kind == TypeKind_Pointer) {
+    if (t_src->kind == TypeKind_Pointer || t_src->kind == TypeKind_Type || t_src == t_cstring) {
         t_src = t_s64;
     }
     
-    if (t_dest->kind == TypeKind_Pointer) {
+    if (t_dest->kind == TypeKind_Pointer || t_dest->kind == TypeKind_Type || t_dest == t_cstring) {
         t_dest = t_s64;
     }
     
@@ -730,16 +730,12 @@ convert_type_cast_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             result = add_bytecode_register(bc, t_dest);
             bc_instruction(bc, BC_FLOAT_TO_FLOAT, result, src, -1);
             
-        } else if (t_src->Basic.kind == Basic_cstring) {
-            // noop
-            
         } else {
             unimplemented;
         }
         
         
-    } else if (t_dest->kind == TypeKind_Array && 
-               t_src->kind == TypeKind_Array) {
+    } else if (t_dest->kind == TypeKind_Array && t_src->kind == TypeKind_Array) {
         int src_ptr = convert_lvalue_expression_to_bytecode(bc, expr->Cast_Expr.expr);
         
         if (t_dest->Array.kind == ArrayKind_Fixed &&
@@ -759,8 +755,7 @@ convert_type_cast_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
             unimplemented;
         }
         
-    } else if (t_dest->kind == TypeKind_Struct && 
-               t_src->kind == TypeKind_Struct) {
+    } else if (t_dest->kind == TypeKind_Struct && t_src->kind == TypeKind_Struct) {
         // NOTE(Alexander): this is a NOOP, not possible to cast to different struct
         result = convert_expression_to_bytecode(bc, expr->Cast_Expr.expr);
         

@@ -2355,6 +2355,11 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
             
             Type* expected_type = created_type.type;
             if (!expected_type || expected_type->size <= 0) {
+                if (expected_type && report_error) {
+                    type_error(tcx, string_print("type `%` is invalid here", f_type(expected_type)),
+                               stmt->span);
+                }
+                
                 // TODO(Alexander): we can add support for auto types
                 return result;
             }
@@ -2923,6 +2928,16 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
             
             
             switch (op) {
+                
+                case Op_Dereference: {
+                    if (expr->type && expr->type->size <= 0) {
+                        type_error(tcx, 
+                                   string_print("cannot dereference a non-sized type `%`",
+                                                f_type(first)),
+                                   expr->span);
+                    }
+                } break;
+                
                 case Op_Negate: {
                     
                     if (first->kind == TypeKind_Pointer || first->kind == TypeKind_Function) {

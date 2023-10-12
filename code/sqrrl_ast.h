@@ -340,20 +340,6 @@ struct Ast_File {
     array(Compilation_Unit)* units;
 };
 
-inline string_id
-ast_unwrap_ident(Ast* ast_ident) {
-    assert(ast_ident->kind == Ast_Ident);
-    return ast_ident->Ident;
-}
-
-inline string_id
-try_unwrap_ident(Ast* ast_ident) {
-    if (ast_ident && ast_ident->kind == Ast_Ident) {
-        return ast_unwrap_ident(ast_ident);
-    }
-    return Kw_invalid;
-}
-
 inline bool
 should_ast_stmt_end_with_semicolon(Ast* node) {
     return !(node->kind == Ast_Block_Stmt ||
@@ -380,6 +366,11 @@ is_ast_value(Ast* ast) {
 }
 
 inline bool
+is_ast_ident(Ast* ast) {
+    return ast && ast->kind == Ast_Ident;
+}
+
+inline bool
 is_ast_expr(Ast* ast) {
     return ast && ast->kind > Ast_Expr_Begin && ast->kind < Ast_Expr_End;
 }
@@ -399,6 +390,19 @@ is_ast_compound(Ast* ast) {
     return ast && ast->kind == Ast_Compound;
 }
 
+inline string_id
+ast_unwrap_ident(Ast* ast_ident) {
+    assert(ast_ident->kind == Ast_Ident);
+    return ast_ident->Ident;
+}
+
+inline string_id
+try_unwrap_ident(Ast* ast) {
+    if (is_ast_ident(ast)) {
+        return ast_unwrap_ident(ast);
+    }
+    return Kw_invalid;
+}
 
 struct Attribute_Parser {
     Ast* curr;

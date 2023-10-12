@@ -200,6 +200,14 @@ is_valid_type(Type* type) {
             type->kind != TypeKind_Void);
 }
 
+bool
+is_aggregate_type(Type* type) {
+    return ((type->kind == TypeKind_Basic && type->Basic.kind == Basic_string) ||
+            type->kind == TypeKind_Struct ||
+            type->kind == TypeKind_Union ||
+            type->kind == TypeKind_Array);
+}
+
 Type basic_type_definitions[] = {
 #define BASIC(ident, flags, keyword, size, limits) \
 { TypeKind_Basic, { Basic_##ident, flags, limits }, keyword, size, size },

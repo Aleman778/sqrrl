@@ -45,6 +45,7 @@ enum Bytecode_Operator {
     BC_DEC,
     
     // Binary
+    BC_MOVE,
     BC_ADDR_OF,
     BC_DEREF,
     BC_ADD,
@@ -93,7 +94,7 @@ global const cstring bc_operator_names[] = {
     /* Conversions:      */ "truncate", "extend", "int_to_float", "float_to_int", "float_to_float",
     /*                   */ "reinterpret_f2i",
     /* Unary:            */ "neg", "not", "inc", "dec",
-    /* Binary:           */ "addr_of", "deref", "add", "sub", "mul", "div_s", "div_u", 
+    /* Binary:           */ "move", "addr_of", "deref", "add", "sub", "mul", "div_s", "div_u", 
     /*                   */ "mod_s", "mod_u", "and", "or", "xor", "shl", "sar", "shr",
     /* Comparators:      */ "eq", "gt_s", "gt_u", "ge_s", "ge_u", "lt_u", "lt_s", "le_u", "le_s", "neq",
     /* intrinsics (x64): */ "x64_rdts"

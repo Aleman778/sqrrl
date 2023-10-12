@@ -690,6 +690,7 @@ it = arr[++it_index < array_count(arr) ? it_index : 0])
 #define map_key_exists(m, k) ((hmgeti(m, k)) != -1)
 #define map_remove(m, k) hmdel(m, k)
 #define map_count(m) hmlen(m)
+#define map_set_default_value(m, v) hmdefault(m, v)
 
 // NOTE(Alexander): hash map iterator
 // Usage: continuing from previous example...
@@ -711,6 +712,7 @@ for (auto it = map; it < map + map_count(map); it++)
 #define string_map_get_index(m, k) shgeti(m, k)
 #define string_map_remove(m, k) shdel(m, k)
 #define string_map_new_arena(m) sh_new_arena(m)
+#define string_map_set_default_value(m, v) shdefault(m, v)
 
 int 
 compare_ints(void* a, void* b) {

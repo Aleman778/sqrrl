@@ -450,6 +450,13 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
         } break;
         
+        case BC_MOVE: {
+            Bytecode_Type type = register_type(func, bc->arg1_index);
+            bool is_signed = type.flags & BC_FLAG_SIGNED;
+            x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg1_index), type.size, is_signed);
+            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->arg0_index), X64_RAX);
+        } break;
+        
         case BC_ADD:
         case BC_SUB:
         case BC_MUL:

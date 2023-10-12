@@ -19,30 +19,13 @@ struct Bytecode_Builder {
     u32 next_register_index;
 };
 
-bool
-is_aggregate_type(Type* type) {
-    return ((type->kind == TypeKind_Basic && type->Basic.kind == Basic_string) ||
-            type->kind == TypeKind_Struct ||
-            type->kind == TypeKind_Union ||
-            type->kind == TypeKind_Array);
+inline Bytecode_Operator
+to_bytecode_opcode(Operator op, Type* type) {
+    bool is_signed = (type->kind == TypeKind_Basic &&
+                      type->Basic.flags & (BasicFlag_Unsigned | BasicFlag_Floating));
+    int op_index = op*2 + (is_signed ? 1 : 0);
+    return bytecode_operator_table[op_index];
 }
-
-int convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr);
-
-int convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr);
-
-bool convert_initializer_to_bytecode(Bytecode_Builder* bc, Ast* expr, int dest_ptr);
-
-int convert_condition_to_bytecode(Bytecode_Builder* bc, Ast* cond, bool invert_condition=false);
-
-int convert_type_cast_to_bytecode(Bytecode_Builder* bc, Ast* expr);
-
-int convert_function_call_to_bytecode(Bytecode_Builder* bc, Type* type, array(Ast*)* args, int function_ptr=-1);
-
-void convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, s32 continue_label);
-
-Bytecode_Function* convert_function_to_bytecode(Bytecode_Builder* bc, Bytecode_Function* func, Ast* ast,
-                                                bool is_main, bool insert_debug_break);
 
 Bytecode_Type
 to_bytecode_type(Bytecode_Builder* bc, Type* type) {
@@ -109,6 +92,35 @@ to_bytecode_type(Bytecode_Builder* bc, Type* type) {
     return result;
 }
 
+inline int
+add_bytecode_register(Bytecode_Builder* bc, Type* type) {
+    assert(bc->curr_function);
+    int result = bc->curr_function->register_count++;
+    Bytecode_Type reg_type = to_bytecode_type(bc, type);
+    array_push(bc->curr_function->register_types, reg_type);
+    return result;
+}
+
+int convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr);
+
+void convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr, int result);
+
+inline void convert_binary_to_bytecode(Bytecode_Builder* bc, Bytecode_Operator opcode, Ast* expr, int result);
+inline void convert_binary_assignment_to_bytecode(Bytecode_Builder* bc, Bytecode_Operator opcode, Ast* expr, int tmp=-1);
+
+bool convert_initializer_to_bytecode(Bytecode_Builder* bc, Ast* expr, int dest_ptr);
+
+void convert_condition_to_bytecode(Bytecode_Builder* bc, Ast* cond, int result, bool invert_condition);
+
+void convert_type_cast_to_bytecode(Bytecode_Builder* bc, Ast* expr, int result);
+
+int convert_function_call_to_bytecode(Bytecode_Builder* bc, Type* type, array(Ast*)* args, int function_ptr=-1);
+
+void convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, s32 continue_label);
+
+Bytecode_Function* convert_function_to_bytecode(Bytecode_Builder* bc, Bytecode_Function* func, Ast* ast,
+                                                bool is_main, bool insert_debug_break);
+
 Bytecode_Function* add_bytecode_function(Bytecode_Builder* bc, Type* type);
 
 Bytecode_Instruction* add_bytecode_insn(Bytecode_Builder* bc, 
@@ -120,16 +132,6 @@ int add_bytecode_global(Bytecode_Builder* bc,
                         Bytecode_Memory_Kind kind, 
                         smm size, smm align, 
                         void* init=0);
-
-
-inline int
-add_bytecode_register(Bytecode_Builder* bc, Type* type) {
-    assert(bc->curr_function);
-    int result = bc->curr_function->register_count++;
-    Bytecode_Type reg_type = to_bytecode_type(bc, type);
-    array_push(bc->curr_function->register_types, reg_type);
-    return result;
-}
 
 #define S1(x) #x
 #define S2(x) S1(x)
@@ -168,52 +170,52 @@ _bc_instruction(Bytecode_Builder* bc, Bytecode_Operator opcode,
     return insn;
 }
 
-#define bc_instruction_const_int(bc, type, val, ...) \
-_bc_instruction_const_int(bc, type, val, __FILE__ ":" S2(__LINE__), __VA_ARGS__)
+#define bc_const_int(bc, result_index, val) \
+bc_instruction_const_int(bc, result_index, val, __FILE__ ":" S2(__LINE__))
 
 inline int
-_bc_instruction_const_int(Bytecode_Builder* bc, Type* type, s64 val, cstring comment, int res_index=-1) {
+bc_instruction_const_int(Bytecode_Builder* bc, int result_index, s64 val, cstring comment) {
     Bytecode_Binary* insn = add_insn_t(bc, BC_INT_CONST, Binary);
-    insn->res_index = res_index >= 0 ? res_index : add_bytecode_register(bc, type);
+    insn->res_index = result_index;
     insn->const_i64 = val;
     insn->comment = comment;
     return insn->res_index;
 }
 
-#define bc_instruction_const_f32(bc, val) \
-_bc_instruction_const_f32(bc, val, __FILE__ ":" S2(__LINE__))
+#define bc_const_f32(bc, result_index, val) \
+bc_instruction_const_f32(bc, result_index, val, __FILE__ ":" S2(__LINE__))
 
 inline int
-_bc_instruction_const_f32(Bytecode_Builder* bc, f32 val, cstring comment) {
+bc_instruction_const_f32(Bytecode_Builder* bc, int result_index, f32 val, cstring comment) {
     Bytecode_Binary* insn = add_insn_t(bc, BC_F32_CONST, Binary);
-    insn->res_index = add_bytecode_register(bc, t_f32);
+    insn->res_index = result_index;
     insn->const_f32 = val;
     insn->comment = comment;
     return insn->res_index;
 }
 
-#define bc_instruction_const_f64(bc, val) \
-_bc_instruction_const_f64(bc, val, __FILE__ ":" S2(__LINE__))
+#define bc_const_f64(bc, result_index, val) \
+bc_instruction_const_f64(bc, result_index, val, __FILE__ ":" S2(__LINE__))
 
 inline int
-_bc_instruction_const_f64(Bytecode_Builder* bc, f64 val, cstring comment) {
+bc_instruction_const_f64(Bytecode_Builder* bc, int result_index, f64 val, cstring comment) {
     Bytecode_Binary* insn = add_insn_t(bc, BC_F64_CONST, Binary);
-    insn->res_index = add_bytecode_register(bc, t_f64);
+    insn->res_index = result_index;
     insn->const_f64 = val;
     insn->comment = comment;
     return insn->res_index;
 }
 
-#define bc_instruction_load(bc, type, src) \
-_bc_instruction_load(bc, type, src, __FILE__ ":" S2(__LINE__))
+#define bc_instruction_load(bc, dest, src) \
+_bc_instruction_load(bc, dest, src, __FILE__ ":" S2(__LINE__))
 
 inline int 
-_bc_instruction_load(Bytecode_Builder* bc, Type* type, int src, cstring comment) {
+_bc_instruction_load(Bytecode_Builder* bc, int dest, int src, cstring comment) {
     Bytecode_Type bc_type = register_type(bc->curr_function, src);
     assert(bc_type.kind == BC_TYPE_PTR && "expected BC_TYPE_PTR to load");
     
     Bytecode_Binary* insn = add_insn_t(bc, BC_LOAD, Binary);
-    insn->res_index = add_bytecode_register(bc, type);
+    insn->res_index = dest;
     insn->arg0_index = src;
     insn->arg1_index = -1;
     insn->comment = comment;
@@ -261,12 +263,15 @@ _bc_instruction_branch(Bytecode_Builder* bc, int label_index, int cond, cstring 
     branch->comment = comment;
 }
 
+#define bc_instruction_global(bc, result_index, global_index) \
+_bc_instruction_global(bc, result_index, global_index, __FILE__ ":" S2(__LINE__))
+
 inline int
-bc_instruction_global(Bytecode_Builder* bc, int global_index) {
+_bc_instruction_global(Bytecode_Builder* bc, int result_index, int global_index, cstring comment) {
     Bytecode_Binary* result = add_insn_t(bc, BC_GLOBAL, Binary);
-    result->res_index = add_bytecode_register(bc, t_void_ptr);
+    result->res_index = result_index;
     result->arg0_index = global_index;
-    result->comment = 0; // TODO(Alexander): add comment
+    result->comment = comment;
     
     return result->res_index;
 }

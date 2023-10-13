@@ -89,8 +89,8 @@ convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                 
                 case TypeKind_Array:
                 case TypeKind_Basic: {
-                    assert(type->kind == TypeKind_Array ||
-                           type->Basic.kind == Basic_string && "unsupported type");
+                    assert((type->kind == TypeKind_Array ||
+                            type->Basic.kind == Basic_string) && "unsupported type");
                     
                     if (ident == Sym_data) {
                         if (!(type->kind == TypeKind_Array && type->Array.kind == ArrayKind_Fixed_Inplace)) {
@@ -98,7 +98,8 @@ convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
                             bc_instruction(bc, BC_FIELD_ACCESS, tmp, result, 0);
                             result = tmp;
                         } else {
-                            bc->curr_function->register_types[result].flags |= BC_FLAG_RVALUE;
+                            unimplemented;
+                            //bc->curr_function->register_types[result].flags |= BC_FLAG_RVALUE;
                         }
                         
                     } else if (ident == Sym_count) {
@@ -368,6 +369,12 @@ convert_initializer_to_bytecode(Bytecode_Builder* bc, Ast* expr, int dest_ptr) {
             }
             
         } break;
+        
+        default: {
+            Type* type = expr->type;
+            int src_ptr = convert_lvalue_expression_to_bytecode(bc, expr);
+            bc_instruction(bc, BC_MEMCPY, dest_ptr, src_ptr, type->size);
+        } break;
     }
     
     return initialized;
@@ -619,21 +626,21 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr, int _result) {
             convert_type_cast_to_bytecode(bc, expr, _result);
         } break;
         
-#if 0
-        
         case Ast_Index_Expr:
         case Ast_Field_Expr: {
-            result = convert_lvalue_expression_to_bytecode(bc, expr);
-            int flags = register_type(bc->curr_function, result).flags;
-            if (!is_bitflag_set(flags, BC_FLAG_RVALUE)) {
-                result = bc_instruction_load(bc, expr->type, result);
-            }
+            int ptr = convert_lvalue_expression_to_bytecode(bc, expr);
+            bc_instruction_load(bc, _result, ptr);
+            // TODO(Alexander): what about inplace arrays?!?!?
+            
+            //int flags = register_type(bc->curr_function, result).flags;
+            //if (!is_bitflag_set(flags, BC_FLAG_RVALUE)) {
+            //result = bc_instruction_load(bc, expr->type, result);
+            //}
         } break;
         
         case Ast_Paren_Expr: {
-            return convert_expression_to_bytecode(bc, expr->Paren_Expr.expr);
+            convert_expression_to_bytecode(bc, expr->Paren_Expr.expr, _result);
         } break;
-#endif
         
         default: {
             unimplemented;
@@ -665,7 +672,20 @@ convert_binary_assignment_to_bytecode(Bytecode_Builder* bc, Bytecode_Operator op
         } break;
         
         default: {
-            unimplemented;
+            int ptr = convert_lvalue_expression_to_bytecode(bc, expr->Binary_Expr.first);
+            int result;
+            if (opcode != BC_MOVE) {
+                result = tmp;
+                bc_instruction_load(bc, result, ptr);
+                
+                int second = bc_find_register_value(bc, expr->Binary_Expr.second);
+                bc_instruction(bc, opcode, result, result, second);
+                //drop_register(second);
+            } else {
+                result = bc_find_register_value(bc, expr->Binary_Expr.second, tmp);
+            }
+            bc_instruction_store(bc, ptr, result);
+            //drop_register(result);
         } break;
     }
 }
@@ -838,12 +858,26 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
         
         case Ast_Assign_Stmt: {
             Type* type = stmt->type;
-            int local = add_bytecode_register(bc, type);
+            bool is_aggregate = is_aggregate_type(type);
+            int local;
+            if (is_aggregate) {
+                local = bc_instruction_local(bc, type);
+            } else {
+                local = add_bytecode_register(bc, type);
+            }
             
             if (is_valid_ast(stmt->Assign_Stmt.expr)) {
-                convert_expression_to_bytecode(bc, stmt->Assign_Stmt.expr, local);
+                if (is_aggregate) {
+                    convert_initializer_to_bytecode(bc, stmt->Assign_Stmt.expr, local);
+                } else {
+                    convert_expression_to_bytecode(bc, stmt->Assign_Stmt.expr, local);
+                }
             } else {
-                bc_const_int(bc, local, 0);
+                if (is_aggregate) {
+                    bc_instruction(bc, BC_MEMSET, local, 0, type->size);
+                } else {
+                    bc_const_int(bc, local, 0);
+                }
             }
             
             string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
@@ -1259,7 +1293,9 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
         
         case BytecodeInstructionKind_Binary: {
             Bytecode_Binary* bc_instruction_insn = (Bytecode_Binary*) insn;
-            if (bc_instruction_insn->res_index >= 0 && insn->opcode != BC_MEMCPY) {
+            if (bc_instruction_insn->res_index >= 0 && 
+                insn->opcode != BC_MEMCPY && 
+                insn->opcode != BC_MEMSET) {
                 string_builder_push_format(sb, "r% = ", f_int(bc_instruction_insn->res_index));
             }
             
@@ -1318,6 +1354,13 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
                 
                 case BC_MEMCPY: {
                     string_builder_push_format(sb, "r%, r%, size %",
+                                               f_int(bc_instruction_insn->res_index),
+                                               f_int(bc_instruction_insn->arg0_index),
+                                               f_int(bc_instruction_insn->arg1_index));
+                } break;
+                
+                case BC_MEMSET: {
+                    string_builder_push_format(sb, "r%, %, size %",
                                                f_int(bc_instruction_insn->res_index),
                                                f_int(bc_instruction_insn->arg0_index),
                                                f_int(bc_instruction_insn->arg1_index));

@@ -772,7 +772,7 @@ _binary_search(arr, &(val), array_count(arr), sizeof(arr), compare)
 #ifndef DEFAULT_ALIGNMENT
 #define DEFAULT_ALIGNMENT (2*alignof(smm))
 #endif
-#define ARENA_DEFAULT_BLOCK_SIZE kilobytes(10)
+#define ARENA_DEFAULT_BLOCK_SIZE kilobytes(16)
 
 // NOTE(Alexander): align has to be a power of two.
 inline umm
@@ -906,6 +906,7 @@ arena_aligned_offset(Memory_Arena* arena, umm size, umm align) {
 
 void*
 arena_push_size(Memory_Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT) {
+    assert(size > 0);
     
     umm offset = 0;
     umm arena_size = 0;

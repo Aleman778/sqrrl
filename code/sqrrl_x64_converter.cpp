@@ -5,7 +5,6 @@ convert_bytecode_to_x64_machine_code(Bytecode* bytecode, Buffer* buf,
                                      Library_Import_Table* import_table,
                                      Compiler_Task compiler_task) {
     
-    
     X64_Assembler x64 = {};
     x64.bytecode = bytecode;
     x64.data_packer = data_packer;
@@ -90,9 +89,10 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
         return;
     }
     
-    func->code_ptr = buf->data + buf->curr_used;
+    arena_clear(&x64->arena);
+    x64->slots = arena_push_array_of_structs(&x64->arena, func->register_count, X64_Slot);
     
-    Bytecode_Function_Arg* formal_args = function_arg_types(func);
+    func->code_ptr = buf->data + buf->curr_used;
     
     // TODO(Alexander): most  of the code here is windows x64 calling convention specific
     
@@ -107,22 +107,8 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     // Windows calling convention stack setup
     s32 register_count = (s32) func->register_count;
     s32 stack_caller_args = func->max_caller_arg_count*8;
-    x64->current_stack_displacement_for_bytecode_registers = stack_caller_args;
-    
-    s32 stack_size = stack_caller_args + register_count*8;
-    x64->current_stack_displacement_for_locals = stack_size;
-    for_bc_insn(func, insn) {
-        if (insn->opcode == BC_LOCAL) {
-            // TODO(Alexander): This is too confusing, here arg0 is size and arg1 is align, we should use a different instruction type.
-            Bytecode_Binary* bc_insn = (Bytecode_Binary*) insn;
-            stack_size = (s32) align_forward(stack_size, bc_insn->arg1_index);
-            stack_size += bc_insn->arg0_index;
-        }
-    }
-    
-    // Align stack by 16-bytes (excluding 8 bytes for return address)
-    stack_size = (s32) align_forward(stack_size + 8, 16) - 8;
-    s32 stack_callee_args = stack_size + 8;
+    x64->current_stack_size = stack_caller_args;
+    x64->max_stack_size = x64->current_stack_size;
     
     // Save HOME registers (TODO: move this it's windows calling convention only)
     // TODO(Alexander): this doens't handle returns larger than 8 bytes
@@ -135,36 +121,54 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     x64_rex(buf, REX_W); // sub rsp, stack_size
     push_u8(buf, 0x81);
     x64_modrm_direct(buf, 5, X64_RSP);
-    push_u32(buf, stack_size);
-    
-    // Setup local stack (excluding arguments and return values)
-    
-    // TODO: implement this!!!
-    //if (func->ret_count == 1 && formal_args[func->arg_count].size > 8) {
-    //stack_caller_args += 8;
-    //x64->stack[func->arg_count] = stack_caller_args;
-    //}
-    
+    u32* prologue_stack_size = (u32*) (buf->data + buf->curr_used);
+    push_u32(buf, 0);
     
     // Copy registers to our local stack space
-    // TODO(Alexander): we should find a way to reference the old stack frame!!!
-    for (int arg_index = 0; arg_index < (int) func->arg_count; arg_index++) {
-        s64 src = stack_callee_args + arg_index*8;
-        s64 dest = register_displacement(x64, arg_index);
-        x64_move_memory_to_register(buf, X64_RAX, X64_RSP, src);
-        x64_move_register_to_memory(buf, X64_RSP, dest, X64_RAX);
+    u32** callee_args_disp = 0;
+    if (func->arg_count > 0) {
+        Bytecode_Function_Arg* formal_args = function_arg_types(func);
+        callee_args_disp = arena_push_array_of_structs(&x64->arena, func->arg_count, u32*);
+        for (int arg_index = 0; arg_index < (int) func->arg_count; arg_index++) {
+            Bytecode_Function_Arg formal_arg = formal_args[arg_index];
+            
+            s64 src = arg_index*8;
+            s64 dest = register_stack_alloc(x64, arg_index, formal_arg.size, formal_arg.align);
+            
+            assert(formal_arg.size <= 8 && "TODO: add support for aggregate type");
+            
+            // x64_move_memory_to_register(buf, X64_RAX, X64_RSP, src);
+            // REX.W + 8B /r 	MOV RAX, RSP + disp 	RM
+            x64_rex(buf, REX_W);
+            push_u16(buf, 0x848B);
+            callee_args_disp[arg_index] = (u32*) (buf->data + buf->curr_used);
+            push_u32(buf, (u32) src);
+            
+            x64_move_register_to_memory(buf, X64_RSP, dest, X64_RAX);
+        }
     }
     
     for_bc_insn(func, curr) {
         convert_bytecode_insn_to_x64_machine_code(x64, buf, func, curr);
     }
     
+    // Align stack by 16-bytes (excluding 8 bytes for return address)
+    s32 stack_size = (s32) x64->max_stack_size;
+    stack_size = (s32) align_forward(stack_size + 8, 16) - 8;
+    s32 stack_callee_args = stack_size + 8;
+    
+    // Patch stack offsets
+    for (int i = 0; i < func->arg_count; i++) {
+        *callee_args_disp[i] += stack_callee_args;
+    } 
+    
+    
     // Epilogue
     x64->curr_function->labels[0] = buf->data + buf->curr_used;
     x64_rex(buf, REX_W); // add rsp, stack_usage
     push_u8(buf, 0x81);
     x64_modrm_direct(buf, 0, X64_RSP);
-    push_u32(buf, stack_size);
+    push_u32(buf, stack_size); *prologue_stack_size = stack_size;
     push_u8(buf, 0xC3); // RET near
 }
 
@@ -212,11 +216,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_LOCAL: {
-            s64 disp = x64->current_stack_displacement_for_locals;
-            disp = (s64) align_forward(disp, bc->arg1_index);
-            x64->current_stack_displacement_for_locals = disp + bc->arg0_index;
-            x64_lea(buf, X64_RAX, X64_RSP, disp);
-            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
+            register_stack_alloc(x64, bc->res_index, bc->arg0_index, bc->arg1_index);
         } break;
         
         case BC_GLOBAL: {
@@ -263,40 +263,50 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_FIELD_ACCESS: {
-            x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index));
-            x64_add64_immediate(buf, X64_RAX, bc->arg1_index);
-            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
+            s32 disp = register_displacement(x64, bc->arg0_index);
+            disp += bc->arg1_index;
+            
+            assert(x64->slots[bc->res_index].type == X64_SLOT_EMPTY);
+            x64->slots[bc->res_index] = { X64_SLOT_RSP_DISP32, disp };
+            
+            //x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index));
+            //x64_add64_immediate(buf, X64_RAX, bc->arg1_index);
+            //x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
         } break;
         
         case BC_STORE: {
             // TODO(Alexander): this assumes that size of data in memory is at least 8 bytes,
             // if we make it less then we will overwrite data outside our scope.
-            x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index));
-            x64_move_memory_to_register(buf, X64_RCX, X64_RSP, register_displacement(x64, bc->arg1_index));
             
-            Bytecode_Type type = register_type(func, bc->arg1_index);
-            switch (type.size) {
-                case 1: {
-                    x64_move8_register_to_memory(buf, X64_RAX, 0, X64_RCX);
-                } break;
+            X64_Slot ptr = get_slot(x64, bc->arg0_index);
+            if (ptr.type == X64_SLOT_RSP_DISP32) {
+                Bytecode_Type type = register_type(func, bc->arg1_index);
+                x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg1_index));
                 
-                case 2: {
-                    x64_move16_register_to_memory(buf, X64_RAX, 0, X64_RCX);
-                } break;
-                
-                case 4: {
-                    x64_move32_register_to_memory(buf, X64_RAX, 0, X64_RCX);
-                } break;
-                
-                default: {
-                    x64_move_register_to_memory(buf, X64_RAX, 0, X64_RCX);
-                } break;
+                switch (type.size) {
+                    case 1: {
+                        x64_move8_register_to_memory(buf, X64_RSP, ptr.disp, X64_RAX);
+                    } break;
+                    
+                    case 2: {
+                        x64_move16_register_to_memory(buf, X64_RSP, ptr.disp, X64_RAX);
+                    } break;
+                    
+                    case 4: {
+                        x64_move32_register_to_memory(buf, X64_RSP, ptr.disp, X64_RAX);
+                    } break;
+                    
+                    default: {
+                        x64_move_register_to_memory(buf, X64_RSP, ptr.disp, X64_RAX);
+                    } break;
+                }
+            } else {
+                unimplemented;
             }
         } break;
         
         case BC_LOAD: {
             x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index));
-            x64_move_memory_to_register(buf, X64_RAX, X64_RAX, 0);
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
         } break;
         
@@ -565,7 +575,8 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_MEMSET: {
-            x64_move_memory_to_register(buf, X64_RDI, X64_RSP, register_displacement(x64, bc->res_index));
+            
+            x64_lea(buf, X64_RDI, X64_RSP,  register_displacement(x64, bc->res_index));
             x64_move_immediate_to_register(buf, X64_RAX, bc->arg0_index);
             x64_move_immediate_to_register(buf, X64_RCX, bc->arg1_index);
             x64_rep_stosb(buf, X64_RDI, X64_RAX, X64_RCX);

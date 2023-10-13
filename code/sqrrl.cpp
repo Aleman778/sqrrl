@@ -383,7 +383,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                                                                     &tcx.import_table, 
                                                                     compiler_task);
             
-#if 1
+#if 0
             pln("\nX64 Machine Code (% bytes):", f_umm(buf.curr_used));
             for (int byte_index = 0; byte_index < buf.curr_used; byte_index++) {
                 u8 byte = ((u8*) asm_buffer)[byte_index];

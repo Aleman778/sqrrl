@@ -49,12 +49,6 @@ global const cstring register_names[] {
     "XMM12", "XMM13", "XMM14", "XMM15",
 };
 
-struct X64_Register {
-    u32 virtual_index;
-    Ic_Raw_Type raw_type;
-    bool is_allocated;
-};
-
 struct X64_Block {
     u32 label_index;
     bool is_loop;
@@ -63,6 +57,17 @@ struct X64_Block {
 struct X64_Function {
     u8* code;
     u8** labels;
+};
+
+enum X64_Slot_Type {
+    X64_SLOT_EMPTY,
+    X64_SLOT_RSP_DISP32,
+    X64_SLOT_RAX,
+};
+
+struct X64_Slot {
+    X64_Slot_Type type;
+    s32 disp;
 };
 
 struct X64_Jump_Patch {
@@ -79,6 +84,10 @@ struct X64_Assembler {
     Bytecode* bytecode;
     u32* stack;
     
+    Memory_Arena arena;
+    X64_Slot* slots;
+    int allocated_slots[X64_REG_COUNT];
+    
     Data_Packer* data_packer;
     
     X64_Function* curr_function;
@@ -88,14 +97,11 @@ struct X64_Assembler {
     
     u32 curr_bytecode_insn_index;
     
-    X64_Register registers[X64_REG_COUNT];
-    
     array(X64_Jump_Patch)* jump_patches;
     array(X64_Data_Patch)* data_patches;
     
-    
-    s64 current_stack_displacement_for_bytecode_registers;
-    s64 current_stack_displacement_for_locals;
+    s32 current_stack_size;
+    s32 max_stack_size;
     
     s64 read_write_data_offset;
     s64 read_only_data_offset;
@@ -103,10 +109,30 @@ struct X64_Assembler {
     bool use_absolute_ptrs;
 };
 
-inline s64
+inline X64_Slot
+get_slot(X64_Assembler* x64, int register_index) {
+    return x64->slots[register_index];
+}
+
+inline s32
+register_stack_alloc(X64_Assembler* x64, int register_index, s32 size, s32 align) {
+    s32 result = x64->current_stack_size;
+    result = (s32) align_forward(result, align);
+    x64->current_stack_size = result + size;
+    x64->max_stack_size = max(x64->max_stack_size, x64->current_stack_size);
+    
+    x64->slots[register_index] = { X64_SLOT_RSP_DISP32, (s32) result };
+    return result;
+}
+
+inline s32
 register_displacement(X64_Assembler* x64, int register_index) {
-    // Each register is 8 bytes from RSP
-    return x64->current_stack_displacement_for_bytecode_registers + register_index * 8;
+    X64_Slot slot = x64->slots[register_index];
+    if (slot.type != X64_SLOT_RSP_DISP32) {
+        assert(slot.type == X64_SLOT_EMPTY);
+        return register_stack_alloc(x64, register_index, 8, 8);
+    }
+    return slot.disp;
 }
 
 // TODO(Alexander): we should probably return something more approporiate.

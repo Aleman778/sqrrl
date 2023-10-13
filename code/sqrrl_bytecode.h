@@ -18,17 +18,17 @@ enum Bytecode_Operator {
     BC_F64_CONST,
     
     // Pointers
-    BC_LOCAL,        // void* <- (int size, int align)
-    BC_GLOBAL,       // void* <- (int global_index)
-    BC_FUNCTION,     // void* <- (int function_index)
-    BC_ARRAY_ACCESS, // void* <- (void* array, int base, int index, int stride)
-    BC_FIELD_ACCESS, // void* <- (void* object, int offset)
+    BC_LOCAL,        // ptr <- (int size, int align)
+    BC_GLOBAL,       // ptr <- (int global_index)
+    BC_FUNCTION,     // ptr <- (int function_index)
+    BC_ARRAY_ACCESS, // ptr <- (ptr array, int base, int index, int stride)
+    BC_FIELD_ACCESS, // ptr <- (ptr object, int offset)
     
     // Memory
     BC_STORE,
     BC_LOAD,
-    BC_MEMCPY,
-    BC_MEMSET,
+    BC_MEMCPY, // memcpy(ptr dest, ptr src, int size)
+    BC_MEMSET, // memset(ptr dest, int value, int size)
     
     // Conversions
     BC_TRUNCATE,

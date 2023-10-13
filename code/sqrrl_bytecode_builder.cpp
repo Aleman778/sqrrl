@@ -382,7 +382,10 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr, int _result) {
         case Ast_Ident:
         case Ast_Exported_Data: {
             int src = convert_lvalue_expression_to_bytecode(bc, expr);
-            bc_instruction_load(bc, _result, src);
+            if (src != _result) {
+                bc_instruction(bc, BC_MOVE, -1, _result, src);
+            }
+            //bc_instruction_load(bc, _result, src);
         } break;
         
         case Ast_Value: {
@@ -577,8 +580,6 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr, int _result) {
         } break;
         
         case Ast_Ternary_Expr: {
-            _result = add_bytecode_register(bc, expr->type);
-            
             begin_block(bc);
             begin_block(bc);
             int cond = add_bytecode_register(bc, t_bool);
@@ -896,14 +897,14 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
             }
         } break;
         
-#if 0
         case Ast_If_Stmt: {
             begin_block(bc);
             if (is_valid_ast(stmt->If_Stmt.else_block)) {
                 begin_block(bc);
             }
             
-            int cond = convert_condition_to_bytecode(bc, stmt->If_Stmt.cond, true);
+            int cond = add_bytecode_register(bc, t_bool);
+            convert_condition_to_bytecode(bc, stmt->If_Stmt.cond, cond, true);
             bc_instruction_branch(bc, bc->block_depth, cond);
             
             // Then case
@@ -919,7 +920,6 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
             end_block(bc);
             
         } break;
-#endif
         
         case Ast_For_Stmt: {
             // init
@@ -949,14 +949,14 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
             end_block(bc);
         } break;
         
-#if 0
         case Ast_While_Stmt: {
             begin_block(bc);
             begin_block(bc, BC_LOOP);
             
             // Condition
             if (is_valid_ast(stmt->While_Stmt.cond)) {
-                int cond = convert_condition_to_bytecode(bc, stmt->While_Stmt.cond, true);
+                int cond = add_bytecode_register(bc, t_bool);
+                convert_condition_to_bytecode(bc, stmt->While_Stmt.cond, cond, true);
                 bc_instruction_branch(bc, bc->block_depth - 1, cond);
             }
             
@@ -972,7 +972,7 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
             begin_block(bc);
             Ast* default_stmt = 0;
             int outer_block = bc->block_depth;
-            int switch_cond = convert_expression_to_bytecode(bc, stmt->Switch_Stmt.cond);
+            int switch_cond = bc_find_register_value(bc, stmt->Switch_Stmt.cond);
             
             {
                 for_compound(stmt->Switch_Stmt.cases, it) {
@@ -985,18 +985,18 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
                 }
             }
             
+            int case_cond = add_bytecode_register(bc, t_bool);
             int multi_case_block = -1;
             for_compound(stmt->Switch_Stmt.cases, it) {
                 if (is_valid_ast(it->Switch_Case.cond)) {
-                    int case_cond = convert_expression_to_bytecode(bc, it->Switch_Case.cond);
-                    int branch_cond = add_bytecode_register(bc, t_bool);
+                    convert_expression_to_bytecode(bc, it->Switch_Case.cond, case_cond);
                     
                     if (is_valid_ast(it->Switch_Case.stmt)) {
-                        bc_instruction(bc, BC_NEQ, branch_cond, switch_cond, case_cond);
+                        bc_instruction(bc, BC_NEQ, case_cond, switch_cond, case_cond);
                         if (multi_case_block == -1) {
-                            bc_instruction_branch(bc, bc->block_depth, branch_cond);
+                            bc_instruction_branch(bc, bc->block_depth, case_cond);
                         } else {
-                            bc_instruction_branch(bc, bc->block_depth - 1, branch_cond);
+                            bc_instruction_branch(bc, bc->block_depth - 1, case_cond);
                             end_block(bc);
                             multi_case_block = -1;
                         }
@@ -1015,8 +1015,8 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
                             multi_case_block = bc->block_depth;
                         }
                         
-                        bc_instruction(bc, BC_EQ, branch_cond, switch_cond, case_cond);
-                        bc_instruction_branch(bc, multi_case_block, branch_cond);
+                        bc_instruction(bc, BC_EQ, case_cond, switch_cond, case_cond);
+                        bc_instruction_branch(bc, multi_case_block, case_cond);
                     }
                 }
             }
@@ -1028,7 +1028,6 @@ convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, 
             end_block(bc);
             
         } break;
-#endif
         
         case Ast_Return_Stmt: {
             int result = -1;

@@ -170,18 +170,16 @@ convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr) {
     return result;
 }
 
-int
-convert_function_call_to_bytecode(Bytecode_Builder* bc, Type* type, array(Ast*)* args, int function_ptr) {
+void
+convert_function_call_to_bytecode(Bytecode_Builder* bc, Type* type, array(Ast*)* args, 
+                                  int result, int function_ptr) {
     assert(type && type->kind == TypeKind_Function);
-    
-    int result = -1;
     
     if (type->Function.is_intrinsic) {
         bool handled = false;
         
         switch (type->Function.ident) {
             case Sym_rdtsc: {
-                result = add_bytecode_register(bc, t_s64);
                 bc_instruction(bc, BC_X64_RDTSC, result, -1, -1);
                 handled = true;
             } break;
@@ -193,7 +191,7 @@ convert_function_call_to_bytecode(Bytecode_Builder* bc, Type* type, array(Ast*)*
         }
         
         if (handled) {
-            return result;
+            return;
         }
     }
     
@@ -203,7 +201,6 @@ convert_function_call_to_bytecode(Bytecode_Builder* bc, Type* type, array(Ast*)*
     bool ret_as_first_arg = false;
     Type* ret_type = type->Function.return_type;
     if (ret_type && is_aggregate_type(ret_type)) {
-        result = bc_instruction_local(bc, ret_type);
         array_push(arg_operands, result);
         ret_as_first_arg = true;
         arg_count++;
@@ -258,7 +255,6 @@ convert_function_call_to_bytecode(Bytecode_Builder* bc, Type* type, array(Ast*)*
     
     // TODO(Alexander): multiple args
     if (!ret_as_first_arg && is_valid_type(ret_type)) {
-        result = add_bytecode_register(bc, ret_type);
         call->res_index = result;
     }
     
@@ -268,8 +264,6 @@ convert_function_call_to_bytecode(Bytecode_Builder* bc, Type* type, array(Ast*)*
         arena_push_size(&bc->arena, arg_size, 1);
         array_free(arg_operands);
     }
-    
-    return result;
 }
 
 internal void
@@ -371,9 +365,11 @@ convert_initializer_to_bytecode(Bytecode_Builder* bc, Ast* expr, int dest_ptr) {
         } break;
         
         default: {
+            // TODO(Alexander): not sure what the consequence of putting this here is, need to investigate this a bit further!
             Type* type = expr->type;
             int src_ptr = convert_lvalue_expression_to_bytecode(bc, expr);
             bc_instruction(bc, BC_MEMCPY, dest_ptr, src_ptr, type->size);
+            initialized = true;
         } break;
     }
     
@@ -602,7 +598,6 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr, int _result) {
             end_block(bc);
         } break;
         
-#if 0
         case Ast_Call_Expr: {
             array(Ast*)* args = 0;
             for_compound(expr->Call_Expr.args, arg) {
@@ -614,13 +609,12 @@ convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr, int _result) {
             
             int function_ptr = -1;
             if (!type->Function.unit && !type->Function.is_intrinsic) {
-                function_ptr = convert_expression_to_bytecode(bc, expr->Call_Expr.ident);
+                function_ptr = add_bytecode_register(bc, t_void_ptr);
+                convert_expression_to_bytecode(bc, expr->Call_Expr.ident, function_ptr);
             }
-            result = convert_function_call_to_bytecode(bc, type, args, function_ptr);
+            convert_function_call_to_bytecode(bc, type, args, _result, function_ptr);
             array_free(args);
         } break;
-        
-#endif
         
         case Ast_Cast_Expr: {
             convert_type_cast_to_bytecode(bc, expr, _result);

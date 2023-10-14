@@ -133,18 +133,28 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
             Bytecode_Function_Arg formal_arg = formal_args[arg_index];
             
             s64 src = arg_index*8;
-            s64 dest = register_stack_alloc(x64, arg_index, formal_arg.size, formal_arg.align);
+            s32 size = formal_arg.size;
+            s32 align = formal_arg.align;
+            if (size < 8) {
+                size = 8; align = 8;
+            }
             
-            assert(formal_arg.size <= 8 && "TODO: add support for aggregate type");
-            
-            // x64_move_memory_to_register(buf, X64_RAX, X64_RSP, src);
-            // REX.W + 8B /r 	MOV RAX, RSP + disp 	RM
-            x64_rex(buf, REX_W);
-            push_u16(buf, 0x848B);
-            callee_args_disp[arg_index] = (u32*) (buf->data + buf->curr_used);
-            push_u32(buf, (u32) src);
-            
-            x64_move_register_to_memory(buf, X64_RSP, dest, X64_RAX);
+            s64 dest = register_stack_alloc(x64, arg_index, size, align, size > 8);
+            if (size == 8) {
+                // Load source value
+                // REX.W + 8B /r 	MOV RAX, RSP + disp 	RM
+                callee_args_disp[arg_index] =
+                    x64_move_memory_to_register_disp(buf, X64_RAX, X64_RSP, src);
+                x64_move_register_to_memory(buf, X64_RSP, dest, X64_RAX);
+                
+            } else {
+                // TODO(Alexander): we shouldn't copy this!!!
+                x64_lea(buf, X64_RDI, X64_RSP, dest);
+                callee_args_disp[arg_index] =
+                    x64_move_memory_to_register_disp(buf, X64_RSI, X64_RSP, src);
+                x64_move_immediate_to_register(buf, X64_RCX, size);
+                x64_rep_movsb(buf, X64_RDI, X64_RSI, X64_RCX);
+            }
         }
     }
     
@@ -160,6 +170,7 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     // Patch stack offsets
     for (int i = 0; i < func->arg_count; i++) {
         *callee_args_disp[i] += stack_callee_args;
+        //pln("%", f_int(*callee_args_disp[i]));
     } 
     
     
@@ -216,7 +227,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_LOCAL: {
-            register_stack_alloc(x64, bc->res_index, bc->arg0_index, bc->arg1_index);
+            register_stack_alloc(x64, bc->res_index, bc->arg0_index, bc->arg1_index, true);
         } break;
         
         case BC_GLOBAL: {
@@ -263,15 +274,20 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_FIELD_ACCESS: {
-            s32 disp = register_displacement(x64, bc->arg0_index);
-            disp += bc->arg1_index;
+            X64_Slot src = get_slot(x64, bc->arg0_index);
             
-            assert(x64->slots[bc->res_index].type == X64_SLOT_EMPTY);
-            x64->slots[bc->res_index] = { X64_SLOT_RSP_DISP32, disp };
-            
-            //x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index));
-            //x64_add64_immediate(buf, X64_RAX, bc->arg1_index);
-            //x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
+            if (src.is_aggregate) {
+                assert(x64->slots[bc->res_index].type == X64_SLOT_EMPTY);
+                s32 disp = register_displacement(x64, bc->arg0_index);
+                disp += bc->arg1_index;
+                
+                set_slot(x64, bc->res_index, X64_SLOT_RSP_DISP32, disp, true);
+            } else {
+                unimplemented;
+                //x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index));
+                //x64_add64_immediate(buf, X64_RAX, bc->arg1_index);
+                //x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
+            }
         } break;
         
         case BC_STORE: {
@@ -306,8 +322,19 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_LOAD: {
-            x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index));
-            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
+            X64_Slot src = get_slot(x64, bc->arg0_index);
+            
+            if (src.is_aggregate) {
+                // Direct value access
+                assert(src.type == X64_SLOT_RSP_DISP32);
+                set_slot(x64, bc->res_index, src.type, src.disp, false);
+            } else {
+                // Indirect value access
+                unimplemented; // TODO(Alexander): remove unimplemented after verifying this below
+                x64_move_memory_to_register(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->arg0_index));
+                x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
+            }
+            
         } break;
         
         case BC_CALL: 
@@ -324,8 +351,15 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                     dest = int_arg_registers_ccall_windows[arg_index];
                 }
                 
-                x64_move_memory_to_register(buf, dest, X64_RSP,
-                                            register_displacement(x64, src_index));
+                X64_Slot src = get_slot(x64, src_index);
+                if (src.is_aggregate) {
+                    x64_lea(buf, dest, X64_RSP,
+                            register_displacement(x64, src_index));
+                } else {
+                    x64_move_memory_to_register(buf, dest, X64_RSP,
+                                                register_displacement(x64, src_index));
+                }
+                
                 if (arg_index >= 4) {
                     x64_move_register_to_memory(buf, X64_RSP, arg_index*8, dest);
                 }
@@ -568,8 +602,8 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_MEMCPY: {
-            x64_move_memory_to_register(buf, X64_RDI, X64_RSP, register_displacement(x64, bc->res_index));
-            x64_move_memory_to_register(buf, X64_RSI, X64_RSP, register_displacement(x64, bc->arg0_index));
+            x64_lea(buf, X64_RDI, X64_RSP,  register_displacement(x64, bc->res_index));
+            x64_lea(buf, X64_RSI, X64_RSP,  register_displacement(x64, bc->arg0_index));
             x64_move_immediate_to_register(buf, X64_RCX, bc->arg1_index);
             x64_rep_movsb(buf, X64_RDI, X64_RSI, X64_RCX);
         } break;

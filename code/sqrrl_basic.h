@@ -126,6 +126,8 @@ __verify(cstring expression, cstring file, smm line) {
     *(int *)0 = 0; // NOTE(Alexander): purposefully trap the program
 }
 #define verify(expression) (void)((expression) || (__verify(#expression, __FILE__, __LINE__), 0))
+#define verify_not_reached() verify(0 && "unexpected to reach this code")
+
 
 #if !BUILD_TEST
 extern "C" bool

@@ -13,22 +13,23 @@ enum Bytecode_Operator {
     BC_RETURN,
     
     // Constants
-    BC_INT_CONST,
-    BC_F32_CONST,
-    BC_F64_CONST,
+    BC_INT_CONST, // int x := <int-literal>
+    BC_F32_CONST, // f32 x := <f32-literal>
+    BC_F64_CONST, // f64 x := <f64-literal>
     
     // Pointers
-    BC_LOCAL,        // ptr <- (int size, int align)
-    BC_GLOBAL,       // ptr <- (int global_index)
-    BC_FUNCTION,     // ptr <- (int function_index)
-    BC_ARRAY_ACCESS, // ptr <- (ptr array, int base, int index, int stride)
-    BC_FIELD_ACCESS, // ptr <- (ptr object, int offset)
+    BC_LOCAL,        // ptr x := locals(size, align)
+    BC_GLOBAL,       // ptr x := globals(index)
+    BC_FUNCTION,     // ptr x := function(index)
+    BC_ARRAY_ACCESS, // ptr x := a[b]
+    BC_FIELD_ACCESS, // ptr x := a.b (or (u8*) a + offset(b)
     
     // Memory
-    BC_STORE,
-    BC_LOAD,
-    BC_MEMCPY, // memcpy(ptr dest, ptr src, int size)
-    BC_MEMSET, // memset(ptr dest, int value, int size)
+    BC_COPY,   // x := y
+    BC_STORE,  // *x := y
+    BC_LOAD,   // x := *y
+    BC_MEMCPY, // memcpy(dest, src, size)
+    BC_MEMSET, // memset(dest, val, size)
     
     // Conversions
     BC_TRUNCATE,
@@ -45,9 +46,6 @@ enum Bytecode_Operator {
     BC_DEC,
     
     // Binary
-    BC_MOVE,
-    BC_ADDR_OF,
-    BC_DEREF,
     BC_ADD,
     BC_SUB,
     BC_MUL,
@@ -90,13 +88,14 @@ global const cstring bc_operator_names[] = {
     /* Constants:        */ "i64.const", "f32.const", "f64.const",
     /* Pointers:         */ "ptr.local", "ptr.global", "ptr.function", "ptr.array_access",
     /*                   */ "ptr.field_access",
-    /* Memory:           */ "store", "load", "memcpy", "memset",
+    /* Memory:           */ "copy", "store", "load", "memcpy", "memset",
     /* Conversions:      */ "truncate", "extend", "int_to_float", "float_to_int", "float_to_float",
     /*                   */ "reinterpret_f2i",
     /* Unary:            */ "neg", "not", "inc", "dec",
-    /* Binary:           */ "move", "addr_of", "deref", "add", "sub", "mul", "div_s", "div_u", 
-    /*                   */ "mod_s", "mod_u", "and", "or", "xor", "shl", "sar", "shr",
-    /* Comparators:      */ "eq", "gt_s", "gt_u", "ge_s", "ge_u", "lt_u", "lt_s", "le_u", "le_s", "neq",
+    /* Binary:           */ "add", "sub", "mul", "div_s", "div_u", "mod_s", "mod_u", "and", 
+    /*                   */ "or", "xor", "shl", "sar", "shr",
+    /* Comparators:      */ "eq", "gt_s", "gt_u", "ge_s", "ge_u", "lt_u", "lt_s", "le_u", 
+    /*                   */ "le_s", "neq",
     /* intrinsics (x64): */ "x64_rdts"
 };
 
@@ -232,6 +231,7 @@ enum Bytecode_Instruction_Kind {
 
 #define Bytecode_Instruction_Base \
 Bytecode_Operator opcode; \
+Bytecode_Type type; \
 Bytecode_Instruction_Kind kind; \
 s32 next_insn; \
 cstring comment

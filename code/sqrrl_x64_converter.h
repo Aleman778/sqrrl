@@ -68,7 +68,7 @@ enum X64_Slot_Type {
 struct X64_Slot {
     X64_Slot_Type type;
     s32 disp;
-    bool is_aggregate;
+    bool is_value;
 };
 
 struct X64_Jump_Patch {
@@ -116,17 +116,17 @@ get_slot(X64_Assembler* x64, int register_index) {
 }
 
 inline void
-set_slot(X64_Assembler* x64, int register_index, X64_Slot_Type type, s32 disp, bool is_aggregate=false) {
-    x64->slots[register_index] = { type, disp, is_aggregate };
+set_slot(X64_Assembler* x64, int register_index, X64_Slot_Type type, s32 disp, bool is_value=false) {
+    x64->slots[register_index] = { type, disp, is_value };
 }
 
 inline s32
-register_stack_alloc(X64_Assembler* x64, int register_index, s32 size, s32 align, bool is_aggregate=false) {
+register_stack_alloc(X64_Assembler* x64, int register_index, s32 size, s32 align, bool is_value=false) {
     s32 result = x64->current_stack_size;
     result = (s32) align_forward(result, align);
     x64->current_stack_size = result + size;
     x64->max_stack_size = max(x64->max_stack_size, x64->current_stack_size);
-    set_slot(x64, register_index, X64_SLOT_RSP_DISP32, result, is_aggregate);
+    set_slot(x64, register_index, X64_SLOT_RSP_DISP32, result, is_value);
     
     return result;
 }

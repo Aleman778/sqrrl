@@ -348,8 +348,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     for_array(ast_file.units, cu, _3) {
         if (cu->bytecode_function) {
             bool is_main = cu->ident == Sym_main;
-            convert_function_to_bytecode(&bytecode_builder, cu->bytecode_function, cu->ast,
-                                         is_main, is_debugger_present && is_main);
+            emit_function(&bytecode_builder, cu->bytecode_function, cu->ast,
+                          is_main, is_debugger_present && is_main);
         }
     }
     

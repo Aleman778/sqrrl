@@ -1,8 +1,13 @@
 
+struct Bc_Local {
+    int ptr; // if ptr == -1 then use val instead
+    int val;
+};
+
 struct Bytecode_Builder {
     Memory_Arena arena;
     
-    map(string_id, int)* locals;
+    map(string_id, Bc_Local)* locals;
     map(string_id, int)* globals;
     
     Bytecode_Function* curr_function;
@@ -92,6 +97,23 @@ to_bytecode_type(Bytecode_Builder* bc, Type* type) {
     return result;
 }
 
+inline Type*
+normalize_type_for_casting(Type* type) {
+    // Make similar types 
+    if (type->kind == TypeKind_Pointer || 
+        type->kind == TypeKind_Type || 
+        type == t_cstring) {
+        
+        type = t_s64;
+    }
+    
+    if (type->kind == TypeKind_Enum) { 
+        type = type->Enum.type;
+    }
+    
+    return type;
+}
+
 inline int
 add_bytecode_register(Bytecode_Builder* bc, Type* type) {
     assert(bc->curr_function);
@@ -101,25 +123,30 @@ add_bytecode_register(Bytecode_Builder* bc, Type* type) {
     return result;
 }
 
-int convert_lvalue_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr);
+int emit_value_expression(Bytecode_Builder* bc, Ast* expr, int result=-1);
 
-void convert_expression_to_bytecode(Bytecode_Builder* bc, Ast* expr, int result);
+int emit_reference_expression(Bytecode_Builder* bc, Ast* expr);
 
-inline void convert_binary_to_bytecode(Bytecode_Builder* bc, Bytecode_Operator opcode, Ast* expr, int result);
-inline void convert_binary_assignment_to_bytecode(Bytecode_Builder* bc, Bytecode_Operator opcode, Ast* expr, int tmp=-1);
+void emit_initializing_expression(Bytecode_Builder* bc, Ast* expr, int dest_ptr);
 
-bool convert_initializer_to_bytecode(Bytecode_Builder* bc, Ast* expr, int dest_ptr);
+inline void emit_binary_expression(Bytecode_Builder* bc, Bytecode_Operator opcode,
+                                   Ast* lexpr, Ast* rexpr, int result);
+inline void emit_assignment_expression(Bytecode_Builder* bc, Bytecode_Operator opcode,
+                                       Ast* lexpr, Ast* rexpr, int result=-1);
 
-void convert_condition_to_bytecode(Bytecode_Builder* bc, Ast* cond, int result, bool invert_condition);
+inline void emit_zero_compare(Bytecode_Builder* bc, Type* type, int result, int value, bool invert_condition);
 
-void convert_type_cast_to_bytecode(Bytecode_Builder* bc, Ast* expr, int result);
+void emit_condition_expression(Bytecode_Builder* bc, Ast* cond, int result, bool invert_condition);
 
-int convert_function_call_to_bytecode(Bytecode_Builder* bc, Type* type, array(Ast*)* args, int function_ptr=-1);
+void emit_type_cast(Bytecode_Builder* bc, Ast* expr, int result);
+inline void emit_array_type_cast(Bytecode_Builder* bc, Type* t_dest, Type* t_src, Ast* src_ast, int array_ptr);
 
-void convert_statement_to_bytecode(Bytecode_Builder* bc, Ast* stmt, s32 break_label, s32 continue_label);
+int emit_function_call(Bytecode_Builder* bc, Type* type, array(Ast*)* args, int function_ptr=-1);
 
-Bytecode_Function* convert_function_to_bytecode(Bytecode_Builder* bc, Bytecode_Function* func, Ast* ast,
-                                                bool is_main, bool insert_debug_break);
+void emit_statement(Bytecode_Builder* bc, Ast* stmt, s32 break_label, s32 continue_label);
+
+Bytecode_Function* emit_function(Bytecode_Builder* bc, Bytecode_Function* func, Ast* ast,
+                                 bool is_main, bool insert_debug_break);
 
 Bytecode_Function* add_bytecode_function(Bytecode_Builder* bc, Type* type);
 

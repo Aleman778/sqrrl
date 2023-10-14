@@ -207,8 +207,8 @@ run_compiler_tests(string filename,
         if (cu->bytecode_function) {
             bool is_main = cu->ident == Sym_main;
             //pln("Building function `%`...", f_type(cu->ast->type));
-            convert_function_to_bytecode(&bytecode_builder, cu->bytecode_function, cu->ast,
-                                         false, false);
+            emit_function(&bytecode_builder, cu->bytecode_function, cu->ast,
+                          false, false);
         }
     }
     

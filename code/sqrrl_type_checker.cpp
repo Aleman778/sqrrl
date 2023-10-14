@@ -2383,6 +2383,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                     auto_type_conversion(tcx, expected_type, stmt->Assign_Stmt.expr);
             } else {
                 result = expected_type;
+                stmt->Assign_Stmt.expr->type = result;
             }
             
             stmt->Assign_Stmt.ident->type = result;

@@ -61,12 +61,9 @@ emit_reference_expression(Bytecode_Builder* bc, Ast* expr) {
             
             if (type->kind == TypeKind_Pointer) {
                 type = type->Pointer;
-                int flags = register_type(bc->curr_function, result).flags;
-                if (!is_bitflag_set(flags, BC_FLAG_RVALUE)) {
-                    int tmp = add_bytecode_register(bc, type);
-                    result = bc_instruction_load(bc, tmp, result);
-                }
-                
+                unimplemented;
+                //int tmp = add_bytecode_register(bc, type);
+                //result = bc_instruction_load(bc, tmp, result);
             }
             
             switch (type->kind) {
@@ -90,7 +87,6 @@ emit_reference_expression(Bytecode_Builder* bc, Ast* expr) {
                             bc_instruction(bc, BC_FIELD_ACCESS, tmp, result, 0);
                             result = tmp;
                         } else {
-                            unimplemented;
                             //bc->curr_function->register_types[result].flags |= BC_FLAG_RVALUE;
                         }
                         
@@ -144,7 +140,7 @@ emit_reference_expression(Bytecode_Builder* bc, Ast* expr) {
             int array_index = add_bytecode_register(bc, expr->Index_Expr.index->type);
             emit_value_expression(bc, expr->Index_Expr.index, array_index);
             result = add_bytecode_register(bc, expr->Index_Expr.array->type);
-            result = bc_instruction_array_accesss(bc, type, array_ptr, array_index);
+            bc_instruction_array_accesss(bc, type, result, array_ptr, array_index);
         } break;
         
         default: unimplemented;
@@ -273,7 +269,7 @@ emit_non_const_aggregate_fields(Bytecode_Builder* bc, Ast* expr, int base_ptr, i
                 dest_ptr = add_bytecode_register(bc, t_void_ptr);
                 bc_instruction(bc, BC_FIELD_ACCESS, dest_ptr, base_ptr, (int) field_info.offset);
             }
-            emit_initializing_expression(bc, expr, dest_ptr);
+            emit_initializing_expression(bc, assign, dest_ptr);
             
 #if 0
             if (is_aggregate_type(field_info.type)) {
@@ -393,7 +389,7 @@ int
 emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
     
     // TODO: We don't want this in all cases!
-    if (_result == -1) {
+    if (_result == -1 && is_valid_type(expr->type)) {
         _result = add_bytecode_register(bc, expr->type);
     }
     
@@ -442,7 +438,8 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
         } break;
         
         case Ast_Unary_Expr: {
-            Type* type = expr->type;
+            Type* result_type = expr->type;
+            Type* type = expr->Unary_Expr.first->type;
             Operator op = expr->Unary_Expr.op;
             
             switch (op) {
@@ -451,8 +448,12 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
                 } break;
                 
                 case Op_Dereference: {
-                    int src = emit_reference_expression(bc, expr->Unary_Expr.first);
-                    bc_instruction_load(bc, _result, src);
+                    if (type->kind == TypeKind_Pointer) {
+                        int src = emit_value_expression(bc, expr->Unary_Expr.first);
+                        bc_instruction_load(bc, _result, src);
+                    } else {
+                        _result= emit_value_expression(bc, expr->Unary_Expr.first, _result);
+                    }
                 } break;
                 
                 case Op_Pre_Increment:
@@ -512,9 +513,7 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
         case Ast_Binary_Expr: {
             Type* result_type = expr->type;
             Type* type = expr->Binary_Expr.first->type;
-            
             Operator op = expr->Binary_Expr.op;
-            Bytecode_Operator opcode = to_bytecode_opcode(op, type);
             
             if (expr->Binary_Expr.overload) {
                 unimplemented;
@@ -523,10 +522,38 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
                 array_push(args, expr->Binary_Expr.second);
                 //result = emit_function_call_to_bytecode(bc, expr->Binary_Expr.overload, args);
                 array_free(args);
-                //return result;
+                return _result;
             }
             
+            if (type->kind == TypeKind_Pointer) {
+                
+                switch (op) {
+                    case Op_Add:
+                    case Op_Subtract: {
+                        int first = emit_value_expression(bc, expr->Binary_Expr.first);
+                        //bc_instruction_load(bc, )
+                        int index = emit_value_expression(bc, expr->Binary_Expr.second);
+                        if (op == Op_Subtract) {
+                            bc_instruction(bc, BC_NEG, index, index, -1);
+                        }
+                        bc_instruction_array_accesss(bc, type->Pointer, _result, first, index);
+                    } break;
+                    
+                    case Op_Assign: {
+                        int first = emit_reference_expression(bc, expr->Binary_Expr.first);
+                        int value = emit_value_expression(bc, expr->Binary_Expr.first);
+                        bc_instruction_store(bc, first, value);
+                    } break;
+                    
+                    default: verify_not_reached();
+                    // TODO: Sub, Add_Assign, Sub_Assign, Assign
+                    // ptr = 4; ptr += 4; ptr + 2; ptr - 2;
+                }
+                
+                return _result;
+            }
             
+            Bytecode_Operator opcode = to_bytecode_opcode(op, type);
             switch (op) {
                 case Op_Logical_And: {
                     begin_block(bc);
@@ -628,20 +655,24 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
             emit_type_cast(bc, expr, _result);
         } break;
         
-        case Ast_Index_Expr:
-        case Ast_Field_Expr: {
+        case Ast_Index_Expr: {
             int ptr = emit_reference_expression(bc, expr);
             bc_instruction_load(bc, _result, ptr);
-            // TODO(Alexander): what about inplace arrays?!?!?
-            
-            //int flags = register_type(bc->curr_function, result).flags;
-            //if (!is_bitflag_set(flags, BC_FLAG_RVALUE)) {
-            //result = bc_instruction_load(bc, expr->type, result);
-            //}
+        } break;
+        
+        case Ast_Field_Expr: {
+            int ptr = emit_reference_expression(bc, expr);
+            Type* type = expr->Field_Expr.var->type;
+            if (type->kind == TypeKind_Array && type->Array.kind == ArrayKind_Fixed_Inplace) {
+                // TODO: for inplace arrays the field expression is essentially a noop
+                _result = ptr;
+            } else {
+                bc_instruction_load(bc, _result, ptr);
+            }
         } break;
         
         case Ast_Paren_Expr: {
-            emit_value_expression(bc, expr->Paren_Expr.expr, _result);
+            _result = emit_value_expression(bc, expr->Paren_Expr.expr, _result);
         } break;
         
         default: {
@@ -855,11 +886,7 @@ emit_statement(Bytecode_Builder* bc, Ast* stmt, s32 break_label, s32 continue_la
         case Ast_Expr_Stmt: {
             Ast* expr = stmt->Expr_Stmt;
             if (is_valid_ast(expr)) {
-                int tmp = -1;
-                if (is_valid_type(expr->type)) {
-                    tmp = add_bytecode_register(bc, expr->type);
-                }
-                emit_value_expression(bc, expr, tmp);
+                emit_value_expression(bc, expr);
             }
         } break;
         
@@ -1145,10 +1172,7 @@ add_bytecode_function(Bytecode_Builder* bc, Type* type) {
         curr_arg->type = to_bytecode_type(bc, arg_type);
         curr_arg->size = arg_type->size;
         curr_arg->align = arg_type->align;
-        
-        int arg = add_bytecode_register(bc, arg_type);
-        func->register_types[arg].flags |= BC_FLAG_RVALUE;
-        
+        add_bytecode_register(bc, arg_type);
         curr_arg++;
     }
     

@@ -143,6 +143,23 @@ x64_lea(Buffer* buf, X64_Reg a, X64_Reg b, s64 disp) {
     x64_modrm(buf, a, b, disp, 0);
 }
 
+void
+x64_move_slot_to_register(X64_Assembler* x64, Buffer* buf, X64_Reg dest, int register_index) {
+    X64_Slot src = get_slot(x64, register_index);
+    switch (src.type) {
+        case X64_SLOT_RSP_DISP32: {
+            if (src.is_value) {
+                // TODO: if arg1 is const we can completely optimize this without any instructions
+                x64_lea(buf, dest, X64_RSP, register_displacement(x64, register_index));
+            } else {
+                x64_move_memory_to_register(buf, dest, X64_RSP, register_displacement(x64, register_index));
+            }
+        } break;
+        
+        default: unimplemented;
+    }
+}
+
 inline void
 x64_inc(Buffer* buf, X64_Reg reg) {
     // REX.W + FF /0 	INC r/m64 	M

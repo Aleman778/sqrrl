@@ -262,19 +262,19 @@ _bc_instruction_store(Bytecode_Builder* bc, int dest, int src,
     result->comment = comment;
 }
 
-#define bc_instruction_array_accesss(bc, type, base, index) \
-_bc_instruction_array_accesss(bc, type, base, index, __FILE__ ":" S2(__LINE__))
+#define bc_instruction_array_accesss(bc, type, result, base, index) \
+_bc_instruction_array_accesss(bc, type, result, base, index, __FILE__ ":" S2(__LINE__))
 
 inline int 
-_bc_instruction_array_accesss(Bytecode_Builder* bc, Type* type, int base, int index, cstring comment) {
+_bc_instruction_array_accesss(Bytecode_Builder* bc, Type* elem_type, int result, int base, int index, cstring comment) {
     Bytecode_Type bc_type = register_type(bc->curr_function, base);
     assert(bc_type.kind == BC_TYPE_PTR && "expected array base to be BC_TYPE_PTR");
     
     Bytecode_Binary* insn = add_insn_t(bc, BC_ARRAY_ACCESS, Binary);
-    insn->res_index = add_bytecode_register(bc, t_void_ptr);
+    insn->res_index = result;
     insn->arg0_index = base;
     insn->arg1_index = index;
-    insn->stride = (int) align_forward(type->size, type->align);
+    insn->stride = (int) align_forward(elem_type->size, elem_type->align);
     insn->comment = comment;
     return insn->res_index;
 }
@@ -320,7 +320,6 @@ _bc_instruction_local(Bytecode_Builder* bc, Type* type, cstring comment) {
     //array_push(bc->curr_function->register_types, reg_type);
     
     int result = add_bytecode_register(bc, t_void_ptr);
-    bc->curr_function->register_types[result].flags |= BC_FLAG_LOCAL;
     _bc_instruction(bc, BC_LOCAL, result, type->size, type->align, comment);
     return result;
 }

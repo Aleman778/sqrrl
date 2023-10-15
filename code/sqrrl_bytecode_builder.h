@@ -123,7 +123,9 @@ add_bytecode_register(Bytecode_Builder* bc, Type* type) {
     return result;
 }
 
-int emit_value_expression(Bytecode_Builder* bc, Ast* expr, int result=-1);
+void emit_value_expression(Bytecode_Builder* bc, Ast* expr, int result=-1);
+
+int emit_value_fetch_expression(Bytecode_Builder* bc, Ast* expr, int result=-1);
 
 int emit_reference_expression(Bytecode_Builder* bc, Ast* expr);
 

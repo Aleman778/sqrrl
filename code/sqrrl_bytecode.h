@@ -221,37 +221,94 @@ global cstring bc_memory_kind_names[] = {
 
 
 #define Bytecode_Instruction_Base \
+cstring comment; \
 Bytecode_Operator opcode; \
 Bytecode_Type type; \
 s32 next_insn; \
-cstring comment
 
-// NOTE(Alexander): this is just a base structure, most are extended
-struct Bytecode_Base {
-    Bytecode_Instruction_Base;
-};
-
-// NOTE(Alexander): alias for Bytecode_Base
+// Base structure, can be pointer casted to any of the other instruction types below
 struct Bytecode_Instruction {
     Bytecode_Instruction_Base;
 };
-
 global Bytecode_Instruction bc_end_of_function = {};
+
+struct Bytecode_Const_Int {
+    Bytecode_Instruction_Base;
+    
+    int res_index;
+    s64 val;
+};
+
+struct Bytecode_Const_F32 {
+    Bytecode_Instruction_Base;
+    
+    int res_index;
+    f32 val;
+};
+
+struct Bytecode_Const_F64 {
+    Bytecode_Instruction_Base;
+    
+    int res_index;
+    f64 val;
+};
+
+struct Bytecode_Unary {
+    Bytecode_Instruction_Base;
+    
+    int res_index;
+    int a_index;
+};
 
 struct Bytecode_Binary {
     Bytecode_Instruction_Base;
     
     int res_index;
+    int a_index;
+    int b_index;
+};
+
+struct Bytecode_Assign {
+    Bytecode_Instruction_Base;
+    
+    int dest_index;
+    int src_index;
+};
+
+struct Bytecode_Local {
+    Bytecode_Instruction_Base;
+    
+    int res_index;
+    s32 size, align;
+};
+
+struct Bytecode_Field_Access {
+    Bytecode_Instruction_Base;
+    
+    int res_index;
+    int base;
+    s32 offset;
+};
+
+struct Bytecode_Array_Access {
+    Bytecode_Instruction_Base;
+    
+    int res_index;
+    int base;
+    int index;
+    s32 stride;
+};
+
+struct Bytecode_Memcpy {
+    Bytecode_Instruction_Base;
+    
+    int dest_index;
+    int src_index;
     union {
-        struct {
-            int arg0_index;
-            int arg1_index;
-        };
-        s64 const_i64;
-        f32 const_f32;
-        f64 const_f64;
+        int size_index;
+        s32 fixed_size;
     };
-    int stride; // TODO(Alexander): optimize this, only used for ARRAY_INDEX
+    bool is_fixed_size;
 };
 
 struct Bytecode_Call {
@@ -260,6 +317,25 @@ struct Bytecode_Call {
     u32 func_index;
     // argument operands followed by return operands
 };
+
+inline int*
+bc_call_args(Bytecode_Call* call) {
+    return (int*) (call + 1);
+}
+
+struct Bytecode_Call_Indirect {
+    Bytecode_Instruction_Base;
+    
+    int func_ptr_index;
+    s32 ret_count;
+    s32 arg_count;
+    // argument operands followed by return operands
+};
+
+inline int*
+bc_call_args(Bytecode_Call_Indirect* call) {
+    return (int*) (call + 1);
+}
 
 struct Bytecode_Block {
     Bytecode_Instruction_Base;

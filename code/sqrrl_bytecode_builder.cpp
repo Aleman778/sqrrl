@@ -1233,7 +1233,6 @@ add_bytecode_global(Bytecode_Builder* bc,
 Bytecode_Instruction*
 add_bytecode_insn(Bytecode_Builder* bc, 
                   Bytecode_Operator opcode, 
-                  Bytecode_Instruction_Kind kind, 
                   umm size, umm align, cstring loc) {
     
     assert(bc->curr_function && "cannot add instruction outside function scope");
@@ -1241,7 +1240,6 @@ add_bytecode_insn(Bytecode_Builder* bc,
     // TODO(Alexander): when we run out of memory we need to make sure we have pointer to next instruction
     Bytecode_Instruction* insn = (Bytecode_Instruction*) arena_push_size(&bc->arena, size, align);
     insn->opcode = opcode;
-    insn->kind = kind;
     insn->comment = loc;
     
     if (!bc->curr_function->first_insn) {
@@ -1285,132 +1283,19 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
     smm from_byte = sb->curr_used;
     string_builder_pad(sb, sb->curr_used, block_depth*2);
     
-    switch (insn->kind) {
-        case BytecodeInstructionKind_None: break;
-        
-        case BytecodeInstructionKind_Base: {
+    
+    Bytecode_Binary* bc_instruction_insn = (Bytecode_Binary*) insn;
+    
+    
+    switch (insn->opcode) {
+        case BC_BLOCK:
+        case BC_LOOP:
+        case BC_END: {
             string_builder_dump_bytecode_opcode(sb, insn);
-            
-            switch (insn->opcode) {
-                case BC_BLOCK:
-                case BC_LOOP:
-                case BC_END: {
-                    string_builder_push_format(sb, "(label = %)", f_int(block_depth));
-                } break;
-            }
+            string_builder_push_format(sb, "(label = %)", f_int(block_depth));
         } break;
         
-        case BytecodeInstructionKind_Binary: {
-            Bytecode_Binary* bc_instruction_insn = (Bytecode_Binary*) insn;
-            if (bc_instruction_insn->res_index >= 0 && 
-                insn->opcode != BC_MEMCPY && 
-                insn->opcode != BC_MEMSET) {
-                string_builder_push_format(sb, "r% = ", f_int(bc_instruction_insn->res_index));
-            }
-            
-            string_builder_dump_bytecode_opcode(sb, insn);
-            
-            switch (insn->opcode) {
-                case BC_INT_CONST: {
-                    string_builder_push_format(sb, "%", f_int(bc_instruction_insn->const_i64));
-                } break;
-                
-                case BC_F32_CONST: {
-                    string_builder_push_format(sb, "%", f_float(bc_instruction_insn->const_f32));
-                } break;
-                
-                case BC_F64_CONST: {
-                    string_builder_push_format(sb, "%", f_float(bc_instruction_insn->const_f64));
-                } break;
-                
-                case BC_CALL:
-                case BC_CALL_INDIRECT: {
-                    Bytecode_Binary* bc_insn = (Bytecode_Binary*) insn;
-                    
-                    // target
-                    Bytecode_Function* func = 0;
-                    if (insn->opcode == BC_CALL) {
-                        func = bc->functions[bc_insn->arg0_index];
-                    }
-                    
-                    if (func) {
-                        string_builder_dump_bytecode_function_name(sb, bc, func);
-                        
-                    } else {
-                        string_builder_push_format(sb, "r%", f_int(bc_insn->arg0_index));
-                    }
-                    
-                    // args
-                    string_builder_push(sb, "(");
-                    int* args = (int*) (bc_insn + 1);
-                    for (int i = 0; i < bc_insn->arg1_index; i++) {
-                        string_builder_push_format(sb, "r%", f_int(args[i]));
-                        if (i + 1 < bc_insn->arg1_index) {
-                            string_builder_push(sb, ", ");
-                        }
-                    }
-                    string_builder_push(sb, ")");
-                } break;
-                
-                case BC_LOCAL: {
-                    string_builder_push_format(sb, "size %, align %", f_int(bc_instruction_insn->arg0_index),
-                                               f_int(bc_instruction_insn->arg1_index));
-                } break;
-                
-                case BC_GLOBAL: {
-                    string_builder_push_format(sb, "%", f_int(bc_instruction_insn->arg0_index));
-                } break;
-                
-                case BC_MEMCPY: {
-                    string_builder_push_format(sb, "r%, r%, size %",
-                                               f_int(bc_instruction_insn->res_index),
-                                               f_int(bc_instruction_insn->arg0_index),
-                                               f_int(bc_instruction_insn->arg1_index));
-                } break;
-                
-                case BC_MEMSET: {
-                    string_builder_push_format(sb, "r%, %, size %",
-                                               f_int(bc_instruction_insn->res_index),
-                                               f_int(bc_instruction_insn->arg0_index),
-                                               f_int(bc_instruction_insn->arg1_index));
-                } break;
-                
-                case BC_ARRAY_ACCESS: {
-                    string_builder_push_format(sb, "r%, r%, stride %",
-                                               f_int(bc_instruction_insn->arg0_index),
-                                               f_int(bc_instruction_insn->arg1_index),
-                                               f_int(bc_instruction_insn->stride));
-                } break;
-                
-                case BC_FIELD_ACCESS: {
-                    string_builder_push_format(sb, "r%, %", f_int(bc_instruction_insn->arg0_index),
-                                               f_int(bc_instruction_insn->arg1_index));
-                } break;
-                
-                case BC_FLOAT_TO_INT: {
-                    string_builder_push_format(sb, "r%", f_int(bc_instruction_insn->arg0_index));
-                } break;
-                
-                default: {
-                    if (bc_instruction_insn->arg1_index >= 0) {
-                        string_builder_push_format(sb, "r%, ", f_int(bc_instruction_insn->arg0_index));
-                        string_builder_push_format(sb, "r%", f_int(bc_instruction_insn->arg1_index));
-                    } else if (bc_instruction_insn->arg0_index >= 0) {
-                        string_builder_push_format(sb, "r%", f_int(bc_instruction_insn->arg0_index));
-                    }
-                } break;
-            }
-        } break;
-        
-        case BytecodeInstructionKind_Block: {
-            u32 label_index = ((Bytecode_Block*) insn)->label_index;
-            if (label_index > 0) {
-                from_byte = sb->curr_used + 5;
-                string_builder_push_format(sb, "\nBasic Block %:", f_u32(label_index));
-            }
-        } break;
-        
-        case BytecodeInstructionKind_Branch: {
+        case BC_BRANCH: {
             string_builder_dump_bytecode_opcode(sb, insn);
             string_builder_push_format(sb, "%", f_u32(((Bytecode_Branch*) insn)->label_index));
             
@@ -1420,13 +1305,102 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
             }
         } break;
         
-        case BytecodeInstructionKind_Memory: {
-            //string_builder_dump_bytecode_opcode(sb, insn);
-            //string_builder_dump_bytecode_operand(sb, ((Bytecode_Memory*) insn)->dest, insn->type);
-            //string_builder_push(sb, ", ");
-            //string_builder_dump_bytecode_operand(sb, ((Bytecode_Memory*) insn)->src, insn->type);
-            //string_builder_push_format(sb, ", %", f_int(((Bytecode_Memory*) insn)->size));
-            unimplemented;
+        case BC_INT_CONST: {
+            
+            string_builder_push_format(sb, "r% = ", f_int(bc_instruction_insn->res_index));
+            string_builder_dump_bytecode_opcode(sb, insn);
+            string_builder_push_format(sb, "%", f_int(bc_instruction_insn->const_i64));
+        } break;
+        
+        case BC_F32_CONST: {
+            string_builder_push_format(sb, "r% = ", f_int(bc_instruction_insn->res_index));
+            string_builder_dump_bytecode_opcode(sb, insn);
+            string_builder_push_format(sb, "%", f_float(bc_instruction_insn->const_f32));
+        } break;
+        
+        case BC_F64_CONST: {
+            string_builder_push_format(sb, "r% = ", f_int(bc_instruction_insn->res_index));
+            string_builder_dump_bytecode_opcode(sb, insn);
+            string_builder_push_format(sb, "%", f_float(bc_instruction_insn->const_f64));
+        } break;
+        
+        case BC_CALL:
+        case BC_CALL_INDIRECT: {
+            string_builder_push_format(sb, "r% = ", f_int(bc_instruction_insn->res_index));
+            string_builder_dump_bytecode_opcode(sb, insn);
+            Bytecode_Binary* bc_insn = (Bytecode_Binary*) insn;
+            
+            // target
+            Bytecode_Function* func = 0;
+            if (insn->opcode == BC_CALL) {
+                func = bc->functions[bc_insn->arg0_index];
+            }
+            
+            if (func) {
+                string_builder_dump_bytecode_function_name(sb, bc, func);
+                
+            } else {
+                string_builder_push_format(sb, "r%", f_int(bc_insn->arg0_index));
+            }
+            
+            // args
+            string_builder_push(sb, "(");
+            int* args = (int*) (bc_insn + 1);
+            for (int i = 0; i < bc_insn->arg1_index; i++) {
+                string_builder_push_format(sb, "r%", f_int(args[i]));
+                if (i + 1 < bc_insn->arg1_index) {
+                    string_builder_push(sb, ", ");
+                }
+            }
+            string_builder_push(sb, ")");
+        } break;
+        
+        case BC_LOCAL: {
+            string_builder_push_format(sb, "size %, align %", f_int(bc_instruction_insn->arg0_index),
+                                       f_int(bc_instruction_insn->arg1_index));
+        } break;
+        
+        case BC_GLOBAL: {
+            string_builder_push_format(sb, "%", f_int(bc_instruction_insn->arg0_index));
+        } break;
+        
+        case BC_MEMCPY: {
+            string_builder_push_format(sb, "r%, r%, size %",
+                                       f_int(bc_instruction_insn->res_index),
+                                       f_int(bc_instruction_insn->arg0_index),
+                                       f_int(bc_instruction_insn->arg1_index));
+        } break;
+        
+        case BC_MEMSET: {
+            string_builder_push_format(sb, "r%, %, size %",
+                                       f_int(bc_instruction_insn->res_index),
+                                       f_int(bc_instruction_insn->arg0_index),
+                                       f_int(bc_instruction_insn->arg1_index));
+        } break;
+        
+        case BC_ARRAY_ACCESS: {
+            string_builder_push_format(sb, "r%, r%, stride %",
+                                       f_int(bc_instruction_insn->arg0_index),
+                                       f_int(bc_instruction_insn->arg1_index),
+                                       f_int(bc_instruction_insn->stride));
+        } break;
+        
+        case BC_FIELD_ACCESS: {
+            string_builder_push_format(sb, "r%, %", f_int(bc_instruction_insn->arg0_index),
+                                       f_int(bc_instruction_insn->arg1_index));
+        } break;
+        
+        case BC_FLOAT_TO_INT: {
+            string_builder_push_format(sb, "r%", f_int(bc_instruction_insn->arg0_index));
+        } break;
+        
+        default: {
+            if (bc_instruction_insn->arg1_index >= 0) {
+                string_builder_push_format(sb, "r%, ", f_int(bc_instruction_insn->arg0_index));
+                string_builder_push_format(sb, "r%", f_int(bc_instruction_insn->arg1_index));
+            } else if (bc_instruction_insn->arg0_index >= 0) {
+                string_builder_push_format(sb, "r%", f_int(bc_instruction_insn->arg0_index));
+            }
         } break;
     }
     
@@ -1507,7 +1481,7 @@ string_builder_dump_bytecode_function(String_Builder* sb, Bytecode* bc, Bytecode
     
     Bytecode_Instruction* curr = iter_bytecode_instructions(func, 0);
     int block_depth = 1;
-    while (curr->kind) {
+    while (curr->opcode) {
         if (curr->opcode == BC_END) {
             block_depth--;
         }

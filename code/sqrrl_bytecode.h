@@ -1,6 +1,7 @@
 
 enum Bytecode_Operator {
-    BC_NOOP = 0,
+    BC_END_OF_FUNCTION = 0,
+    BC_NOOP,
     
     // Control
     BC_DEBUG_BREAK,
@@ -73,7 +74,10 @@ enum Bytecode_Operator {
     BC_NEQ,
     
     // Intrinsics (x64)
-    BC_X64_RDTSC
+    BC_X64_RDTSC,
+    
+    // End of function
+    BC_EOF
 };
 
 bool
@@ -82,7 +86,7 @@ bc_is_comparator(Bytecode_Operator op) {
 }
 
 global const cstring bc_operator_names[] = {
-    /*                   */ "noop",
+    /*                   */ "", "noop",
     /* Control:          */ "debug_break", "loop", "block", "end", "branch", "call", "call_indirect",
     /*                   */ "return",
     /* Constants:        */ "i64.const", "f32.const", "f64.const",
@@ -194,6 +198,8 @@ struct Bytecode_Global {
     u32 offset;
     u32 size, align;
     Bytecode_Memory_Kind kind;
+    // TODO(Alexander): maybe we should add reference count so we
+    // can safely exclude the data if we optimized out this
 };
 
 struct Bytecode {
@@ -214,23 +220,9 @@ global cstring bc_memory_kind_names[] = {
 };
 
 
-enum Bytecode_Instruction_Kind {
-    BytecodeInstructionKind_None,
-    
-    BytecodeInstructionKind_Base,
-    BytecodeInstructionKind_Alloca,
-    BytecodeInstructionKind_Unary,
-    BytecodeInstructionKind_Binary,
-    BytecodeInstructionKind_Call,
-    BytecodeInstructionKind_Block,
-    BytecodeInstructionKind_Branch,
-    BytecodeInstructionKind_Memory,
-};
-
 #define Bytecode_Instruction_Base \
 Bytecode_Operator opcode; \
 Bytecode_Type type; \
-Bytecode_Instruction_Kind kind; \
 s32 next_insn; \
 cstring comment
 
@@ -244,7 +236,7 @@ struct Bytecode_Instruction {
     Bytecode_Instruction_Base;
 };
 
-global Bytecode_Instruction bc_empty = {};
+global Bytecode_Instruction bc_end_of_function = {};
 
 struct Bytecode_Binary {
     Bytecode_Instruction_Base;
@@ -289,7 +281,7 @@ inline Bytecode_Instruction*
 iter_bytecode_instructions(Bytecode_Function* func, Bytecode_Instruction* iter) {
     if (!iter) {
         if (!func->first_insn) {
-            return &bc_empty;
+            return &bc_end_of_function;
         }
         
         iter = (Bytecode_Instruction*) ((u8*) func + func->first_insn);
@@ -297,7 +289,7 @@ iter_bytecode_instructions(Bytecode_Function* func, Bytecode_Instruction* iter) 
     }
     
     if (!iter->next_insn) {
-        return &bc_empty;
+        return &bc_end_of_function;
     }
     
     iter = (Bytecode_Instruction*) ((u8*) iter + iter->next_insn);
@@ -306,5 +298,5 @@ iter_bytecode_instructions(Bytecode_Function* func, Bytecode_Instruction* iter) 
 
 #define for_bc_insn(func, insn) \
 for (Bytecode_Instruction* insn = iter_bytecode_instructions(func, 0); \
-insn->kind; \
+insn->opcode; \
 insn = iter_bytecode_instructions(func, insn))

@@ -154,7 +154,6 @@ Bytecode_Function* add_bytecode_function(Bytecode_Builder* bc, Type* type);
 
 Bytecode_Instruction* add_bytecode_insn(Bytecode_Builder* bc, 
                                         Bytecode_Operator opcode, 
-                                        Bytecode_Instruction_Kind kind, 
                                         umm size, umm align, cstring loc);
 
 int add_bytecode_global(Bytecode_Builder* bc, 
@@ -165,20 +164,17 @@ int add_bytecode_global(Bytecode_Builder* bc,
 #define S1(x) #x
 #define S2(x) S1(x)
 #define add_insn(bc, opcode) add_bytecode_insn(bc, opcode, \
-BytecodeInstructionKind_Base, \
 sizeof(Bytecode_Instruction), \
 alignof(Bytecode_Instruction), \
 __FILE__ ":" S2(__LINE__));
 
 #define add_insn_t(bc, opcode, T) (Bytecode_##T*) add_bytecode_insn(bc, opcode, \
-BytecodeInstructionKind_##T, \
 sizeof(Bytecode_##T), \
 alignof(Bytecode_##T), \
 __FILE__ ":" S2(__LINE__));
 
 #define bc_instruction_call(bc, target_cu, arg_count) \
 (Bytecode_Binary*) add_bytecode_insn(bc, target_cu ? BC_CALL : BC_CALL_INDIRECT, \
-BytecodeInstructionKind_Binary, \
 sizeof(Bytecode_Binary) + sizeof(int)*arg_count, \
 alignof(Bytecode_Binary), \
 __FILE__ ":" S2(__LINE__))

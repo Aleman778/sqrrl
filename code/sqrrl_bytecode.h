@@ -221,7 +221,6 @@ global cstring bc_memory_kind_names[] = {
 
 
 #define Bytecode_Instruction_Base \
-cstring comment; \
 Bytecode_Operator opcode; \
 Bytecode_Type type; \
 s32 next_insn; \
@@ -251,6 +250,12 @@ struct Bytecode_Const_F64 {
     
     int res_index;
     f64 val;
+};
+
+struct Bytecode_Result {
+    Bytecode_Instruction_Base;
+    
+    int res_index;
 };
 
 struct Bytecode_Unary {
@@ -304,11 +309,15 @@ struct Bytecode_Memcpy {
     
     int dest_index;
     int src_index;
-    union {
-        int size_index;
-        s32 fixed_size;
-    };
-    bool is_fixed_size;
+    int size;
+};
+
+struct Bytecode_Memset {
+    Bytecode_Instruction_Base;
+    
+    int dest_index;
+    int value;
+    int size;
 };
 
 struct Bytecode_Call {

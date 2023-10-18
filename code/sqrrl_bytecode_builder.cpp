@@ -1391,6 +1391,47 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
                                        f_int(assign->src_index));
         } break;
         
+        case BC_INC:
+        case BC_DEC: 
+        case BC_NEG: 
+        case BC_NOT: {
+            Bytecode_Unary* unary = (Bytecode_Unary*) insn;
+            string_builder_push_format(sb, "r% = ", f_int(unary->res_index));
+            string_builder_dump_bytecode_opcode(sb, insn);
+            string_builder_push_format(sb, "r%", 
+                                       f_int(unary->a_index));
+        } break;
+        
+        case BC_ADD:
+        case BC_SUB:
+        case BC_MUL:
+        case BC_DIV_S:
+        case BC_DIV_U:
+        case BC_MOD_S:
+        case BC_MOD_U:
+        case BC_AND:
+        case BC_OR:
+        case BC_XOR:
+        case BC_SHL:
+        case BC_SAR:
+        case BC_SHR:
+        case BC_EQ:
+        case BC_GT_S:
+        case BC_GT_U:
+        case BC_GE_S:
+        case BC_GE_U:
+        case BC_LT_U:
+        case BC_LT_S:
+        case BC_LE_U:
+        case BC_LE_S:
+        case BC_NEQ: {
+            Bytecode_Binary* binary = (Bytecode_Binary*) insn;
+            string_builder_push_format(sb, "r% = ", f_int(binary->res_index));
+            string_builder_dump_bytecode_opcode(sb, insn);
+            string_builder_push_format(sb, "r%", 
+                                       f_int(binary->a_index));
+        } break;
+        
         case BC_MEMCPY: {
             string_builder_dump_bytecode_opcode(sb, insn);
             Bytecode_Memcpy* mem_insn = (Bytecode_Memcpy*) insn;
@@ -1426,6 +1467,14 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
             string_builder_push_format(sb, "r%, offset %", 
                                        f_int(field_access->base),
                                        f_int(field_access->offset));
+        } break;
+        
+        case BC_RETURN: {
+            Bytecode_Result* result = (Bytecode_Result*) insn;
+            string_builder_dump_bytecode_opcode(sb, insn);
+            if (result->res_index >= 0) {
+                string_builder_push_format(sb, "r%", f_int(result->res_index));
+            }
         } break;
         
         default: {

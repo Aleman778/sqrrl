@@ -112,6 +112,7 @@ struct X64_Assembler {
 
 inline X64_Slot
 get_slot(X64_Assembler* x64, int register_index) {
+    assert(register_index >= 0);
     return x64->slots[register_index];
 }
 

@@ -1071,6 +1071,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             if (type_infer_expression(tcx, expr->Index_Expr.index, t_smm, report_error)) {
                 Type* type = type_infer_expression(tcx, expr->Index_Expr.array, parent_type, report_error);
                 if (type) {
+                    constant_folding_of_expressions(tcx, expr->Index_Expr.index);
                     
                     if (type->kind == TypeKind_Array) {
                         result = type->Array.type;

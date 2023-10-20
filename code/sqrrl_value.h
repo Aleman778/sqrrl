@@ -33,7 +33,7 @@ OP(Bitwise_Or,         |,  5,  Assoc_Left,  false, BC_OR, BC_OR) \
 OP(Bitwise_Xor,        ^,  4,  Assoc_Left,  false, BC_XOR, BC_XOR) \
 OP(Logical_And,        &&, 3,  Assoc_Left,  false, BC_NOOP, BC_NOOP) \
 OP(Logical_Or,         ||, 2,  Assoc_Left,  false, BC_NOOP, BC_NOOP) \
-OP(Assign,             =,  1,  Assoc_Right, false, BC_COPY, BC_COPY) \
+OP(Assign,             =,  1,  Assoc_Right, false, BC_NOOP, BC_NOOP) \
 OP(Add_Assign,         +=, 1,  Assoc_Right, false, BC_ADD, BC_ADD) \
 OP(Subtract_Assign,    -=, 1,  Assoc_Right, false, BC_SUB, BC_SUB) \
 OP(Multiply_Assign,    *=, 1,  Assoc_Right, false, BC_MUL, BC_MUL) \

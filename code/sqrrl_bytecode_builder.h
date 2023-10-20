@@ -131,6 +131,8 @@ int emit_reference_expression(Bytecode_Builder* bc, Ast* expr);
 
 void emit_initializing_expression(Bytecode_Builder* bc, Ast* expr, int dest_ptr);
 
+inline void emit_unary_increment(Bytecode_Builder* bc, Type* type, int result, bool increment);
+
 inline void emit_binary_expression(Bytecode_Builder* bc, Bytecode_Operator opcode,
                                    Ast* lexpr, Ast* rexpr, int result);
 inline void emit_assignment_expression(Bytecode_Builder* bc, Bytecode_Operator opcode,
@@ -158,7 +160,7 @@ Bytecode_Instruction* add_bytecode_insn(Bytecode_Builder* bc,
 
 int add_bytecode_global(Bytecode_Builder* bc, 
                         Bytecode_Memory_Kind kind, 
-                        smm size, smm align, 
+                        smm size, smm align,
                         void* init=0);
 
 #define S1(x) #x
@@ -214,6 +216,7 @@ bc_unary_arith(Bytecode_Builder* bc, Bytecode_Operator opcode, int res_index, in
 
 inline int
 bc_binary_arith(Bytecode_Builder* bc, Bytecode_Operator opcode, int res_index, int a_index, int b_index) {
+    assert(opcode != BC_COPY);
     Bytecode_Binary* insn = bc_instruction(bc, opcode, Bytecode_Binary);
     insn->res_index = res_index;
     insn->a_index = a_index;
@@ -223,7 +226,7 @@ bc_binary_arith(Bytecode_Builder* bc, Bytecode_Operator opcode, int res_index, i
 
 inline int
 bc_assignment(Bytecode_Builder* bc, Bytecode_Operator opcode, int dest, int src) {
-    Bytecode_Assign* insn = bc_instruction(bc, BC_COPY, Bytecode_Assign);
+    Bytecode_Assign* insn = bc_instruction(bc, opcode, Bytecode_Assign);
     insn->dest_index = dest;
     insn->src_index = src;
     return insn->dest_index;

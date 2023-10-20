@@ -77,7 +77,6 @@ convert_bytecode_to_x64_machine_code(Bytecode* bytecode, Buffer* buf,
         }
     }
     
-    
     return pe;
 }
 
@@ -181,6 +180,30 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     x64_modrm_direct(buf, 0, X64_RSP);
     push_u32(buf, stack_size); *prologue_stack_size = stack_size;
     push_u8(buf, 0xC3); // RET near
+}
+
+void
+convert_windows_X64_argument_list_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, int arg_count, int* args) {
+    for (int arg_index = arg_count - 1; arg_index >= 0; arg_index--) {
+        int src_index = args[arg_index];
+        X64_Reg dest = X64_RAX;
+        if (arg_index < 4) {
+            dest = int_arg_registers_ccall_windows[arg_index];
+        }
+        
+        X64_Slot src = get_slot(x64, src_index);
+        if (src.is_value) {
+            x64_lea(buf, dest, X64_RSP,
+                    register_displacement(x64, src_index));
+        } else {
+            x64_move_memory_to_register(buf, dest, X64_RSP,
+                                        register_displacement(x64, src_index));
+        }
+        
+        if (arg_index >= 4) {
+            x64_move_register_to_memory(buf, X64_RSP, arg_index*8, dest);
+        }
+    }
 }
 
 void 
@@ -380,60 +403,26 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_CALL: 
-        case BC_CALL_INDIRECT: {
-            
+        {
             int target_index = bc->a_index;
-            int arg_count = bc->b_index;
+            Bytecode_Function* target = x64->bytecode->functions[target_index];
+            int* args = (int*) bc_call_args((Bytecode_Call*) bc) + target->ret_count;
+            convert_windows_X64_argument_list_to_x64_machine_code(x64, buf, target->arg_count, args);
             
-            int* args = (int*) (bc + 1);
-            for (int arg_index = arg_count - 1; arg_index >= 0; arg_index--) {
-                int src_index = args[arg_index];
-                X64_Reg dest = X64_RAX;
-                if (arg_index < 4) {
-                    dest = int_arg_registers_ccall_windows[arg_index];
-                }
-                
-                X64_Slot src = get_slot(x64, src_index);
-                if (src.is_value) {
-                    x64_lea(buf, dest, X64_RSP,
-                            register_displacement(x64, src_index));
-                } else {
-                    x64_move_memory_to_register(buf, dest, X64_RSP,
-                                                register_displacement(x64, src_index));
-                }
-                
-                if (arg_index >= 4) {
-                    x64_move_register_to_memory(buf, X64_RSP, arg_index*8, dest);
-                }
-            }
-            
-            if (bc->opcode == BC_CALL_INDIRECT) {
-                // Indirect function call from register
-                x64_move_memory_to_register(buf, X64_RAX, X64_RSP,
-                                            register_displacement(x64, target_index));
+            if (target->is_imported) {
+                // Indirect function call from pointer
+                //x64_spill_register(x64, buf, X64_RAX);
+                x64_move_rax_u64(buf, (u64) target->code_ptr);
                 
                 // FF /2 	CALL r/m64 	M 	
                 push_u8(buf, 0xFF);
                 x64_modrm_direct(buf, 2, X64_RAX);
-                
             } else {
                 
-                Bytecode_Function* target = x64->bytecode->functions[target_index];
-                if (target->is_imported) {
-                    // Indirect function call from pointer
-                    //x64_spill_register(x64, buf, X64_RAX);
-                    x64_move_rax_u64(buf, (u64) target->code_ptr);
-                    
-                    // FF /2 	CALL r/m64 	M 	
-                    push_u8(buf, 0xFF);
-                    x64_modrm_direct(buf, 2, X64_RAX);
-                } else {
-                    
-                    // Direct function call
-                    // E8 cd 	CALL rel32 	D
-                    push_u8(buf, 0xE8);
-                    x64_jump_address(x64, buf, &x64->functions[target_index].code);
-                }
+                // Direct function call
+                // E8 cd 	CALL rel32 	D
+                push_u8(buf, 0xE8);
+                x64_jump_address(x64, buf, &x64->functions[target_index].code);
             }
             
             if (bc->res_index >= 0) {
@@ -443,11 +432,31 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             }
         } break;
         
+        case BC_CALL_INDIRECT: {
+            Bytecode_Call_Indirect* call = (Bytecode_Call_Indirect*) bc;
+            
+            int* args = bc_call_args(call) + call->ret_count;
+            convert_windows_X64_argument_list_to_x64_machine_code(x64, buf, call->arg_count, args);
+            
+            // Indirect function call from register
+            x64_move_memory_to_register(buf, X64_RAX, X64_RSP,
+                                        register_displacement(x64, call->func_ptr_index));
+            
+            // FF /2 	CALL r/m64 	M 	
+            push_u8(buf, 0xFF);
+            x64_modrm_direct(buf, 2, X64_RAX);
+            
+            if (bc->res_index >= 0) {
+                // TODO(Alexander): Add support for floats!
+                x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index),
+                                            X64_RAX);
+            }
+        } break;
+        
         case BC_RETURN: {
-            int res_index = bc->a_index;
-            if (res_index >= 0) {
-                Bytecode_Type type = register_type(func, res_index);
-                x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, res_index), 
+            if (bc->res_index >= 0) {
+                Bytecode_Type type = register_type(func, bc->res_index);
+                x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->res_index), 
                                 type.size, type.flags & BC_FLAG_SIGNED);
             }
             
@@ -539,7 +548,13 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         case BC_COPY: {
             Bytecode_Type type = register_type(func, bc->a_index);
             bool is_signed = type.flags & BC_FLAG_SIGNED;
-            x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->a_index), type.size, is_signed);
+            X64_Slot src = get_slot(x64, bc->a_index);
+            
+            if (src.is_value) {
+                x64_lea(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->a_index));
+            } else {
+                x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->a_index), type.size, is_signed);
+            }
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
         } break;
         
@@ -547,7 +562,9 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         case BC_SUB:
         case BC_MUL:
         case BC_DIV_S:
-        case BC_DIV_U: {
+        case BC_DIV_U:
+        case BC_MOD_S:
+        case BC_MOD_U: {
             Bytecode_Type type = register_type(func, bc->a_index);
             if (type.kind == BC_TYPE_FLOAT) {
                 x64_move_memory_to_float_register(buf, X64_XMM4, X64_RSP, register_displacement(x64, bc->a_index), type.size);
@@ -571,6 +588,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                 x64_move_extend(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->a_index), type.size, is_signed);
                 x64_move_extend(buf, X64_RCX, X64_RSP, register_displacement(x64, bc->b_index), type.size, is_signed);
                 
+                X64_Reg result = X64_RAX;
                 switch (bc->opcode) {
                     case BC_ADD: x64_add64(buf, X64_RAX, X64_RCX); break; 
                     case BC_SUB: x64_sub64(buf, X64_RAX, X64_RCX); break; 
@@ -578,10 +596,20 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                     case BC_DIV_S: x64_div64(buf, X64_RAX, X64_RCX, true); break; // TODO(Alexander): we might use flags here type flags instead of DIV_S/ DIV_U?
                     case BC_DIV_U: x64_div64(buf, X64_RAX, X64_RCX, false); break; 
                     
+                    case BC_MOD_S: { // TODO(Alexander): we might use flags here type flags instead of DIV_S/ DIV_U?
+                        x64_div64(buf, X64_RAX, X64_RCX, true); 
+                        result = X64_RDX; 
+                    } break;
+                    
+                    case BC_MOD_U: {
+                        x64_div64(buf, X64_RAX, X64_RCX, false);
+                        result = X64_RDX;
+                    } break;
+                    
                     default: unimplemented;
                 }
                 
-                x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), X64_RAX);
+                x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index), result);
             }
         } break;
         

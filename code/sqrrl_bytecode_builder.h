@@ -136,7 +136,7 @@ inline void emit_unary_increment(Bytecode_Builder* bc, Type* type, int result, b
 inline void emit_binary_expression(Bytecode_Builder* bc, Bytecode_Operator opcode,
                                    Ast* lexpr, Ast* rexpr, int result);
 inline void emit_assignment_expression(Bytecode_Builder* bc, Bytecode_Operator opcode,
-                                       Ast* lexpr, Ast* rexpr, int result=-1);
+                                       Ast* lexpr, Ast* rexpr);
 
 inline void emit_zero_compare(Bytecode_Builder* bc, Type* type, int result, int value, bool invert_condition);
 
@@ -169,6 +169,9 @@ int add_bytecode_global(Bytecode_Builder* bc,
 
 #define bc_instruction(bc, opcode, T) \
 (T*) add_bytecode_instruction(bc, opcode, sizeof(##T), alignof(##T))
+
+#define bc_instruction_varindices(bc, opcode, T, arg_count) \
+(T*) add_bytecode_instruction(bc, opcode, sizeof(##T)+sizeof(int)*(arg_count), alignof(##T))
 
 
 Bytecode_Instruction* add_bytecode_instruction(Bytecode_Builder* bc, 
@@ -273,7 +276,7 @@ bc_memcpy(Bytecode_Builder* bc, int dest, int src, int size) {
 
 inline void
 bc_memset(Bytecode_Builder* bc, int dest, int value, int size) {
-    Bytecode_Memset* insn = bc_instruction(bc, BC_MEMCPY, Bytecode_Memset);
+    Bytecode_Memset* insn = bc_instruction(bc, BC_MEMSET, Bytecode_Memset);
     insn->dest_index = dest;
     insn->value = value;
     insn->size = size;
@@ -309,33 +312,34 @@ bc_branch(Bytecode_Builder* bc, int label_index) {
     branch->cond = -1;
 }
 
-inline int*
-bc_call(Bytecode_Builder* bc, u32 func_index, int reg_count) {
-    Bytecode_Call* call = (Bytecode_Call*) 
-        add_bytecode_instruction(bc, BC_CALL, 
-                                 sizeof(Bytecode_Binary) + sizeof(int)*reg_count,
-                                 alignof(Bytecode_Binary));
-    call->func_index = func_index;
-    return bc_call_args(call);
+internal inline void
+_bc_copy_registers(void* dest, void* src, smm count) {
+    memcpy(dest, src, sizeof(int)*count);
 }
 
-inline int*
-bc_call_indirect(Bytecode_Builder* bc, int func_ptr_index, s32 ret_count, s32 arg_count,
-                 Bytecode_Operator opcode=BC_CALL_INDIRECT) {
-    
-    int reg_count = ret_count + arg_count;
-    Bytecode_Call_Indirect* call = (Bytecode_Call_Indirect*) 
-        add_bytecode_instruction(bc, opcode, sizeof(Bytecode_Binary) + sizeof(int)*reg_count,
-                                 alignof(Bytecode_Binary));
+inline void
+bc_call(Bytecode_Builder* bc, u32 func_index, array(int)* args) {
+    Bytecode_Call* call = bc_instruction_varindices(bc, BC_CALL, Bytecode_Call, array_count(args));
+    call->func_index = func_index;
+    _bc_copy_registers(bc_call_args(call), args, array_count(args));
+}
+
+inline void
+bc_call_indirect(Bytecode_Builder* bc, int func_ptr_index, s32 ret_count, array(int)* args) {
+    Bytecode_Call_Indirect* call = bc_instruction_varindices(bc, BC_CALL_INDIRECT, Bytecode_Call_Indirect, array_count(args));
     call->func_ptr_index = func_ptr_index;
     call->ret_count = ret_count;
-    call->arg_count = arg_count;
-    return bc_call_args(call);
+    call->arg_count = (s32) array_count(args) - ret_count;
+    _bc_copy_registers(bc_call_args(call), args, array_count(args));
 }
 
 inline int*
 bc_intrinsic(Bytecode_Builder* bc, Bytecode_Operator opcode, s32 ret_count, s32 arg_count) {
-    return bc_call_indirect(bc, -1, ret_count, arg_count, opcode);
+    Bytecode_Call_Indirect* call = bc_instruction_varindices(bc, opcode, Bytecode_Call_Indirect, ret_count + arg_count);
+    call->func_ptr_index = -1;
+    call->ret_count = ret_count;
+    call->arg_count = arg_count;
+    return bc_call_args(call);
 }
 
 inline int

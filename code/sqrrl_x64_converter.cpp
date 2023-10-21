@@ -129,11 +129,17 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
         Bytecode_Function_Arg* formal_args = function_arg_types(func);
         callee_args_disp = arena_push_array_of_structs(&x64->arena, func->arg_count, u32*);
         for (int arg_index = 0; arg_index < (int) func->arg_count; arg_index++) {
+            
             Bytecode_Function_Arg formal_arg = formal_args[arg_index];
             
             s64 src = arg_index*8;
             s32 size = formal_arg.size;
             s32 align = formal_arg.align;
+            if (arg_index == 0 && func->return_as_first_arg) {
+                // Only copy the pointer from return argument
+                size = 8; align = 8;
+            }
+            
             if (size < 8) {
                 size = 8; align = 8;
             }
@@ -402,11 +408,10 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             }
         } break;
         
-        case BC_CALL: 
-        {
-            int target_index = bc->a_index;
-            Bytecode_Function* target = x64->bytecode->functions[target_index];
-            int* args = (int*) bc_call_args((Bytecode_Call*) bc) + target->ret_count;
+        case BC_CALL: {
+            Bytecode_Call* call = (Bytecode_Call*) bc;
+            Bytecode_Function* target = x64->bytecode->functions[call->func_index];
+            int* args = (int*) bc_call_args(call) + target->ret_count;
             convert_windows_X64_argument_list_to_x64_machine_code(x64, buf, target->arg_count, args);
             
             if (target->is_imported) {
@@ -422,7 +427,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                 // Direct function call
                 // E8 cd 	CALL rel32 	D
                 push_u8(buf, 0xE8);
-                x64_jump_address(x64, buf, &x64->functions[target_index].code);
+                x64_jump_address(x64, buf, &x64->functions[call->func_index].code);
             }
             
             if (bc->res_index >= 0) {

@@ -411,8 +411,9 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         case BC_CALL: {
             Bytecode_Call* call = (Bytecode_Call*) bc;
             Bytecode_Function* target = x64->bytecode->functions[call->func_index];
-            int* args = (int*) bc_call_args(call) + target->ret_count;
-            convert_windows_X64_argument_list_to_x64_machine_code(x64, buf, target->arg_count, args);
+            int* args = (int*) bc_call_args(call);
+            convert_windows_X64_argument_list_to_x64_machine_code(x64, buf, target->arg_count, 
+                                                                  args + target->ret_count);
             
             if (target->is_imported) {
                 // Indirect function call from pointer
@@ -430,9 +431,9 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                 x64_jump_address(x64, buf, &x64->functions[call->func_index].code);
             }
             
-            if (bc->res_index >= 0) {
+            if (target->ret_count == 1) {
                 // TODO(Alexander): Add support for floats!
-                x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index),
+                x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, args[0]),
                                             X64_RAX);
             }
         } break;
@@ -440,8 +441,9 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         case BC_CALL_INDIRECT: {
             Bytecode_Call_Indirect* call = (Bytecode_Call_Indirect*) bc;
             
-            int* args = bc_call_args(call) + call->ret_count;
-            convert_windows_X64_argument_list_to_x64_machine_code(x64, buf, call->arg_count, args);
+            int* args = bc_call_args(call);
+            convert_windows_X64_argument_list_to_x64_machine_code(x64, buf, call->arg_count, 
+                                                                  args + call->ret_count);
             
             // Indirect function call from register
             x64_move_memory_to_register(buf, X64_RAX, X64_RSP,
@@ -451,9 +453,9 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             push_u8(buf, 0xFF);
             x64_modrm_direct(buf, 2, X64_RAX);
             
-            if (bc->res_index >= 0) {
+            if (call->ret_count == 1) {
                 // TODO(Alexander): Add support for floats!
-                x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index),
+                x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, args[0]),
                                             X64_RAX);
             }
         } break;

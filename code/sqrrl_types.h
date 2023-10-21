@@ -193,6 +193,11 @@ struct Type {
     s32 align;
 };
 
+inline umm
+get_array_element_size(Type* elem_type) {
+    return align_forward(elem_type->size, elem_type->align);
+}
+
 inline bool 
 is_valid_type(Type* type) {
     return (type &&

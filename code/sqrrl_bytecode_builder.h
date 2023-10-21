@@ -293,7 +293,7 @@ bc_array_access(Bytecode_Builder* bc, Type* elem_type,
     insn->res_index = res_index;
     insn->base = base;
     insn->index = index;
-    insn->stride = (int) align_forward(elem_type->size, elem_type->align);
+    insn->stride = (int) get_array_element_size(elem_type);
     return insn->res_index;
 }
 

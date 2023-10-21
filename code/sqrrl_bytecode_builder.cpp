@@ -74,8 +74,17 @@ emit_reference_expression(Bytecode_Builder* bc, Ast* expr) {
         } break;
         
         case Ast_Cast_Expr: {
-            result = add_bytecode_register(bc, expr->type);
-            emit_type_cast(bc, expr, result);
+            Type* t_dest = normalize_type_for_casting(expr->type);
+            Type* t_src = normalize_type_for_casting(expr->Cast_Expr.expr->type);
+            
+            if (t_dest->kind == TypeKind_Array && t_src->kind == TypeKind_Array) {
+                result = bc_local(bc, t_dest);
+                emit_array_type_cast(bc, t_dest, t_src, expr->Cast_Expr.expr, result);
+            } else {
+                unimplemented;
+                //result = add_bytecode_register(bc, expr->type);
+                //emit_type_cast(bc, expr, result);
+            }
         } break;
         
         case Ast_Paren_Expr: {
@@ -273,7 +282,7 @@ emit_non_const_aggregate_fields(Bytecode_Builder* bc, Ast* expr, int base_ptr, i
             }
         } else if (type->kind == TypeKind_Array) {
             Type* elem_type = type->Array.type;
-            smm aligned_size = align_forward(elem_type->size, elem_type->align);
+            smm aligned_size = get_array_element_size(elem_type);
             field_info.type = elem_type;
             field_info.offset = field_index*aligned_size;
         } else {
@@ -528,26 +537,26 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
                     }
                 } break;
                 
-#if 0
                 case Op_Bitwise_Not: {
-                    int first = emit_value_expression(bc, expr->Unary_Expr.first);
-                    result = add_bytecode_register(bc, type);
-                    bc_instruction(bc, BC_NOT, result, first, -1);
+                    emit_value_expression(bc, expr->Unary_Expr.first, _result);
+                    if (_result != -1) {
+                        bc_unary_arith(bc, BC_NOT, _result, _result);
+                    }
                 } break;
                 
                 case Op_Logical_Not: {
-                    int first = emit_value_expression(bc, expr->Unary_Expr.first);
-                    int second = bc_const_int(bc, type, 0);
-                    result = add_bytecode_register(bc, t_bool);
-                    bc_instruction(bc, BC_EQ, result, first, second);
+                    emit_value_expression(bc, expr->Unary_Expr.first, _result);
+                    if (_result != -1) {
+                        emit_zero_compare(bc, type, _result, _result, false);
+                    }
                 } break;
                 
                 case Op_Negate: {
-                    int first = emit_value_expression(bc, expr->Unary_Expr.first);
-                    result = add_bytecode_register(bc, type);
-                    bc_instruction(bc, BC_NEG, result, first, -1);
+                    emit_value_expression(bc, expr->Unary_Expr.first, _result);
+                    if (_result != -1) {
+                        bc_unary_arith(bc, BC_NOT, _result, _result);
+                    }
                 } break;
-#endif
                 
                 default: unimplemented;
             }
@@ -559,12 +568,47 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
             Operator op = expr->Binary_Expr.op;
             
             if (expr->Binary_Expr.overload) {
-                //unimplemented;
                 array(Ast*)* args = 0;
                 array_push(args, expr->Binary_Expr.first);
                 array_push(args, expr->Binary_Expr.second);
                 emit_function_call_to_bytecode(bc, expr->Binary_Expr.overload, args, _result, -1);
                 array_free(args);
+                
+#if 0
+            } else if (type->kind == TypeKind_Pointer) {
+                switch (op) {
+                    case Op_Add:
+                    case Op_Subtract: {
+                        int first = emit_value_fetch_expression(bc, expr->Binary_Expr.first);
+                        int index = emit_value_fetch_expression(bc, expr->Binary_Expr.second, _result);
+                        if (op == Op_Subtract) {
+                            bc_unary_arith(bc, BC_NEG, _result, index);
+                            index = _result;
+                        }
+                        bc_array_access(bc, type->Pointer, _result, first, index);
+                    } break;
+                    
+                    case Op_Add_Assign:
+                    case Op_Subtract_Assign: {
+                        int first = emit_value_fetch_expression(bc, expr->Binary_Expr.first);
+                        int index = emit_value_fetch_expression(bc, expr->Binary_Expr.second, _result);
+                        
+                        
+                    } break;
+                    
+                    case Op_Assign: {
+                        Bc_Local first = emit_reference_expression2(bc, expr->Binary_Expr.first);
+                        int value = emit_value_fetch_expression(bc, expr->Binary_Expr.second);
+                        if (first.ptr == -1) {
+                            emit_value_fetch_expression(bc, expr->Binary_Expr.second);
+                        } else {
+                            bc_store(bc, first, value);
+                        }
+                    } break;
+                    
+                    default: verify_not_reached();
+                }
+#endif
                 
             } else if (op == Op_Logical_And) {
                 
@@ -579,7 +623,7 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
                 bc_branch_if(bc, bc->block_depth, cond);
                 
                 bc_const_int(bc, _result, true);
-                bc_branch_if(bc, bc->block_depth - 1, -1);
+                bc_branch(bc, bc->block_depth - 1);
                 bc_end_block(bc);
                 
                 bc_const_int(bc, _result, false);
@@ -718,20 +762,36 @@ emit_unary_increment(Bytecode_Builder* bc, Type* type, int result, bool incremen
     }
 }
 
+internal inline void
+_emit_binary_expression(Bytecode_Builder* bc, Bytecode_Operator opcode, 
+                        Type* type, int result, int first, int second) {
+    assert(opcode != BC_NOOP);
+    
+    if (type->kind == TypeKind_Pointer) {
+        int elem_offset = add_bytecode_register(bc, type);
+        s64 elem_size = get_array_element_size(type->Pointer);
+        bc_const_int(bc, elem_offset, elem_size);
+        bc_binary_arith(bc, BC_MUL, elem_offset, elem_offset, second);
+        
+        second = elem_offset;
+    }
+    bc_binary_arith(bc, opcode, result, first, second);
+}
+
 inline void
 emit_binary_expression(Bytecode_Builder* bc, Bytecode_Operator opcode, 
                        Ast* lexpr, Ast* rexpr, int result) {
-    assert(opcode != BC_NOOP);
     int first = emit_value_fetch_expression(bc, lexpr, result);
     int second = emit_value_fetch_expression(bc, rexpr, (first != result) ? result : -1);
-    bc_binary_arith(bc, opcode, result, first, second);
+    _emit_binary_expression(bc, opcode, lexpr->type, result, first, second);
 }
 
 inline void
 emit_assignment_expression(Bytecode_Builder* bc, Bytecode_Operator opcode, 
                            Ast* lexpr, Ast* rexpr) {
     
-    if (is_aggregate_type(lexpr->type)) {
+    Type* type = lexpr->type;
+    if (is_aggregate_type(type)) {
         int dest = emit_reference_expression(bc, lexpr);
         emit_initializing_expression(bc, rexpr, dest);
         
@@ -753,13 +813,17 @@ emit_assignment_expression(Bytecode_Builder* bc, Bytecode_Operator opcode,
             if (first_ref.ptr == -1) {
                 // Assign to value
                 second = emit_value_fetch_expression(bc, rexpr);
-                bc_binary_arith(bc, opcode, first_ref.val, first_ref.val, second);
+                _emit_binary_expression(bc, opcode, type, first_ref.val, first_ref.val, second);
                 
             } else {
                 int result = add_bytecode_register(bc, lexpr->type);
                 bc_load(bc, result, first_ref.ptr);
                 second = emit_value_fetch_expression(bc, rexpr);
-                bc_binary_arith(bc, opcode, result, result, second);
+                if (type->kind == TypeKind_Pointer) {
+                    unimplemented;
+                } else {
+                    bc_binary_arith(bc, opcode, result, result, second);
+                }
                 bc_store(bc, first_ref.ptr, result);
             }
         }
@@ -854,7 +918,7 @@ emit_zero_compare(Bytecode_Builder* bc, Type* type, int result, int value, bool 
     } else {
         bc_const_int(bc, zero, 0);
     }
-    bc_binary_arith(bc, invert_condition ? BC_EQ : BC_NEQ, result, value, zero);
+    bc_binary_arith(bc, invert_condition ? BC_NEQ : BC_EQ, result, value, zero);
 }
 
 void
@@ -1265,7 +1329,7 @@ string_builder_dump_bytecode_opcode(String_Builder* sb, Bytecode_Instruction* in
     //string_builder_push_format(sb, "%.", f_cstring(bc_type_names[insn->type]));
     //}
     string_builder_push(sb, bc_operator_names[insn->opcode]);
-    string_builder_push_format(sb, " ");
+    string_builder_push(sb, " ");
 }
 
 void

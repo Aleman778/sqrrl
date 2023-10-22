@@ -174,8 +174,9 @@ Bytecode_Instruction* add_bytecode_instruction(Bytecode_Builder* bc,
                                                umm size, umm align);
 
 inline int
-bc_const_int(Bytecode_Builder* bc, int res_index, s64 val) {
+bc_const_int(Bytecode_Builder* bc, Type* type, int res_index, s64 val) {
     Bytecode_Const_Int* insn = bc_instruction(bc, BC_INT_CONST, Bytecode_Const_Int);
+    insn->type = to_bytecode_type(type);
     insn->res_index = res_index;
     insn->val = val;
     return insn->res_index;
@@ -184,6 +185,7 @@ bc_const_int(Bytecode_Builder* bc, int res_index, s64 val) {
 inline int
 bc_const_f32(Bytecode_Builder* bc, int res_index, f32 val) {
     Bytecode_Const_F32* insn = bc_instruction(bc, BC_F32_CONST, Bytecode_Const_F32);
+    insn->type = bc_type(BC_TYPE_FLOAT, 0, 4);
     insn->res_index = res_index;
     insn->val = val;
     return insn->res_index;
@@ -192,6 +194,7 @@ bc_const_f32(Bytecode_Builder* bc, int res_index, f32 val) {
 inline int
 bc_const_f64(Bytecode_Builder* bc, int res_index, f64 val) {
     Bytecode_Const_F64* insn = bc_instruction(bc, BC_F64_CONST, Bytecode_Const_F64);
+    insn->type = bc_type(BC_TYPE_FLOAT, 0, 8);
     insn->res_index = res_index;
     insn->val = val;
     return insn->res_index;
@@ -205,10 +208,10 @@ bc_const_zero(Bytecode_Builder* bc, Type* type, int res_index) {
         } else if (type->Basic.kind == Basic_f64) {
             bc_const_f64(bc, res_index, 0);
         } else {
-            bc_const_int(bc, res_index, 0);
+            bc_const_int(bc, type, res_index, 0);
         } 
     } else {
-        bc_const_int(bc, res_index, 0);
+        bc_const_int(bc, type, res_index, 0);
     }
     return res_index;
 }
@@ -267,8 +270,8 @@ bc_copy(Bytecode_Builder* bc, int dest, int src) {
 }
 
 inline int
-bc_cast(Bytecode_Builder* bc, Bytecode_Operator opcode, int dest, int src) {
-    return bc_assignment(bc, opcode, BC_PTR, dest, src);
+bc_cast(Bytecode_Builder* bc, Bytecode_Operator opcode, Type* type, int dest, int src) {
+    return bc_assignment(bc, opcode, to_bytecode_type(type), dest, src);
 }
 
 inline int 

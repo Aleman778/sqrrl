@@ -143,9 +143,8 @@ register_stack_alloc(X64_Assembler* x64, int register_index, Bytecode_Type type,
 inline s32
 register_displacement(X64_Assembler* x64, int register_index, Bytecode_Type type=BC_PTR) {
     X64_Slot slot = get_slot(x64, register_index);
-    //pln("register_displacement - r%, %, size %", f_int(register_index), f_cstring(bc_type_names[type.kind]), f_int(type.size));
-    if (slot.kind != X64_SLOT_RSP_DISP32) {
-        assert(slot.kind == X64_SLOT_EMPTY);
+    pln("register_displacement - r%, %, size % (disp %)", f_int(register_index), f_cstring(bc_type_names[type.kind]), f_int(type.size), f_int(slot.disp));
+    if (slot.kind == X64_SLOT_EMPTY) {
         return register_stack_alloc(x64, register_index, type, 8, 8, false);
     }
     
@@ -193,8 +192,10 @@ global const X64_Reg float_arg_registers_ccall_windows[] {
 #define MODRM_INDIRECT_DISP32 0x80
 
 global const u32 x64_setcc_opcodes[] = {
-    0xC0940F, 0xC0950F, 0xC0970F, 0xC0930F, 0xC0920F,
-    0xC0960F, 0xC09F0F, 0xC09D0F, 0xC09C0F, 0xC0950F
+    // BC_EQ, BC_GT_S,  BC_GT_U,  BC_GE_S,  BC_GE_U,
+    0xC0940F, 0xC09F0F, 0xC0970F, 0xC09D0F, 0xC0930F,
+    // BC_LT_U, BC_LT_S, BC_LE_U, BC_LE_S,  BC_NEQ,
+    0xC0920F, 0xC09C0F, 0xC0960F, 0xC09E0F, 0xC0950F
 };
 
 global const u16 x64_jcc_opcodes[] = {

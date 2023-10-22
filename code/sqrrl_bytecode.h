@@ -107,7 +107,7 @@ global const cstring bc_type_names[] = {
     "int", "float", "ptr"
 };
 
-enum Bytecode_Type_Kind {
+enum Bytecode_Type_Kind : u8 {
     BC_TYPE_INT,
     BC_TYPE_FLOAT,
     BC_TYPE_PTR,
@@ -118,15 +118,20 @@ enum Byytecode_Type_Flags {
 };
 
 struct Bytecode_Type {
-    u8 kind;
+    Bytecode_Type_Kind kind;
     u8 flags;
     u8 size;
 };
 
-global const Bytecode_Type bc_type_bool = { BC_TYPE_INT, 0, 1 };
+Bytecode_Type
+bc_type(Bytecode_Type_Kind kind, u8 flags, u8 size) {
+    return { kind, flags, size };
+}
+
+global const Bytecode_Type bc_type_bool = bc_type(BC_TYPE_INT, 0, 1);
 #define BC_BOOL bc_type_bool
 
-global const Bytecode_Type bc_type_ptr = { BC_TYPE_PTR, 0, 0 };
+global const Bytecode_Type bc_type_ptr = bc_type(BC_TYPE_PTR, 0, 0);
 #define BC_PTR bc_type_ptr
 
 struct Bytecode_Function_Arg {

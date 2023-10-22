@@ -126,6 +126,8 @@ __verify(cstring expression, cstring file, smm line) {
     *(int *)0 = 0; // NOTE(Alexander): purposefully trap the program
 }
 #define verify(expression) (void)((expression) || (__verify(#expression, __FILE__, __LINE__), 0))
+#define verify_not_reached() verify(0 && "should not reach this code")
+
 
 #if !BUILD_TEST
 extern "C" bool
@@ -409,6 +411,68 @@ string_copy_to_memory(string str, void* dest) {
     return (Memory_String) ((smm*) dest + 1);
 }
 
+// NOTE(Alexander): improved string formatting and printf
+enum Format_Type { // TODO(Alexander): add more types
+    FormatType_None,
+    FormatType_void,
+    FormatType_char,
+    FormatType_int,
+    FormatType_s8,
+    FormatType_s16,
+    FormatType_s32,
+    FormatType_s64,
+    FormatType_smm,
+    FormatType_uint,
+    FormatType_u8,
+    FormatType_u16,
+    FormatType_u32,
+    FormatType_u64,
+    FormatType_umm,
+    FormatType_bool,
+    FormatType_b32,
+    FormatType_f32,
+    FormatType_f64,
+    FormatType_string,
+    FormatType_cstring,
+    FormatType_memory_string,
+    
+    FormatType_u64_HEX,
+    
+    FormatType_ast,
+    FormatType_value,
+    FormatType_type,
+    FormatType_intermediate_code,
+};
+
+// TODO(Alexander): add more types
+#define f_bool(x) FormatType_cstring, (x) ? "true" : "false"
+#define f_char(x) FormatType_char, (char) (x)
+#define f_int(x) FormatType_int, (int) (x)
+#define f_uint(x) FormatType_uint, (uint) (x)
+#define f_s64(x) FormatType_s64, (s64) (x)
+#define f_u32(x) FormatType_u32, (u32) (x)
+#define f_u64(x) FormatType_u64, (u64) (x)
+#define f_u64_HEX(x) FormatType_u64_HEX, (u64) (x)
+#define f_smm(x) FormatType_smm, (smm) (x)
+#define f_umm(x) FormatType_umm, (umm) (x)
+#define f_float(x) FormatType_f64, (double) (x)
+#define f_var(x) FormatType_string, (string) vars_load_string(x)
+#define f_string(x) FormatType_string, (string) (x)
+#define f_mstring(x) FormatType_memory_string, (Memory_String) (x)
+#define f_cstring(x) FormatType_cstring, (cstring) (x)
+#define f_ast(x) FormatType_ast, (Ast*) (x)
+#define f_value(x) FormatType_value, (Value*) (x)
+#define f_type(x) FormatType_type, (Type*) (x)
+#define f_ic(x) FormatType_intermediate_code, (Intermediate_Code*) (x)
+
+void print(cstring format...);
+string string_print(cstring format...);
+
+// NOTE(Alexander): print formatted string with new line
+#define pln(format, ...) print(format##"\n", ##__VA_ARGS__)
+//#define pln(...)
+
+
 struct String_Builder {
     u8* data;
     smm size;
@@ -468,14 +532,16 @@ string_builder_push_char(String_Builder* sb, u8 c) {
 
 inline void
 string_builder_push_u8_hex(String_Builder* sb, u8 c) {
-    string_builder_ensure_capacity(sb, 1);
     if (c > 0xF) {
+        string_builder_ensure_capacity(sb, 2);
         char hc = ((c >> 4) & 0xF);
         if (hc < 10) {
             *(sb->data + sb->curr_used++) = '0' + hc;
         } else {
             *(sb->data + sb->curr_used++) = 'A' + (hc - 10);
         }
+    } else {
+        string_builder_ensure_capacity(sb, 1);
     }
     
     char lc = (c & 0xF);
@@ -539,68 +605,6 @@ string_builder_to_string_nocopy(String_Builder* sb) {
     result.count = sb->curr_used;
     return result;
 }
-
-// NOTE(Alexander): improved string formatting and printf
-enum Format_Type { // TODO(Alexander): add more types
-    FormatType_None,
-    FormatType_void,
-    FormatType_char,
-    FormatType_int,
-    FormatType_s8,
-    FormatType_s16,
-    FormatType_s32,
-    FormatType_s64,
-    FormatType_smm,
-    FormatType_uint,
-    FormatType_u8,
-    FormatType_u16,
-    FormatType_u32,
-    FormatType_u64,
-    FormatType_umm,
-    FormatType_bool,
-    FormatType_b32,
-    FormatType_f32,
-    FormatType_f64,
-    FormatType_string,
-    FormatType_cstring,
-    FormatType_memory_string,
-    
-    FormatType_u64_HEX,
-    
-    FormatType_ast,
-    FormatType_value,
-    FormatType_type,
-    FormatType_intermediate_code,
-};
-
-// TODO(Alexander): add more types
-#define f_bool(x) FormatType_cstring, (x) ? "true" : "false"
-#define f_char(x) FormatType_char, (char) (x)
-#define f_int(x) FormatType_int, (int) (x)
-#define f_uint(x) FormatType_uint, (uint) (x)
-#define f_s64(x) FormatType_s64, (s64) (x)
-#define f_u32(x) FormatType_u32, (u32) (x)
-#define f_u64(x) FormatType_u64, (u64) (x)
-#define f_u64_HEX(x) FormatType_u64_HEX, (u64) (x)
-#define f_smm(x) FormatType_smm, (smm) (x)
-#define f_umm(x) FormatType_umm, (umm) (x)
-#define f_float(x) FormatType_f64, (double) (x)
-#define f_var(x) FormatType_string, (string) vars_load_string(x)
-#define f_string(x) FormatType_string, (string) (x)
-#define f_mstring(x) FormatType_memory_string, (Memory_String) (x)
-#define f_cstring(x) FormatType_cstring, (cstring) (x)
-#define f_ast(x) FormatType_ast, (Ast*) (x)
-#define f_value(x) FormatType_value, (Value*) (x)
-#define f_type(x) FormatType_type, (Type*) (x)
-#define f_ic(x) FormatType_intermediate_code, (Intermediate_Code*) (x)
-
-void print(cstring format...);
-string string_print(cstring format...);
-
-// NOTE(Alexander): print formatted string with new line
-#define pln(format, ...) print(format##"\n", ##__VA_ARGS__)
-//#define pln(...)
-
 
 // TODO(Alexander): implement this later, we use stb_ds for now!
 // NOTE(Alexander): dynamic arrays, usage:
@@ -690,6 +694,7 @@ it = arr[++it_index < array_count(arr) ? it_index : 0])
 #define map_key_exists(m, k) ((hmgeti(m, k)) != -1)
 #define map_remove(m, k) hmdel(m, k)
 #define map_count(m) hmlen(m)
+#define map_set_default_value(m, v) hmdefault(m, v)
 
 // NOTE(Alexander): hash map iterator
 // Usage: continuing from previous example...
@@ -711,6 +716,7 @@ for (auto it = map; it < map + map_count(map); it++)
 #define string_map_get_index(m, k) shgeti(m, k)
 #define string_map_remove(m, k) shdel(m, k)
 #define string_map_new_arena(m) sh_new_arena(m)
+#define string_map_set_default_value(m, v) shdefault(m, v)
 
 int 
 compare_ints(void* a, void* b) {
@@ -770,7 +776,7 @@ _binary_search(arr, &(val), array_count(arr), sizeof(arr), compare)
 #ifndef DEFAULT_ALIGNMENT
 #define DEFAULT_ALIGNMENT (2*alignof(smm))
 #endif
-#define ARENA_DEFAULT_BLOCK_SIZE kilobytes(10)
+#define ARENA_DEFAULT_BLOCK_SIZE kilobytes(16)
 
 // NOTE(Alexander): align has to be a power of two.
 inline umm
@@ -904,6 +910,7 @@ arena_aligned_offset(Memory_Arena* arena, umm size, umm align) {
 
 void*
 arena_push_size(Memory_Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT) {
+    assert(size > 0);
     
     umm offset = 0;
     umm arena_size = 0;
@@ -971,12 +978,13 @@ inline void
 arena_clear(Memory_Arena* arena) {
     if (!arena->current_block) return;
     Memory_Block* current_block = arena->current_block;
+    Memory_Block* prev_block = arena->current_block->prev_block;
+    free_memory_blocks(prev_block);
     
     *arena = {};
     arena->current_block = current_block;
+    arena->current_block->prev_block = 0;
     
-    Memory_Block* prev_block = arena->current_block->prev_block;
-    free_memory_blocks(prev_block);
 }
 
 inline void

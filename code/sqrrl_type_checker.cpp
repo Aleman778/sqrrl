@@ -1071,6 +1071,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             if (type_infer_expression(tcx, expr->Index_Expr.index, t_smm, report_error)) {
                 Type* type = type_infer_expression(tcx, expr->Index_Expr.array, parent_type, report_error);
                 if (type) {
+                    constant_folding_of_expressions(tcx, expr->Index_Expr.index);
                     
                     if (type->kind == TypeKind_Array) {
                         result = type->Array.type;
@@ -1229,8 +1230,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     if (parent_type->Array.kind != ArrayKind_Dynamic) {
                         if (parent_type->Array.capacity > 0) {
                             parent_type->Array.kind = ArrayKind_Fixed_Inplace;
-                            smm aligned_element_size = align_forward(parent_type->Array.type->size, 
-                                                                     parent_type->Array.type->align);
+                            smm aligned_element_size = get_array_element_size(parent_type->Array.type);
                             parent_type->size = (s32) (aligned_element_size*parent_type->Array.capacity);
                             parent_type->align = parent_type->Array.type->align;
                         } else {
@@ -1857,7 +1857,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     result.type->Array.kind = ArrayKind_Fixed_Inplace;
                     // NOTE(Alexander): fixed size arrays with known size should be allocated directly
                     // TODO(Alexander): arch dep
-                    smm aligned_size = align_forward(elem_type->size, elem_type->align);
+                    smm aligned_size = get_array_element_size(elem_type);
                     result.type->size = (s32) (aligned_size*result.type->Array.capacity);
                     result.type->align = elem_type->align;
                     
@@ -2383,6 +2383,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                     auto_type_conversion(tcx, expected_type, stmt->Assign_Stmt.expr);
             } else {
                 result = expected_type;
+                stmt->Assign_Stmt.expr->type = result;
             }
             
             stmt->Assign_Stmt.ident->type = result;

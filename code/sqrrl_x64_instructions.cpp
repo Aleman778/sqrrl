@@ -65,6 +65,17 @@ x64_move_memory_to_register(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp) {
     x64_modrm(buf, dest, src, disp, 0);
 }
 
+inline u32*
+x64_move_memory_to_register_disp(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp) {
+    x64_rex(buf, REX_W, dest);
+    push_u8(buf, 0x8B);
+    push_u8(buf, MODRM_INDIRECT_DISP32 | ((dest & 7) << 3) | (src & 7));
+    push_u8(buf, 0x24); // SIB for RSP
+    u32* result = (u32*) (buf->data + buf->curr_used);
+    push_u32(buf, (u32) disp);
+    return result;
+}
+
 void
 x64_move_extend(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp, int size, bool is_signed) {
     if (is_signed) {
@@ -132,6 +143,25 @@ x64_lea(Buffer* buf, X64_Reg a, X64_Reg b, s64 disp) {
     x64_modrm(buf, a, b, disp, 0);
 }
 
+void
+x64_move_slot_to_register(X64_Assembler* x64, Buffer* buf, X64_Reg dest, int src_index) {
+    X64_Slot src = get_slot(x64, src_index);
+    switch (src.kind) {
+        case X64_SLOT_RSP_DISP32_INPLACE: {
+            x64_lea(buf, dest, X64_RSP, src.disp);
+        } break;
+        
+        case X64_SLOT_RSP_DISP32: {
+            x64_move_extend(buf, dest, X64_RSP, src.disp, src.type.size, src.type.flags & BC_FLAG_SIGNED);
+        } break;
+        
+        default: {
+            pln("x64_move_slot_to_register - src_index = r%", f_int(src_index));
+            unimplemented;
+        } break;
+    }
+}
+
 inline void
 x64_inc(Buffer* buf, X64_Reg reg) {
     // REX.W + FF /0 	INC r/m64 	M
@@ -149,6 +179,14 @@ x64_dec(Buffer* buf, X64_Reg reg) {
 }
 
 inline void
+x64_or(Buffer* buf, X64_Reg reg) {
+    // F7 /2 	OR r/m32 	M
+    x64_rex(buf, REX_W, 2, reg);
+    push_u8(buf, 0xF7);
+    x64_modrm_direct(buf, 2, reg);
+}
+
+inline void
 x64_not(Buffer* buf, X64_Reg reg) {
     // F7 /2 	NOT r/m32 	M
     x64_rex(buf, REX_W, 2, reg);
@@ -162,6 +200,22 @@ x64_neg(Buffer* buf, X64_Reg reg) {
     x64_rex(buf, REX_W, 3, reg);
     push_u8(buf, 0xF7);
     x64_modrm_direct(buf, 3, reg);
+}
+
+inline void
+x64_and64(Buffer* buf, X64_Reg a, X64_Reg b) {
+    // REX.W + 23 /r 	AND r64, r/m64 	RM
+    x64_rex(buf, REX_W, a, b);
+    push_u8(buf, 0x23);
+    x64_modrm_direct(buf, a, b);
+}
+
+inline void
+x64_or64(Buffer* buf, X64_Reg a, X64_Reg b) {
+    // REX.W + 0B /r 	OR r64, r/m64 	RM
+    x64_rex(buf, REX_W, a, b);
+    push_u8(buf, 0x0B);
+    x64_modrm_direct(buf, a, b);
 }
 
 inline void
@@ -242,6 +296,16 @@ x64_move_memory_to_float_register(Buffer* buf, X64_Reg dest, X64_Reg src, s64 di
     // F2 0F 10 /r MOVSD xmm1, m64
     push_u24(buf, (size == 8) ? 0x100FF2 : 0x100FF3);
     x64_modrm(buf, dest, src, disp, 0);
+}
+
+inline void
+x64_move_slot_to_float_register(X64_Assembler* x64, Buffer* buf, X64_Reg dest, int src_index) {
+    X64_Slot src = get_slot(x64, src_index);
+    switch (src.kind) {
+        case X64_SLOT_RSP_DISP32: {
+            x64_move_memory_to_float_register(buf, dest, X64_RSP, src.disp, src.type.size);
+        } break;
+    }
 }
 
 inline void

@@ -49,12 +49,6 @@ global const cstring register_names[] {
     "XMM12", "XMM13", "XMM14", "XMM15",
 };
 
-struct X64_Register {
-    u32 virtual_index;
-    Ic_Raw_Type raw_type;
-    bool is_allocated;
-};
-
 struct X64_Block {
     u32 label_index;
     bool is_loop;
@@ -63,6 +57,19 @@ struct X64_Block {
 struct X64_Function {
     u8* code;
     u8** labels;
+};
+
+enum X64_Slot_Kind : u8 {
+    X64_SLOT_EMPTY,
+    X64_SLOT_RSP_DISP32_INPLACE,
+    X64_SLOT_RSP_DISP32,
+    X64_SLOT_RAX,
+};
+
+struct X64_Slot {
+    X64_Slot_Kind kind;
+    Bytecode_Type type;
+    s32 disp;
 };
 
 struct X64_Jump_Patch {
@@ -79,6 +86,10 @@ struct X64_Assembler {
     Bytecode* bytecode;
     u32* stack;
     
+    Memory_Arena arena;
+    X64_Slot* slots;
+    int allocated_slots[X64_REG_COUNT];
+    
     Data_Packer* data_packer;
     
     X64_Function* curr_function;
@@ -88,14 +99,11 @@ struct X64_Assembler {
     
     u32 curr_bytecode_insn_index;
     
-    X64_Register registers[X64_REG_COUNT];
-    
     array(X64_Jump_Patch)* jump_patches;
     array(X64_Data_Patch)* data_patches;
     
-    
-    s64 current_stack_displacement_for_bytecode_registers;
-    s64 current_stack_displacement_for_locals;
+    s32 current_stack_size;
+    s32 max_stack_size;
     
     s64 read_write_data_offset;
     s64 read_only_data_offset;
@@ -103,10 +111,46 @@ struct X64_Assembler {
     bool use_absolute_ptrs;
 };
 
-inline s64
-register_displacement(X64_Assembler* x64, int register_index) {
-    // Each register is 8 bytes from RSP
-    return x64->current_stack_displacement_for_bytecode_registers + register_index * 8;
+inline X64_Slot
+get_slot(X64_Assembler* x64, int register_index) {
+    assert(register_index >= 0);
+    return x64->slots[register_index];
+}
+
+inline void
+set_slot(X64_Assembler* x64, int register_index, X64_Slot_Kind kind, Bytecode_Type type, s32 disp) {
+    x64->slots[register_index] = { kind, type, disp };
+}
+
+inline void
+set_slot(X64_Assembler* x64, int register_index, X64_Slot slot) {
+    x64->slots[register_index] = slot;
+}
+
+inline s32
+register_stack_alloc(X64_Assembler* x64, int register_index, Bytecode_Type type, 
+                     s32 size, s32 align, bool store_inplace) {
+    s32 result = x64->current_stack_size;
+    result = (s32) align_forward(result, align);
+    x64->current_stack_size = result + size;
+    x64->max_stack_size = max(x64->max_stack_size, x64->current_stack_size);
+    X64_Slot_Kind slot_kind = store_inplace ? X64_SLOT_RSP_DISP32_INPLACE : X64_SLOT_RSP_DISP32;
+    set_slot(x64, register_index, slot_kind, type, result);
+    
+    return result;
+}
+
+inline s32
+register_displacement(X64_Assembler* x64, int register_index, Bytecode_Type type=BC_PTR) {
+    X64_Slot slot = get_slot(x64, register_index);
+    pln("register_displacement - r%, %, size % (disp %)", f_int(register_index), f_cstring(bc_type_names[type.kind]), f_int(type.size), f_int(slot.disp));
+    if (slot.kind == X64_SLOT_EMPTY) {
+        return register_stack_alloc(x64, register_index, type, 8, 8, false);
+    }
+    
+    slot.type = type;
+    set_slot(x64, register_index, slot);
+    return slot.disp;
 }
 
 // TODO(Alexander): we should probably return something more approporiate.
@@ -148,8 +192,10 @@ global const X64_Reg float_arg_registers_ccall_windows[] {
 #define MODRM_INDIRECT_DISP32 0x80
 
 global const u32 x64_setcc_opcodes[] = {
-    0xC0940F, 0xC0950F, 0xC0970F, 0xC0930F, 0xC0920F,
-    0xC0960F, 0xC09F0F, 0xC09D0F, 0xC09C0F, 0xC0950F
+    // BC_EQ, BC_GT_S,  BC_GT_U,  BC_GE_S,  BC_GE_U,
+    0xC0940F, 0xC09F0F, 0xC0970F, 0xC09D0F, 0xC0930F,
+    // BC_LT_U, BC_LT_S, BC_LE_U, BC_LE_S,  BC_NEQ,
+    0xC0920F, 0xC09C0F, 0xC0960F, 0xC09E0F, 0xC0950F
 };
 
 global const u16 x64_jcc_opcodes[] = {

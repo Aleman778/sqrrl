@@ -348,8 +348,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     for_array(ast_file.units, cu, _3) {
         if (cu->bytecode_function) {
             bool is_main = cu->ident == Sym_main;
-            convert_function_to_bytecode(&bytecode_builder, cu->bytecode_function, cu->ast,
-                                         is_main, is_debugger_present && is_main);
+            emit_function(&bytecode_builder, cu->bytecode_function, cu->ast,
+                          is_main, is_debugger_present && is_main);
         }
     }
     
@@ -383,7 +383,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                                                                     &tcx.import_table, 
                                                                     compiler_task);
             
-#if 1
+#if 0
             pln("\nX64 Machine Code (% bytes):", f_umm(buf.curr_used));
             for (int byte_index = 0; byte_index < buf.curr_used; byte_index++) {
                 u8 byte = ((u8*) asm_buffer)[byte_index];

@@ -76,7 +76,7 @@ convert_aggregate_literal_to_memory(Ast* expr, void* dest) {
         // TODO(Alexander): temporary use Memory_Arena
         smm size = capacity*type->size;
         
-        smm element_size = align_forward(type->size, type->align);
+        smm element_size = get_array_element_size(type);
         u8* curr = (u8*) dest;
         for_compound(expr->Aggregate_Expr.elements, element) {
             assert(element->kind == Ast_Argument);

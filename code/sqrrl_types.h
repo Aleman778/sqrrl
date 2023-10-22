@@ -193,11 +193,24 @@ struct Type {
     s32 align;
 };
 
+inline umm
+get_array_element_size(Type* elem_type) {
+    return align_forward(elem_type->size, elem_type->align);
+}
+
 inline bool 
 is_valid_type(Type* type) {
     return (type &&
             type->kind != TypeKind_Unresolved &&
             type->kind != TypeKind_Void);
+}
+
+bool
+is_aggregate_type(Type* type) {
+    return ((type->kind == TypeKind_Basic && type->Basic.kind == Basic_string) ||
+            type->kind == TypeKind_Struct ||
+            type->kind == TypeKind_Union ||
+            type->kind == TypeKind_Array);
 }
 
 Type basic_type_definitions[] = {

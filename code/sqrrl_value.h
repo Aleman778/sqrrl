@@ -3,48 +3,48 @@ struct Type;
 struct Bc_Basic_Block;
 
 
-// OP(symbol, prec, assoc, is_comparator)
+// OP(symbol, prec, assoc, is_comparator, signed_opcode, unsigned_opcode)
 #define DEF_OPERATORS \
-OP(None,                !,  0, Assoc_Left,  false) \
-OP(Post_Increment,     a++, 14, Assoc_Left,  false) \
-OP(Post_Decrement,     a--, 14, Assoc_Left,  false) \
-OP(Negate,              -, 13, Assoc_Right, false) \
-OP(Logical_Not,         !, 13, Assoc_Right, false) \
-OP(Bitwise_Not,         ~, 13, Assoc_Right, false) \
-OP(Address_Of,          &, 13, Assoc_Right, false) \
-OP(Dereference,         *, 13, Assoc_Right, false) \
-OP(Pre_Increment,      ++a, 13, Assoc_Right, false) \
-OP(Pre_Decrement,      --a, 13, Assoc_Right, false) \
-OP(Multiply,           *,  11, Assoc_Left,  false) \
-OP(Divide,             /,  11, Assoc_Left,  false) \
-OP(Modulo,             %,  11, Assoc_Left,  false) \
-OP(Add,                +,  10, Assoc_Left,  false) \
-OP(Subtract,           -,  10, Assoc_Left,  false) \
-OP(Shift_Left,         <<, 9,  Assoc_Left,  false) \
-OP(Shift_Right,        >>, 9,  Assoc_Left,  false) \
-OP(Less_Than,          <,  8,  Assoc_Left,  true) \
-OP(Less_Equals,        <=, 8,  Assoc_Left,  true) \
-OP(Greater_Than,       >,  8,  Assoc_Left,  true) \
-OP(Greater_Equals,     >=, 8,  Assoc_Left,  true) \
-OP(Equals,             ==, 7,  Assoc_Left,  true) \
-OP(Not_Equals,         !=, 7,  Assoc_Left,  true) \
-OP(Bitwise_And,        &,  6,  Assoc_Left,  false) \
-OP(Bitwise_Or,         |,  5,  Assoc_Left,  false) \
-OP(Bitwise_Xor,        ^,  4,  Assoc_Left,  false) \
-OP(Logical_And,        &&, 3,  Assoc_Left,  false) \
-OP(Logical_Or,         ||, 2,  Assoc_Left,  false) \
-OP(Assign,             =,  1,  Assoc_Right, false) \
-OP(Add_Assign,         +=, 1,  Assoc_Right, false) \
-OP(Subtract_Assign,    -=, 1,  Assoc_Right, false) \
-OP(Multiply_Assign,    *=, 1,  Assoc_Right, false) \
-OP(Divide_Assign,      /=, 1,  Assoc_Right, false) \
-OP(Modulo_Assign,      %=, 1,  Assoc_Right, false) \
-OP(Bitwise_And_Assign, &=, 1,  Assoc_Right, false) \
-OP(Bitwise_Or_Assign,  |=, 1,  Assoc_Right, false) \
-OP(Bitwise_Xor_Assign, ^=, 1,  Assoc_Right, false) \
-OP(Shift_Left_Assign,  <<=, 1, Assoc_Right, false) \
-OP(Shift_Right_Assign, >>=, 1, Assoc_Right, false) \
-OP(Count,                !, 0, Assoc_Left,  false)
+OP(None,                !,  0, Assoc_Left,  false, BC_NOOP, BC_NOOP) \
+OP(Post_Increment,     a++, 14, Assoc_Left,  false, BC_NOOP, BC_NOOP) \
+OP(Post_Decrement,     a--, 14, Assoc_Left,  false, BC_NOOP, BC_NOOP) \
+OP(Negate,              -, 13, Assoc_Right, false, BC_NEG, BC_NEG) \
+OP(Logical_Not,         !, 13, Assoc_Right, false, BC_NOT, BC_NOT) \
+OP(Bitwise_Not,         ~, 13, Assoc_Right, false, BC_NOT, BC_NOT) \
+OP(Address_Of,          &, 13, Assoc_Right, false, BC_NOOP, BC_NOOP) \
+OP(Dereference,         *, 13, Assoc_Right, false, BC_NOOP, BC_NOOP) \
+OP(Pre_Increment,      ++a, 13, Assoc_Right, false, BC_NOOP, BC_NOOP) \
+OP(Pre_Decrement,      --a, 13, Assoc_Right, false, BC_NOOP, BC_NOOP) \
+OP(Multiply,           *,  11, Assoc_Left,  false, BC_MUL, BC_MUL) \
+OP(Divide,             /,  11, Assoc_Left,  false, BC_DIV_S, BC_DIV_U) \
+OP(Modulo,             %,  11, Assoc_Left,  false, BC_MOD_S, BC_MOD_U) \
+OP(Add,                +,  10, Assoc_Left,  false, BC_ADD, BC_ADD) \
+OP(Subtract,           -,  10, Assoc_Left,  false, BC_SUB, BC_SUB) \
+OP(Shift_Left,         <<, 9,  Assoc_Left,  false, BC_SHL, BC_SHL) \
+OP(Shift_Right,        >>, 9,  Assoc_Left,  false, BC_SAR, BC_SHR) \
+OP(Less_Than,          <,  8,  Assoc_Left,  true, BC_LT_S, BC_LT_U) \
+OP(Less_Equals,        <=, 8,  Assoc_Left,  true, BC_LE_S, BC_LE_U) \
+OP(Greater_Than,       >,  8,  Assoc_Left,  true, BC_GT_S, BC_GT_U) \
+OP(Greater_Equals,     >=, 8,  Assoc_Left,  true, BC_GE_S, BC_GE_U) \
+OP(Equals,             ==, 7,  Assoc_Left,  true, BC_EQ, BC_EQ) \
+OP(Not_Equals,         !=, 7,  Assoc_Left,  true, BC_NEQ, BC_NEQ) \
+OP(Bitwise_And,        &,  6,  Assoc_Left,  false, BC_AND, BC_AND) \
+OP(Bitwise_Or,         |,  5,  Assoc_Left,  false, BC_OR, BC_OR) \
+OP(Bitwise_Xor,        ^,  4,  Assoc_Left,  false, BC_XOR, BC_XOR) \
+OP(Logical_And,        &&, 3,  Assoc_Left,  false, BC_NOOP, BC_NOOP) \
+OP(Logical_Or,         ||, 2,  Assoc_Left,  false, BC_NOOP, BC_NOOP) \
+OP(Assign,             =,  1,  Assoc_Right, false, BC_NOOP, BC_NOOP) \
+OP(Add_Assign,         +=, 1,  Assoc_Right, false, BC_ADD, BC_ADD) \
+OP(Subtract_Assign,    -=, 1,  Assoc_Right, false, BC_SUB, BC_SUB) \
+OP(Multiply_Assign,    *=, 1,  Assoc_Right, false, BC_MUL, BC_MUL) \
+OP(Divide_Assign,      /=, 1,  Assoc_Right, false, BC_DIV_S, BC_DIV_U) \
+OP(Modulo_Assign,      %=, 1,  Assoc_Right, false, BC_MOD_S, BC_MOD_U) \
+OP(Bitwise_And_Assign, &=, 1,  Assoc_Right, false, BC_AND, BC_AND) \
+OP(Bitwise_Or_Assign,  |=, 1,  Assoc_Right, false, BC_OR, BC_OR) \
+OP(Bitwise_Xor_Assign, ^=, 1,  Assoc_Right, false, BC_XOR, BC_XOR) \
+OP(Shift_Left_Assign,  <<=, 1, Assoc_Right, false, BC_SHL, BC_SHL) \
+OP(Shift_Right_Assign, >>=, 1, Assoc_Right, false, BC_SAR, BC_SHR) \
+OP(Count,                !, 0, Assoc_Left,  false, BC_NOOP, BC_NOOP)
 
 enum Assoc {
     Assoc_Left,
@@ -80,6 +80,13 @@ bool operator_is_comparator_table[] = {
     DEF_OPERATORS
 #undef OP
 };
+
+Bytecode_Operator bytecode_operator_table[] = {
+#define OP(symbol, name, prec, assoc, is_comparator, sop, uop) sop, uop,
+    DEF_OPERATORS
+#undef OP
+};
+
 
 #define operator_is_comparator(binop) (operator_is_comparator_table[binop])
 

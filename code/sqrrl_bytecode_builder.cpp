@@ -98,8 +98,8 @@ emit_reference_expression(Bytecode_Builder* bc, Ast* expr) {
             
             if (type->kind == TypeKind_Pointer) {
                 type = type->Pointer;
-                int tmp = add_bytecode_register(bc, type);
-                result = bc_load(bc, tmp, result);
+                int tmp = add_bytecode_register(bc);
+                result = bc_load(bc, type, tmp, result);
             }
             
             switch (type->kind) {
@@ -163,8 +163,8 @@ emit_reference_expression(Bytecode_Builder* bc, Ast* expr) {
                 array_type->kind == TypeKind_Pointer ||
                 array_type == t_string ||
                 array_type == t_cstring) {
-                int tmp = add_bytecode_register(bc, array_type);
-                array_ptr = bc_load(bc, tmp, array_ptr);
+                int tmp = add_bytecode_register(bc);
+                array_ptr = bc_load(bc, array_type, tmp, array_ptr);
             }
             
             int array_index = add_bytecode_register(bc, expr->Index_Expr.index->type);
@@ -438,7 +438,7 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
             Bc_Local local = map_get(bc->locals, ident);
             if (local.ptr != -1) { 
                 if (_result != -1) {
-                    bc_load(bc, _result, local.ptr);
+                    bc_load(bc, expr->type, _result, local.ptr);
                 }
             } else if (local.val != -1) {
                 if (_result != -1) {
@@ -493,9 +493,9 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
                 
                 case Op_Dereference: {
                     if (type->kind == TypeKind_Pointer) {
-                        int ptr = add_bytecode_register(bc, expr->Unary_Expr.first->type);
+                        int ptr = add_bytecode_register(bc);
                         emit_value_expression(bc, expr->Unary_Expr.first, ptr);
-                        bc_load(bc, _result, ptr);
+                        bc_load(bc, result_type, _result, ptr);
                     } else {
                         emit_value_expression(bc, expr->Unary_Expr.first, _result);
                     }
@@ -530,10 +530,10 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
                     } else {
                         int first_ptr = local.ptr;
                         if (_result != -1) {
-                            bc_load(bc, _result, first_ptr);
+                            bc_load(bc, type, _result, first_ptr);
                         }
-                        int new_first = add_bytecode_register(bc, type);
-                        bc_load(bc, new_first, first_ptr);
+                        int new_first = add_bytecode_register(bc);
+                        bc_load(bc, type, new_first, first_ptr);
                         emit_unary_increment(bc, type, new_first, is_increment);
                         bc_store(bc, first_ptr, new_first);
                     }
@@ -701,7 +701,7 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
         
         case Ast_Index_Expr: {
             int ptr = emit_reference_expression(bc, expr);
-            bc_load(bc, _result, ptr);
+            bc_load(bc, expr->type, _result, ptr);
         } break;
         
         case Ast_Field_Expr: {
@@ -711,7 +711,7 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
                 // TODO: for inplace arrays the field expression is essentially a noop
                 bc_copy(bc, _result, ptr);
             } else {
-                bc_load(bc, _result, ptr);
+                bc_load(bc, expr->type, _result, ptr);
             }
         } break;
         
@@ -733,9 +733,9 @@ emit_value_fetch_expression(Bytecode_Builder* bc, Ast* expr, int result) {
         Bc_Local local = map_get(bc->locals, ident);
         if (local.ptr != -1) {
             if (result == -1) {
-                result = add_bytecode_register(bc, expr->type);
+                result = add_bytecode_register(bc);
             }
-            bc_load(bc, result, local.ptr);
+            bc_load(bc, expr->type, result, local.ptr);
             
         } else if (local.val != -1) {
             result = local.val;
@@ -824,8 +824,8 @@ emit_assignment_expression(Bytecode_Builder* bc, Bytecode_Operator opcode,
                 emit_binary_arithmetic(bc, opcode, type, first_ref.val, first_ref.val, second);
                 
             } else {
-                int result = add_bytecode_register(bc, lexpr->type);
-                bc_load(bc, result, first_ref.ptr);
+                int result = add_bytecode_register(bc);
+                bc_load(bc, lexpr->type, result, first_ref.ptr);
                 int second = emit_value_fetch_expression(bc, rexpr);
                 emit_binary_arithmetic(bc, opcode, type, result, result, second);
                 bc_store(bc, first_ref.ptr, result);

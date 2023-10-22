@@ -390,7 +390,8 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             if (src.kind == X64_SLOT_RSP_DISP32_INPLACE) {
                 // Direct value access
                 src.kind = X64_SLOT_RSP_DISP32;
-                x64->slots[bc->res_index] = src;
+                src.type = bc->type;
+                set_slot(x64, bc->res_index, src);
                 
             } else {
                 // Indirect value access
@@ -532,7 +533,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_NOT: {
-            assert(bc->type.kind != BC_TYPE_FLOAT && "inc is not implemented for float types");
+            assert(bc->type.kind != BC_TYPE_FLOAT && "not is not implemented for float types");
             x64_move_slot_to_register(x64, buf, X64_RAX, bc->a_index);
             x64_not(buf, X64_RAX);
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index, bc->type), X64_RAX);
@@ -543,6 +544,8 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index, bc->type), X64_RAX);
         } break;
         
+        case BC_OR:
+        case BC_AND:
         case BC_ADD:
         case BC_SUB:
         case BC_MUL:
@@ -572,6 +575,8 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                 
                 X64_Reg result = X64_RAX;
                 switch (bc->opcode) {
+                    case BC_OR:  x64_and64(buf, X64_RAX, X64_RCX); break;
+                    case BC_AND: x64_and64(buf, X64_RAX, X64_RCX); break;
                     case BC_ADD: x64_add64(buf, X64_RAX, X64_RCX); break; 
                     case BC_SUB: x64_sub64(buf, X64_RAX, X64_RCX); break; 
                     case BC_MUL: x64_mul64(buf, X64_RAX, X64_RCX); break; 

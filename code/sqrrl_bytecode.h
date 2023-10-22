@@ -1,5 +1,5 @@
 
-enum Bytecode_Operator {
+enum Bytecode_Operator : u8 {
     BC_END_OF_FUNCTION = 0,
     BC_NOOP,
     
@@ -104,7 +104,7 @@ global const cstring bc_operator_names[] = {
 };
 
 global const cstring bc_type_names[] = {
-    "", "i32", "i64", "f32", "f64"
+    "int", "float", "ptr"
 };
 
 enum Bytecode_Type_Kind {
@@ -120,8 +120,14 @@ enum Byytecode_Type_Flags {
 struct Bytecode_Type {
     u8 kind;
     u8 flags;
-    s32 size; // for BC_TYPE_PTR this is size of value adjusted for alignment
+    u8 size;
 };
+
+global const Bytecode_Type bc_type_bool = { BC_TYPE_INT, 0, 1 };
+#define BC_BOOL bc_type_bool
+
+global const Bytecode_Type bc_type_ptr = { BC_TYPE_PTR, 0, 0 };
+#define BC_PTR bc_type_ptr
 
 struct Bytecode_Function_Arg {
     Bytecode_Type type;
@@ -129,7 +135,6 @@ struct Bytecode_Function_Arg {
 };
 
 struct Bytecode_Function {
-    array(Bytecode_Type)* register_types;
     int register_count;
     
     union {
@@ -159,6 +164,11 @@ struct Bytecode_Function {
     // arguments types and lastly instructions
 };
 
+inline Bytecode_Type
+register_type(Bytecode_Function* func, int register_index) {
+    return BC_PTR;
+}
+
 inline Bytecode_Function_Arg*
 function_ret_types(Bytecode_Function* func) {
     return (Bytecode_Function_Arg*) (func + 1);
@@ -167,11 +177,6 @@ function_ret_types(Bytecode_Function* func) {
 inline Bytecode_Function_Arg*
 function_arg_types(Bytecode_Function* func) {
     return (Bytecode_Function_Arg*) (func + 1) + func->ret_count;
-}
-
-inline Bytecode_Type
-register_type(Bytecode_Function* func, int register_index) {
-    return func->register_types[register_index];
 }
 
 struct Bytecode_Import {

@@ -144,19 +144,21 @@ x64_lea(Buffer* buf, X64_Reg a, X64_Reg b, s64 disp) {
 }
 
 void
-x64_move_slot_to_register(X64_Assembler* x64, Buffer* buf, X64_Reg dest, int register_index) {
-    X64_Slot src = get_slot(x64, register_index);
-    switch (src.type) {
-        case X64_SLOT_RSP_DISP32: {
-            if (src.is_value) {
-                // TODO: if arg1 is const we can completely optimize this without any instructions
-                x64_lea(buf, dest, X64_RSP, register_displacement(x64, register_index));
-            } else {
-                x64_move_memory_to_register(buf, dest, X64_RSP, register_displacement(x64, register_index));
-            }
+x64_move_slot_to_register(X64_Assembler* x64, Buffer* buf, X64_Reg dest, int src_index) {
+    X64_Slot src = get_slot(x64, src_index);
+    switch (src.kind) {
+        case X64_SLOT_RSP_DISP32_INPLACE: {
+            x64_lea(buf, dest, X64_RSP, src.disp);
         } break;
         
-        default: unimplemented;
+        case X64_SLOT_RSP_DISP32: {
+            x64_move_extend(buf, dest, X64_RSP, src.disp, src.type.size, src.type.flags & BC_FLAG_SIGNED);
+        } break;
+        
+        default: {
+            pln("x64_move_slot_to_register - src_index = r%", f_int(src_index));
+            unimplemented;
+        } break;
     }
 }
 
@@ -270,6 +272,16 @@ x64_move_memory_to_float_register(Buffer* buf, X64_Reg dest, X64_Reg src, s64 di
     // F2 0F 10 /r MOVSD xmm1, m64
     push_u24(buf, (size == 8) ? 0x100FF2 : 0x100FF3);
     x64_modrm(buf, dest, src, disp, 0);
+}
+
+inline void
+x64_move_slot_to_float_register(X64_Assembler* x64, Buffer* buf, X64_Reg dest, int src_index) {
+    X64_Slot src = get_slot(x64, src_index);
+    switch (src.kind) {
+        case X64_SLOT_RSP_DISP32: {
+            x64_move_memory_to_float_register(buf, dest, X64_RSP, src.disp, src.type.size);
+        } break;
+    }
 }
 
 inline void

@@ -59,16 +59,17 @@ struct X64_Function {
     u8** labels;
 };
 
-enum X64_Slot_Type {
+enum X64_Slot_Kind : u8 {
     X64_SLOT_EMPTY,
+    X64_SLOT_RSP_DISP32_INPLACE,
     X64_SLOT_RSP_DISP32,
     X64_SLOT_RAX,
 };
 
 struct X64_Slot {
-    X64_Slot_Type type;
+    X64_Slot_Kind kind;
+    Bytecode_Type type;
     s32 disp;
-    bool is_value;
 };
 
 struct X64_Jump_Patch {
@@ -117,29 +118,39 @@ get_slot(X64_Assembler* x64, int register_index) {
 }
 
 inline void
-set_slot(X64_Assembler* x64, int register_index, X64_Slot_Type type, s32 disp, bool is_value=false) {
-    x64->slots[register_index] = { type, disp, is_value };
+set_slot(X64_Assembler* x64, int register_index, X64_Slot_Kind kind, Bytecode_Type type, s32 disp) {
+    x64->slots[register_index] = { kind, type, disp };
+}
+
+inline void
+set_slot(X64_Assembler* x64, int register_index, X64_Slot slot) {
+    x64->slots[register_index] = slot;
 }
 
 inline s32
-register_stack_alloc(X64_Assembler* x64, int register_index, s32 size, s32 align, bool is_value=false) {
+register_stack_alloc(X64_Assembler* x64, int register_index, Bytecode_Type type, 
+                     s32 size, s32 align, bool store_inplace) {
     s32 result = x64->current_stack_size;
     result = (s32) align_forward(result, align);
     x64->current_stack_size = result + size;
     x64->max_stack_size = max(x64->max_stack_size, x64->current_stack_size);
-    set_slot(x64, register_index, X64_SLOT_RSP_DISP32, result, is_value);
+    X64_Slot_Kind slot_kind = store_inplace ? X64_SLOT_RSP_DISP32_INPLACE : X64_SLOT_RSP_DISP32;
+    set_slot(x64, register_index, slot_kind, type, result);
     
     return result;
 }
 
 inline s32
-register_displacement(X64_Assembler* x64, int register_index) {
+register_displacement(X64_Assembler* x64, int register_index, Bytecode_Type type=BC_PTR) {
     X64_Slot slot = get_slot(x64, register_index);
-    if (slot.type != X64_SLOT_RSP_DISP32) {
-        assert(slot.type == X64_SLOT_EMPTY);
-        return register_stack_alloc(x64, register_index, 8, 8);
+    //pln("register_displacement - r%, %, size %", f_int(register_index), f_cstring(bc_type_names[type.kind]), f_int(type.size));
+    if (slot.kind != X64_SLOT_RSP_DISP32) {
+        assert(slot.kind == X64_SLOT_EMPTY);
+        return register_stack_alloc(x64, register_index, type, 8, 8, false);
     }
     
+    slot.type = type;
+    set_slot(x64, register_index, slot);
     return slot.disp;
 }
 

@@ -776,7 +776,7 @@ _binary_search(arr, &(val), array_count(arr), sizeof(arr), compare)
 #ifndef DEFAULT_ALIGNMENT
 #define DEFAULT_ALIGNMENT (2*alignof(smm))
 #endif
-#define ARENA_DEFAULT_BLOCK_SIZE kilobytes(1)
+#define ARENA_DEFAULT_BLOCK_SIZE kilobytes(16)
 
 // NOTE(Alexander): align has to be a power of two.
 inline umm

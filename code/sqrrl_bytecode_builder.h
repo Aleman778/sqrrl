@@ -33,7 +33,7 @@ to_bytecode_opcode(Operator op, Type* type) {
 }
 
 Bytecode_Type
-to_bytecode_type(Bytecode_Builder* bc, Type* type) {
+to_bytecode_type(Type* type) {
     Bytecode_Type result = {};
     
     switch (type->kind) {
@@ -64,12 +64,10 @@ to_bytecode_type(Bytecode_Builder* bc, Type* type) {
                 
                 case Basic_string: {
                     result.kind = BC_TYPE_PTR;
-                    result.size = 0;
                 } break;
                 
                 case Basic_cstring: {
                     result.kind = BC_TYPE_PTR;
-                    result.size = 0;
                 } break;
                 
                 default: unimplemented; break;
@@ -86,7 +84,7 @@ to_bytecode_type(Bytecode_Builder* bc, Type* type) {
         } break;
         
         case TypeKind_Enum: {
-            return to_bytecode_type(bc, type->Enum.type);
+            return to_bytecode_type(type->Enum.type);
         } break;
         
         default: {
@@ -117,10 +115,7 @@ normalize_type_for_casting(Type* type) {
 inline int
 add_bytecode_register(Bytecode_Builder* bc, Type* type) {
     assert(bc->curr_function);
-    int result = bc->curr_function->register_count++;
-    Bytecode_Type reg_type = to_bytecode_type(bc, type);
-    array_push(bc->curr_function->register_types, reg_type);
-    return result;
+    return bc->curr_function->register_count++;
 }
 
 void emit_value_expression(Bytecode_Builder* bc, Ast* expr, int result=-1);
@@ -203,6 +198,22 @@ bc_const_f64(Bytecode_Builder* bc, int res_index, f64 val) {
 }
 
 inline int
+bc_const_zero(Bytecode_Builder* bc, Type* type, int res_index) {
+    if (type->kind == TypeKind_Basic) {
+        if (type->Basic.kind == Basic_f32) {
+            bc_const_f32(bc, res_index, 0);
+        } else if (type->Basic.kind == Basic_f64) {
+            bc_const_f64(bc, res_index, 0);
+        } else {
+            bc_const_int(bc, res_index, 0);
+        } 
+    } else {
+        bc_const_int(bc, res_index, 0);
+    }
+    return res_index;
+}
+
+inline int
 bc_return(Bytecode_Builder* bc, int res_index) {
     Bytecode_Result* insn = bc_instruction(bc, BC_RETURN, Bytecode_Result);
     insn->res_index = res_index;
@@ -218,9 +229,11 @@ bc_unary_arith(Bytecode_Builder* bc, Bytecode_Operator opcode, int res_index, in
 }
 
 inline int
-bc_binary_arith(Bytecode_Builder* bc, Bytecode_Operator opcode, int res_index, int a_index, int b_index) {
+bc_binary_arith(Bytecode_Builder* bc, Bytecode_Operator opcode, Bytecode_Type type,
+                int res_index, int a_index, int b_index) {
     assert(opcode != BC_COPY);
     Bytecode_Binary* insn = bc_instruction(bc, opcode, Bytecode_Binary);
+    insn->type = type;
     insn->res_index = res_index;
     insn->a_index = a_index;
     insn->b_index = b_index;
@@ -237,8 +250,8 @@ bc_assignment(Bytecode_Builder* bc, Bytecode_Operator opcode, int dest, int src)
 
 inline int 
 bc_load(Bytecode_Builder* bc, int dest, int src) {
-    Bytecode_Type bc_type = register_type(bc->curr_function, src);
-    assert(bc_type.kind == BC_TYPE_PTR && "expected BC_TYPE_PTR to load");
+    //Bytecode_Type bc_type = register_type(bc->curr_function, src);
+    //assert(bc_type.kind == BC_TYPE_PTR && "expected BC_TYPE_PTR to load");
     return bc_assignment(bc, BC_LOAD, dest, src);
 }
 
@@ -286,8 +299,8 @@ inline int
 bc_array_access(Bytecode_Builder* bc, Type* elem_type, 
                 int res_index, int base, int index) {
     
-    Bytecode_Type bc_type = register_type(bc->curr_function, base);
-    assert(bc_type.kind == BC_TYPE_PTR && "expected array base to be BC_TYPE_PTR");
+    //Bytecode_Type bc_type = register_type(bc->curr_function, base);
+    //assert(bc_type.kind == BC_TYPE_PTR && "expected array base to be BC_TYPE_PTR");
     
     Bytecode_Array_Access* insn = bc_instruction(bc, BC_ARRAY_ACCESS, Bytecode_Array_Access);
     insn->res_index = res_index;

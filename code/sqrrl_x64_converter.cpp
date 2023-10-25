@@ -498,6 +498,13 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                                               X64_XMM0, bc->type.size);
         } break;
         
+        case BC_FLOAT_TO_FLOAT: {
+            X64_Slot src = get_slot(x64, bc->a_index);
+            x64_move_slot_to_float_register(x64, buf, X64_XMM0, bc->a_index);
+            x64_convert_float_to_float(buf, X64_XMM0, X64_XMM0, src.type.size);
+            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index, bc->type), X64_RAX);
+        } break;
+        
         case BC_INC:
         case BC_DEC: {
             assert(bc->type.kind != BC_TYPE_FLOAT && "inc is not implemented for float types");

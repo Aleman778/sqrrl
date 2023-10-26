@@ -164,6 +164,7 @@ struct Bytecode_Function {
     bool return_as_first_arg;
     bool is_imported;
     bool is_intrinsic;
+    bool is_variadic;
     
     // followed by array of Bytecode_Function_Arg, function returns followed by its
     // arguments types and lastly instructions
@@ -334,6 +335,7 @@ struct Bytecode_Call {
     Bytecode_Instruction_Base;
     
     u32 func_index;
+    s32 arg_count;
     // argument operands followed by return operands
 };
 

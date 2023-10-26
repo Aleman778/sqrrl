@@ -125,10 +125,10 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     push_u32(buf, 0);
     
     // Copy registers to our local stack space
-    u32** callee_args_disp = 0;
+    s32** callee_args_disp = 0;
     if (func->arg_count > 0) {
         Bytecode_Function_Arg* formal_args = function_arg_types(func);
-        callee_args_disp = arena_push_array_of_structs(&x64->arena, func->arg_count, u32*);
+        callee_args_disp = arena_push_array_of_structs(&x64->arena, func->arg_count, s32*);
         for (int arg_index = 0; arg_index < (int) func->arg_count; arg_index++) {
             Bytecode_Function_Arg formal_arg = formal_args[arg_index];
             
@@ -162,6 +162,16 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
             }
         }
     }
+    s32* variadic_data_ptr = 0;
+    if (func->is_variadic) {
+        // Set the Var_Args data pointer
+        int var_args = func->arg_count - 1;
+        variadic_data_ptr = x64_lea_patch_disp(buf, X64_RAX, X64_RSP, func->arg_count*8);
+        X64_Slot dest = get_slot(x64, var_args);
+        x64_move_register_to_memory(buf, X64_RSP, dest.disp, X64_RAX);
+        
+        //pln("%: arg_count = %", f_var(x64->bytecode->function_names[func->type_index]), f_int());
+    }
     
     for_bc_insn(func, curr) {
         convert_bytecode_insn_to_x64_machine_code(x64, buf, func, curr);
@@ -177,6 +187,9 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
         *callee_args_disp[i] += stack_callee_args;
         //pln("%", f_int(*callee_args_disp[i]));
     } 
+    if (variadic_data_ptr) {
+        *variadic_data_ptr += stack_callee_args;
+    }
     
     
     // Epilogue
@@ -189,7 +202,7 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
 }
 
 void
-convert_windows_x64_argument_list_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, int arg_count, int* args) {
+convert_windows_x64_argument_list_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, int arg_count, int* args, int var_arg_start=-1) {
     for (int arg_index = arg_count - 1; arg_index >= 0; arg_index--) {
         int src_index = args[arg_index];
         X64_Reg dest = X64_RAX;
@@ -199,7 +212,7 @@ convert_windows_x64_argument_list_to_x64_machine_code(X64_Assembler* x64, Buffer
         
         x64_move_slot_to_register(x64, buf, dest, src_index);
         
-        if (arg_index >= 4) {
+        if (arg_index >= 4 || arg_index >= var_arg_start) {
             x64_move_register_to_memory(buf, X64_RSP, arg_index*8, dest);
         }
     }
@@ -407,8 +420,10 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             Bytecode_Call* call = (Bytecode_Call*) bc;
             Bytecode_Function* target = x64->bytecode->functions[call->func_index];
             int* args = (int*) bc_call_args(call);
-            convert_windows_x64_argument_list_to_x64_machine_code(x64, buf, target->arg_count, 
-                                                                  args + target->ret_count);
+            convert_windows_x64_argument_list_to_x64_machine_code(x64, buf, 
+                                                                  call->arg_count - target->ret_count, 
+                                                                  args + target->ret_count, 
+                                                                  target->arg_count);
             
             if (target->is_imported) {
                 // Indirect function call from pointer
@@ -437,7 +452,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             Bytecode_Call_Indirect* call = (Bytecode_Call_Indirect*) bc;
             
             int* args = bc_call_args(call);
-            convert_windows_x64_argument_list_to_x64_machine_code(x64, buf, call->arg_count, 
+            convert_windows_x64_argument_list_to_x64_machine_code(x64, buf, call->arg_count - call->ret_count, 
                                                                   args + call->ret_count);
             
             // Indirect function call from register

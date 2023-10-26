@@ -140,7 +140,8 @@ void emit_condition_expression(Bytecode_Builder* bc, Ast* cond, int result, bool
 void emit_type_cast(Bytecode_Builder* bc, Ast* expr, int result);
 inline void emit_array_type_cast(Bytecode_Builder* bc, Type* t_dest, Type* t_src, Ast* src_ast, int array_ptr);
 
-int emit_function_call(Bytecode_Builder* bc, Type* type, array(Ast*)* args, int function_ptr=-1);
+void emit_function_call(Bytecode_Builder* bc, Type* type, array(Ast*)* args, Ast* var_args,
+                        int result_index, int function_ptr_index);
 
 void emit_statement(Bytecode_Builder* bc, Ast* stmt, s32 break_label, s32 continue_label);
 
@@ -153,6 +154,7 @@ Bytecode_Instruction* add_bytecode_insn(Bytecode_Builder* bc,
                                         Bytecode_Operator opcode, 
                                         umm size, umm align, cstring loc);
 
+int add_bytecode_global(Bytecode_Builder* bc, Exported_Data exported_data);
 int add_bytecode_global(Bytecode_Builder* bc, 
                         Bytecode_Memory_Kind kind, 
                         smm size, smm align,
@@ -338,6 +340,7 @@ inline void
 bc_call(Bytecode_Builder* bc, u32 func_index, array(int)* args) {
     Bytecode_Call* call = bc_instruction_varindices(bc, BC_CALL, Bytecode_Call, array_count(args));
     call->func_index = func_index;
+    call->arg_count = (s32) array_count(args);
     _bc_copy_registers(bc_call_args(call), args, array_count(args));
 }
 
@@ -346,7 +349,7 @@ bc_call_indirect(Bytecode_Builder* bc, int func_ptr_index, s32 ret_count, array(
     Bytecode_Call_Indirect* call = bc_instruction_varindices(bc, BC_CALL_INDIRECT, Bytecode_Call_Indirect, array_count(args));
     call->func_ptr_index = func_ptr_index;
     call->ret_count = ret_count;
-    call->arg_count = (s32) array_count(args) - ret_count;
+    call->arg_count = (s32) array_count(args);
     _bc_copy_registers(bc_call_args(call), args, array_count(args));
 }
 

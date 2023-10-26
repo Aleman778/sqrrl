@@ -561,7 +561,6 @@ string_builder_push_vformat(String_Builder* sb, string format, Var_Args var_args
                 } else {
                     string_print_data_from_type_info(sb, arg.type, var_arg_data);
                 }
-                
                 var_args_index++;
                 // NOTE(Alexander): if data doesn't fit in 8 bytes, store a pointer instead
                 var_arg_data += 8;

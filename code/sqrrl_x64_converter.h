@@ -143,7 +143,7 @@ register_stack_alloc(X64_Assembler* x64, int register_index, Bytecode_Type type,
 inline s32
 register_displacement(X64_Assembler* x64, int register_index, Bytecode_Type type=BC_PTR) {
     X64_Slot slot = get_slot(x64, register_index);
-    pln("register_displacement - r%, %, size % (disp %)", f_int(register_index), f_cstring(bc_type_names[type.kind]), f_int(type.size), f_int(slot.disp));
+    //pln("register_displacement - r%, %, size % (disp %)", f_int(register_index), f_cstring(bc_type_names[type.kind]), f_int(type.size), f_int(slot.disp));
     if (slot.kind == X64_SLOT_EMPTY) {
         return register_stack_alloc(x64, register_index, type, 8, 8, false);
     }

@@ -1,8 +1,6 @@
 
 Exported_Data
 export_var_args_info(Data_Packer* packer, int var_arg_start, Ast* actual_arguments) {
-    
-    
     int var_arg_count = -var_arg_start;
     for_compound(actual_arguments, _) var_arg_count++;
     
@@ -27,13 +25,11 @@ export_var_args_info(Data_Packer* packer, int var_arg_start, Ast* actual_argumen
     int arg_index = 0;
     for_compound(actual_arguments, argument) {
         if (arg_index >= var_arg_start) {
-            
             Exported_Data exported = export_type_info(packer, argument->type);
             push_relocation(packer, actual_args, exported);
             curr_type->type = (Type_Info*) exported.data;
             curr_type->data_size = argument->type->size;
             
-            var_args->count++;
             curr_type++;
             actual_args = add_offset(actual_args, sizeof(Var_Arg));
         }

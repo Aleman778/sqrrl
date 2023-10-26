@@ -1,7 +1,6 @@
 
 Bc_Local
 emit_reference_expression2(Bytecode_Builder* bc, Ast* expr) {
-    
     Bc_Local result = {};
     
     if (expr->kind == Ast_Ident) {
@@ -179,9 +178,29 @@ emit_reference_expression(Bytecode_Builder* bc, Ast* expr) {
     return result;
 }
 
+int
+emit_function_argument(Bytecode_Builder* bc, Ast* arg) {
+    int result;
+    Type* type = arg->type;
+    if (is_aggregate_type(type)) {
+        if (type->kind == TypeKind_Array && type->Array.kind == ArrayKind_Fixed_Inplace) {
+            // Avoids copying inplace arrays
+            result = emit_reference_expression(bc, arg);
+            
+        } else {
+            // TODO: find ways to remove this copy for (codgen optimization)
+            result = bc_local(bc, type);
+            emit_initializing_expression(bc, arg, result);
+        }
+    } else {
+        result = emit_value_fetch_expression(bc, arg);
+    }
+    return result;
+}
+
 void
-emit_function_call_to_bytecode(Bytecode_Builder* bc, Type* type, array(Ast*)* args, 
-                               int result_index, int function_ptr_index) {
+emit_function_call(Bytecode_Builder* bc, Type* type, array(Ast*)* args, Ast* var_args,
+                   int result_index, int function_ptr_index) {
     assert(type && type->kind == TypeKind_Function);
     
     if (type->Function.is_intrinsic) {
@@ -221,54 +240,54 @@ emit_function_call_to_bytecode(Bytecode_Builder* bc, Type* type, array(Ast*)* ar
         array_push(arg_indices, result_index);
     }
     
-    for (int i = 0; i < array_count(args); i++) {
-        int reg_index;
-        Ast* arg = args[i];
-        Type* arg_type = arg->type;
-        
-        if (is_aggregate_type(arg_type)) {
-            if (arg_type->kind == TypeKind_Array && arg_type->Array.kind == ArrayKind_Fixed_Inplace) {
-                // Avoids copying inplace arrays
-                reg_index = emit_reference_expression(bc, arg);
-                
-            } else {
-                // TODO: find ways to remove this copy for (codgen optimization)
-                reg_index = bc_local(bc, arg_type);
-                emit_initializing_expression(bc, arg, reg_index);
-                //int src_ptr = emit_reference_expression(bc, arg);
-                //bc_memcpy(bc, reg_index, src_ptr, arg_type->size);
-            }
-            
+    int arg_count = (int) array_count(type->Function.arg_types);
+    if (var_args && type->Function.is_variadic) {
+        arg_count--;
+    }
+    for (int i = 0; i < arg_count; i++) {
+        Ast* arg;
+        if (i < array_count(args)) {
+            // user provided arg
+            arg = args[i];
+        } else if (i >= type->Function.first_default_arg_index) {
+            // default arg
+            arg = type->Function.default_args[i - type->Function.first_default_arg_index];
         } else {
-            reg_index = add_bytecode_register(bc, arg_type);
-            emit_value_expression(bc, arg, reg_index);
+            arg = 0;
+            verify_not_reached();
         }
         
+        int reg_index = emit_function_argument(bc, arg);
         array_push(arg_indices, reg_index);
     }
     
-    u32 caller_arg_count;
+    if (var_args && type->Function.is_variadic) {
+        int var_args_ptr = add_bytecode_register(bc);
+        emit_value_expression(bc, var_args, var_args_ptr);
+        array_push(arg_indices, var_args_ptr);
+    }
+    
+    for (int i = arg_count; i < array_count(args); i++) {
+        int reg_index = emit_function_argument(bc, args[i]);
+        array_push(arg_indices, reg_index);
+    }
+    
     Compilation_Unit* cu = type->Function.unit;
     if (cu) {
         assert(cu->bytecode_function);
         Bytecode_Function* func = cu->bytecode_function;
-        caller_arg_count = func->arg_count;
         bc_call(bc, func->type_index, arg_indices); 
-        
     } else if (function_ptr_index != -1) {
         int ret_count = is_valid_type(type->Function.return_type);
-        caller_arg_count = (u32) array_count(type->Function.arg_types);
-        if (is_valid_type(type->Function.return_type) && is_aggregate_type(type->Function.return_type)) {
-            caller_arg_count++;
-        }
         bc_call_indirect(bc, function_ptr_index, ret_count, arg_indices); 
-        
     } else {
-        caller_arg_count = 0;
         verify_not_reached();
     }
     
-    // TODO(Alexander): this should maybe not always include the return
+    u32 caller_arg_count = (u32) array_count(arg_indices);
+    if (is_valid_type(type->Function.return_type) && !is_aggregate_type(type->Function.return_type)) {
+        caller_arg_count--;
+    }
     bc->curr_function->max_caller_arg_count = max(bc->curr_function->max_caller_arg_count, caller_arg_count);
 }
 
@@ -343,8 +362,7 @@ emit_initializing_expression(Bytecode_Builder* bc, Ast* expr, int dest_ptr) {
             }
         } break;
         
-        case Ast_Ident:
-        case Ast_Exported_Data: {
+        case Ast_Ident: {
             if (is_aggregate_type(expr->type)) {
                 int src = emit_reference_expression(bc, expr);
                 bc_memcpy(bc, dest_ptr, src, expr->type->size);
@@ -466,6 +484,13 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
             } else {
                 int src = emit_reference_expression(bc, expr);
                 bc_copy(bc, _result, src);
+            }
+        } break;
+        
+        case Ast_Exported_Data: {
+            int global_index = add_bytecode_global(bc, expr->Exported_Data);
+            if (_result != -1) {
+                bc_global(bc, _result, global_index);
             }
         } break;
         
@@ -592,7 +617,7 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
                 array(Ast*)* args = 0;
                 array_push(args, expr->Binary_Expr.first);
                 array_push(args, expr->Binary_Expr.second);
-                emit_function_call_to_bytecode(bc, expr->Binary_Expr.overload, args, _result, -1);
+                emit_function_call(bc, expr->Binary_Expr.overload, args, 0, _result, -1);
                 array_free(args);
                 
             } else if (op == Op_Logical_And) {
@@ -674,7 +699,8 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
                 function_ptr = add_bytecode_register(bc, t_void_ptr);
                 emit_value_expression(bc, expr->Call_Expr.ident, function_ptr);
             }
-            emit_function_call_to_bytecode(bc, type, args, _result, function_ptr);
+            
+            emit_function_call(bc, type, args, expr->Call_Expr.var_args, _result, function_ptr);
             array_free(args);
         } break;
         
@@ -1186,6 +1212,7 @@ add_bytecode_function(Bytecode_Builder* bc, Type* type) {
     func->type_index = bc->next_type_index++;
     func->ret_count = ret_count;
     func->arg_count = arg_count;
+    func->is_variadic = type->Function.is_variadic;
     
     bc->curr_function = func;
     bc->curr_insn = 0;
@@ -1224,6 +1251,24 @@ add_bytecode_function(Bytecode_Builder* bc, Type* type) {
     array_push(bc->bytecode.function_names, type->Function.ident);
     
     return func;
+}
+
+int
+add_bytecode_global(Bytecode_Builder* bc, Exported_Data exported) {
+    Bytecode_Global global_var = {};
+    switch (exported.section) {
+        case Read_Data_Section: global_var.kind = BC_MEM_READ_ONLY; break;
+        case Data_Section: global_var.kind = BC_MEM_READ_WRITE; break;
+        default: unimplemented;
+    }
+    global_var.address = exported.data;
+    global_var.offset = exported.relative_ptr;
+    global_var.size = 0;//(u32) size; TODO: maybe we should include this in Exported_Data?
+    global_var.align = 0;//(u32) align;
+    
+    int global_index = (int) array_count(bc->bytecode.globals);
+    array_push(bc->bytecode.globals, global_var);
+    return global_index;
 }
 
 int
@@ -1290,10 +1335,10 @@ string_builder_dump_bytecode_function_name(String_Builder* sb, Bytecode* bc, Byt
 }
 
 inline void
-string_builder_dump_bytecode_call_args(String_Builder* sb, int arg_count, int* args) {
+string_builder_dump_bytecode_call_args(String_Builder* sb, int arg_count, int* args, int skip_count=0) {
     // args
     string_builder_push(sb, "(");
-    for (int i = 0; i < arg_count; i++) {
+    for (int i = skip_count; i < arg_count; i++) {
         string_builder_push_format(sb, "r%", f_int(args[i]));
         if (i + 1 < arg_count) {
             string_builder_push(sb, ", ");
@@ -1368,7 +1413,7 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
             string_builder_dump_bytecode_opcode(sb, insn);
             
             string_builder_dump_bytecode_function_name(sb, bc, func);
-            string_builder_dump_bytecode_call_args(sb, func->arg_count, args + func->ret_count);
+            string_builder_dump_bytecode_call_args(sb, call->arg_count, args, func->ret_count);
         } break;
         
         case BC_CALL_INDIRECT: {
@@ -1380,7 +1425,7 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
             string_builder_dump_bytecode_opcode(sb, insn);
             
             string_builder_push_format(sb, "r%", f_int(call->func_ptr_index));
-            string_builder_dump_bytecode_call_args(sb, call->arg_count, args + call->ret_count);
+            string_builder_dump_bytecode_call_args(sb, call->arg_count, args, call->ret_count);
         } break;
         
         case BC_LOCAL: {
@@ -1569,9 +1614,12 @@ string_builder_dump_bytecode_function(String_Builder* sb, Bytecode* bc, Bytecode
         if (i == 0 && func->return_as_first_arg) {
             string_builder_push(sb, " (ret)");
         }
-        if (i + 1 < func->arg_count) {
+        if (i + 1 < func->arg_count || func->is_variadic) {
             string_builder_push(sb, ", ");
         }
+    }
+    if (func->is_variadic) {
+        string_builder_push(sb, "...");
     }
     
     int bb_index = 0;

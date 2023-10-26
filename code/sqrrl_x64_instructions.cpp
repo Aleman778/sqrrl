@@ -65,13 +65,24 @@ x64_move_memory_to_register(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp) {
     x64_modrm(buf, dest, src, disp, 0);
 }
 
-inline u32*
+inline s32*
 x64_move_memory_to_register_disp(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp) {
     x64_rex(buf, REX_W, dest);
     push_u8(buf, 0x8B);
     push_u8(buf, MODRM_INDIRECT_DISP32 | ((dest & 7) << 3) | (src & 7));
     push_u8(buf, 0x24); // SIB for RSP
-    u32* result = (u32*) (buf->data + buf->curr_used);
+    s32* result = (s32*) (buf->data + buf->curr_used);
+    push_u32(buf, (u32) disp);
+    return result;
+}
+
+inline s32*
+x64_lea_patch_disp(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp) {
+    x64_rex(buf, REX_W, dest);
+    push_u8(buf, 0x8D);
+    push_u8(buf, MODRM_INDIRECT_DISP32 | ((dest & 7) << 3) | (src & 7));
+    push_u8(buf, 0x24); // SIB for RSP
+    s32* result = (s32*) (buf->data + buf->curr_used);
     push_u32(buf, (u32) disp);
     return result;
 }

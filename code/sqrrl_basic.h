@@ -472,7 +472,6 @@ string string_print(cstring format...);
 #define pln(format, ...) print(format##"\n", ##__VA_ARGS__)
 //#define pln(...)
 
-
 struct String_Builder {
     u8* data;
     smm size;

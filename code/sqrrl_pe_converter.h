@@ -261,6 +261,7 @@ enum {
 };
 typedef u32 COFF_Section_Flags;
 
+// TODO(Alexander): this was taken from MSVC and includes Visual Studio rich header, update this!
 const u8 pe_dos_header_stub[] = {
     0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 
     0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0xB8, 0x00, 0x00, 0x00, 
@@ -396,21 +397,28 @@ struct PE_Executable {
     
     COFF_Section_Header* text_section;
     COFF_Section_Header* rdata_section;
-    COFF_Section_Header* data_section; // TODO: might break Type_Info data into separate one
+    COFF_Section_Header* data_section;
     COFF_Section_Header* reloc_section;
     
     u8* text_data;
     u32 text_data_size;
     
+    u64* iat;
+    u32 iat_size;
+    
+    u32 text_rva;
+    u32 iat_rva;
+    u32 rdata_rva;
+    u32 data_rva;
+    
     Memory_Arena header_arena;
+    Memory_Arena import_arena;
     Memory_Arena rdata_arena;
-    Memory_Arena type_info_arena;
     Memory_Arena data_arena;
     Memory_Arena reloc_arena;
 };
 
-PE_Executable convert_to_pe_executable(Memory_Arena* arena,
-                                       u8* machine_code, u32 machine_code_size,
+PE_Executable convert_to_pe_executable(u8* machine_code, u32 machine_code_size,
                                        Library_Import_Table* import_table,
                                        Data_Packer* data_packer,
                                        u8* entry_point);

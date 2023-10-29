@@ -3020,7 +3020,30 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                        first->kind == TypeKind_Enum || 
                        op == Op_Assign) {
                 
-                if (type_check_assignment(tcx, first, second, is_ast_value(expr->Binary_Expr.second), expr->Binary_Expr.second->span, op)) {
+                if (op == Op_Shift_Left || op == Op_Shift_Right) {
+                    if (first->kind == TypeKind_Enum) {
+                        first = first->Enum.type;
+                    }
+                    if (!(first->kind == TypeKind_Basic && first->Basic.flags & BasicFlag_Integer)) {
+                        type_error(tcx, 
+                                   string_print("operator `%` is not supported for `%` on left-hand side",
+                                                f_cstring(operator_strings[op]),
+                                                f_type(first)),
+                                   expr->span);
+                    }
+                    
+                    if (second->kind == TypeKind_Enum) {
+                        second = second->Enum.type;
+                    }
+                    if (!(second->kind == TypeKind_Basic && second->Basic.flags & BasicFlag_Integer)) {
+                        type_error(tcx, 
+                                   string_print("operator `%` is not supported for `%` on right-hand side",
+                                                f_cstring(operator_strings[op]),
+                                                f_type(second)),
+                                   expr->span);
+                    }
+                    
+                } else if (type_check_assignment(tcx, first, second, is_ast_value(expr->Binary_Expr.second), expr->Binary_Expr.second->span, op)) {
                     if (!type_equals(first, second)) {
                         pln("%", f_ast(expr));
                         type_error_mismatch(tcx, first, second, expr->Binary_Expr.second->span);

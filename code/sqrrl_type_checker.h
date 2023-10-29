@@ -20,10 +20,14 @@ struct Overloaded_Function_List {
     bool is_valid;
 };
 
+// TODO(Alexander): Dynamic Library stuff is a hack and needs to be improved
 struct Library_Function {
-    string_id name;
     void* pointer;
     Type* type;
+    string_id name;
+    u32 relative_ptr;
+    u32 bc_func_index;
+    
 };
 
 struct Dynamic_Function {

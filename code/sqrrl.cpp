@@ -27,6 +27,7 @@
 typedef int asm_main(void);
 typedef f32 asm_f32_main(void);
 
+
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm), bool is_debugger_present) {
@@ -298,25 +299,13 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             func->is_imported = true;
             func->code_ptr = type->Function.external_address;
             
+            function->bc_func_index = func->type_index;
+            
             Bytecode_Import import = {};
             import.module = it->key;
             import.function = function->name;
             import.func_index = func->type_index;
-            
-            // TODO(Alexander): hack this doesn't really belong here
-            // but this is needed for now to make this data appear first in the rdata section.
-            if (target_backend == Backend_X64 && compiler_task == CompilerTask_Build) {
-                // Start by pushing address lookup table for external libs
-                // NOTE(Alexander): library function pointer is replaced by the loader
-                Exported_Data import_fn = export_size(&data_packer, Read_Data_Section, 8, 8);
-                import.rdata_offset = import_fn.relative_ptr;
-            }
-            
             array_push(bytecode_builder.bytecode.imports, import);
-        }
-        
-        if (target_backend == Backend_X64 && compiler_task == CompilerTask_Build) {
-            export_size(&data_packer, Read_Data_Section, 8, 8); // null entry
         }
     }
     
@@ -378,10 +367,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             buf.data = (u8*) asm_buffer;
             buf.size = asm_size;
             
-            PE_Executable pe = convert_bytecode_to_x64_machine_code(&bytecode_builder.bytecode, 
-                                                                    &buf, &data_packer, 
-                                                                    &tcx.import_table, 
-                                                                    compiler_task);
+            X64_Assembler x64 = convert_bytecode_to_x64_machine_code(&bytecode_builder.bytecode,
+                                                                     &buf, &data_packer, 
+                                                                     compiler_task == CompilerTask_Run);
             
 #if 0
             pln("\nX64 Machine Code (% bytes):", f_umm(buf.curr_used));
@@ -437,6 +425,25 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 }
                 
             } else if (compiler_task == CompilerTask_Build) {
+                
+                // NOTE(Alexander): Build initial PE executable
+                Bytecode* bc = &bytecode_builder.bytecode;
+                u8* entry_point = (u8*) bc->functions[bc->entry_func_index]->code_ptr;
+                PE_Executable pe = convert_to_pe_executable(buf.data, (u32) buf.curr_used,
+                                                            &tcx.import_table,
+                                                            &data_packer,
+                                                            entry_point);
+                
+                // TODO(Alexander): HACK we need Import Address Table in the bytecode imports
+                for_map(tcx.import_table.libs, it) {
+                    for_array(it->value.functions, function, function_index) {
+                        bc->imports[function->bc_func_index].iat_offset = function->relative_ptr;
+                    }
+                }
+                
+                x64_patch_pe_rva(&x64, &pe, &buf);
+                
+                
                 // NOTE(Alexander): write the PE executable to file
                 cstring exe_filename = string_to_cstring(output_filename);
                 File_Handle exe_file = DEBUG_open_file_for_writing(exe_filename);

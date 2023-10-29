@@ -191,7 +191,7 @@ struct Bytecode_Import {
     
     u32 func_index;
     
-    u32 rdata_offset;
+    u32 iat_offset;
 };
 
 struct Bytecode_Export {

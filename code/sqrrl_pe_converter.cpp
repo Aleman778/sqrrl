@@ -179,7 +179,9 @@ void
 push_coff_import_directory_table(Data_Packer* data_packer, 
                                  COFF_PE32_Plus_Header* opt_header,
                                  Library_Import_Table* import_table, 
-                                 u32 virtual_base) {
+                                 u64* iat,
+                                 u32 iat_base,
+                                 u32 rdata_base) {
     
     u32 idt_base = 0;
     
@@ -198,12 +200,13 @@ push_coff_import_directory_table(Data_Packer* data_packer,
             idt = (COFF_Import_Directory_Table*) entry.data;
             idt_base = entry.relative_ptr;
             if (map_count(import_table->libs) > 0) {
-                opt_header->import_table.rva = virtual_base + idt_base;
-                opt_header->import_address_table.rva = virtual_base; // NOTE(Alexander): always start at 0
+                opt_header->import_table.rva = rdata_base + idt_base;
+                opt_header->import_address_table.rva = rdata_base; // NOTE(Alexander): always start at 0
                 opt_header->import_address_table.size += 8; // NOTE(Alexander): null entry
             }
         }
     }
+    
     if (idt) {
         // Push null entry
         Exported_Data null_entry = export_struct(data_packer, COFF_Import_Directory_Table, Read_Data_Section);
@@ -220,51 +223,38 @@ push_coff_import_directory_table(Data_Packer* data_packer,
             array(Library_Function)* import_names = it->value.functions;
             
             // Lookup table
-            u64* address_table = 0;
-            entry->address_table_rva = virtual_base;
+            u64* address_entry = iat;
+            entry->address_table_rva = iat_base;
             if (array_count(import_names) > 0) {
-                // TODO(Alexander): HACK to get the address table entry
-                Compilation_Unit* cu = import_names[0].type->Function.unit;
-                address_table = (u64*) cu->external_address;
-                entry->address_table_rva += (u32) cu->external_address;
-                
-                // We store the external addresses first thing we do in the rdata arena
-                Memory_Block* block = data_packer->rdata_arena.current_block;
-                while (block) {
-                    address_table = (u64*) (cu->external_address + block->base);
-                    block = block->prev_block;
-                }
-                
-                //pln("address_table = %, external_address = %", f_u64_HEX(address_table),
-                //f_u64_HEX(cu->external_address));
+                u32 offset = import_names[0].relative_ptr;
+                entry->address_table_rva += offset;
+                address_entry = (u64*) ((u8*) iat + offset);
             }
-            
+            pln("entry->address_table_rva = %", f_int(entry->address_table_rva));
             Exported_Data tbl = export_array(data_packer, array_count(import_names), u64, Read_Data_Section);
             u64* lookup_table = (u64*) tbl.data;
-            entry->lookup_table_rva = ptr_to_rva(virtual_base, &data_packer->rdata_arena, lookup_table);
+            entry->lookup_table_rva = ptr_to_rva(rdata_base, &data_packer->rdata_arena, lookup_table);
             arena_push_struct(&data_packer->rdata_arena, u64); // null entry
             
             // Hint
             u64* lookup_entry = lookup_table;
-            u64* address_entry = address_table;
             for_array_v(import_names, function, _1) {
                 string function_name = vars_load_string(function.name);
                 smm size = function_name.count + 3; // 3: hint (2 bytes) + null-term
                 u8* hint = (u8*) arena_push_size(&data_packer->rdata_arena, size, 8);
                 memcpy(hint + 2, function_name.data, function_name.count);
                 
-                u64 hint_rva = ptr_to_rva(virtual_base, &data_packer->rdata_arena, hint);
+                u64 hint_rva = ptr_to_rva(rdata_base, &data_packer->rdata_arena, hint);
                 *lookup_entry++ = hint_rva;
                 *address_entry++ = hint_rva;
                 opt_header->import_address_table.size += 8;
-                
-                // TODO(Alexander): to be more correct we should mask out the last bit
+                // TODO(Alexander): add support for Ordinals
             }
             
             // Library name
             void* library_name_dest = arena_push_size(&data_packer->rdata_arena, library_name.count + 1, 8);
             memcpy(library_name_dest, library_name.data, library_name.count);
-            entry->name_rva = ptr_to_rva(virtual_base, &data_packer->rdata_arena, library_name_dest);
+            entry->name_rva = ptr_to_rva(rdata_base, &data_packer->rdata_arena, library_name_dest);
             //pln("LIB: %", f_string(library_name));
             
             entry++;
@@ -273,21 +263,21 @@ push_coff_import_directory_table(Data_Packer* data_packer,
 }
 
 PE_Executable
-convert_to_pe_executable(Memory_Arena* arena,
-                         u8* machine_code, u32 machine_code_size,
+convert_to_pe_executable(u8* machine_code, u32 machine_code_size,
                          Library_Import_Table* import_table,
                          Data_Packer* data_packer,
                          u8* entry_point) {
     
-    PE_Executable result = {};
+    PE_Executable pe = {};
+    Memory_Arena* header_arena = &pe.header_arena;
     
     time_t timestamp = time(0);
     
-    push_dos_header_stub(arena);
+    push_dos_header_stub(header_arena);
     
     // PE\0\0 signature and mandatory COFF header
-    COFF_Header* header = arena_push_struct(arena, COFF_Header);
-    result.main_header = header;
+    COFF_Header* header = arena_push_struct(header_arena, COFF_Header);
+    pe.main_header = header;
     header->signature[0] = 'P'; header->signature[1] = 'E';
     header->machine = COFF_MACHINE_AMD64;
     header->time_date_stamp = (u32) timestamp;
@@ -295,8 +285,8 @@ convert_to_pe_executable(Memory_Arena* arena,
     header->characteristics = COFF_EXECUTABLE_IMAGE | COFF_LARGE_ADDRESS_AWARE;
     
     // Optional headers (mandatory PE32+ for executable)
-    COFF_PE32_Plus_Header* opt_header = arena_push_struct(arena, COFF_PE32_Plus_Header);
-    result.opt_header = opt_header;
+    COFF_PE32_Plus_Header* opt_header = arena_push_struct(header_arena, COFF_PE32_Plus_Header);
+    pe.opt_header = opt_header;
     opt_header->magic = 0x20b;
     opt_header->major_linker_version = 0;
     opt_header->minor_linker_version = 1;
@@ -323,39 +313,45 @@ convert_to_pe_executable(Memory_Arena* arena,
     opt_header->size_of_heap_reserve = 0x100000;
     opt_header->size_of_heap_commit = 0x1000;
     
-    // Section headers
-    COFF_Section_Header* text_section = 0;
-    COFF_Section_Header* rdata_section = 0;
-    COFF_Section_Header* data_section = 0;
-    COFF_Section_Header* reloc_section = 0;
-    
     // .text section
-    text_section = push_coff_section(arena, opt_header, COFF_TEXT_SECTION, machine_code_size, 
-                                     COFF_SCN_CNT_CODE | COFF_SCN_MEM_EXECUTE | COFF_SCN_MEM_READ);
-    result.text_section = text_section;
-    opt_header->size_of_code += text_section->size_of_raw_data;
+    pe.text_section = push_coff_section(header_arena, opt_header, COFF_TEXT_SECTION, machine_code_size, 
+                                        COFF_SCN_CNT_CODE | COFF_SCN_MEM_EXECUTE | COFF_SCN_MEM_READ);
+    pe.text_rva = pe.text_section->virtual_address;
+    opt_header->size_of_code += pe.text_section->size_of_raw_data;
     header->number_of_sections++; // added .text
-    result.header_arena = *arena;
     
     // .rdata section
-    push_coff_import_directory_table(data_packer, opt_header,
-                                     import_table, opt_header->size_of_image);
-    u32 rdata_size = (u32) arena_total_used(&data_packer->rdata_arena);
+    for_map(import_table->libs, it) {
+        for_array(it->value.functions, function, function_index) {
+            function->relative_ptr = pe.iat_size;
+            pe.iat_size += sizeof(u64);
+        }
+        pe.iat_size += sizeof(u64); // reserve space of null entry}
+    }
+    // TODO(Alexander): temporary we need to find a better way to structure the memory here
+    if (pe.iat_size > 0) {
+        pe.iat = (u64*) calloc(1, pe.iat_size);
+        pe.iat_rva = opt_header->size_of_image;
+        push_coff_import_directory_table(data_packer, opt_header, import_table,
+                                         pe.iat, pe.iat_rva, pe.iat_rva + pe.iat_size);
+    }
+    
+    u32 rdata_size = (u32) arena_total_used(&data_packer->rdata_arena) + pe.iat_size;
     if (rdata_size > 0) {
-        rdata_section = push_coff_section(arena, opt_header, COFF_RDATA_SECTION, rdata_size,
-                                          COFF_SCN_CNT_INITIALIZED_DATA | COFF_SCN_MEM_READ);
-        result.rdata_section = rdata_section;
-        opt_header->size_of_initialized_data += rdata_section->size_of_raw_data;
+        pe.rdata_rva = opt_header->size_of_image + pe.iat_size;
+        pe.rdata_section = push_coff_section(header_arena, opt_header, COFF_RDATA_SECTION, rdata_size,
+                                             COFF_SCN_CNT_INITIALIZED_DATA | COFF_SCN_MEM_READ);
+        opt_header->size_of_initialized_data += pe.rdata_section->size_of_raw_data;
         header->number_of_sections++; // added .rdata
     }
     
     // .data section
     u32 data_size = (u32) arena_total_used(&data_packer->data_arena);
     if (data_size > 0) {
-        data_section = push_coff_section(arena, opt_header, COFF_DATA_SECTION, data_size,
-                                         (u32) COFF_SCN_CNT_INITIALIZED_DATA | COFF_SCN_MEM_READ | COFF_SCN_MEM_WRITE);
-        result.data_section = data_section;
-        opt_header->size_of_initialized_data += data_section->size_of_raw_data;
+        pe.data_rva = opt_header->size_of_image;
+        pe.data_section = push_coff_section(header_arena, opt_header, COFF_DATA_SECTION, data_size,
+                                            (u32) COFF_SCN_CNT_INITIALIZED_DATA | COFF_SCN_MEM_READ | COFF_SCN_MEM_WRITE);
+        opt_header->size_of_initialized_data += pe.data_section->size_of_raw_data;
         header->number_of_sections++; // added .data
     }
     
@@ -366,7 +362,8 @@ convert_to_pe_executable(Memory_Arena* arena,
         // Create separate tables
         // TODO(Alexander): we need to restrict only 4kB per table
         for (int from_section_enum = 0; from_section_enum < Section_Count; from_section_enum++) {
-            COFF_Section_Header* from_section = from_section_enum == Read_Data_Section ? rdata_section : data_section;
+            u32 from_section_rva = from_section_enum == Read_Data_Section ? 
+                pe.rdata_rva : pe.data_rva;
             
             COFF_Base_Relocation_Table* reloc_table = 0;
             u32 page_offset = 0;
@@ -376,14 +373,15 @@ convert_to_pe_executable(Memory_Arena* arena,
                     continue;
                 }
                 
-                COFF_Section_Header* to_section = reloc->to_section == Read_Data_Section ? rdata_section : data_section;
+                u32 to_section_rva = reloc->to_section == Read_Data_Section ? 
+                    pe.rdata_rva : pe.data_rva;
                 
                 if (!reloc_table || (reloc->from < page_offset && reloc->from >= page_offset + kilobytes(4))) {
                     if (reloc_table) {
                         reloc_table->block_size = (u32) arena_total_used(&reloc_arena);
                     }
                     reloc_table = arena_push_struct(&reloc_arena, COFF_Base_Relocation_Table);
-                    reloc_table->page_rva = from_section->virtual_address + reloc->from;
+                    reloc_table->page_rva = from_section_rva + reloc->from;
                     page_offset = reloc->from;
                 }
                 
@@ -391,8 +389,7 @@ convert_to_pe_executable(Memory_Arena* arena,
                 *reloc_entry = 0xA000 + (u16) (reloc->from - page_offset);
                 
                 *((u64*) reloc->from_ptr) = (u64) (opt_header->image_base + 
-                                                   to_section->virtual_address + 
-                                                   reloc->to);
+                                                   to_section_rva + reloc->to);
                 
                 cstring section_names[] = {"rdata", "data"};
                 
@@ -417,79 +414,54 @@ convert_to_pe_executable(Memory_Arena* arena,
     // .reloc section
     u32 reloc_size = (u32) arena_total_used(&reloc_arena);
     if (reloc_size > 0) {
-        reloc_section = push_coff_section(arena, opt_header, COFF_RELOC_SECTION, reloc_size,
-                                          COFF_SCN_CNT_INITIALIZED_DATA | COFF_SCN_MEM_READ | COFF_SCN_MEM_DISCARDABLE);
-        result.reloc_section = reloc_section;
-        opt_header->size_of_initialized_data += reloc_section->size_of_raw_data;
+        pe.reloc_section = push_coff_section(header_arena, opt_header, COFF_RELOC_SECTION, reloc_size,
+                                             COFF_SCN_CNT_INITIALIZED_DATA | COFF_SCN_MEM_READ | COFF_SCN_MEM_DISCARDABLE);
+        opt_header->size_of_initialized_data += pe.reloc_section->size_of_raw_data;
         header->number_of_sections++; // added .data
     }
     
-    umm actual_header_size = arena_total_used(arena);
+    umm actual_header_size = arena_total_used(header_arena);
     opt_header->size_of_headers = (u32) align_forward(actual_header_size,
                                                       opt_header->file_alignment);
     
     
     // Layout sections
     u32 output_size = opt_header->size_of_headers;
-    if (text_section) {
-        text_section->pointer_to_raw_data = output_size;
-        output_size += text_section->size_of_raw_data;
+    if (pe.text_section) {
+        pe.text_section->pointer_to_raw_data = output_size;
+        output_size += pe.text_section->size_of_raw_data;
         
-        result.text_data = machine_code;
-        result.text_data_size = machine_code_size;
+        pe.text_data = machine_code;
+        pe.text_data_size = machine_code_size;
         
     }
     
-    if (rdata_section) {
-        rdata_section->pointer_to_raw_data = output_size;
-        output_size += rdata_section->size_of_raw_data;
+    if (pe.rdata_section) {
+        pe.rdata_section->pointer_to_raw_data = output_size;
+        output_size += pe.rdata_section->size_of_raw_data;
         
-        result.rdata_arena = data_packer->rdata_arena;
+        pe.rdata_arena = data_packer->rdata_arena;
     }
     
-    if (data_section) {
-        data_section->pointer_to_raw_data = output_size;
-        output_size += data_section->size_of_raw_data;
+    if (pe.data_section) {
+        pe.data_section->pointer_to_raw_data = output_size;
+        output_size += pe.data_section->size_of_raw_data;
         
-        result.data_arena = data_packer->data_arena;
+        pe.data_arena = data_packer->data_arena;
     }
     
-    if (reloc_section) {
-        reloc_section->pointer_to_raw_data = output_size;
-        output_size += reloc_section->size_of_raw_data;
+    if (pe.reloc_section) {
+        pe.reloc_section->pointer_to_raw_data = output_size;
+        output_size += pe.reloc_section->size_of_raw_data;
         
-        result.reloc_arena = reloc_arena;
+        pe.reloc_arena = reloc_arena;
     }
     
-    return result;
-}
-
-inline Ic_Arg
-patch_rip_relative_address(PE_Executable* pe, Ic_Arg arg) {
-    if (arg.type & IC_RIP_DISP32) {
-        u32 base_address = pe->text_section->virtual_address;
-        switch (arg.data.area) {
-            case IcDataArea_Read_Only: {
-                arg.data.disp += pe->rdata_section->virtual_address - base_address;
-            } break;
-            
-            case IcDataArea_Type_Info: {
-                arg.data.disp += pe->data_section->virtual_address - base_address;
-            } break;
-            
-            // TODO(Alexander): add support for globals!
-            case IcDataArea_Globals: {
-                arg.data.disp += (pe->data_section->virtual_address - base_address);
-            } break;
-        }
-    }
-    
-    return arg;
+    return pe;
 }
 
 void
 write_pe_executable_to_file(File_Handle output_file, PE_Executable* pe) {
-    
     // NOTE(Alexander): all headers have been set after this point
     umm actual_header_size = arena_total_used(&pe->header_arena);
     write_memory_block_to_file(output_file, pe->header_arena.current_block);
@@ -503,14 +475,17 @@ write_pe_executable_to_file(File_Handle output_file, PE_Executable* pe) {
     
     if (pe->rdata_section) {
         umm rdata_size = arena_total_used(&pe->rdata_arena);
+        if (pe->iat) {
+            DEBUG_write(output_file, pe->iat, pe->iat_size);
+        }
         write_memory_block_to_file(output_file, pe->rdata_arena.current_block);
-        write_padding_to_file(output_file, rdata_size, pe->rdata_section->size_of_raw_data);
+        write_padding_to_file(output_file, rdata_size + pe->iat_size,
+                              pe->rdata_section->size_of_raw_data);
         //pln(".rdata: size: %", f_u64_HEX(rdata_size));
     }
     
     if (pe->data_section) {
         umm data_size = arena_total_used(&pe->data_arena);
-        write_memory_block_to_file(output_file, pe->type_info_arena.current_block);
         write_memory_block_to_file(output_file, pe->data_arena.current_block);
         write_padding_to_file(output_file, data_size, pe->data_section->size_of_raw_data);
         //pln(".data: size: %", f_u64_HEX(data_size));

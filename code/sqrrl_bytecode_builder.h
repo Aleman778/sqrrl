@@ -86,10 +86,6 @@ to_bytecode_type(Type* type) {
         case TypeKind_Enum: {
             return to_bytecode_type(type->Enum.type);
         } break;
-        
-        default: {
-            unimplemented;
-        } break;
     }
     
     return result;
@@ -337,16 +333,18 @@ _bc_copy_registers(void* dest, void* src, smm count) {
 }
 
 inline void
-bc_call(Bytecode_Builder* bc, u32 func_index, array(int)* args) {
+bc_call(Bytecode_Builder* bc, Type* return_type, u32 func_index, array(int)* args) {
     Bytecode_Call* call = bc_instruction_varindices(bc, BC_CALL, Bytecode_Call, array_count(args));
+    call->type = to_bytecode_type(return_type);
     call->func_index = func_index;
     call->arg_count = (s32) array_count(args);
     _bc_copy_registers(bc_call_args(call), args, array_count(args));
 }
 
 inline void
-bc_call_indirect(Bytecode_Builder* bc, int func_ptr_index, s32 ret_count, array(int)* args) {
+bc_call_indirect(Bytecode_Builder* bc, Type* return_type, int func_ptr_index, s32 ret_count, array(int)* args) {
     Bytecode_Call_Indirect* call = bc_instruction_varindices(bc, BC_CALL_INDIRECT, Bytecode_Call_Indirect, array_count(args));
+    call->type = to_bytecode_type(return_type);
     call->func_ptr_index = func_ptr_index;
     call->ret_count = ret_count;
     call->arg_count = (s32) array_count(args);

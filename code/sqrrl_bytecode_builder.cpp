@@ -276,10 +276,10 @@ emit_function_call(Bytecode_Builder* bc, Type* type, array(Ast*)* args, Ast* var
     if (cu) {
         assert(cu->bytecode_function);
         Bytecode_Function* func = cu->bytecode_function;
-        bc_call(bc, func->type_index, arg_indices); 
+        bc_call(bc, type->Function.return_type, func->type_index, arg_indices); 
     } else if (function_ptr_index != -1) {
         int ret_count = is_valid_type(type->Function.return_type);
-        bc_call_indirect(bc, function_ptr_index, ret_count, arg_indices); 
+        bc_call_indirect(bc, type->Function.return_type, function_ptr_index, ret_count, arg_indices); 
     } else {
         verify_not_reached();
     }
@@ -849,6 +849,10 @@ emit_type_cast(Bytecode_Builder* bc, Ast* expr, int result) {
     Type* t_dest = normalize_type_for_casting(expr->type);
     Type* t_src = normalize_type_for_casting(expr->Cast_Expr.expr->type);
     
+    if (t_dest->kind == TypeKind_Void || t_src->kind == TypeKind_Void) {
+        return;
+    }
+    
     // TODO(Alexander): optimize by using a lookup table
     if (t_dest->kind == TypeKind_Basic && t_src->kind == TypeKind_Basic) {
         Bytecode_Operator opcode = BC_COPY;
@@ -1123,9 +1127,11 @@ emit_statement(Bytecode_Builder* bc, Ast* stmt, s32 break_label, s32 continue_la
             int result = -1;
             if (is_valid_ast(stmt->Return_Stmt.expr)) {
                 if (bc->curr_function->return_as_first_arg) {
-                    int src_ptr = emit_reference_expression(bc, stmt->Return_Stmt.expr);
-                    Bytecode_Function_Arg src_type = function_ret_types(bc->curr_function)[0];
-                    bc_memcpy(bc, 0, src_ptr, src_type.size);
+                    emit_initializing_expression(bc, stmt->Return_Stmt.expr, 0);
+                    
+                    //int src_ptr = emit_reference_expression(bc, );
+                    //Bytecode_Function_Arg src_type = function_ret_types(bc->curr_function)[0];
+                    //bc_memcpy(bc, 0, src_ptr, src_type.size);
                 } else {
                     result = emit_value_fetch_expression(bc, stmt->Return_Stmt.expr);
                 }

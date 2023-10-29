@@ -216,10 +216,9 @@ run_compiler_tests(string filename,
     Buffer buf = {};
     buf.data = (u8*) asm_buffer;
     buf.size = asm_size;
-    PE_Executable code = convert_bytecode_to_x64_machine_code(&bytecode_builder.bytecode, 
-                                                              &buf, &data_packer, 
-                                                              &tcx.import_table, 
-                                                              CompilerTask_Run);
+    convert_bytecode_to_x64_machine_code(&bytecode_builder.bytecode,
+                                         &buf, &data_packer,
+                                         true);
     
     // Compile to WASM
     //convert_to_wasm_module();

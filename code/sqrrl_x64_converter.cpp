@@ -1,14 +1,13 @@
 
-PE_Executable
+X64_Assembler
 convert_bytecode_to_x64_machine_code(Bytecode* bytecode, Buffer* buf, 
                                      Data_Packer* data_packer,
-                                     Library_Import_Table* import_table,
-                                     Compiler_Task compiler_task) {
+                                     bool use_absolute_ptrs) {
     
     X64_Assembler x64 = {};
     x64.bytecode = bytecode;
     x64.data_packer = data_packer;
-    x64.use_absolute_ptrs = compiler_task == CompilerTask_Run;
+    x64.use_absolute_ptrs = use_absolute_ptrs;
     // TODO(Alexander): employ better allocation strategy!
     x64.functions = (X64_Function*) calloc(array_count(bytecode->functions), 
                                            sizeof(X64_Function));
@@ -16,89 +15,75 @@ convert_bytecode_to_x64_machine_code(Bytecode* bytecode, Buffer* buf,
     u8* main_function_ptr = buf->data;
     for_array_v(bytecode->functions, func, func_index) {
         //pln("Compiling function `%`...", f_var(bytecode->function_names[func->type_index]));
-        if (compiler_task == CompilerTask_Build) {
-            if (func_index < array_count(bytecode->imports)) {
-                s64 jump_src = bytecode->imports[func_index].rdata_offset;
-                
-                // Indirect jump to library function
-                push_u8(buf, 0xFF); // FF /4 	JMP r/m64 	M
-                x64_rip_relative(buf, 4, jump_src);
-            }
-        }
-        
         if (bytecode->entry_func_index == func_index) {
             main_function_ptr = buf->data + buf->curr_used;
         }
-        
         convert_bytecode_function_to_x64_machine_code(&x64, func, buf);
+        
+        if (!use_absolute_ptrs && func->type_index < array_count(bytecode->imports)) {
+            push_u16(buf, 0x25FF); // FF 25    JMP RIP-relative
+            x64_create_u32_patch(&x64, buf, X64_PATCH_DYNAMIC_LIBRARY, func->type_index);
+        }
     }
     
     // Patch relative jump addresses
     for_array_v(x64.jump_patches, patch, _pi) {
         s32 rel32 = (s32) (*patch.target - (patch.origin + 4));
-        //pln("% - % = %", f_u64_HEX(*patch.target), f_u64_HEX(patch.origin + 4), f_int(rel32));
+        pln("% - % = %", f_u64_HEX(*patch.target), f_u64_HEX(patch.origin + 4), f_int(rel32));
         *((s32*) patch.origin) = rel32;
     }
     
-    PE_Executable pe = {};
-    Memory_Arena build_arena = {};
-    if (compiler_task == CompilerTask_Build) {
-        // NOTE(Alexander): Build initial PE executable
-        u8* entry_point = (u8*) bytecode->functions[bytecode->entry_func_index]->code_ptr;
-        pe = convert_to_pe_executable(&build_arena,
-                                      buf->data, (u32) buf->curr_used,
-                                      import_table,
-                                      data_packer,
-                                      entry_point);
-        s64 base_address = pe.text_section->virtual_address;
-        if (pe.rdata_section) {
-            x64.read_only_data_offset = (s64) buf->data + (pe.rdata_section->virtual_address - 
-                                                           base_address);
-        }
-        if (pe.data_section) {
-            x64.read_write_data_offset = (s64) buf->data + (pe.data_section->virtual_address - 
-                                                            base_address);
-        }
-        
-        
-        // Patch relative data addresses
-        for_array_v(x64.data_patches, patch, _pi1) {
-            s64 section_offset = (s64) patch.data.relative_ptr - (s64) (patch.origin + 4);
-            switch (patch.data.section) {
-                case Read_Data_Section: {
-                    *((u32*) patch.origin) = (u32) (x64.read_only_data_offset + section_offset);
-                } break;
-                
-                case Data_Section: {
-                    *((u32*) patch.origin) = (u32) (x64.read_write_data_offset + section_offset);
-                } break;
-                
-                default: unimplemented;
-            }
+    return x64;
+}
+
+void
+x64_patch_pe_rva(X64_Assembler* x64, PE_Executable* pe, Buffer* buf) {
+    s64 iat_rva   = (s64) buf->data + (s64) pe->iat_rva   - (s64) pe->text_rva;
+    s64 rdata_rva = (s64) buf->data + (s64) pe->rdata_rva - (s64) pe->text_rva;
+    s64 data_rva  = (s64) buf->data + (s64) pe->data_rva  - (s64) pe->text_rva;
+    
+    // Patch relative data addresses
+    for_array_v(x64->address_patches, patch, _pi1) {
+        s64 section_offset = (s64) patch.data - (s64) (patch.origin + 4);
+        switch (patch.kind) {
+            case X64_PATCH_READ_ONLY_DATA: {
+                *((s32*) patch.origin) = (s32) (rdata_rva + section_offset);
+            } break;
+            
+            case X64_PATCH_READ_WRITE_DATA: {
+                *((s32*) patch.origin) = (s32) (data_rva + section_offset);
+            } break;
+            
+            case X64_PATCH_DYNAMIC_LIBRARY: {
+                s64 iat_offset = x64->bytecode->imports[patch.data].iat_offset;
+                section_offset = iat_offset - (s64) (patch.origin + 4);
+                *((s32*) patch.origin) = (s32) (iat_rva + section_offset);
+            } break;
+            
+            default: unimplemented;
         }
     }
-    
-    return pe;
 }
 
 void
 convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Function* func, Buffer* buf) {
     assert(x64->bytecode && x64->functions && x64->data_packer && "X64 assembler is not setup correctly");
     
+    x64->curr_function = &x64->functions[func->type_index];
+    x64->curr_function->code = buf->data + buf->curr_used;
+    
     if (func->is_imported || func->is_intrinsic) {
         return;
     }
     
+    func->code_ptr = buf->data + buf->curr_used;
+    
     arena_clear(&x64->arena);
     x64->slots = arena_push_array_of_structs(&x64->arena, func->register_count, X64_Slot);
-    
-    func->code_ptr = buf->data + buf->curr_used;
     
     // TODO(Alexander): most  of the code here is windows x64 calling convention specific
     
     // Setup labels
-    x64->curr_function = &x64->functions[func->type_index];
-    x64->curr_function->code = buf->data + buf->curr_used;
     if (!x64->curr_function->labels) {
         x64->curr_function->labels = (u8**) calloc(func->block_count + 1, sizeof(u8*));
     }
@@ -112,9 +97,18 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     
     // Save HOME registers (TODO: move this it's windows calling convention only)
     // TODO(Alexander): this doens't handle returns larger than 8 bytes
-    for (int i = min((int) func->arg_count - 1, 3); i >= 0; i--) {
-        X64_Reg dest = int_arg_registers_ccall_windows[i];
-        x64_move_register_to_memory(buf, X64_RSP, i*8 + 8, dest);
+    Bytecode_Function_Arg* formal_args = function_arg_types(func);
+    for (int arg_index = min((int) func->arg_count - 1, 3); arg_index >= 0; arg_index--) {
+        Bytecode_Function_Arg formal_arg = formal_args[arg_index];
+        bool is_float = formal_arg.type.kind == BC_TYPE_FLOAT;
+        if (is_float) {
+            X64_VReg dest = float_arg_registers_ccall_windows[arg_index];
+            x64_move_float_register_to_memory(buf, X64_RSP, arg_index*8 + 8, dest,
+                                              formal_arg.type.size);
+        } else {
+            X64_Reg dest = int_arg_registers_ccall_windows[arg_index];
+            x64_move_register_to_memory(buf, X64_RSP, arg_index*8 + 8, dest);
+        }
     }
     
     // Prologue
@@ -127,7 +121,6 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     // Copy registers to our local stack space
     s32** callee_args_disp = 0;
     if (func->arg_count > 0) {
-        Bytecode_Function_Arg* formal_args = function_arg_types(func);
         callee_args_disp = arena_push_array_of_structs(&x64->arena, func->arg_count, s32*);
         for (int arg_index = 0; arg_index < (int) func->arg_count; arg_index++) {
             Bytecode_Function_Arg formal_arg = formal_args[arg_index];
@@ -205,15 +198,29 @@ void
 convert_windows_x64_argument_list_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, int arg_count, int* args, int var_arg_start=-1) {
     for (int arg_index = arg_count - 1; arg_index >= 0; arg_index--) {
         int src_index = args[arg_index];
-        X64_Reg dest = X64_RAX;
-        if (arg_index < 4) {
-            dest = int_arg_registers_ccall_windows[arg_index];
-        }
+        Bytecode_Type type = get_slot(x64, src_index).type;
+        bool is_float = type.kind == BC_TYPE_FLOAT;
         
-        x64_move_slot_to_register(x64, buf, dest, src_index);
-        
-        if (arg_index >= 4 || arg_index >= var_arg_start) {
-            x64_move_register_to_memory(buf, X64_RSP, arg_index*8, dest);
+        if (is_float) {
+            X64_VReg dest = X64_XMM0;
+            dest = float_arg_registers_ccall_windows[arg_index];
+            x64_move_slot_to_float_register(x64, buf, (X64_VReg) dest, src_index);
+            if (arg_index >= 4 || arg_index >= var_arg_start) {
+                x64_move_float_register_to_memory(buf, X64_RSP, arg_index*8, (X64_VReg) dest,
+                                                  type.size);
+            }
+            
+        } else {
+            X64_Reg dest = X64_RAX;
+            if (arg_index < 4) {
+                dest = int_arg_registers_ccall_windows[arg_index];
+            }
+            x64_move_slot_to_register(x64, buf, dest, src_index);
+            
+            if (arg_index >= 4 || arg_index >= var_arg_start) {
+                x64_move_register_to_memory(buf, X64_RSP, arg_index*8, dest);
+                
+            }
         }
     }
 }
@@ -425,7 +432,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                                                                   args + target->ret_count, 
                                                                   target->arg_count);
             
-            if (target->is_imported) {
+            if (target->is_imported && x64->use_absolute_ptrs) {
                 // Indirect function call from pointer
                 //x64_spill_register(x64, buf, X64_RAX);
                 x64_move_rax_u64(buf, (u64) target->code_ptr);
@@ -443,8 +450,14 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             
             if (target->ret_count == 1) {
                 // TODO(Alexander): Add support for floats!
-                x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, args[0]),
-                                            X64_RAX);
+                if (bc->type.kind == BC_TYPE_FLOAT) {
+                    x64_move_float_register_to_memory(buf, X64_RSP,
+                                                      register_displacement(x64, args[0]),
+                                                      X64_XMM0, bc->type.size);
+                } else {
+                    x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, args[0]),
+                                                X64_RAX);
+                }
             }
         } break;
         
@@ -472,7 +485,11 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         
         case BC_RETURN: {
             if (bc->res_index >= 0) {
-                x64_move_slot_to_register(x64, buf, X64_RAX, bc->res_index);
+                if (bc->type.kind == BC_TYPE_FLOAT) {
+                    x64_move_slot_to_float_register(x64, buf, X64_XMM0, bc->res_index);
+                } else {
+                    x64_move_slot_to_register(x64, buf, X64_RAX, bc->res_index);
+                }
             }
             
             if (insn->next_insn) {
@@ -517,7 +534,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             X64_Slot src = get_slot(x64, bc->a_index);
             x64_move_slot_to_float_register(x64, buf, X64_XMM0, bc->a_index);
             x64_convert_float_to_float(buf, X64_XMM0, X64_XMM0, src.type.size);
-            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index, bc->type), X64_RAX);
+            x64_move_float_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index, bc->type), X64_XMM0, bc->type.size);
         } break;
         
         case BC_INC:
@@ -621,6 +638,19 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                 
                 x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index, bc->type), result);
             }
+        } break;
+        
+        case BC_SHL:
+        case BC_SHR:
+        case BC_SAR: {
+            x64_move_slot_to_register(x64, buf, X64_RAX, bc->a_index);
+            x64_move_slot_to_register(x64, buf, X64_RCX, bc->b_index);
+            switch (bc->opcode) {
+                case BC_SHL: x64_shl(buf, X64_RAX, X64_RCX); break;
+                case BC_SHR: x64_shr(buf, X64_RAX, X64_RCX); break;
+                case BC_SAR: x64_sar(buf, X64_RAX, X64_RCX); break;
+            }
+            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index, bc->type), X64_RAX);
         } break;
         
         case BC_EQ:

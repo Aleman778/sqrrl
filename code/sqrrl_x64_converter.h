@@ -19,6 +19,10 @@ enum X64_Reg: u8 {
     X64_R14,
     X64_R15,
     
+    X64_RIP,
+};
+
+enum X64_VReg: u8 {
     X64_XMM0,
     X64_XMM1,
     X64_XMM2,
@@ -35,8 +39,6 @@ enum X64_Reg: u8 {
     X64_XMM13,
     X64_XMM14,
     X64_XMM15,
-    
-    X64_RIP,
     
     X64_REG_COUNT,
 };
@@ -77,9 +79,17 @@ struct X64_Jump_Patch {
     u8** target;
 };
 
-struct X64_Data_Patch {
+enum X64_Patch_Kind {
+    X64_PATCH_NONE,
+    X64_PATCH_READ_ONLY_DATA,
+    X64_PATCH_READ_WRITE_DATA,
+    X64_PATCH_DYNAMIC_LIBRARY,
+};
+
+struct X64_Patch {
     u8* origin;
-    Exported_Data data;
+    s32 data;
+    X64_Patch_Kind kind;
 };
 
 struct X64_Assembler {
@@ -100,13 +110,10 @@ struct X64_Assembler {
     u32 curr_bytecode_insn_index;
     
     array(X64_Jump_Patch)* jump_patches;
-    array(X64_Data_Patch)* data_patches;
+    array(X64_Patch)* address_patches;
     
     s32 current_stack_size;
     s32 max_stack_size;
-    
-    s64 read_write_data_offset;
-    s64 read_only_data_offset;
     
     bool use_absolute_ptrs;
 };
@@ -154,11 +161,10 @@ register_displacement(X64_Assembler* x64, int register_index, Bytecode_Type type
 }
 
 // TODO(Alexander): we should probably return something more approporiate.
-PE_Executable convert_bytecode_to_x64_machine_code(Bytecode* bytecode, 
+X64_Assembler convert_bytecode_to_x64_machine_code(Bytecode* bytecode, 
                                                    Buffer* buf, 
                                                    Data_Packer* data_packer,
-                                                   Library_Import_Table* import_table,
-                                                   Compiler_Task compiler_task);
+                                                   bool is_absolute_ptrs);
 
 void convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64,
                                                    Bytecode_Function* func,
@@ -174,7 +180,7 @@ global const X64_Reg int_arg_registers_ccall_windows[] {
     X64_RCX, X64_RDX, X64_R8, X64_R9
 };
 
-global const X64_Reg float_arg_registers_ccall_windows[] {
+global const X64_VReg float_arg_registers_ccall_windows[] {
     X64_XMM0, X64_XMM1, X64_XMM2, X64_XMM3
 };
 
@@ -281,15 +287,27 @@ x64_modrm_rip_relative(Buffer* buf, void* data) {
 }
 
 inline void
-x64_modrm_exported_data(X64_Assembler* x64, Buffer* buf, X64_Reg reg, Exported_Data data) {
+x64_create_u32_patch(X64_Assembler* x64, Buffer* buf, X64_Patch_Kind kind, u32 data) {
+    X64_Patch patch = {};
+    patch.origin = buf->data + buf->curr_used;
+    patch.kind = kind; 
+    patch.data = data;
+    array_push(x64->address_patches, patch);
+    push_u32(buf, 0);
+}
+
+inline void
+x64_modrm_exported_data(X64_Assembler* x64, Buffer* buf, u8 reg, Exported_Data data) {
     push_u8(buf, ((u8) (reg&7)<<3) | (u8) X64_RBP);
     if (x64->use_absolute_ptrs) {
         x64_modrm_rip_relative(buf, data.data);
     } else {
-        X64_Data_Patch patch = {};
-        patch.origin = buf->data + buf->curr_used;
-        patch.data = data;
-        array_push(x64->data_patches, patch);
-        push_u32(buf, 0);
+        X64_Patch_Kind kind = X64_PATCH_NONE;
+        switch (data.section) {
+            case Read_Data_Section: kind = X64_PATCH_READ_ONLY_DATA; break;
+            case Data_Section:      kind = X64_PATCH_READ_WRITE_DATA; break;
+            default: verify_not_reached();
+        }
+        x64_create_u32_patch(x64, buf, kind, data.relative_ptr);
     }
 }

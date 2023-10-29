@@ -15,7 +15,7 @@ struct v3 {
     f32 x, y, z;
 }
 
-int
+void
 print_int_array([]int arr) {
     pln("Array (unknown size): %", arr);
 }

@@ -110,7 +110,8 @@ win32_resize_offscreen_buffer(Win32_Offscreen_Buffer* buffer,
 void
 win32_clear_color(Win32_Offscreen_Buffer* buffer, v4 color) {
     u32 pixel_value = rgba_pack_u32(color);
-    //pln("%", (u32*) pixel_value);
+    pln("color = %", color);
+    pln("%", (u32*) pixel_value);
     s64 pitch = (s64) buffer->width*(s64) buffer->bytes_per_pixel;
     u8* row = (u8*) buffer->memory;
     for (s32 y = 0; y < buffer->height; y += 1) {
@@ -121,6 +122,17 @@ win32_clear_color(Win32_Offscreen_Buffer* buffer, v4 color) {
         }
         row += pitch;
     }
+}
+
+void
+win32_render_buffer(HDC window_device_context, Win32_Offscreen_Buffer* buffer, int width, int height) {
+    StretchDIBits(window_device_context,
+                  0, 0, width, height,
+                  0, 0, buffer->width, buffer->height,
+                  buffer->memory,
+                  &buffer->info,
+                  DIB_RGB_COLORS, 
+                  SRCCOPY | BLACKNESS);
 }
 
 void
@@ -145,13 +157,7 @@ win32_render_buffer(Win32_Offscreen_Buffer* dest_buffer, HDR_Software_Texture* s
         *dest = ir << 16 | ig << 8 | ib; dest += 1;
     }
     
-    StretchDIBits(window_device_context,
-                  0, 0, width, height,
-                  0, 0, dest_buffer->width, dest_buffer->height,
-                  dest_buffer->memory,
-                  &dest_buffer->info,
-                  DIB_RGB_COLORS, 
-                  SRCCOPY | BLACKNESS);
+    win32_render_buffer(window_device_context, dest_buffer, width, height);
 }
 
 struct Game_Button_State {
@@ -288,6 +294,13 @@ main() {
         int buffer_memory_size = (texture.width*texture.height)*4*4;
         texture.data = (f32*) VirtualAlloc(0, buffer_memory_size, MEM_COMMIT, PAGE_READWRITE);
         
+        for (int i = 0; i < width*height; i++) {
+            texture.data[i*4] = 10000.0f;
+            texture.data[i*4 + 1] = 10000.0f;
+            texture.data[i*4 + 2] = 10000.0f;
+            texture.data[i*4 + 3] = 10000.0f;
+        }
+        
         local_persist POINT prev_mouse_pos;
         GetCursorPos(&prev_mouse_pos);
         ScreenToClient(window, &prev_mouse_pos);
@@ -313,11 +326,15 @@ main() {
                 height = dimensions.bottom;
             }
             
-            render(&texture, &state);
-            win32_render_buffer(&offscreen_buffer, &texture, device_context, width, height,
-                                state.samples_per_pixel);
+            //render(&texture, &state);
+            //win32_render_buffer(&offscreen_buffer, &texture, device_context, width, height);
+            win32_clear_color(&offscreen_buffer, sky_color);
             
-            //win32_clear_color(&offscreen_buffer, sky_color);
+            win32_render_buffer(device_context, &offscreen_buffer, width, height);
+            //state.samples_per_pixel);
+            
+            ExitProcess(0);
+            break;
             
             //pln("Frame %", i + 1);
             

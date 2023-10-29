@@ -417,7 +417,7 @@ data_to_f64(Basic_Type_Info info, void* data) {
     return 0.0f;
 }
 
-internal void
+internal void @dump_bytecode
 string_print_unsigned_integer(String_Builder* sb, u64 integer) {
     if (integer == 0) {
         string_builder_push(sb, "0");

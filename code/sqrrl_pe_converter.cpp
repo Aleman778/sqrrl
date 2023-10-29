@@ -230,7 +230,7 @@ push_coff_import_directory_table(Data_Packer* data_packer,
                 entry->address_table_rva += offset;
                 address_entry = (u64*) ((u8*) iat + offset);
             }
-            pln("entry->address_table_rva = %", f_int(entry->address_table_rva));
+            //pln("entry->address_table_rva = %", f_int(entry->address_table_rva));
             Exported_Data tbl = export_array(data_packer, array_count(import_names), u64, Read_Data_Section);
             u64* lookup_table = (u64*) tbl.data;
             entry->lookup_table_rva = ptr_to_rva(rdata_base, &data_packer->rdata_arena, lookup_table);

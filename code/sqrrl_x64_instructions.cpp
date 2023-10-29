@@ -302,9 +302,13 @@ inline void
 x64_div64(Buffer* buf, X64_Reg a, X64_Reg b, bool is_signed) {
     assert(a == X64_RAX);
     
-    // REX.W + 99 	CQO 	ZO
-    x64_rex(buf, REX_W);
-    push_u8(buf, 0x99);
+    if (is_signed) {
+        // REX.W + 99 	CQO 	ZO
+        x64_rex(buf, REX_W);
+        push_u8(buf, 0x99);
+    } else {
+        x64_zero(buf, X64_RDX);
+    }
     
     // REX.W + F7 /6 	DIV r/m64 	M 	Valid
     x64_rex(buf, REX_W, 0, b);
@@ -383,6 +387,18 @@ x64_divss(Buffer* buf, X64_VReg a, X64_VReg b, int size) {
     // F3 0F 5E /r DIVSS xmm1, xmm2/m32 	A
     // F2 0F 5E /r DIVSD xmm1, xmm2/m64 	A
     push_u24(buf, (size == 8) ? 0x5E0FF2 : 0x5E0FF3);
+    x64_modrm_direct(buf, a, b);
+}
+
+inline void
+x64_ucomiss(Buffer* buf, X64_VReg a, X64_VReg b, int size) {
+    // NP 0F 2E /r UCOMISS xmm1, xmm2/m32 	A
+    // 66 0F 2E /r UCOMISD xmm1, xmm2/m64 	A
+    if (size == 8) {
+        push_u24(buf, 0x2E0F66);
+    } else {
+        push_u16(buf, 0x2E0F);
+    }
     x64_modrm_direct(buf, a, b);
 }
 

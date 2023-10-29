@@ -215,22 +215,24 @@ bc_const_zero(Bytecode_Builder* bc, Type* type, int res_index) {
 }
 
 inline int
-bc_return(Bytecode_Builder* bc, int res_index) {
+bc_return(Bytecode_Builder* bc, Type* type, int res_index) {
     Bytecode_Result* insn = bc_instruction(bc, BC_RETURN, Bytecode_Result);
+    insn->type = to_bytecode_type(type);
     insn->res_index = res_index;
     return insn->res_index;
 }
 
 inline int
-bc_unary_arith(Bytecode_Builder* bc, Bytecode_Operator opcode, int res_index, int a_index) {
+bc_unary_arith(Bytecode_Builder* bc, Bytecode_Type type, Bytecode_Operator opcode, int res_index, int a_index) {
     Bytecode_Unary* insn = bc_instruction(bc, opcode, Bytecode_Unary);
+    insn->type = type;
     insn->res_index = res_index;
     insn->a_index = a_index;
     return insn->res_index;
 }
 
 inline int
-bc_binary_arith(Bytecode_Builder* bc, Bytecode_Operator opcode, Bytecode_Type type,
+bc_binary_arith(Bytecode_Builder* bc, Bytecode_Type type, Bytecode_Operator opcode,
                 int res_index, int a_index, int b_index) {
     assert(opcode != BC_COPY);
     Bytecode_Binary* insn = bc_instruction(bc, opcode, Bytecode_Binary);

@@ -29,7 +29,7 @@ convert_bytecode_to_x64_machine_code(Bytecode* bytecode, Buffer* buf,
     // Patch relative jump addresses
     for_array_v(x64.jump_patches, patch, _pi) {
         s32 rel32 = (s32) (*patch.target - (patch.origin + 4));
-        pln("% - % = %", f_u64_HEX(*patch.target), f_u64_HEX(patch.origin + 4), f_int(rel32));
+        //pln("% - % = %", f_u64_HEX(*patch.target), f_u64_HEX(patch.origin + 4), f_int(rel32));
         *((s32*) patch.origin) = rel32;
     }
     
@@ -452,10 +452,10 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                 // TODO(Alexander): Add support for floats!
                 if (bc->type.kind == BC_TYPE_FLOAT) {
                     x64_move_float_register_to_memory(buf, X64_RSP,
-                                                      register_displacement(x64, args[0]),
+                                                      register_displacement(x64, args[0], bc->type),
                                                       X64_XMM0, bc->type.size);
                 } else {
-                    x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, args[0]),
+                    x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, args[0], bc->type),
                                                 X64_RAX);
                 }
             }
@@ -615,7 +615,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                 
                 X64_Reg result = X64_RAX;
                 switch (bc->opcode) {
-                    case BC_OR:  x64_and64(buf, X64_RAX, X64_RCX); break;
+                    case BC_OR:  x64_or64(buf, X64_RAX, X64_RCX); break;
                     case BC_AND: x64_and64(buf, X64_RAX, X64_RCX); break;
                     case BC_ADD: x64_add64(buf, X64_RAX, X64_RCX); break; 
                     case BC_SUB: x64_sub64(buf, X64_RAX, X64_RCX); break; 
@@ -663,9 +663,18 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         case BC_LT_U:
         case BC_LE_S:
         case BC_LE_U: {
-            x64_move_slot_to_register(x64, buf, X64_RAX, bc->a_index);
-            x64_move_slot_to_register(x64, buf, X64_RCX, bc->b_index);
-            x64_cmp64(buf, X64_RAX, X64_RCX);
+            Bytecode_Type type = get_slot(x64, bc->a_index).type;
+            
+            if (type.kind == BC_TYPE_FLOAT) {
+                x64_move_slot_to_float_register(x64, buf, X64_XMM4, bc->a_index);
+                x64_move_slot_to_float_register(x64, buf, X64_XMM5, bc->b_index);
+                x64_ucomiss(buf, X64_XMM4, X64_XMM5, type.size);
+                
+            } else {
+                x64_move_slot_to_register(x64, buf, X64_RAX, bc->a_index);
+                x64_move_slot_to_register(x64, buf, X64_RCX, bc->b_index);
+                x64_cmp64(buf, X64_RAX, X64_RCX);
+            }
             
             Bytecode_Branch* branch = (Bytecode_Branch*) ((u8*) insn + insn->next_insn);
             if (branch->opcode == BC_BRANCH) {

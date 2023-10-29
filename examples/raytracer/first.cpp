@@ -110,8 +110,7 @@ win32_resize_offscreen_buffer(Win32_Offscreen_Buffer* buffer,
 void
 win32_clear_color(Win32_Offscreen_Buffer* buffer, v4 color) {
     u32 pixel_value = rgba_pack_u32(color);
-    pln("color = %", color);
-    pln("%", (u32*) pixel_value);
+    //pln("%", (u32*) pixel_value);
     s64 pitch = (s64) buffer->width*(s64) buffer->bytes_per_pixel;
     u8* row = (u8*) buffer->memory;
     for (s32 y = 0; y < buffer->height; y += 1) {
@@ -294,13 +293,6 @@ main() {
         int buffer_memory_size = (texture.width*texture.height)*4*4;
         texture.data = (f32*) VirtualAlloc(0, buffer_memory_size, MEM_COMMIT, PAGE_READWRITE);
         
-        for (int i = 0; i < width*height; i++) {
-            texture.data[i*4] = 10000.0f;
-            texture.data[i*4 + 1] = 10000.0f;
-            texture.data[i*4 + 2] = 10000.0f;
-            texture.data[i*4 + 3] = 10000.0f;
-        }
-        
         local_persist POINT prev_mouse_pos;
         GetCursorPos(&prev_mouse_pos);
         ScreenToClient(window, &prev_mouse_pos);
@@ -326,15 +318,12 @@ main() {
                 height = dimensions.bottom;
             }
             
-            //render(&texture, &state);
-            //win32_render_buffer(&offscreen_buffer, &texture, device_context, width, height);
-            win32_clear_color(&offscreen_buffer, sky_color);
+            render(&texture, &state);
+            win32_render_buffer(&offscreen_buffer, &texture, device_context, width, height,
+                                state.samples_per_pixel);
             
-            win32_render_buffer(device_context, &offscreen_buffer, width, height);
-            //state.samples_per_pixel);
-            
-            ExitProcess(0);
-            break;
+            //win32_clear_color(&offscreen_buffer, sky_color);
+            //win32_render_buffer(device_context, &offscreen_buffer, width, height);
             
             //pln("Frame %", i + 1);
             

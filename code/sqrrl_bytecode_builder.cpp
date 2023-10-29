@@ -526,6 +526,7 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
             Type* result_type = expr->type;
             Type* type = expr->Unary_Expr.first->type;
             Operator op = expr->Unary_Expr.op;
+            Bytecode_Type bc_result_type = to_bytecode_type(result_type);
             
             switch (op) {
                 case Op_Address_Of: {
@@ -551,7 +552,7 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
                     if (local.ptr == -1) {
                         Bytecode_Operator opcode = (op == Op_Post_Increment || 
                                                     op == Op_Pre_Increment) ? BC_INC : BC_DEC;
-                        bc_unary_arith(bc, opcode, local.val, local.val);
+                        bc_unary_arith(bc, bc_result_type, opcode, local.val, local.val);
                         if (_result != -1) {
                             bc_copy(bc, _result, local.val);
                         }
@@ -586,7 +587,7 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
                 case Op_Bitwise_Not: {
                     emit_value_expression(bc, expr->Unary_Expr.first, _result);
                     if (_result != -1) {
-                        bc_unary_arith(bc, BC_NOT, _result, _result);
+                        bc_unary_arith(bc, bc_result_type, BC_NOT, _result, _result);
                     }
                 } break;
                 
@@ -600,7 +601,7 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
                 case Op_Negate: {
                     emit_value_expression(bc, expr->Unary_Expr.first, _result);
                     if (_result != -1) {
-                        bc_unary_arith(bc, BC_NEG, _result, _result);
+                        bc_unary_arith(bc, bc_result_type, BC_NEG, _result, _result);
                     }
                 } break;
                 
@@ -769,7 +770,8 @@ emit_unary_increment(Bytecode_Builder* bc, Type* type, int result, bool incremen
         bc_const_int(bc, type, index, increment ? 1 : -1);
         bc_array_access(bc, type->Pointer, result, result, index);
     } else {
-        bc_unary_arith(bc, increment ? BC_INC : BC_DEC, result, result);
+        Bytecode_Type bc_result_type = to_bytecode_type(type);
+        bc_unary_arith(bc, bc_result_type, increment ? BC_INC : BC_DEC, result, result);
     }
 }
 
@@ -781,7 +783,8 @@ emit_binary_arithmetic(Bytecode_Builder* bc, Bytecode_Operator opcode,
     if (type->kind == TypeKind_Pointer) {
         if (opcode == BC_SUB) {
             int tmp = add_bytecode_register(bc, t_s64);
-            bc_unary_arith(bc, BC_NEG, tmp, second);
+            Bytecode_Type tmp_type = to_bytecode_type(t_s64);
+            bc_unary_arith(bc, tmp_type, BC_NEG, tmp, second);
             second = tmp;
         }
         bc_array_access(bc, type->Pointer, result, first, second);
@@ -792,7 +795,7 @@ emit_binary_arithmetic(Bytecode_Builder* bc, Bytecode_Operator opcode,
         } else {
             res_type = to_bytecode_type(type);
         }
-        bc_binary_arith(bc, opcode, res_type, result, first, second);
+        bc_binary_arith(bc, res_type, opcode, result, first, second);
     }
 }
 
@@ -925,7 +928,7 @@ inline void
 emit_zero_compare(Bytecode_Builder* bc, Type* type, int result, int value, bool invert_condition) {
     int zero = add_bytecode_register(bc, type);
     bc_const_zero(bc, type, zero);
-    bc_binary_arith(bc, invert_condition ? BC_NEQ : BC_EQ, BC_BOOL, result, value, zero);
+    bc_binary_arith(bc, BC_BOOL, invert_condition ? BC_NEQ : BC_EQ, result, value, zero);
 }
 
 void
@@ -1086,7 +1089,7 @@ emit_statement(Bytecode_Builder* bc, Ast* stmt, s32 break_label, s32 continue_la
                     emit_value_expression(bc, it->Switch_Case.cond, case_cond);
                     
                     if (is_valid_ast(it->Switch_Case.stmt)) {
-                        bc_binary_arith(bc, BC_NEQ, BC_BOOL, case_cond, switch_cond, case_cond);
+                        bc_binary_arith(bc, BC_BOOL, BC_NEQ, case_cond, switch_cond, case_cond);
                         if (multi_case_block == -1) {
                             bc_branch_if(bc, bc->block_depth, case_cond);
                         } else {
@@ -1109,7 +1112,7 @@ emit_statement(Bytecode_Builder* bc, Ast* stmt, s32 break_label, s32 continue_la
                             multi_case_block = bc->block_depth;
                         }
                         
-                        bc_binary_arith(bc, BC_EQ, BC_BOOL, case_cond, switch_cond, case_cond);
+                        bc_binary_arith(bc, BC_BOOL, BC_EQ, case_cond, switch_cond, case_cond);
                         bc_branch_if(bc, multi_case_block, case_cond);
                     }
                 }
@@ -1136,7 +1139,7 @@ emit_statement(Bytecode_Builder* bc, Ast* stmt, s32 break_label, s32 continue_la
                     result = emit_value_fetch_expression(bc, stmt->Return_Stmt.expr);
                 }
             }
-            bc_return(bc, result);
+            bc_return(bc, stmt->type, result);
         } break;
         
         case Ast_Break_Stmt: {
@@ -1353,11 +1356,35 @@ string_builder_dump_bytecode_call_args(String_Builder* sb, int arg_count, int* a
     string_builder_push(sb, ")");
 }
 
+void
+string_builder_dump_bytecode_type(String_Builder* sb, Bytecode_Type type) {
+    
+    switch (type.kind) {
+        case BC_TYPE_INT: {
+            if (type.flags & BC_FLAG_SIGNED) {
+                string_builder_push_format(sb, "s%", f_int((int) type.size*8));
+            } else {
+                string_builder_push_format(sb, "u%", f_int((int) type.size*8));
+            }
+        } break;
+        
+        case BC_TYPE_FLOAT: {
+            string_builder_push_format(sb, "f%", f_int((int) type.size*8));
+        } break;
+        
+        case BC_TYPE_PTR: {
+            string_builder_push(sb, "ptr");
+        } break;
+    }
+    
+}
+
 inline void
 string_builder_dump_bytecode_opcode(String_Builder* sb, Bytecode_Instruction* insn) {
-    //if (insn->type) {
-    //string_builder_push_format(sb, "%.", f_cstring(bc_type_names[insn->type]));
-    //}
+    if (insn->type.kind != BC_TYPE_PTR) {
+        string_builder_dump_bytecode_type(sb, insn->type);
+        string_builder_push(sb, ".");
+    }
     string_builder_push(sb, bc_operator_names[insn->opcode]);
     string_builder_push(sb, " ");
 }
@@ -1566,29 +1593,6 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
             //}
         } break;
     }
-}
-
-void
-string_builder_dump_bytecode_type(String_Builder* sb, Bytecode_Type type) {
-    
-    switch (type.kind) {
-        case BC_TYPE_INT: {
-            if (type.flags & BC_FLAG_SIGNED) {
-                string_builder_push_format(sb, "s%", f_int((int) type.size*8));
-            } else {
-                string_builder_push_format(sb, "u%", f_int((int) type.size*8));
-            }
-        } break;
-        
-        case BC_TYPE_FLOAT: {
-            string_builder_push_format(sb, "f%", f_int((int) type.size*8));
-        } break;
-        
-        case BC_TYPE_PTR: {
-            string_builder_push(sb, "ptr");
-        } break;
-    }
-    
 }
 
 void

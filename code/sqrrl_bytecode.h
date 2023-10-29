@@ -104,13 +104,13 @@ global const cstring bc_operator_names[] = {
 };
 
 global const cstring bc_type_names[] = {
-    "int", "float", "ptr"
+    "ptr", "int", "float"
 };
 
 enum Bytecode_Type_Kind : u8 {
+    BC_TYPE_PTR,
     BC_TYPE_INT,
     BC_TYPE_FLOAT,
-    BC_TYPE_PTR,
 };
 
 enum Byytecode_Type_Flags {

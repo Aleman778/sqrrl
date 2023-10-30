@@ -34,6 +34,10 @@ __assert(cstring expression, string file, smm line) {
 // TODO(Alexander): we only have windows support atm. later on we import the correct header
 #include <win32_basic.sq>
 
+
+@intrinsic extern u64 rdtsc();
+
+
 #define PI_F32 3.1415926535897932385f
 
 f32
@@ -417,7 +421,7 @@ data_to_f64(Basic_Type_Info info, void* data) {
     return 0.0f;
 }
 
-internal void @dump_bytecode
+internal void
 string_print_unsigned_integer(String_Builder* sb, u64 integer) {
     if (integer == 0) {
         string_builder_push(sb, "0");

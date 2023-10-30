@@ -2993,6 +2993,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                                                 f_type(second)),
                                    expr->span);
                     }
+                    
                 } else if (operator_is_comparator(op)) {
                     if (second->kind != TypeKind_Pointer && second->kind != TypeKind_Function) {
                         

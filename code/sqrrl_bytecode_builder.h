@@ -355,7 +355,7 @@ bc_call_indirect(Bytecode_Builder* bc, Type* return_type, int func_ptr_index, s3
 
 inline int*
 bc_intrinsic(Bytecode_Builder* bc, Bytecode_Operator opcode, s32 ret_count, s32 arg_count) {
-    Bytecode_Call_Indirect* call = bc_instruction_varindices(bc, opcode, Bytecode_Call_Indirect, ret_count + arg_count);
+    Bytecode_Call_Indirect* call = bc_instruction_varindices(bc, opcode, Bytecode_Call_Indirect, arg_count);
     call->func_ptr_index = -1;
     call->ret_count = ret_count;
     call->arg_count = arg_count;

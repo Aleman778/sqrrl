@@ -747,6 +747,10 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             x64_rex(buf, REX_W);
             push_u8(buf, 0x09);
             x64_modrm_direct(buf, X64_RDX, X64_RAX);
+            
+            Bytecode_Call_Indirect* call = (Bytecode_Call_Indirect*) bc;
+            int* args = bc_call_args(call);
+            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, args[0], bc->type), X64_RAX);
         } break;
         
         default: {

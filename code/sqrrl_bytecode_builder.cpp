@@ -208,7 +208,7 @@ emit_function_call(Bytecode_Builder* bc, Type* type, array(Ast*)* args, Ast* var
         
         switch (type->Function.ident) {
             case Sym_rdtsc: {
-                int* arg_indices = bc_intrinsic(bc, BC_X64_RDTSC, 1, 0);
+                int* arg_indices = bc_intrinsic(bc, BC_X64_RDTSC, 1, 1);
                 arg_indices[0] = result_index;
                 handled = true;
             } break;
@@ -437,6 +437,22 @@ emit_initializing_expression(Bytecode_Builder* bc, Ast* expr, int dest_ptr) {
             //bc_memcpy(bc, dest_ptr, src_ptr, expr->type->size);
         } break;
         
+        case Ast_Ternary_Expr: {
+            bc_begin_block(bc);
+            bc_begin_block(bc);
+            int cond = add_bytecode_register(bc, t_bool);
+            emit_condition_expression(bc, expr->Ternary_Expr.first, cond, true);
+            bc_branch_if(bc, bc->block_depth, cond);
+            
+            emit_initializing_expression(bc, expr->Ternary_Expr.second, dest_ptr);
+            
+            bc_branch(bc, bc->block_depth - 1);
+            bc_end_block(bc);
+            
+            emit_initializing_expression(bc, expr->Ternary_Expr.third, dest_ptr);
+            bc_end_block(bc);
+        } break;
+        
         case Ast_Cast_Expr: {
             Type* t_dest = normalize_type_for_casting(expr->type);
             Type* t_src = normalize_type_for_casting(expr->Cast_Expr.expr->type);
@@ -459,38 +475,42 @@ emit_initializing_expression(Bytecode_Builder* bc, Ast* expr, int dest_ptr) {
             bc_memcpy(bc, dest_ptr, src_ptr, expr->type->size);
         } break;
         
+        case Ast_Paren_Expr: {
+            emit_initializing_expression(bc, expr->Paren_Expr.expr, dest_ptr);
+        } break;
+        
         default: unimplemented;
     }
 }
 
 void
-emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
+emit_value_expression(Bytecode_Builder* bc, Ast* expr, int result) {
     switch (expr->kind) {
         case Ast_None: {
-            bc_const_zero(bc, expr->type, _result);
+            bc_const_zero(bc, expr->type, result);
         } break;
         
         case Ast_Ident: {
             string_id ident = ast_unwrap_ident(expr);
             Bc_Local local = map_get(bc->locals, ident);
             if (local.ptr != -1) { 
-                if (_result != -1) {
-                    bc_load(bc, expr->type, _result, local.ptr);
+                if (result != -1) {
+                    bc_load(bc, expr->type, result, local.ptr);
                 }
             } else if (local.val != -1) {
-                if (_result != -1) {
-                    bc_copy(bc, _result, local.val);
+                if (result != -1) {
+                    bc_copy(bc, result, local.val);
                 }
             } else {
                 int src = emit_reference_expression(bc, expr);
-                bc_copy(bc, _result, src);
+                bc_copy(bc, result, src);
             }
         } break;
         
         case Ast_Exported_Data: {
             int global_index = add_bytecode_global(bc, expr->Exported_Data);
-            if (_result != -1) {
-                bc_global(bc, _result, global_index);
+            if (result != -1) {
+                bc_global(bc, result, global_index);
             }
         } break;
         
@@ -498,13 +518,13 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
             Type* type = expr->type;
             if (is_integer(expr->Value)) {
                 // TODO(Alexander): is value_to_s64 safe to use?
-                bc_const_int(bc, type, _result, value_to_s64(expr->Value));
+                bc_const_int(bc, type, result, value_to_s64(expr->Value));
                 
             } else if (is_floating(expr->Value)) {
                 if (type->size == 8) {
-                    bc_const_f64(bc, _result, (f64) expr->Value.data.floating);
+                    bc_const_f64(bc, result, (f64) expr->Value.data.floating);
                 } else {
-                    bc_const_f32(bc, _result, (f32) expr->Value.data.floating);
+                    bc_const_f32(bc, result, (f32) expr->Value.data.floating);
                 }
             } else if (is_cstring(expr->Value)) {
                 if (expr->Value.data.cstr) {
@@ -513,9 +533,9 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
                     int global_index = add_bytecode_global(bc, BC_MEM_READ_ONLY,
                                                            string_count + 1, 1,
                                                            (void*) expr->Value.data.cstr);
-                    bc_global(bc, _result, global_index);
+                    bc_global(bc, result, global_index);
                 } else {
-                    bc_const_int(bc, t_void_ptr, _result, 0);
+                    bc_const_int(bc, t_void_ptr, result, 0);
                 }
             } else {
                 verify_not_reached();
@@ -526,13 +546,13 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
             Type* result_type = expr->type;
             Type* type = expr->Unary_Expr.first->type;
             Operator op = expr->Unary_Expr.op;
-            Bytecode_Type bc_result_type = to_bytecode_type(result_type);
+            Bytecode_Type bcresult_type = to_bytecode_type(result_type);
             
             switch (op) {
                 case Op_Address_Of: {
                     int ref = emit_reference_expression(bc, expr->Unary_Expr.first);
-                    if (_result != ref) {
-                        bc_copy(bc, _result, ref);
+                    if (result != ref) {
+                        bc_copy(bc, result, ref);
                     }
                 } break;
                 
@@ -540,9 +560,9 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
                     if (type->kind == TypeKind_Pointer) {
                         int ptr = add_bytecode_register(bc);
                         emit_value_expression(bc, expr->Unary_Expr.first, ptr);
-                        bc_load(bc, result_type, _result, ptr);
+                        bc_load(bc, result_type, result, ptr);
                     } else {
-                        emit_value_expression(bc, expr->Unary_Expr.first, _result);
+                        emit_value_expression(bc, expr->Unary_Expr.first, result);
                     }
                 } break;
                 
@@ -552,9 +572,9 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
                     if (local.ptr == -1) {
                         Bytecode_Operator opcode = (op == Op_Post_Increment || 
                                                     op == Op_Pre_Increment) ? BC_INC : BC_DEC;
-                        bc_unary_arith(bc, bc_result_type, opcode, local.val, local.val);
-                        if (_result != -1) {
-                            bc_copy(bc, _result, local.val);
+                        bc_unary_arith(bc, bcresult_type, opcode, local.val, local.val);
+                        if (result != -1) {
+                            bc_copy(bc, result, local.val);
                         }
                     } else {
                         unimplemented;
@@ -567,15 +587,15 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
                     
                     Bc_Local local = emit_reference_expression2(bc, expr->Unary_Expr.first);
                     if (local.ptr == -1) {
-                        if (_result != -1) {
-                            bc_copy(bc, _result, local.val);
+                        if (result != -1) {
+                            bc_copy(bc, result, local.val);
                         }
                         emit_unary_increment(bc, type, local.val, is_increment);
                         
                     } else {
                         int first_ptr = local.ptr;
-                        if (_result != -1) {
-                            bc_load(bc, type, _result, first_ptr);
+                        if (result != -1) {
+                            bc_load(bc, type, result, first_ptr);
                         }
                         int new_first = add_bytecode_register(bc);
                         bc_load(bc, type, new_first, first_ptr);
@@ -585,23 +605,23 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
                 } break;
                 
                 case Op_Bitwise_Not: {
-                    emit_value_expression(bc, expr->Unary_Expr.first, _result);
-                    if (_result != -1) {
-                        bc_unary_arith(bc, bc_result_type, BC_NOT, _result, _result);
+                    emit_value_expression(bc, expr->Unary_Expr.first, result);
+                    if (result != -1) {
+                        bc_unary_arith(bc, bcresult_type, BC_NOT, result, result);
                     }
                 } break;
                 
                 case Op_Logical_Not: {
-                    emit_value_expression(bc, expr->Unary_Expr.first, _result);
-                    if (_result != -1) {
-                        emit_zero_compare(bc, type, _result, _result, false);
+                    emit_value_expression(bc, expr->Unary_Expr.first, result);
+                    if (result != -1) {
+                        emit_zero_compare(bc, type, result, result, false);
                     }
                 } break;
                 
                 case Op_Negate: {
-                    emit_value_expression(bc, expr->Unary_Expr.first, _result);
-                    if (_result != -1) {
-                        bc_unary_arith(bc, bc_result_type, BC_NEG, _result, _result);
+                    emit_value_expression(bc, expr->Unary_Expr.first, result);
+                    if (result != -1) {
+                        bc_unary_arith(bc, bcresult_type, BC_NEG, result, result);
                     }
                 } break;
                 
@@ -618,7 +638,7 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
                 array(Ast*)* args = 0;
                 array_push(args, expr->Binary_Expr.first);
                 array_push(args, expr->Binary_Expr.second);
-                emit_function_call(bc, expr->Binary_Expr.overload, args, 0, _result, -1);
+                emit_function_call(bc, expr->Binary_Expr.overload, args, 0, result, -1);
                 array_free(args);
                 
             } else if (op == Op_Logical_And) {
@@ -632,11 +652,11 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
                 emit_condition_expression(bc, expr->Binary_Expr.second, cond, true);
                 bc_branch_if(bc, bc->block_depth, cond);
                 
-                bc_const_int(bc, t_bool, _result, true);
+                bc_const_int(bc, t_bool, result, true);
                 bc_branch(bc, bc->block_depth - 1);
                 bc_end_block(bc);
                 
-                bc_const_int(bc, t_bool, _result, false);
+                bc_const_int(bc, t_bool, result, false);
                 bc_end_block(bc);
                 
             } else if (op == Op_Logical_Or) {
@@ -650,11 +670,11 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
                 emit_condition_expression(bc, expr->Binary_Expr.second, cond, false);
                 bc_branch_if(bc, bc->block_depth, cond);
                 
-                bc_const_int(bc, t_bool, _result, false);
+                bc_const_int(bc, t_bool, result, false);
                 bc_branch(bc, bc->block_depth - 1);
                 bc_end_block(bc);
                 
-                bc_const_int(bc, t_bool, _result, true);
+                bc_const_int(bc, t_bool, result, true);
                 bc_end_block(bc);
                 
             } else if (operator_is_assign(op)) {
@@ -666,7 +686,7 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
                 Bytecode_Operator opcode = to_bytecode_opcode(op, type);
                 emit_binary_expression(bc, opcode, 
                                        expr->Binary_Expr.first,
-                                       expr->Binary_Expr.second, _result);
+                                       expr->Binary_Expr.second, result);
             }
         } break;
         
@@ -677,12 +697,12 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
             emit_condition_expression(bc, expr->Ternary_Expr.first, cond, true);
             bc_branch_if(bc, bc->block_depth, cond);
             
-            emit_value_expression(bc, expr->Ternary_Expr.second, _result);
+            emit_value_expression(bc, expr->Ternary_Expr.second, result);
             
             bc_branch(bc, bc->block_depth - 1);
             bc_end_block(bc);
             
-            emit_value_expression(bc, expr->Ternary_Expr.third, _result);
+            emit_value_expression(bc, expr->Ternary_Expr.third, result);
             bc_end_block(bc);
         } break;
         
@@ -701,17 +721,17 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
                 emit_value_expression(bc, expr->Call_Expr.ident, function_ptr);
             }
             
-            emit_function_call(bc, type, args, expr->Call_Expr.var_args, _result, function_ptr);
+            emit_function_call(bc, type, args, expr->Call_Expr.var_args, result, function_ptr);
             array_free(args);
         } break;
         
         case Ast_Cast_Expr: {
-            emit_type_cast(bc, expr, _result);
+            emit_type_cast(bc, expr, result);
         } break;
         
         case Ast_Index_Expr: {
             int ptr = emit_reference_expression(bc, expr);
-            bc_load(bc, expr->type, _result, ptr);
+            bc_load(bc, expr->type, result, ptr);
         } break;
         
         case Ast_Field_Expr: {
@@ -719,14 +739,14 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int _result) {
             Type* type = expr->Field_Expr.var->type;
             if (type->kind == TypeKind_Array && type->Array.kind == ArrayKind_Fixed_Inplace) {
                 // TODO: for inplace arrays the field expression is essentially a noop
-                bc_copy(bc, _result, ptr);
+                bc_copy(bc, result, ptr);
             } else {
-                bc_load(bc, expr->type, _result, ptr);
+                bc_load(bc, expr->type, result, ptr);
             }
         } break;
         
         case Ast_Paren_Expr: {
-            emit_value_expression(bc, expr->Paren_Expr.expr, _result);
+            emit_value_expression(bc, expr->Paren_Expr.expr, result);
         } break;
         
         default: {
@@ -780,7 +800,7 @@ emit_binary_arithmetic(Bytecode_Builder* bc, Bytecode_Operator opcode,
                        Type* type, int result, int first, int second) {
     assert(opcode != BC_NOOP);
     
-    if (type->kind == TypeKind_Pointer) {
+    if (type->kind == TypeKind_Pointer && (opcode == BC_ADD || opcode == BC_SUB)) {
         if (opcode == BC_SUB) {
             int tmp = add_bytecode_register(bc, t_s64);
             Bytecode_Type tmp_type = to_bytecode_type(t_s64);
@@ -1038,7 +1058,9 @@ emit_statement(Bytecode_Builder* bc, Ast* stmt, s32 break_label, s32 continue_la
             bc_end_block(bc);
             
             // Update
-            emit_value_expression(bc, stmt->For_Stmt.update, -1);
+            if (is_valid_ast(stmt->For_Stmt.update)) {
+                emit_value_expression(bc, stmt->For_Stmt.update, -1);
+            }
             bc_branch(bc, bc->block_depth);
             
             // Exit
@@ -1222,6 +1244,7 @@ add_bytecode_function(Bytecode_Builder* bc, Type* type) {
     func->ret_count = ret_count;
     func->arg_count = arg_count;
     func->is_variadic = type->Function.is_variadic;
+    func->is_intrinsic = type->Function.is_intrinsic;
     
     bc->curr_function = func;
     bc->curr_insn = 0;
@@ -1449,6 +1472,7 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
             string_builder_dump_bytecode_call_args(sb, call->arg_count, args, func->ret_count);
         } break;
         
+        case BC_X64_RDTSC:
         case BC_CALL_INDIRECT: {
             Bytecode_Call_Indirect* call = (Bytecode_Call_Indirect*) insn;
             int* args = bc_call_args(call);
@@ -1457,7 +1481,9 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
             }
             string_builder_dump_bytecode_opcode(sb, insn);
             
-            string_builder_push_format(sb, "r%", f_int(call->func_ptr_index));
+            if (call->func_ptr_index >= 0) {
+                string_builder_push_format(sb, "r%", f_int(call->func_ptr_index));
+            }
             string_builder_dump_bytecode_call_args(sb, call->arg_count, args, call->ret_count);
         } break;
         

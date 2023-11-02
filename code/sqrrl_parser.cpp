@@ -734,6 +734,7 @@ parse_assign_statement(Parser* parser, Ast* type, Ast* ident=0) {
     result->Assign_Stmt.type = type;
     result->Assign_Stmt.ident = ident ? ident : parse_identifier(parser);
     
+#if 0
     if (peek_token_match(parser, Token_Comma, false)) {
         Ast* ident_list_cont = parse_prefixed_compound(parser, Token_Comma, 
                                                        &parse_actual_identifier);
@@ -743,6 +744,7 @@ parse_assign_statement(Parser* parser, Ast* type, Ast* ident=0) {
         ident_list_head->Compound.next = ident_list_cont;
         result->Assign_Stmt.ident = ident_list_head;
     }
+#endif
     
     if (next_token_if_matched(parser, Token_Assign, false)) {
         result->Assign_Stmt.expr = parse_expression(parser);

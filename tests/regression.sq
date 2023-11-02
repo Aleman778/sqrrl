@@ -1,4 +1,14 @@
 
+struct s128 {
+    s64 high;
+    s64 low;
+}
+
+struct v2_s32 {
+    s32 x;
+    s32 y;
+}
+
 void
 @test_proc
 struct_assignment_using_ternary_operator() {
@@ -10,19 +20,19 @@ struct_assignment_using_ternary_operator() {
     assert(y.low == 20);
 }
 
-void
-@test_proc
-ternary_operator() {
-    int x = 10;
-    int y = x > 5 ? 20 : 5;
-    assert(y == 20);
-    
-    x = 2;
-    y = x > 5 ? 20 : 5;
-    assert(y == 5);
+
+#define is_bit_set(var, x) ((var) & (1 << (x)))
+
+enum Entity_State: s32 {
+    Foo,
+    Bar
 }
 
-inline bool
+struct Entity {
+    Entity_State states;
+}
+
+inline bool @dump_bytecode @dump_ast
 bitflag_operations_is_set(Entity* entity) {
     return (bool) is_bit_set(entity.states, 9);
 }
@@ -52,36 +62,43 @@ sign_macro() {
     assert(signedValue == sign(value));
 }
 
-void
-@test_proc
-struct_assignment_from_ptr_deref() {
-    v4s foo = {z: 10};
-    v4s* pfoo = &foo;
-    v4s bar = *pfoo;
-    foo.z = 20; // won't overwrite bar
-    
-    assert(bar.z == 10);
-}
 
-void
-@test_proc
-struct_assignment_assigning_from_and_to_ptr_deref() {
-    [2]v4s foo = {};
-    foo[0].x = 10;
-    foo[0].y = 30;
-    foo[0].w = 21;
-    foo[1].x = 20;
-    foo[1].y = 40;
-    foo[1].w = 32;
-    
-    v4s* zero = &foo[0];
-    v4s* one = &foo[1];
-    int* zero_w = &zero.w;
-    *zero = *one;
-    
-    assert(*zero_w == 32);
-}
+struct Game_Button_State {
+    s32 num_half_transitions;
+    s32 ended_down;
+};
 
+struct Game_Controller {
+    s32 is_connected; // NOTE(Alexander): controller 0 is always connected
+    s32 is_analog; // NOTE(Alexander): do we have anlogue sticks or digital buttons
+    
+    s32 is_cursor_absolute; // NOTE(Alexander): is the cursor behaving like a mouse absolute screen position, or relative for stick.
+    
+    union {
+        [9]Game_Button_State buttons;
+        struct {
+            // NOTE(Alexander): movement buttons (dpad or keyboard)
+            Game_Button_State move_up;
+            Game_Button_State move_right;
+            Game_Button_State move_down;
+            Game_Button_State move_left;
+            
+            // NOTE(Alexander): action buttons
+            Game_Button_State run;
+            Game_Button_State jump;
+            Game_Button_State action;
+            Game_Button_State block_place;
+            
+            Game_Button_State pause;
+        };
+    };
+    // TODO(alexander): add more buttons later...
+};
+
+inline bool
+is_down(Game_Button_State state) {
+    return (bool) state.ended_down;
+}
 
 internal void
 process_button_state_change(Game_Button_State* new_state, s32 is_down) {
@@ -138,8 +155,27 @@ xinput_digital_button() {
     assert(new_button.ended_down);
 }
 
-#if 0
 
+int s_global = 10;
+
+int
+shadow_s_global() {
+    int x; int y; int z;
+    int s_global = 20;
+    // TODO: what if shadow goes out of scope we need to then point to the global
+    return s_global;
+}
+
+void
+@test_proc
+main() {
+    // make sure s_global isn't referenced from function above
+    shadow_s_global();
+    assert(s_global == 10);
+}
+
+// TODO: Add the rest of the regression tests
+#if 0
 union v2 {
     struct {
         f32 x, y;
@@ -219,7 +255,6 @@ main() {
     
     return (int) p1.y;
 }
-;
 
 
 int 

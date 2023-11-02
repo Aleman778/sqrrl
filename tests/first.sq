@@ -7,7 +7,7 @@
 #include "vector_math.sq"
 #include "fixed_array.sq"
 #include "switch.sq"
-
+#include "regression.sq"
 
 void
 @test_proc
@@ -191,6 +191,18 @@ int_not_equals_operator() {
     bool y0 = x != 5;  assert(y0);
     bool y1 = x != 10; assert(!y1);
     bool y2 = x != 15; assert(y2);
+}
+
+void
+@test_proc
+ternary_operator() {
+    int x = 10;
+    int y = x > 5 ? 20 : 5;
+    assert(y == 20);
+    
+    x = 2;
+    y = x > 5 ? 20 : 5;
+    assert(y == 5);
 }
 
 void

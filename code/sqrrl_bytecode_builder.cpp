@@ -72,6 +72,32 @@ emit_reference_expression(Bytecode_Builder* bc, Ast* expr) {
             }
         } break;
         
+        case Ast_Binary_Expr: {
+            assert(is_valid_type(expr->type) && is_aggregate_type(expr->type));
+            result = bc_local(bc, expr->type);
+            
+            if (expr->Binary_Expr.overload) {
+                array(Ast*)* args = 0;
+                array_push(args, expr->Binary_Expr.first);
+                array_push(args, expr->Binary_Expr.second);
+                emit_function_call(bc, expr->Binary_Expr.overload, args, 0, result, -1);
+                array_free(args);
+                
+            } else {
+                Operator op = expr->Binary_Expr.op;
+                assert(op == Op_Add || op == Op_Subtract);
+                
+                verify_not_reached();
+            }
+            
+        } break;
+        
+        case Ast_Call_Expr: {
+            assert(is_valid_type(expr->type) && is_aggregate_type(expr->type));
+            result = bc_local(bc, expr->type);
+            emit_value_expression(bc, expr, result);
+        } break;
+        
         case Ast_Cast_Expr: {
             Type* t_dest = normalize_type_for_casting(expr->type);
             Type* t_src = normalize_type_for_casting(expr->Cast_Expr.expr->type);
@@ -492,18 +518,21 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int result) {
         
         case Ast_Ident: {
             string_id ident = ast_unwrap_ident(expr);
-            Bc_Local local = map_get(bc->locals, ident);
-            if (local.ptr != -1) { 
-                if (result != -1) {
-                    bc_load(bc, expr->type, result, local.ptr);
-                }
-            } else if (local.val != -1) {
-                if (result != -1) {
-                    bc_copy(bc, result, local.val);
+            smm local_index = map_get_index(bc->locals, ident); 
+            if (local_index != -1) {
+                Bc_Local local = bc->locals[local_index].value;
+                if (local.ptr != -1) { 
+                    if (result != -1) {
+                        bc_load(bc, expr->type, result, local.ptr);
+                    }
+                } else {
+                    if (result != -1) {
+                        bc_copy(bc, result, local.val);
+                    }
                 }
             } else {
                 int src = emit_reference_expression(bc, expr);
-                bc_copy(bc, result, src);
+                bc_load(bc, expr->type,result, src);
             }
         } break;
         
@@ -760,17 +789,24 @@ emit_value_fetch_expression(Bytecode_Builder* bc, Ast* expr, int result) {
     // Fetch the value directly without making unnecessary copies
     if (expr->kind == Ast_Ident) {
         string_id ident = ast_unwrap_ident(expr);
-        Bc_Local local = map_get(bc->locals, ident);
-        if (local.ptr != -1) {
+        smm local_index = map_get_index(bc->locals, ident); 
+        if (local_index != -1) {
+            Bc_Local local = bc->locals[local_index].value;
+            if (local.ptr != -1) {
+                if (result == -1) {
+                    result = add_bytecode_register(bc);
+                }
+                bc_load(bc, expr->type, result, local.ptr);
+                
+            } else {
+                result = local.val;
+            }
+        } else {
             if (result == -1) {
                 result = add_bytecode_register(bc);
             }
-            bc_load(bc, expr->type, result, local.ptr);
-            
-        } else if (local.val != -1) {
-            result = local.val;
-        } else {
-            result = emit_reference_expression(bc, expr);
+            int ref = emit_reference_expression(bc, expr);
+            bc_load(bc, expr->type, result, ref);
         }
         
     } else {
@@ -882,6 +918,7 @@ emit_type_cast(Bytecode_Builder* bc, Ast* expr, int result) {
         if (t_dest->Basic.flags & BasicFlag_Boolean &&
             t_src->Basic.flags & BasicFlag_Integer) {
             emit_condition_expression(bc, expr->Cast_Expr.expr, result, false);
+            return;
             
         } else if (t_dest->Basic.flags & BasicFlag_Integer &&
                    t_src->Basic.flags & BasicFlag_Integer) {
@@ -1188,6 +1225,8 @@ emit_function(Bytecode_Builder* bc, Bytecode_Function* func, Ast* ast,
     if (!is_valid_ast(ast->Decl_Stmt.stmt)) {
         return 0;
     }
+    
+    map_free(bc->locals);
     
     Type* type = ast->type;
     

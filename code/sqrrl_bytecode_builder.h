@@ -94,7 +94,8 @@ to_bytecode_type(Type* type) {
 inline Type*
 normalize_type_for_casting(Type* type) {
     // Make similar types 
-    if (type->kind == TypeKind_Pointer || 
+    if (type->kind == TypeKind_Pointer ||
+        type->kind == TypeKind_Function || 
         type->kind == TypeKind_Type || 
         type == t_cstring) {
         
@@ -409,6 +410,7 @@ bc_end_block(Bytecode_Builder* bc) {
     bc->block_depth--;
 }
 
+void string_builder_dump_bytecode_globals(String_Builder* sb, Bytecode* bc);
 void string_bc_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Instruction* insn);
 void string_bc_dump_bytecode(String_Builder* sb, Bytecode* bc, Bytecode_Function* func, Type* type=0);
 void string_builder_dump_bytecode_function(String_Builder* sb, Bytecode* bc, Bytecode_Function* func);

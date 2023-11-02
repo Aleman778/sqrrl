@@ -1,5 +1,27 @@
 #include <test_support.sq>
 
+struct RecChild {
+    int x;
+    int y;
+}
+
+struct RecParent {
+    RecChild c;
+    int z;
+}
+
+void
+@test_proc
+recursive_struct_literals() {
+    int x = 10;
+    int y = 20;
+    int z = 30;
+    
+    RecParent f = { { x, y }, z };
+    assert(f.c.x + f.c.y + f.z == 60);
+}
+
+
 struct Soa {
     [3]int ints;
     [3]f32 floats;
@@ -14,6 +36,7 @@ soa_struct_initializer() {
     assert(s.ints[2] == x);
     assert(s.floats[1] == y);
 }
+
 
 struct Game_Summary {
     int id;
@@ -37,4 +60,41 @@ aos_struct_initializer() {
     assert(catalog[0].review_score == review_scope0);
     assert(catalog[1].name.data == name1.data);
     assert(catalog[2].id == 609);
+}
+
+struct v4s {
+    s32 x;
+    s32 y;
+    s32 z;
+    s32 w;
+}
+
+void
+@test_proc
+struct_assignment_from_ptr_deref() {
+    v4s foo = {z: 10};
+    v4s* pfoo = &foo;
+    v4s bar = *pfoo;
+    foo.z = 20; // won't overwrite bar
+    
+    assert(bar.z == 10);
+}
+
+void
+@test_proc
+struct_assignment_assigning_from_and_to_ptr_deref() {
+    [2]v4s foo = {};
+    foo[0].x = 10;
+    foo[0].y = 30;
+    foo[0].w = 21;
+    foo[1].x = 20;
+    foo[1].y = 40;
+    foo[1].w = 32;
+    
+    v4s* zero = &foo[0];
+    v4s* one = &foo[1];
+    int* zero_w = &zero.w;
+    *zero = *one;
+    
+    assert(*zero_w == 32);
 }

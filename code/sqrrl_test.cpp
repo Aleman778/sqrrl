@@ -212,6 +212,26 @@ run_compiler_tests(string filename,
         }
     }
     
+    // Print the bytecode
+    String_Builder sb = {};
+    for_array(ast_file.units, cu, _4) {
+        if (cu->ast && cu->ast->type && 
+            cu->ast->type->kind == TypeKind_Function &&
+            cu->ast->type->Function.dump_bytecode) {
+            
+            string_builder_dump_bytecode_function(&sb, &bytecode_builder.bytecode,
+                                                  cu->bytecode_function);
+        }
+    }
+    if (sb.data) {
+        string_builder_dump_bytecode_globals(&sb, &bytecode_builder.bytecode);
+        
+        string s = string_builder_to_string_nocopy(&sb);
+        pln("\nBytecode:\n%", f_string(s));
+        string_builder_free(&sb);
+    }
+    
+    
     // Compile to x64 code
     Buffer buf = {};
     buf.data = (u8*) asm_buffer;

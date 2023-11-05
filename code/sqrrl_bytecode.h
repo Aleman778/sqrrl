@@ -28,9 +28,10 @@ enum Bytecode_Operator : u8 {
     BC_FIELD_ACCESS, // ptr x := a.b (or (u8*) a + offset(b)
     
     // Memory
-    BC_COPY,   // x := y
-    BC_STORE,  // *x := y
-    BC_LOAD,   // x := *y
+    BC_COPY,   // res  = src
+    BC_STORE,  // *res = src
+    BC_LOAD,   // res = *src
+    BC_LEA,    // res = &src
     BC_MEMCPY, // memcpy(dest, src, size)
     BC_MEMSET, // memset(dest, val, size)
     
@@ -91,7 +92,7 @@ global const cstring bc_operator_names[] = {
     /* Constants:        */ "const", "const", "const",
     /* Pointers:         */ "local", "global", "function", "array_access",
     /*                   */ "field_access",
-    /* Memory:           */ "copy", "store", "load", "memcpy", "memset",
+    /* Memory:           */ "copy", "store", "load", "lea", "memcpy", "memset",
     /* Conversions:      */ "truncate", "extend", "int_to_float", "float_to_int", "float_to_float",
     /*                   */ "reinterpret_f2i",
     /* Unary:            */ "neg", "not", "inc", "dec",

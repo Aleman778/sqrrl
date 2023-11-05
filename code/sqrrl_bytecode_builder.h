@@ -1,8 +1,13 @@
 
+struct Bc_Local {
+    int index;
+    bool is_ref;
+};
+
 struct Bytecode_Builder {
     Memory_Arena arena;
     
-    map(string_id, int)* locals;
+    map(string_id, Bc_Local)* locals;
     map(string_id, int)* globals;
     
     Bytecode_Function* curr_function;
@@ -105,9 +110,19 @@ normalize_type_for_casting(Type* type) {
 }
 
 inline int
-add_bytecode_register(Bytecode_Builder* bc, Type* type=0) {
+add_register(Bytecode_Builder* bc, Type* type=0) {
     assert(bc->curr_function);
+    //pln("Added register r%", f_int(bc->curr_function->register_count));
     return bc->curr_function->register_count++;
+}
+
+inline void
+drop_register(Bytecode_Builder* bc, int index) {
+    assert(bc->curr_function);
+    assert(index >= 0 && "invalid register");
+    //pln("Dropped register r%", f_int(index));
+    // TODO: add drop instruction
+    //return bc->curr_function->register_count++;
 }
 
 void emit_value_expression(Bytecode_Builder* bc, Ast* expr, int result=-1);
@@ -123,7 +138,7 @@ inline void emit_unary_increment(Bytecode_Builder* bc, Type* type, int result, b
 inline void emit_binary_expression(Bytecode_Builder* bc, Bytecode_Operator opcode,
                                    Ast* lexpr, Ast* rexpr, int result);
 inline void emit_assignment_expression(Bytecode_Builder* bc, Bytecode_Operator opcode,
-                                       Ast* lexpr, Ast* rexpr);
+                                       Ast* lexpr, Ast* rexpr, int result=-1);
 
 inline void emit_zero_compare(Bytecode_Builder* bc, Type* type, int result, int value, bool invert_condition);
 
@@ -256,8 +271,13 @@ bc_load(Bytecode_Builder* bc, Type* type, int dest, int src) {
 }
 
 inline int
+bc_lea(Bytecode_Builder* bc, int dest, int src) {
+    return bc_assignment(bc, BC_LEA, BC_PTR, dest, src);
+}
+
+inline int
 bc_store(Bytecode_Builder* bc, int dest, int src) {
-    return bc_assignment(bc, BC_STORE, BC_PTR, dest, src);
+    return bc_assignment(bc, BC_STORE, BC_VOID, dest, src);
 }
 
 inline int
@@ -372,7 +392,7 @@ bc_global(Bytecode_Builder* bc, int res_index, int global_index) {
 inline int
 bc_local(Bytecode_Builder* bc, Type* type) {
     assert(bc->curr_function);
-    int result = add_bytecode_register(bc, t_void_ptr);
+    int result = add_register(bc, t_void_ptr);
     Bytecode_Local* insn =  bc_instruction(bc, BC_LOCAL, Bytecode_Local);
     insn->type = BC_PTR;
     insn->res_index = result;

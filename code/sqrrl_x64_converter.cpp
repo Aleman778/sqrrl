@@ -14,7 +14,7 @@ convert_bytecode_to_x64_machine_code(Bytecode* bytecode, Buffer* buf,
     
     u8* main_function_ptr = buf->data;
     for_array_v(bytecode->functions, func, func_index) {
-        //pln("Compiling function `%`...", f_var(bytecode->function_names[func->type_index]));
+        pln("Compiling function `%`...", f_var(bytecode->function_names[func->type_index]));
         if (bytecode->entry_func_index == func_index) {
             main_function_ptr = buf->data + buf->curr_used;
         }
@@ -126,33 +126,13 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
             Bytecode_Function_Arg formal_arg = formal_args[arg_index];
             
             s64 src = arg_index*8;
-            s32 size = formal_arg.size;
-            s32 align = formal_arg.align;
-            if (arg_index == 0 && func->return_as_first_arg) {
-                // Only copy the pointer from return argument
-                size = 8; align = 8;
-            }
+            s64 dest = register_stack_alloc(x64, arg_index, formal_arg.type, 8, 8, false);
             
-            if (size < 8) {
-                size = 8; align = 8;
-            }
-            
-            s64 dest = register_stack_alloc(x64, arg_index, formal_arg.type, size, align, size > 8);
-            if (size == 8) {
-                // Load source value
-                // REX.W + 8B /r 	MOV RAX, RSP + disp 	RM
-                callee_args_disp[arg_index] =
-                    x64_move_memory_to_register_disp(buf, X64_RAX, X64_RSP, src);
-                x64_move_register_to_memory(buf, X64_RSP, dest, X64_RAX);
-                
-            } else {
-                // TODO(Alexander): we shouldn't copy this!!!
-                x64_lea(buf, X64_RDI, X64_RSP, dest);
-                callee_args_disp[arg_index] =
-                    x64_move_memory_to_register_disp(buf, X64_RSI, X64_RSP, src);
-                x64_move_immediate_to_register(buf, X64_RCX, size);
-                x64_rep_movsb(buf, X64_RDI, X64_RSI, X64_RCX);
-            }
+            // Load source value
+            // REX.W + 8B /r 	MOV RAX, RSP + disp 	RM
+            callee_args_disp[arg_index] =
+                x64_move_memory_to_register_disp(buf, X64_RAX, X64_RSP, src);
+            x64_move_register_to_memory(buf, X64_RSP, dest, X64_RAX);
         }
     }
     s32* variadic_data_ptr = 0;
@@ -422,6 +402,11 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             x64_move_register_to_memory(buf, X64_RSP,
                                         register_displacement(x64, bc->res_index, bc->type),
                                         X64_RAX);
+        } break;
+        
+        case BC_LEA: {
+            x64_lea(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->a_index));
+            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index, bc->type), X64_RAX);
         } break;
         
         case BC_CALL: {

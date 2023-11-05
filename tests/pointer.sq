@@ -5,7 +5,7 @@ struct Two_Int_Pointers  {
 };
 
 void
-@test_proc
+@test_proc @dump_bytecode
 pointer_assign_through_struct_access() {
     int num1 = 10;
     int num2 = 20;
@@ -43,7 +43,7 @@ pointer_assign_through_subscript() {
 }
 
 void
-@test_proc
+@test_proc @dump_bytecode
 pointer_assign_through_dereference() {
     []int a = { 10, 20 };
     int* x = a.data;

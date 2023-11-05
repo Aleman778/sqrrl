@@ -1,1 +1,1 @@
-call build_msvc.bat
+ build_msvc.bat

@@ -126,6 +126,10 @@ print(const char* format...) {
                     print_ast(va_arg(args, Ast*), 0);
                 } break;
                 
+                case FormatType_bytecode_type: {
+                    print_bytecode_type(va_arg(args, Bytecode_Type));
+                } break;
+                
                 case FormatType_type: {
                     print_type(va_arg(args, Type*));
                 } break;
@@ -233,6 +237,17 @@ format_sprintf(char* dst, umm dst_size, Format_Type type, va_list args) {
             result.count = snprintf(dst, dst_size, "%.*s", (int) str.count, (char*) str.data);
         } break;
         
+        case FormatType_bytecode_type: {
+            String_Builder sb = {};
+            string_builder_alloc(&sb, 3);
+            string_builder_push(&sb, type);
+            Bytecode_Type bytecode_type = va_arg(args, Bytecode_Type);
+            string_builder_dump_bytecode_type(&sb, bytecode_type);
+            string str = string_builder_to_string_nocopy(&sb);
+            result.count = snprintf(dst, dst_size, "%.*s", (int) str.count, (char*) str.data);
+            string_builder_free(&sb);
+        } break;
+        
         case FormatType_memory_string: {
             Memory_String str = va_arg(args, Memory_String);
             umm count = memory_string_count(str);
@@ -268,6 +283,10 @@ string_builder_push_data_format(String_Builder* sb, Format_Type type, va_list ar
         
         case FormatType_type: {
             string_builder_push(sb, va_arg(result, Type*));
+        } break;
+        
+        case FormatType_bytecode_type: {
+            string_builder_dump_bytecode_type(sb, va_arg(result, Bytecode_Type));
         } break;
         
         default: {

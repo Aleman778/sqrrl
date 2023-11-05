@@ -1,13 +1,8 @@
 
-struct Bc_Local {
-    int ptr; // if ptr == -1 then use val instead
-    int val;
-};
-
 struct Bytecode_Builder {
     Memory_Arena arena;
     
-    map(string_id, Bc_Local)* locals;
+    map(string_id, int)* locals;
     map(string_id, int)* globals;
     
     Bytecode_Function* curr_function;
@@ -117,7 +112,7 @@ add_bytecode_register(Bytecode_Builder* bc, Type* type=0) {
 
 void emit_value_expression(Bytecode_Builder* bc, Ast* expr, int result=-1);
 
-int emit_value_fetch_expression(Bytecode_Builder* bc, Ast* expr, int result=-1);
+int emit_value_fetch_expression(Bytecode_Builder* bc, Ast* expr);
 
 int emit_reference_expression(Bytecode_Builder* bc, Ast* expr);
 
@@ -267,7 +262,7 @@ bc_store(Bytecode_Builder* bc, int dest, int src) {
 
 inline int
 bc_copy(Bytecode_Builder* bc, int dest, int src) {
-    return bc_assignment(bc, BC_COPY, BC_PTR, dest, src);
+    return bc_assignment(bc, BC_COPY, BC_VOID, dest, src);
 }
 
 inline int
@@ -278,6 +273,7 @@ bc_cast(Bytecode_Builder* bc, Bytecode_Operator opcode, Type* type, int dest, in
 inline int 
 bc_field_access(Bytecode_Builder* bc, int res_index, int base, s32 offset) {
     Bytecode_Field_Access* insn = bc_instruction(bc, BC_FIELD_ACCESS, Bytecode_Field_Access);
+    insn->type = BC_PTR;
     insn->res_index = res_index;
     insn->base = base;
     insn->offset = offset;
@@ -308,6 +304,7 @@ bc_array_access(Bytecode_Builder* bc, Type* elem_type,
     //assert(bc_type.kind == BC_TYPE_PTR && "expected array base to be BC_TYPE_PTR");
     
     Bytecode_Array_Access* insn = bc_instruction(bc, BC_ARRAY_ACCESS, Bytecode_Array_Access);
+    insn->type = BC_PTR;
     insn->res_index = res_index;
     insn->base = base;
     insn->index = index;
@@ -366,6 +363,7 @@ bc_intrinsic(Bytecode_Builder* bc, Bytecode_Operator opcode, s32 ret_count, s32 
 inline int
 bc_global(Bytecode_Builder* bc, int res_index, int global_index) {
     Bytecode_Assign* insn = bc_instruction(bc, BC_GLOBAL, Bytecode_Assign);
+    insn->type = BC_PTR;
     insn->dest_index = res_index;
     insn->src_index = global_index;
     return insn->dest_index;
@@ -376,6 +374,7 @@ bc_local(Bytecode_Builder* bc, Type* type) {
     assert(bc->curr_function);
     int result = add_bytecode_register(bc, t_void_ptr);
     Bytecode_Local* insn =  bc_instruction(bc, BC_LOCAL, Bytecode_Local);
+    insn->type = BC_PTR;
     insn->res_index = result;
     insn->size = type->size;
     insn->align = type->align;
@@ -386,6 +385,7 @@ inline int
 bc_function(Bytecode_Builder* bc, int res_index, int func_index) {
     assert(bc->curr_function);
     Bytecode_Assign* insn =  bc_instruction(bc, BC_FUNCTION, Bytecode_Assign);
+    insn->type = BC_PTR;
     insn->dest_index = res_index;
     insn->src_index = func_index;
     return insn->dest_index;
@@ -410,6 +410,8 @@ bc_end_block(Bytecode_Builder* bc) {
     bc->block_depth--;
 }
 
+void string_builder_dump_bytecode_type(String_Builder* sb, Bytecode_Type type);
+void print_bytecode_type(Bytecode_Type type);
 void string_builder_dump_bytecode_globals(String_Builder* sb, Bytecode* bc);
 void string_bc_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Instruction* insn);
 void string_bc_dump_bytecode(String_Builder* sb, Bytecode* bc, Bytecode_Function* func, Type* type=0);

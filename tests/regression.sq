@@ -168,7 +168,7 @@ shadow_s_global() {
 
 void
 @test_proc
-main() {
+shadow_global_variable() {
     // make sure s_global isn't referenced from function above
     shadow_s_global();
     assert(s_global == 10);

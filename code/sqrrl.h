@@ -45,7 +45,6 @@ enum Compiler_Task {
 #include "sqrrl_value.h"
 #include "sqrrl_data.h"
 #include "sqrrl_types.h"
-#include "sqrrl_intermediate_code.h"
 #include "sqrrl_ast.h"
 #include "sqrrl_type_checker.h"
 #include "sqrrl_parser.h"

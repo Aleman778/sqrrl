@@ -287,10 +287,10 @@ typedef FILE_ID_128 *PFILE_ID_128;
 //  These are the generic rights.
 //
 
-#define GENERIC_READ                     (0x80000000L)
-#define GENERIC_WRITE                    (0x40000000L)
-#define GENERIC_EXECUTE                  (0x20000000L)
-#define GENERIC_ALL                      (0x10000000L)
+#define GENERIC_READ                     (0x80000000UL)
+#define GENERIC_WRITE                    (0x40000000UL)
+#define GENERIC_EXECUTE                  (0x20000000UL)
+#define GENERIC_ALL                      (0x10000000UL)
 
 #define MAX_PATH          260
 
@@ -542,7 +542,7 @@ WS_SYSMENU)
 #define CS_IME              0x00010000
 #define CS_DROPSHADOW       0x00020000
 
-#define CW_USEDEFAULT       ((int)0x80000000)
+#define CW_USEDEFAULT       0x80000000u
 
 /*
  * ShowWindow() Commands

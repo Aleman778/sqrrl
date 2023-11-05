@@ -27,7 +27,6 @@
 typedef int asm_main(void);
 typedef f32 asm_f32_main(void);
 
-
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm), bool is_debugger_present) {
@@ -240,7 +239,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     Data_Packer data_packer = {};
     data_packer.rdata_arena.flags |= ArenaPushFlag_Align_From_Zero;
     data_packer.data_arena.flags |= ArenaPushFlag_Align_From_Zero;
-    Ic_Arg_Map* x64_globals = 0;
     
     // Typecheck the AST
     Interp interp = {};

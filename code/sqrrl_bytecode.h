@@ -3,8 +3,10 @@ enum Bytecode_Operator : u8 {
     BC_END_OF_FUNCTION = 0,
     BC_NOOP,
     
-    // Control
     BC_DEBUG_BREAK,
+    BC_DROP,
+    
+    // Control flow
     BC_LOOP,
     BC_BLOCK,
     BC_END,
@@ -75,9 +77,6 @@ enum Bytecode_Operator : u8 {
     
     // Intrinsics (x64)
     BC_X64_RDTSC,
-    
-    // End of function
-    BC_EOF
 };
 
 bool
@@ -86,12 +85,12 @@ bc_is_comparator(Bytecode_Operator op) {
 }
 
 global const cstring bc_operator_names[] = {
-    /*                   */ "", "noop",
-    /* Control:          */ "debug_break", "loop", "block", "end", "branch", "call", "call_indirect",
+    /*                   */ "", "noop", "debug_break", "drop",
+    /* Control flow:     */ "loop", "block", "end", "branch", "call", "call_indirect",
     /*                   */ "return",
-    /* Constants:        */ "i64.const", "f32.const", "f64.const",
-    /* Pointers:         */ "ptr.local", "ptr.global", "ptr.function", "ptr.array_access",
-    /*                   */ "ptr.field_access",
+    /* Constants:        */ "const", "const", "const",
+    /* Pointers:         */ "local", "global", "function", "array_access",
+    /*                   */ "field_access",
     /* Memory:           */ "copy", "store", "load", "memcpy", "memset",
     /* Conversions:      */ "truncate", "extend", "int_to_float", "float_to_int", "float_to_float",
     /*                   */ "reinterpret_f2i",
@@ -104,10 +103,11 @@ global const cstring bc_operator_names[] = {
 };
 
 global const cstring bc_type_names[] = {
-    "ptr", "int", "float"
+    "void", "ptr", "int", "float"
 };
 
 enum Bytecode_Type_Kind : u8 {
+    BC_TYPE_VOID,
     BC_TYPE_PTR,
     BC_TYPE_INT,
     BC_TYPE_FLOAT,
@@ -115,6 +115,7 @@ enum Bytecode_Type_Kind : u8 {
 
 enum Byytecode_Type_Flags {
     BC_FLAG_SIGNED = bit(0),
+    BC_FLAG_UNIQUE_REGISTER = bit(1),
 };
 
 struct Bytecode_Type {
@@ -133,6 +134,9 @@ global const Bytecode_Type bc_type_bool = bc_type(BC_TYPE_INT, 0, 1);
 
 global const Bytecode_Type bc_type_ptr = bc_type(BC_TYPE_PTR, 0, 0);
 #define BC_PTR bc_type_ptr
+
+global const Bytecode_Type bc_type_void = bc_type(BC_TYPE_VOID, 0, 0);
+#define BC_VOID bc_type_void
 
 struct Bytecode_Function_Arg {
     Bytecode_Type type;

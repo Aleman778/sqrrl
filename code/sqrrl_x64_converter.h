@@ -1,6 +1,4 @@
 
-Ic_Opcode x64_intrin_rdtsc = IC_RDTSC;
-
 enum X64_Reg: u8 {
     X64_RAX,
     X64_RCX,

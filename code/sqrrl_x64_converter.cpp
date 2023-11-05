@@ -229,10 +229,11 @@ void
 convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, 
                                           Bytecode_Function* func, 
                                           Bytecode_Instruction* insn) {
-    s64 rip = 0;
     Bytecode_Binary* bc = (Bytecode_Binary*) insn;
     
     switch (bc->opcode) {
+        case BC_NOOP: break;
+        
         case BC_DEBUG_BREAK: {
             push_u8(buf, 0xCC);
         } break;
@@ -505,9 +506,13 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_TRUNCATE: {
-            X64_Slot src = get_slot(x64, bc->a_index);
-            src.type = bc->type;
-            set_slot(x64, bc->res_index, src);
+            // TODO: TRUNCATE is a noop in x64 so we shouldn't need to copy the data
+            x64_move_slot_to_register(x64, buf, X64_RAX, bc->a_index);
+            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index, bc->type), X64_RAX);
+            
+            //X64_Slot src = get_slot(x64, bc->a_index);
+            //src.type = bc->type;
+            //set_slot(x64, bc->res_index, src);
             
             //Bytecode_Type type = register_type(func, bc->res_index);
             
@@ -550,7 +555,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_NEG: {
-            if (bc->type.kind & BC_TYPE_FLOAT) {
+            if (bc->type.kind == BC_TYPE_FLOAT) {
                 // XOR the sign float bit
                 Exported_Data sign_mask = export_size(x64->data_packer, Read_Data_Section, 
                                                       bc->type.size, bc->type.size);
@@ -580,8 +585,9 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         
         case BC_COPY: {
             X64_Slot src = get_slot(x64, bc->a_index);
+            Bytecode_Type type = bc->type.kind != BC_TYPE_VOID ? bc->type : src.type;
             x64_move_slot_to_register(x64, buf, X64_RAX, bc->a_index);
-            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index, src.type), X64_RAX);
+            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index, type), X64_RAX);
         } break;
         
         case BC_OR:

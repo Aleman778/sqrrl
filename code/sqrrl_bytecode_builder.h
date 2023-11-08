@@ -255,19 +255,22 @@ bc_binary_arith(Bytecode_Builder* bc, Bytecode_Type type, Bytecode_Operator opco
 }
 
 inline int
-bc_assignment(Bytecode_Builder* bc, Bytecode_Operator opcode, Bytecode_Type type, int dest, int src) {
+bc_assignment(Bytecode_Builder* bc, Bytecode_Operator opcode, Bytecode_Type type, int dest, int src, cstring comment=0) {
     Bytecode_Assign* insn = bc_instruction(bc, opcode, Bytecode_Assign);
     insn->type = type;
     insn->dest_index = dest;
     insn->src_index = src;
+    insn->comment = comment;
     return insn->dest_index;
 }
 
+#define bc_load(bc, type, dest, src) _bc_load(bc, type, dest, src, BC_COMMENT)
+
 inline int 
-bc_load(Bytecode_Builder* bc, Type* type, int dest, int src) {
+_bc_load(Bytecode_Builder* bc, Type* type, int dest, int src, cstring comment=0) {
     //Bytecode_Type bc_type = register_type(bc->curr_function, src);
     //assert(bc_type.kind == BC_TYPE_PTR && "expected BC_TYPE_PTR to load");
-    return bc_assignment(bc, BC_LOAD, to_bytecode_type(type), dest, src);
+    return bc_assignment(bc, BC_LOAD, to_bytecode_type(type), dest, src, comment);
 }
 
 inline int

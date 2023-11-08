@@ -6,16 +6,15 @@ export_var_args_info(Data_Packer* packer, int var_arg_start, Ast* actual_argumen
     
     Exported_Data result = {};
     
-    if (var_arg_count <= 0) {
-        return result;
-    }
-    
     result = export_struct(packer, Var_Args, Data_Section);
     Var_Args* var_args = (Var_Args*) result.data;
     
     Exported_Data args_ptr = add_offset(result, 8);
-    Exported_Data actual_args = export_array(packer, var_arg_count, Var_Arg, Data_Section);
-    push_relocation(packer, args_ptr, actual_args);
+    Exported_Data actual_args = {};
+    if (var_arg_count > 0) {
+        actual_args = export_array(packer, var_arg_count, Var_Arg, Data_Section);
+        push_relocation(packer, args_ptr, actual_args);
+    }
     var_args->types = (Var_Arg*) actual_args.data;
     var_args->count = var_arg_count;
     

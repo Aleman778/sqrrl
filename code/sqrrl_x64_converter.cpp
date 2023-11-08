@@ -141,8 +141,8 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
         int var_args = func->arg_count - 1;
         variadic_data_ptr = x64_lea_patch_disp(buf, X64_RAX, X64_RSP, func->arg_count*8);
         X64_Slot dest = get_slot(x64, var_args);
-        x64_move_register_to_memory(buf, X64_RSP, dest.disp, X64_RAX);
-        
+        x64_move_memory_to_register(buf, X64_RCX, X64_RSP, dest.disp);
+        x64_move_register_to_memory(buf, X64_RCX, 0, X64_RAX);
         //pln("%: arg_count = %", f_var(x64->bytecode->function_names[func->type_index]), f_int());
     }
     
@@ -405,8 +405,10 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_LEA: {
-            x64_lea(buf, X64_RAX, X64_RSP, register_displacement(x64, bc->a_index));
-            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index, bc->type), X64_RAX);
+            X64_Slot src = get_slot(x64, bc->a_index);
+            x64_lea(buf, X64_RAX, X64_RSP, src.disp);
+            s32 disp = register_stack_alloc(x64, bc->res_index, bc->type, 8, 8, src.kind == X64_SLOT_RSP_DISP32_INPLACE);
+            x64_move_register_to_memory(buf, X64_RSP, disp, X64_RAX);
         } break;
         
         case BC_CALL: {

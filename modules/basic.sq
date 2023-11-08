@@ -548,7 +548,7 @@ string_builder_push_vformat(String_Builder* sb, string format, Var_Args var_args
     substring.count = 0;
     
     for (smm chr_index = 0; chr_index < format.count; chr_index++) {
-        u8 chr = format.data[chr_index];
+        u8 chr = format[chr_index];
         
         if (chr == '%') {
             smm cnt = var_args.types.count;
@@ -560,6 +560,7 @@ string_builder_push_vformat(String_Builder* sb, string format, Var_Args var_args
                 Var_Arg arg = var_args.types[var_args_index];
                 // TODO(Alexander): this is a bit of a hack becuase
                 // data sizes > 8 are passed as pointer, as specified by callign convention.
+                
                 if (arg.data_size > 8) {
                     string_print_data_from_type_info(sb, arg.type, *((void**) var_arg_data));
                 } else {

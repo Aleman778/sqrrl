@@ -240,6 +240,7 @@ global cstring bc_memory_kind_names[] = {
 Bytecode_Operator opcode; \
 Bytecode_Type type; \
 s32 next_insn; \
+cstring comment;
 
 // Base structure, can be pointer casted to any of the other instruction types below
 struct Bytecode_Instruction {

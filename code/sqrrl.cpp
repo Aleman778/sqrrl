@@ -289,20 +289,55 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     // First create functions imported from libraries
     for_map(tcx.import_table.libs, it) {
+        
+        Exported_Data library = {};
         for_array(it->value.functions, function, function_index) {
             Type* type = function->type;
             assert(type && type->kind == TypeKind_Function);
             
             Bytecode_Function* func = add_bytecode_function(&bytecode_builder, type);
             func->is_imported = true;
-            func->code_ptr = type->Function.external_address;
-            
-            function->bc_func_index = func->type_index;
             
             Bytecode_Import import = {};
             import.module = it->key;
-            import.function = function->name;
-            import.func_index = func->type_index;
+            import.name = function->name;
+            
+            
+            if (it->value.resolve_at_compile_time) {
+                import.kind = BC_IMPORT_FUNC;
+                import.func_index = func->type_index;
+                
+                func->code_ptr = type->Function.external_address;
+                function->bc_func_index = func->type_index;
+                
+            } else {
+                if (!library.data) {
+                    library = export_struct(&data_packer, Dynamic_Library, Data_Section);
+                    int lib_global = add_bytecode_global(&bytecode_builder, library);
+                    map_put(bytecode_builder.globals, it->key, lib_global);
+                }
+                
+                Dynamic_Library* dynamic_library = (Dynamic_Library*) library.data;
+                dynamic_library->count++;
+                
+                // Library function pointer is replaced by user at runtime
+                Exported_Data import_fn = export_struct(&data_packer, Dynamic_Function, Data_Section);
+                int global_func_index = add_bytecode_global(&bytecode_builder, import_fn);
+                import.kind = BC_IMPORT_GLOBAL;
+                import.global_index = global_func_index;
+                
+                Dynamic_Function* dynamic_fn = (Dynamic_Function*) import_fn.data;
+                func->code_ptr = &dynamic_fn->pointer;
+                Exported_Data fn_name = export_string(&data_packer, function->name);
+                dynamic_fn->name = fn_name.str;
+                push_relocation(&data_packer, add_offset(import_fn, 8), fn_name);
+                
+                if (!dynamic_library->functions) {
+                    dynamic_library->functions = dynamic_fn;
+                    push_relocation(&data_packer, library, import_fn);
+                }
+            }
+            
             array_push(bytecode_builder.bytecode.imports, import);
         }
     }
@@ -435,7 +470,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 // TODO(Alexander): HACK we need Import Address Table in the bytecode imports
                 for_map(tcx.import_table.libs, it) {
                     for_array(it->value.functions, function, function_index) {
-                        bc->imports[function->bc_func_index].iat_offset = function->relative_ptr;
+                        Bytecode_Import* import = &bc->imports[function->bc_func_index];
+                        if (import->kind == BC_IMPORT_FUNC) {
+                            import->iat_offset = function->relative_ptr;
+                        }
                     }
                 }
                 

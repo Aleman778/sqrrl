@@ -3097,7 +3097,33 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
         
         case Ast_Cast_Expr: {
             result = type_check_expression(tcx, expr->Cast_Expr.expr);
-            // TODO(Alexander): do we want any checking here?
+            
+            Type* real_src = expr->Cast_Expr.expr->type;
+            Type* real_dest = expr->type;
+            Type* src = normalize_type_for_casting(real_src);
+            Type* dest = normalize_type_for_casting(real_dest);
+            
+            bool is_valid_cast = false;
+            if (dest->kind == TypeKind_Basic && src->kind == TypeKind_Basic) {
+                is_valid_cast = true;
+            }
+            if (dest->kind == TypeKind_Array && src->kind == TypeKind_Array) {
+                is_valid_cast = true;
+            }
+            if ((dest->kind == TypeKind_Struct || dest->kind == TypeKind_Union) && 
+                (src->kind  == TypeKind_Struct || src->kind  == TypeKind_Union) &&
+                (dest->ident == src->ident)) { // TODO(Alexander): identifier, expand to namespace
+                is_valid_cast = true;
+            }
+            if (dest->kind == TypeKind_Void) {
+                is_valid_cast = true;
+            }
+            
+            if (!is_valid_cast) {
+                type_error(tcx, string_print("cannot cast from `%` to `%`", 
+                                             f_type(real_src), f_type(real_dest)), expr->span);
+                result = false;
+            }
         } break;
         
         case Ast_Paren_Expr: {

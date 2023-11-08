@@ -91,24 +91,6 @@ to_bytecode_type(Type* type) {
     return result;
 }
 
-inline Type*
-normalize_type_for_casting(Type* type) {
-    // Make similar types 
-    if (type->kind == TypeKind_Pointer ||
-        type->kind == TypeKind_Function || 
-        type->kind == TypeKind_Type || 
-        type == t_cstring) {
-        
-        type = t_s64;
-    }
-    
-    if (type->kind == TypeKind_Enum) { 
-        type = type->Enum.type;
-    }
-    
-    return type;
-}
-
 inline int
 add_register(Bytecode_Builder* bc, Type* type=0) {
     assert(bc->curr_function);

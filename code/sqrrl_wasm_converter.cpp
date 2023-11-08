@@ -589,10 +589,10 @@ convert_to_wasm_module(Bytecode* bc, Data_Packer* data_packer, s64 stk_usage, Bu
     push_u32(buf, 0); // reserve space for the size
     push_leb128_u32(buf, (u32) array_count(bc->imports)); // num imports
     for (int i = 0; i < array_count(bc->imports); i++) {
-        pln("%::%", f_var(bc->imports[i].module), f_var(bc->imports[i].function));
+        pln("%::%", f_var(bc->imports[i].module), f_var(bc->imports[i].name));
         // TODO(Alexander): imports are hardcoded for now
         wasm_push_string(buf, vars_load_string(bc->imports[i].module));
-        wasm_push_string(buf, vars_load_string(bc->imports[i].function));
+        wasm_push_string(buf, vars_load_string(bc->imports[i].name));
         push_u8(buf, 0x00); // importdesc:typeidx
         push_leb128_u32(buf, i);
     }

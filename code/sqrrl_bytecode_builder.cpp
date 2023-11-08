@@ -315,7 +315,8 @@ emit_function_call(Bytecode_Builder* bc, Type* type, array(Ast*)* args, Ast* var
         Bytecode_Function* func = cu->bytecode_function;
         bc_call(bc, type->Function.return_type, func->type_index, arg_indices); 
     } else if (function_ptr_index != -1) {
-        int ret_count = is_valid_type(type->Function.return_type);
+        int ret_count = (is_valid_type(type->Function.return_type) &&
+                         !is_aggregate_type(type->Function.return_type));
         bc_call_indirect(bc, type->Function.return_type, function_ptr_index, ret_count, arg_indices); 
     } else {
         verify_not_reached();
@@ -454,14 +455,12 @@ emit_initializing_expression(Bytecode_Builder* bc, Ast* expr, int dest_ptr) {
         } break;
         
         case Ast_Unary_Expr: {
-            if (expr->Unary_Expr.op == Op_Dereference){
+            if (expr->Unary_Expr.op == Op_Dereference) {
                 int src_ptr = emit_value_fetch_expression(bc, expr->Unary_Expr.first);
                 bc_memcpy(bc, dest_ptr, src_ptr, expr->type->size);
-            } else if (expr->Unary_Expr.op == Op_Address_Of){
+            } else {
                 int src_ptr = emit_value_fetch_expression(bc, expr);
                 bc_store(bc, dest_ptr, src_ptr);
-            } else {
-                verify_not_reached();
             }
         } break;
         
@@ -499,6 +498,11 @@ emit_initializing_expression(Bytecode_Builder* bc, Ast* expr, int dest_ptr) {
             
             if (t_dest->kind == TypeKind_Array && t_src->kind == TypeKind_Array) {
                 emit_array_type_cast(bc, t_dest, t_src, expr->Cast_Expr.expr, dest_ptr);
+                
+            } else if ((t_dest->kind == TypeKind_Struct && t_src->kind == TypeKind_Struct) ||
+                       (t_dest->kind == TypeKind_Union && t_src->kind == TypeKind_Union)) {
+                emit_initializing_expression(bc, expr->Cast_Expr.expr, dest_ptr);
+                //
             } else {
                 int result = add_register(bc, t_dest);
                 emit_type_cast(bc, expr, result);
@@ -997,6 +1001,7 @@ emit_type_cast(Bytecode_Builder* bc, Ast* expr, int result) {
         } else {
             verify_not_reached();
         }
+        
     } else {
         verify_not_reached();
     }
@@ -1651,7 +1656,7 @@ emit_function(Bytecode_Builder* bc, Bytecode_Function* func, Ast* ast,
     if (!is_valid_ast(ast->Decl_Stmt.stmt)) {
         return 0;
     }
-    pln("Emitting function `%`", f_var(ast_unwrap_ident(ast->Decl_Stmt.ident)));
+    //pln("Emitting function `%`", f_var(ast_unwrap_ident(ast->Decl_Stmt.ident)));
     
     map_free(bc->locals);
     
@@ -1685,9 +1690,9 @@ emit_function(Bytecode_Builder* bc, Bytecode_Function* func, Ast* ast,
     
     emit_statement(bc, ast->Decl_Stmt.stmt, 0, 0);
     
-    for_map(bc->locals, local) {
-        pln("%: r% (is_ref = %)", f_var(local->key), f_int(local->value.index), f_bool(local->value.is_ref));
-    }
+    //for_map(bc->locals, local) {
+    //pln("%: r% (is_ref = %)", f_var(local->key), f_int(local->value.index), f_bool(local->value.is_ref));
+    //}
     
     //if (!func->is_imported) {
     //validate_bytecode_function(func, ast_unwrap_ident(ast->Decl_Stmt.ident));

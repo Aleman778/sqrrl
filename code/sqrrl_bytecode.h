@@ -190,11 +190,21 @@ function_arg_types(Bytecode_Function* func) {
     return (Bytecode_Function_Arg*) (func + 1) + func->ret_count;
 }
 
+enum Bytecode_Import_Kind {
+    BC_IMPORT_NONE,
+    BC_IMPORT_FUNC,
+    BC_IMPORT_GLOBAL,
+};
+
 struct Bytecode_Import {
     string_id module;
-    string_id function;
+    string_id name;
     
-    u32 func_index;
+    Bytecode_Import_Kind kind;
+    union {
+        u32 func_index;
+        u32 global_index;
+    };
     
     u32 iat_offset;
 };

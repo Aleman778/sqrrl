@@ -17,9 +17,9 @@ __assert(cstring expression, string file, smm line) {
     *(int *)0 = 0; // NOTE(Alexander): purposefully trap the program
     return true;
 }
-#define assert(expr, ...) (void) ((expr) || __assert(#expr " - " __VA_ARGS__, __FILE__, __LINE__))
+#define assert(expression, ...) (void)((expression) || __assert(#expression " - " __VA_ARGS__, __FILE__, __LINE__))
 #else
-#define assert(expr, ...)
+#define assert(expression, ...)
 #endif
 
 #endif

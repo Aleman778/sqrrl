@@ -14,15 +14,28 @@ convert_bytecode_to_x64_machine_code(Bytecode* bytecode, Buffer* buf,
     
     u8* main_function_ptr = buf->data;
     for_array_v(bytecode->functions, func, func_index) {
-        pln("Compiling function `%`...", f_var(bytecode->function_names[func->type_index]));
+        //pln("Compiling function `%`...", f_var(bytecode->function_names[func->type_index]));
         if (bytecode->entry_func_index == func_index) {
             main_function_ptr = buf->data + buf->curr_used;
         }
         convert_bytecode_function_to_x64_machine_code(&x64, func, buf);
         
         if (!use_absolute_ptrs && func->type_index < array_count(bytecode->imports)) {
-            push_u16(buf, 0x25FF); // FF 25    JMP RIP-relative
-            x64_create_u32_patch(&x64, buf, X64_PATCH_DYNAMIC_LIBRARY, func->type_index);
+            Bytecode_Import* import = &bytecode->imports[func->type_index];
+            
+            if (import->kind == BC_IMPORT_FUNC) {
+                push_u16(buf, 0x25FF); // FF 25    JMP RIP-relative
+                x64_create_u32_patch(&x64, buf, X64_PATCH_DYNAMIC_LIBRARY, import->func_index);
+                
+            } else if (import->kind == BC_IMPORT_GLOBAL) {
+                assert(import->global_index < array_count(bytecode->globals));
+                Bytecode_Global* g = &bytecode->globals[import->global_index];
+                push_u16(buf, 0x25FF); // FF 25    JMP RIP-relative
+                x64_create_u32_patch(&x64, buf, X64_PATCH_READ_WRITE_DATA, g->offset);
+                
+            } else {
+                verify_not_reached();
+            }
         }
     }
     

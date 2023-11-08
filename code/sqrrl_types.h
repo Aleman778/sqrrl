@@ -249,6 +249,24 @@ global Type* t_type = &type_definition;
 DEF_BASIC_TYPES
 #undef BASIC
 
+inline Type*
+normalize_type_for_casting(Type* type) {
+    // Make similar types 
+    if (type->kind == TypeKind_Pointer ||
+        type->kind == TypeKind_Function || 
+        type->kind == TypeKind_Type || 
+        type == t_cstring) {
+        
+        type = t_s64;
+    }
+    
+    if (type->kind == TypeKind_Enum) { 
+        type = type->Enum.type;
+    }
+    
+    return type;
+}
+
 Format_Type
 convert_type_to_format_type(Type* type) {
     switch (type->kind) {

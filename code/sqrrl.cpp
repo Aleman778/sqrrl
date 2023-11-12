@@ -353,6 +353,12 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             Type* type = cu->ast->type;
             string_id ident = ast_unwrap_ident(cu->ast->Assign_Stmt.ident);
             
+            if (map_key_exists(bytecode_builder.globals, ident)) {
+                type_error(&tcx, string_print("cannot redeclare global `%`", f_var(ident)),
+                           cu->ast->span);
+                continue;
+            }
+            
             void* data = get_interp_value_pointer(&interp, ident);
             if (!data) {
                 type_error(&tcx, string_print("compiler bug: value of `%` is void", f_var(ident)),
@@ -374,6 +380,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                           is_main, is_debugger_present && is_main);
         }
     }
+    
+    // Build initializer
+    emit_initializer_function(&bytecode_builder);
     
     // Print the bytecode
     String_Builder sb = {};

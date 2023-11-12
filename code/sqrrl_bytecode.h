@@ -219,7 +219,10 @@ enum Bytecode_Memory_Kind {
     BC_MEM_READ_WRITE,
 };
 
+struct Ast;
+
 struct Bytecode_Global {
+    Ast* initializer;
     void* address; // for JIT
     u32 offset;
     u32 size, align;

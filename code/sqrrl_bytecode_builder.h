@@ -147,7 +147,7 @@ int add_bytecode_global(Bytecode_Builder* bc, Exported_Data exported_data);
 int add_bytecode_global(Bytecode_Builder* bc, 
                         Bytecode_Memory_Kind kind, 
                         smm size, smm align,
-                        void* init=0);
+                        void* init=0, Ast* initializer=0);
 
 #define S1(x) #x
 #define S2(x) S1(x)

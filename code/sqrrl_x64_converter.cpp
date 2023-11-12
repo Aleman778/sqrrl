@@ -104,6 +104,10 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     
     // Windows calling convention stack setup
     s32 register_count = (s32) func->register_count;
+    if (func->max_caller_arg_count < 4) {
+        // Reserve spaces for HOME registers at minimum
+        func->max_caller_arg_count = 4;
+    }
     s32 stack_caller_args = func->max_caller_arg_count*8;
     x64->current_stack_size = stack_caller_args;
     x64->max_stack_size = x64->current_stack_size;

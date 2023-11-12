@@ -372,9 +372,18 @@ string_builder_push(String_Builder* sb, Type* type, bool multiline=false) {
             string_builder_push(sb, "*");
         } break;
         
-        case TypeKind_Struct: 
-        case TypeKind_Union:
+        case TypeKind_Struct: {
+            string_builder_push(sb, "struct ");
+            string_builder_push(sb, type->ident);
+        } break;
+        
+        case TypeKind_Union: {
+            string_builder_push(sb, "union ");
+            string_builder_push(sb, type->ident);
+        } break;
+        
         case TypeKind_Enum: {
+            string_builder_push(sb, "enum ");
             string_builder_push(sb, type->ident);
         } break;
         

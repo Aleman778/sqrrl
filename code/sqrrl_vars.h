@@ -112,6 +112,7 @@ VAR(__cdecl)  \
 VAR(__fastcall) \
 VAR(__stdcall) \
 VAR(__debugbreak) \
+VAR(__start) \
 VAR(pack)     \
 VAR(push)     \
 VAR(pop)      \

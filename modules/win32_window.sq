@@ -76,9 +76,6 @@ init_window(int width, int height, string title) {
             }
             
             win32_load_xinput();
-            
-            g_input = (Input*) calloc(1, sizeof(Input));
-            
         } else {
             win32_show_error("Failed to create window");
         }
@@ -120,9 +117,8 @@ window_should_close() {
         g_input.mouse_button_state[i].num_half_transitions = 0;
     }
     
-    
     g_input.mouse_wheel_delta = 0.0f;
-    win32_process_pending_messages(&g_win32, g_input);
+    win32_process_pending_messages(&g_win32, &g_input);
     
     POINT mouse_pos;
     GetCursorPos(&mouse_pos);
@@ -152,6 +148,9 @@ window_should_close() {
         g_win32.window_width = (int) (client_rect.right - client_rect.left);
         g_win32.window_height = (int) (client_rect.bottom - client_rect.top);
     }
+    
+    g_win32.is_running = true;
+    //pln("g_win32.is_running = %", );
     
     return !g_win32.is_running;
 }

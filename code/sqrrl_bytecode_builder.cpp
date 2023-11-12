@@ -58,47 +58,34 @@ emit_reference_expression(Bytecode_Builder* bc, Ast* expr) {
         } break;
         
         case Ast_Unary_Expr: {
-            switch (expr->Unary_Expr.op) {
-                case Op_Dereference: {
-                    result = emit_value_fetch_expression(bc, expr->Unary_Expr.first);
-                } break;
-                
-                case Op_Pre_Increment:
-                case Op_Pre_Decrement: {
-                    unimplemented;
-                    //result = emit_reference_expression(bc, expr);
-                    //bc_load(bc, _result, src);
-                    
-                    
-                } break;
-                
-                default: verify_not_reached();
+            if (expr->Unary_Expr.op == Op_Dereference) {
+                result = emit_value_fetch_expression(bc, expr->Unary_Expr.first);
+            } else {
+                verify_not_reached();
             }
         } break;
         
         case Ast_Binary_Expr: {
             assert(is_valid_type(expr->type) && is_aggregate_type(expr->type));
             result = bc_local(bc, expr->type);
+            verify(expr->Binary_Expr.overload);
             
-            if (expr->Binary_Expr.overload) {
-                array(Ast*)* args = 0;
-                array_push(args, expr->Binary_Expr.first);
-                array_push(args, expr->Binary_Expr.second);
-                emit_function_call(bc, expr->Binary_Expr.overload, args, 0, result, -1);
-                array_free(args);
-                
-            } else {
-                Operator op = expr->Binary_Expr.op;
-                assert(op == Op_Add || op == Op_Subtract);
-                
-                verify_not_reached();
-            }
-            
+            array(Ast*)* args = 0;
+            array_push(args, expr->Binary_Expr.first);
+            array_push(args, expr->Binary_Expr.second);
+            emit_function_call(bc, expr->Binary_Expr.overload, args, 0, result, -1);
+            array_free(args);
         } break;
         
         case Ast_Call_Expr: {
-            assert(is_valid_type(expr->type) && is_aggregate_type(expr->type));
-            result = bc_local(bc, expr->type);
+            assert(is_valid_type(expr->type));
+            if (expr->type->kind == TypeKind_Pointer) {
+                result = add_register(bc);
+            } else if (is_aggregate_type(expr->type)) {
+                result = bc_local(bc, expr->type);
+            } else {
+                verify_not_reached();
+            }
             emit_value_expression(bc, expr, result);
         } break;
         
@@ -121,7 +108,8 @@ emit_reference_expression(Bytecode_Builder* bc, Ast* expr) {
         } break;
         
         case Ast_Field_Expr: {
-            Type* type = expr->Field_Expr.var->type;
+            Ast* var = expr->Field_Expr.var;
+            Type* type = var->type;
             result = emit_reference_expression(bc, expr->Field_Expr.var);
             
             if (type->kind == TypeKind_Pointer) {
@@ -134,7 +122,8 @@ emit_reference_expression(Bytecode_Builder* bc, Ast* expr) {
                 // Good: 
                 //  - MyStruct  r1 (ptr) -> first byte of data
                 //  - MyStruct* r1 (ptr) -> first byte of data
-                if (!try_unwrap_ident(expr->Field_Expr.var)) {
+                if (var->kind == Ast_Field_Expr) {
+                    //!try_unwrap_ident(var)
                     int tmp = add_register(bc);
                     result = bc_load(bc, type, tmp, result);
                 }
@@ -194,8 +183,16 @@ emit_reference_expression(Bytecode_Builder* bc, Ast* expr) {
             int tmp = -1;
             Ast* array_expr = expr->Index_Expr.array;
             int array_ptr = emit_reference_expression(bc, array_expr);
+            if (array_type->kind == TypeKind_Pointer) {
+                if (!try_unwrap_ident(expr->Field_Expr.var)) {
+                    int tmp2 = add_register(bc);
+                    array_ptr = bc_load(bc, array_type, tmp2, array_ptr);
+                }
+            }
+            
+            
             if (is_aggregate_array_type(array_type)) {
-                tmp  = add_register(bc, expr->type);
+                tmp = add_register(bc, expr->type);
                 array_ptr = bc_load(bc, array_type, tmp, array_ptr);
             }
             
@@ -459,8 +456,12 @@ emit_initializing_expression(Bytecode_Builder* bc, Ast* expr, int dest_ptr) {
                 int src_ptr = emit_value_fetch_expression(bc, expr->Unary_Expr.first);
                 bc_memcpy(bc, dest_ptr, src_ptr, expr->type->size);
             } else {
-                int src_ptr = emit_value_fetch_expression(bc, expr);
-                bc_store(bc, dest_ptr, src_ptr);
+                if (is_aggregate_type(expr->type)) {
+                    emit_value_expression(bc, expr, dest_ptr);
+                } else {
+                    int src_ptr = emit_value_fetch_expression(bc, expr);
+                    bc_store(bc, dest_ptr, src_ptr);
+                }
             }
         } break;
         
@@ -584,96 +585,104 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int result) {
             Operator op = expr->Unary_Expr.op;
             Bytecode_Type bcresult_type = to_bytecode_type(result_type);
             
-            switch (op) {
-                case Op_Address_Of: {
-                    Value_or_Ref addr = get_value_or_emit_reference_expression(bc, expr->Unary_Expr.first);
-                    if (result != -1) {
-                        if (addr.is_ref) {
-                            bc_copy(bc, result, addr.index);
-                        } else {
-                            bc_lea(bc, result, addr.index);
-                        }
-                    }
-                } break;
+            if (expr->Unary_Expr.overload) {
+                array(Ast*)* args = 0;
+                array_push(args, expr->Unary_Expr.first);
+                emit_function_call(bc, expr->Unary_Expr.overload, args, 0, result, -1);
+                array_free(args);
+            } else {
                 
-                case Op_Dereference: {
-                    assert(type->kind == TypeKind_Pointer);
-                    int ptr = emit_value_fetch_expression(bc, expr->Unary_Expr.first);
-                    if (result != -1) {
-                        bc_load(bc, result_type, result, ptr);
-                    }
-                } break;
-                
-                case Op_Pre_Increment:
-                case Op_Pre_Decrement: {
-                    Value_or_Ref first = get_value_or_emit_reference_expression(bc, expr->Unary_Expr.first);
-                    if (first.is_ref) {
-                        int tmp = -1;
-                        if (result == -1) {
-                            tmp = add_register(bc);
-                            result = tmp;
-                        }
-                        result = bc_load(bc, type, result, first.index);
-                        emit_unary_increment(bc, type, result, op == Op_Pre_Increment);
-                        bc_store(bc, first.index, result);
-                        
-                        if (tmp != -1) {
-                            drop_register(bc, tmp);
-                        }
-                        
-                    } else {
-                        emit_unary_increment(bc, type, first.index, op == Op_Pre_Increment);
+                switch (op) {
+                    case Op_Address_Of: {
+                        Value_or_Ref addr = get_value_or_emit_reference_expression(bc, expr->Unary_Expr.first);
                         if (result != -1) {
-                            bc_copy(bc, result, first.index);
+                            if (addr.is_ref) {
+                                bc_copy(bc, result, addr.index);
+                            } else {
+                                bc_lea(bc, result, addr.index);
+                            }
                         }
-                    }
-                } break;
-                
-                case Op_Post_Increment:
-                case Op_Post_Decrement: {
-                    Value_or_Ref first = get_value_or_emit_reference_expression(bc, expr->Unary_Expr.first);
+                    } break;
                     
-                    if (first.is_ref) {
+                    case Op_Dereference: {
+                        assert(type->kind == TypeKind_Pointer);
+                        int ptr = emit_value_fetch_expression(bc, expr->Unary_Expr.first);
                         if (result != -1) {
-                            bc_load(bc, type, result, first.index);
+                            bc_load(bc, result_type, result, ptr);
                         }
+                    } break;
+                    
+                    case Op_Pre_Increment:
+                    case Op_Pre_Decrement: {
+                        Value_or_Ref first = get_value_or_emit_reference_expression(bc, expr->Unary_Expr.first);
+                        if (first.is_ref) {
+                            int tmp = -1;
+                            if (result == -1) {
+                                tmp = add_register(bc);
+                                result = tmp;
+                            }
+                            result = bc_load(bc, type, result, first.index);
+                            emit_unary_increment(bc, type, result, op == Op_Pre_Increment);
+                            bc_store(bc, first.index, result);
+                            
+                            if (tmp != -1) {
+                                drop_register(bc, tmp);
+                            }
+                            
+                        } else {
+                            emit_unary_increment(bc, type, first.index, op == Op_Pre_Increment);
+                            if (result != -1) {
+                                bc_copy(bc, result, first.index);
+                            }
+                        }
+                    } break;
+                    
+                    case Op_Post_Increment:
+                    case Op_Post_Decrement: {
+                        Value_or_Ref first = get_value_or_emit_reference_expression(bc, expr->Unary_Expr.first);
                         
-                        int tmp = add_register(bc);
-                        bc_load(bc, type, tmp, first.index);
-                        emit_unary_increment(bc, type, tmp, op == Op_Post_Increment);
-                        bc_store(bc, first.index, tmp);
-                        drop_register(bc, tmp);
-                        
-                    } else {
+                        if (first.is_ref) {
+                            if (result != -1) {
+                                bc_load(bc, type, result, first.index);
+                            }
+                            
+                            int tmp = add_register(bc);
+                            bc_load(bc, type, tmp, first.index);
+                            emit_unary_increment(bc, type, tmp, op == Op_Post_Increment);
+                            bc_store(bc, first.index, tmp);
+                            drop_register(bc, tmp);
+                            
+                        } else {
+                            if (result != -1) {
+                                bc_copy(bc, result, first.index);
+                            }
+                            emit_unary_increment(bc, type, first.index, op == Op_Post_Increment);
+                        }
+                    } break;
+                    
+                    case Op_Bitwise_Not: {
+                        emit_value_expression(bc, expr->Unary_Expr.first, result);
                         if (result != -1) {
-                            bc_copy(bc, result, first.index);
+                            bc_unary_arith(bc, bcresult_type, BC_NOT, result, result);
                         }
-                        emit_unary_increment(bc, type, first.index, op == Op_Post_Increment);
-                    }
-                } break;
-                
-                case Op_Bitwise_Not: {
-                    emit_value_expression(bc, expr->Unary_Expr.first, result);
-                    if (result != -1) {
-                        bc_unary_arith(bc, bcresult_type, BC_NOT, result, result);
-                    }
-                } break;
-                
-                case Op_Logical_Not: {
-                    emit_value_expression(bc, expr->Unary_Expr.first, result);
-                    if (result != -1) {
-                        emit_zero_compare(bc, type, result, result, false);
-                    }
-                } break;
-                
-                case Op_Negate: {
-                    emit_value_expression(bc, expr->Unary_Expr.first, result);
-                    if (result != -1) {
-                        bc_unary_arith(bc, bcresult_type, BC_NEG, result, result);
-                    }
-                } break;
-                
-                default: unimplemented;
+                    } break;
+                    
+                    case Op_Logical_Not: {
+                        emit_value_expression(bc, expr->Unary_Expr.first, result);
+                        if (result != -1) {
+                            emit_zero_compare(bc, type, result, result, false);
+                        }
+                    } break;
+                    
+                    case Op_Negate: {
+                        emit_value_expression(bc, expr->Unary_Expr.first, result);
+                        if (result != -1) {
+                            bc_unary_arith(bc, bcresult_type, BC_NEG, result, result);
+                        }
+                    } break;
+                    
+                    default: unimplemented;
+                }
             }
         } break;
         
@@ -785,12 +794,16 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int result) {
         case Ast_Field_Expr: {
             int ptr = emit_reference_expression(bc, expr);
             
-            Type* type = expr->Field_Expr.var->type;
-            if (type->kind == TypeKind_Pointer) {
-                type = type->Pointer;
+            Type* var_type = expr->Field_Expr.var->type;
+            if (var_type->kind == TypeKind_Pointer) {
+                var_type = var_type->Pointer;
             }
             
-            if (type->kind == TypeKind_Array && type->Array.kind == ArrayKind_Fixed_Inplace) {
+            //pln("a.b: %", f_type(expr->type));
+            //pln("a  : %", f_type(var_type));
+            Type* type = expr->type;
+            if ((var_type->kind == TypeKind_Array && var_type->Array.kind == ArrayKind_Fixed_Inplace) ||
+                (type->kind == TypeKind_Array && type->Array.kind == ArrayKind_Fixed_Inplace)) {
                 // NOTE: we avoid loading inplace arrays because they don't have data pointer
                 bc_copy(bc, result, ptr);
             } else {
@@ -822,6 +835,7 @@ emit_value_fetch_expression(Bytecode_Builder* bc, Ast* expr) {
         } else {
             result = src.index;
         }
+        //result = src.index;
         
     } else {
         result = add_register(bc, expr->type);
@@ -1086,13 +1100,22 @@ emit_statement(Bytecode_Builder* bc, Ast* stmt, s32 break_label, s32 continue_la
             Type* type = stmt->type;
             
             Bc_Local local = {};
-            if (is_aggregate_type(type)) {
+            if (stmt->Assign_Stmt.mods & AstDeclModifier_Local_Persist) {
+                int global_index = add_bytecode_global(bc, BC_MEM_READ_WRITE, type->size, type->align, 0, 
+                                                       stmt->Assign_Stmt.expr);
                 local.is_ref = true;
-                local.index = bc_local(bc, type);
-                emit_initializing_expression(bc, stmt->Assign_Stmt.expr, local.index);
+                local.index = add_register(bc);
+                bc_global(bc, local.index, global_index);
+                
             } else {
-                local.index = add_register(bc, type);
-                emit_value_expression(bc, stmt->Assign_Stmt.expr, local.index);
+                if (is_aggregate_type(type)) {
+                    local.is_ref = true;
+                    local.index = bc_local(bc, type);
+                    emit_initializing_expression(bc, stmt->Assign_Stmt.expr, local.index);
+                } else {
+                    local.index = add_register(bc);
+                    emit_value_expression(bc, stmt->Assign_Stmt.expr, local.index);
+                }
             }
             
             string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
@@ -1263,6 +1286,62 @@ emit_statement(Bytecode_Builder* bc, Ast* stmt, s32 break_label, s32 continue_la
         default: {
             unimplemented;
         } break;
+    }
+}
+
+void
+emit_initializer_function(Bytecode_Builder* bc) {
+    Type* return_type = normalize_basic_types(t_int);
+    
+    Bytecode_Function* main_func = bc->bytecode.functions[bc->bytecode.entry_func_index];
+    Bytecode_Function* func = 0;
+    for_array(bc->bytecode.globals, it, global_index) {
+        Ast* expr = it->initializer;
+        if (expr) {
+            if (!func) {
+                Type func_sig = {};
+                func_sig.kind = TypeKind_Function;
+                func_sig.Function.return_type = return_type;
+                
+                func = add_bytecode_function(bc, &func_sig);
+                // TODO(Alexander): this is a copy from emit_function
+                bc->bytecode.entry_func_index = func->type_index;
+                Bytecode_Export init_export = {};
+                init_export.function = Sym___start;
+                init_export.func_index = func->type_index;
+                array_push(bc->bytecode.exports, init_export);
+                
+                // Build the function
+                // TODO(Alexander): this is a copy from emit_function
+                map_free(bc->locals);
+                bc->curr_function = func;
+                bc->curr_insn = 0;
+                bc->block_depth = 0;
+            }
+            
+            
+            int dest_ptr = add_register(bc);
+            bc_global(bc, dest_ptr, global_index);
+            if (is_aggregate_type(expr->type)) {
+                emit_initializing_expression(bc, expr, dest_ptr);
+            } else {
+                int tmp = add_register(bc);
+                emit_value_expression(bc, expr, tmp);
+                bc_store(bc, dest_ptr, tmp);
+                drop_register(bc, tmp);
+            }
+            drop_register(bc, dest_ptr);
+        }
+    }
+    
+    if (func) {
+        // Call main and return the result
+        int result = add_register(bc);
+        array(int)* args = 0;
+        array_push(args, result);
+        bc_call(bc, return_type, main_func->type_index, args);
+        bc_return(bc, return_type, result);
+        drop_register(bc, result);
     }
 }
 
@@ -1670,7 +1749,7 @@ emit_function(Bytecode_Builder* bc, Bytecode_Function* func, Ast* ast,
         bc->bytecode.entry_func_index = func->type_index;
         Bytecode_Export main_export = {};
         main_export.function = ast_unwrap_ident(ast->Decl_Stmt.ident);
-        main_export.func_index = func->type_index;;
+        main_export.func_index = func->type_index;
         array_push(bc->bytecode.exports, main_export);
     }
     
@@ -1781,7 +1860,7 @@ add_bytecode_global(Bytecode_Builder* bc, Exported_Data exported) {
 int
 add_bytecode_global(Bytecode_Builder* bc, 
                     Bytecode_Memory_Kind kind, 
-                    smm size, smm align, void* init) {
+                    smm size, smm align, void* init, Ast* initializer) {
     
     Memory_Arena* arena = (kind == BC_MEM_READ_ONLY ? 
                            &bc->data_packer->rdata_arena : 
@@ -1798,6 +1877,7 @@ add_bytecode_global(Bytecode_Builder* bc,
     global_var.size = (u32) size;
     global_var.align = (u32) align;
     global_var.kind = kind;
+    global_var.initializer = initializer;
     
     int global_index = (int) array_count(bc->bytecode.globals);
     array_push(bc->bytecode.globals, global_var);

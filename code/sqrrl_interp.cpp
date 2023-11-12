@@ -3,7 +3,9 @@ Interp_Value
 interp_expression(Interp* interp, Ast* ast) {
     assert(is_ast_expr(ast) || ast->kind == Ast_Value || ast->kind == Ast_Ident || ast->kind == Ast_None);
     
-    Interp_Value result = create_interp_value(interp);
+    //Interp_Value result = create_interp_value(interp);
+    Interp_Value result = {};
+    result.block_depth =  interp->block_depth;
     
     switch (ast->kind) {
         case Ast_Value: {
@@ -283,7 +285,7 @@ interp_expression(Interp* interp, Ast* ast) {
         
         case Ast_Aggregate_Expr: {
             result.value.type = Value_pointer;
-            void* dest = allocate_zeros(ast->type->size);
+            void* dest = New_Size(ast->type->size);
             result.value.data.data = dest;
             convert_aggregate_literal_to_memory(ast, dest);
         } break;

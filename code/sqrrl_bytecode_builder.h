@@ -1,7 +1,7 @@
 
 struct Bc_Local {
-    int ptr; // if ptr == -1 then use val instead
-    int val;
+    int index;
+    bool is_ref;
 };
 
 struct Bytecode_Builder {
@@ -91,33 +91,25 @@ to_bytecode_type(Type* type) {
     return result;
 }
 
-inline Type*
-normalize_type_for_casting(Type* type) {
-    // Make similar types 
-    if (type->kind == TypeKind_Pointer ||
-        type->kind == TypeKind_Function || 
-        type->kind == TypeKind_Type || 
-        type == t_cstring) {
-        
-        type = t_s64;
-    }
-    
-    if (type->kind == TypeKind_Enum) { 
-        type = type->Enum.type;
-    }
-    
-    return type;
+inline int
+add_register(Bytecode_Builder* bc, Type* type=0) {
+    assert(bc->curr_function);
+    //pln("Added register r%", f_int(bc->curr_function->register_count));
+    return bc->curr_function->register_count++;
 }
 
-inline int
-add_bytecode_register(Bytecode_Builder* bc, Type* type=0) {
+inline void
+drop_register(Bytecode_Builder* bc, int index) {
     assert(bc->curr_function);
-    return bc->curr_function->register_count++;
+    assert(index >= 0 && "invalid register");
+    //pln("Dropped register r%", f_int(index));
+    // TODO: add drop instruction
+    //return bc->curr_function->register_count++;
 }
 
 void emit_value_expression(Bytecode_Builder* bc, Ast* expr, int result=-1);
 
-int emit_value_fetch_expression(Bytecode_Builder* bc, Ast* expr, int result=-1);
+int emit_value_fetch_expression(Bytecode_Builder* bc, Ast* expr);
 
 int emit_reference_expression(Bytecode_Builder* bc, Ast* expr);
 
@@ -128,7 +120,7 @@ inline void emit_unary_increment(Bytecode_Builder* bc, Type* type, int result, b
 inline void emit_binary_expression(Bytecode_Builder* bc, Bytecode_Operator opcode,
                                    Ast* lexpr, Ast* rexpr, int result);
 inline void emit_assignment_expression(Bytecode_Builder* bc, Bytecode_Operator opcode,
-                                       Ast* lexpr, Ast* rexpr);
+                                       Ast* lexpr, Ast* rexpr, int result=-1);
 
 inline void emit_zero_compare(Bytecode_Builder* bc, Type* type, int result, int value, bool invert_condition);
 
@@ -155,7 +147,7 @@ int add_bytecode_global(Bytecode_Builder* bc, Exported_Data exported_data);
 int add_bytecode_global(Bytecode_Builder* bc, 
                         Bytecode_Memory_Kind kind, 
                         smm size, smm align,
-                        void* init=0);
+                        void* init=0, Ast* initializer=0);
 
 #define S1(x) #x
 #define S2(x) S1(x)
@@ -245,29 +237,37 @@ bc_binary_arith(Bytecode_Builder* bc, Bytecode_Type type, Bytecode_Operator opco
 }
 
 inline int
-bc_assignment(Bytecode_Builder* bc, Bytecode_Operator opcode, Bytecode_Type type, int dest, int src) {
+bc_assignment(Bytecode_Builder* bc, Bytecode_Operator opcode, Bytecode_Type type, int dest, int src, cstring comment=0) {
     Bytecode_Assign* insn = bc_instruction(bc, opcode, Bytecode_Assign);
     insn->type = type;
     insn->dest_index = dest;
     insn->src_index = src;
+    insn->comment = comment;
     return insn->dest_index;
 }
 
+#define bc_load(bc, type, dest, src) _bc_load(bc, type, dest, src, BC_COMMENT)
+
 inline int 
-bc_load(Bytecode_Builder* bc, Type* type, int dest, int src) {
+_bc_load(Bytecode_Builder* bc, Type* type, int dest, int src, cstring comment=0) {
     //Bytecode_Type bc_type = register_type(bc->curr_function, src);
     //assert(bc_type.kind == BC_TYPE_PTR && "expected BC_TYPE_PTR to load");
-    return bc_assignment(bc, BC_LOAD, to_bytecode_type(type), dest, src);
+    return bc_assignment(bc, BC_LOAD, to_bytecode_type(type), dest, src, comment);
+}
+
+inline int
+bc_lea(Bytecode_Builder* bc, int dest, int src) {
+    return bc_assignment(bc, BC_LEA, BC_PTR, dest, src);
 }
 
 inline int
 bc_store(Bytecode_Builder* bc, int dest, int src) {
-    return bc_assignment(bc, BC_STORE, BC_PTR, dest, src);
+    return bc_assignment(bc, BC_STORE, BC_VOID, dest, src);
 }
 
 inline int
 bc_copy(Bytecode_Builder* bc, int dest, int src) {
-    return bc_assignment(bc, BC_COPY, BC_PTR, dest, src);
+    return bc_assignment(bc, BC_COPY, BC_VOID, dest, src);
 }
 
 inline int
@@ -278,6 +278,7 @@ bc_cast(Bytecode_Builder* bc, Bytecode_Operator opcode, Type* type, int dest, in
 inline int 
 bc_field_access(Bytecode_Builder* bc, int res_index, int base, s32 offset) {
     Bytecode_Field_Access* insn = bc_instruction(bc, BC_FIELD_ACCESS, Bytecode_Field_Access);
+    insn->type = BC_PTR;
     insn->res_index = res_index;
     insn->base = base;
     insn->offset = offset;
@@ -308,6 +309,7 @@ bc_array_access(Bytecode_Builder* bc, Type* elem_type,
     //assert(bc_type.kind == BC_TYPE_PTR && "expected array base to be BC_TYPE_PTR");
     
     Bytecode_Array_Access* insn = bc_instruction(bc, BC_ARRAY_ACCESS, Bytecode_Array_Access);
+    insn->type = BC_PTR;
     insn->res_index = res_index;
     insn->base = base;
     insn->index = index;
@@ -366,6 +368,7 @@ bc_intrinsic(Bytecode_Builder* bc, Bytecode_Operator opcode, s32 ret_count, s32 
 inline int
 bc_global(Bytecode_Builder* bc, int res_index, int global_index) {
     Bytecode_Assign* insn = bc_instruction(bc, BC_GLOBAL, Bytecode_Assign);
+    insn->type = BC_PTR;
     insn->dest_index = res_index;
     insn->src_index = global_index;
     return insn->dest_index;
@@ -374,8 +377,9 @@ bc_global(Bytecode_Builder* bc, int res_index, int global_index) {
 inline int
 bc_local(Bytecode_Builder* bc, Type* type) {
     assert(bc->curr_function);
-    int result = add_bytecode_register(bc, t_void_ptr);
+    int result = add_register(bc, t_void_ptr);
     Bytecode_Local* insn =  bc_instruction(bc, BC_LOCAL, Bytecode_Local);
+    insn->type = BC_PTR;
     insn->res_index = result;
     insn->size = type->size;
     insn->align = type->align;
@@ -386,6 +390,7 @@ inline int
 bc_function(Bytecode_Builder* bc, int res_index, int func_index) {
     assert(bc->curr_function);
     Bytecode_Assign* insn =  bc_instruction(bc, BC_FUNCTION, Bytecode_Assign);
+    insn->type = BC_PTR;
     insn->dest_index = res_index;
     insn->src_index = func_index;
     return insn->dest_index;
@@ -410,6 +415,8 @@ bc_end_block(Bytecode_Builder* bc) {
     bc->block_depth--;
 }
 
+void string_builder_dump_bytecode_type(String_Builder* sb, Bytecode_Type type);
+void print_bytecode_type(Bytecode_Type type);
 void string_builder_dump_bytecode_globals(String_Builder* sb, Bytecode* bc);
 void string_bc_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Instruction* insn);
 void string_bc_dump_bytecode(String_Builder* sb, Bytecode* bc, Bytecode_Function* func, Type* type=0);

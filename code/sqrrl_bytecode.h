@@ -3,8 +3,10 @@ enum Bytecode_Operator : u8 {
     BC_END_OF_FUNCTION = 0,
     BC_NOOP,
     
-    // Control
     BC_DEBUG_BREAK,
+    BC_DROP,
+    
+    // Control flow
     BC_LOOP,
     BC_BLOCK,
     BC_END,
@@ -26,9 +28,10 @@ enum Bytecode_Operator : u8 {
     BC_FIELD_ACCESS, // ptr x := a.b (or (u8*) a + offset(b)
     
     // Memory
-    BC_COPY,   // x := y
-    BC_STORE,  // *x := y
-    BC_LOAD,   // x := *y
+    BC_COPY,   // res  = src
+    BC_STORE,  // *res = src
+    BC_LOAD,   // res = *src
+    BC_LEA,    // res = &src
     BC_MEMCPY, // memcpy(dest, src, size)
     BC_MEMSET, // memset(dest, val, size)
     
@@ -75,9 +78,6 @@ enum Bytecode_Operator : u8 {
     
     // Intrinsics (x64)
     BC_X64_RDTSC,
-    
-    // End of function
-    BC_EOF
 };
 
 bool
@@ -86,13 +86,13 @@ bc_is_comparator(Bytecode_Operator op) {
 }
 
 global const cstring bc_operator_names[] = {
-    /*                   */ "", "noop",
-    /* Control:          */ "debug_break", "loop", "block", "end", "branch", "call", "call_indirect",
+    /*                   */ "", "noop", "debug_break", "drop",
+    /* Control flow:     */ "loop", "block", "end", "branch", "call", "call_indirect",
     /*                   */ "return",
-    /* Constants:        */ "i64.const", "f32.const", "f64.const",
-    /* Pointers:         */ "ptr.local", "ptr.global", "ptr.function", "ptr.array_access",
-    /*                   */ "ptr.field_access",
-    /* Memory:           */ "copy", "store", "load", "memcpy", "memset",
+    /* Constants:        */ "const", "const", "const",
+    /* Pointers:         */ "local", "global", "function", "array_access",
+    /*                   */ "field_access",
+    /* Memory:           */ "copy", "store", "load", "lea", "memcpy", "memset",
     /* Conversions:      */ "truncate", "extend", "int_to_float", "float_to_int", "float_to_float",
     /*                   */ "reinterpret_f2i",
     /* Unary:            */ "neg", "not", "inc", "dec",
@@ -104,10 +104,11 @@ global const cstring bc_operator_names[] = {
 };
 
 global const cstring bc_type_names[] = {
-    "ptr", "int", "float"
+    "void", "ptr", "int", "float"
 };
 
 enum Bytecode_Type_Kind : u8 {
+    BC_TYPE_VOID,
     BC_TYPE_PTR,
     BC_TYPE_INT,
     BC_TYPE_FLOAT,
@@ -115,6 +116,7 @@ enum Bytecode_Type_Kind : u8 {
 
 enum Byytecode_Type_Flags {
     BC_FLAG_SIGNED = bit(0),
+    BC_FLAG_UNIQUE_REGISTER = bit(1),
 };
 
 struct Bytecode_Type {
@@ -133,6 +135,9 @@ global const Bytecode_Type bc_type_bool = bc_type(BC_TYPE_INT, 0, 1);
 
 global const Bytecode_Type bc_type_ptr = bc_type(BC_TYPE_PTR, 0, 0);
 #define BC_PTR bc_type_ptr
+
+global const Bytecode_Type bc_type_void = bc_type(BC_TYPE_VOID, 0, 0);
+#define BC_VOID bc_type_void
 
 struct Bytecode_Function_Arg {
     Bytecode_Type type;
@@ -185,11 +190,21 @@ function_arg_types(Bytecode_Function* func) {
     return (Bytecode_Function_Arg*) (func + 1) + func->ret_count;
 }
 
+enum Bytecode_Import_Kind {
+    BC_IMPORT_NONE,
+    BC_IMPORT_FUNC,
+    BC_IMPORT_GLOBAL,
+};
+
 struct Bytecode_Import {
     string_id module;
-    string_id function;
+    string_id name;
     
-    u32 func_index;
+    Bytecode_Import_Kind kind;
+    union {
+        u32 func_index;
+        u32 global_index;
+    };
     
     u32 iat_offset;
 };
@@ -204,7 +219,10 @@ enum Bytecode_Memory_Kind {
     BC_MEM_READ_WRITE,
 };
 
+struct Ast;
+
 struct Bytecode_Global {
+    Ast* initializer;
     void* address; // for JIT
     u32 offset;
     u32 size, align;
@@ -235,6 +253,7 @@ global cstring bc_memory_kind_names[] = {
 Bytecode_Operator opcode; \
 Bytecode_Type type; \
 s32 next_insn; \
+cstring comment;
 
 // Base structure, can be pointer casted to any of the other instruction types below
 struct Bytecode_Instruction {

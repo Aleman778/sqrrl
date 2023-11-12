@@ -1,6 +1,4 @@
 
-Ic_Opcode x64_intrin_rdtsc = IC_RDTSC;
-
 enum X64_Reg: u8 {
     X64_RAX,
     X64_RCX,
@@ -140,6 +138,8 @@ register_stack_alloc(X64_Assembler* x64, int register_index, Bytecode_Type type,
     s32 result = x64->current_stack_size;
     result = (s32) align_forward(result, align);
     x64->current_stack_size = result + size;
+    //pln("stack alloc: r% - after x64->current_stack_size % (size %, align %)", f_int(register_index), 
+    //f_int(x64->current_stack_size), f_int(size), f_int(align));
     x64->max_stack_size = max(x64->max_stack_size, x64->current_stack_size);
     X64_Slot_Kind slot_kind = store_inplace ? X64_SLOT_RSP_DISP32_INPLACE : X64_SLOT_RSP_DISP32;
     set_slot(x64, register_index, slot_kind, type, result);
@@ -155,6 +155,8 @@ register_displacement(X64_Assembler* x64, int register_index, Bytecode_Type type
         return register_stack_alloc(x64, register_index, type, 8, 8, false);
     }
     
+    assert(slot.kind == X64_SLOT_RSP_DISP32 ||
+           slot.kind == X64_SLOT_RSP_DISP32_INPLACE);
     slot.type = type;
     set_slot(x64, register_index, slot);
     return slot.disp;

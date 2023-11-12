@@ -322,6 +322,40 @@ constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
                 Value first = constant_folding_of_expressions(tcx, ast->Binary_Expr.first);
                 Value second = constant_folding_of_expressions(tcx, ast->Binary_Expr.second);
                 
+#if 0
+                // TODO(Alexander): optimze logical operators
+                if (ast->Binary_Expr.op == Op_Logical_And) {
+                    if (is_integer(first) && is_integer(second)) {
+                        result.type = Value_boolean;
+                        result.data.boolean = value_to_bool(first) && value_to_bool(second);
+                        
+                    } else if (is_integer(first) && value_to_bool(first)) {
+                        // First part doesn't matter we can skip to second directly
+                        *ast = *ast->Binary_Expr.second;
+                        
+                    } else if (is_integer(first) && !value_to_bool(first)) {
+                        // First part doesn't matter we can skip to second directly
+                        *ast = *ast->Binary_Expr.second;
+                        
+                    } else if (is_integer(second) && value_to_bool(second)) {
+                        // Second part doesn't matter we can skip to second directly
+                        *ast = *ast->Binary_Expr.first;
+                    }
+                    
+                } else if (ast->Binary_Expr.op == Op_Logical_Or) {
+                    if (is_integer(first) && is_integer(second)) {
+                        result.type = Value_boolean;
+                        result.data.boolean = value_to_bool(first) && value_to_bool(second);
+                        
+                    } else if (is_integer(first) && value_to_bool(first)) {
+                        *ast = *ast->Binary_Expr.second;
+                        
+                    } else if (is_integer(second) && value_to_bool(second)) {
+                        *ast = *ast->Binary_Expr.first;
+                    }
+                }
+#endif 
+                
                 if (!is_void(first) && !is_void(second)) {
                     
                     // NOTE(Alexander): Type rules
@@ -388,8 +422,7 @@ constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
                     type = create_type_from_ast(tcx, ast->Cast_Expr.type, false).type;
                 }
                 if (type && type->kind == TypeKind_Basic) {
-                    value = value_cast(value, type->Basic.kind);
-                    result = result;
+                    result = value_cast(value, type->Basic.kind);
                     ast->type = type;
                 }
             }
@@ -2659,6 +2692,7 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool is_rhs_value
     }
     
     if (lhs->kind != rhs->kind) {
+        // NOCHECKIN
         if (report_error) {
             type_error_mismatch(tcx, lhs, rhs, span);
         }
@@ -3063,7 +3097,33 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
         
         case Ast_Cast_Expr: {
             result = type_check_expression(tcx, expr->Cast_Expr.expr);
-            // TODO(Alexander): do we want any checking here?
+            
+            Type* real_src = expr->Cast_Expr.expr->type;
+            Type* real_dest = expr->type;
+            Type* src = normalize_type_for_casting(real_src);
+            Type* dest = normalize_type_for_casting(real_dest);
+            
+            bool is_valid_cast = false;
+            if (dest->kind == TypeKind_Basic && src->kind == TypeKind_Basic) {
+                is_valid_cast = true;
+            }
+            if (dest->kind == TypeKind_Array && src->kind == TypeKind_Array) {
+                is_valid_cast = true;
+            }
+            if ((dest->kind == TypeKind_Struct || dest->kind == TypeKind_Union) && 
+                (src->kind  == TypeKind_Struct || src->kind  == TypeKind_Union) &&
+                (dest->ident == src->ident)) { // TODO(Alexander): identifier, expand to namespace
+                is_valid_cast = true;
+            }
+            if (dest->kind == TypeKind_Void) {
+                is_valid_cast = true;
+            }
+            
+            if (!is_valid_cast) {
+                type_error(tcx, string_print("cannot cast from `%` to `%`", 
+                                             f_type(real_src), f_type(real_dest)), expr->span);
+                result = false;
+            }
         } break;
         
         case Ast_Paren_Expr: {
@@ -3374,7 +3434,6 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* cu) {
             Span span = ast->span;
             span.offset += span.count;
             span.count = 1;
-            pln("offset = %, count = %", f_int(span.offset), f_int(span.count));
             type_error(tcx, string_print("not all control paths return a value in `%`",
                                          f_var(type->Function.ident)), span);
         }

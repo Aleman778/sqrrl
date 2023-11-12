@@ -234,7 +234,7 @@ opengl_end_drawing(OpenGL* opengl, Render_Command* command, m4x4 mvp_transform) 
     
 }
 
-inline void
+inline void @dump_bytecode
 push_vertex(Render_Command* command, v3 pos, v2 texcoord, v4 tint) {
     assert((command.vertex_count + 1) * sizeof(Vertex) < command.vertex_data_size);
     command.vertices[command.vertex_count].pos = (command.transform * vec4(pos, 1.0f)).xyz;
@@ -465,7 +465,6 @@ load_font(string filename) {
     image.num_components = 1;
     
     int full_size = 32;//max(image.width, image.height);
-    pln("full_size = %", full_size);
     result.texture = create_texture(image);
     result.is_valid = true;
     
@@ -772,4 +771,5 @@ main() {
     }
     
     ExitProcess(0);
+    return 0;
 }

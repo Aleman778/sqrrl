@@ -202,7 +202,6 @@ extern {
 }
 
 // OpenGL 1.2+ needs to be linked at runtime
-global Dynamic_Library opengl_library;
 // TODO: COMPILER BUG: for some reason a whitespace is required at the end of line below, wat
 #undef GLAPI
 #define GLAPI @link_dynamic(opengl_library) extern

@@ -150,17 +150,11 @@ intrinsic_assert(int test, cstring msg, cstring file, smm line) {
 #define assert_enum(T, v) assert((v) > 0 && (v) < T##_Count && "enum value out of range")
 #define assert_power_of_two(x) assert(is_power_of_two(x) && "x is not power of two")
 
+// TODO(Alexander): add allocator support
+#define New(T) (T*) calloc(1, sizeof(T))
+#define New_Size(size) calloc(1, size)
+#define New_Array(T, count) (T*) calloc(count, sizeof(T))
 
-// TODO(Alexander): create proper allocators
-void*
-allocate(umm size) {
-    return malloc(size);
-}
-
-void*
-allocate_zeros(umm size) {
-    return calloc(1, size);
-}
 
 s32
 abs_s32(s32 s) {
@@ -441,7 +435,7 @@ enum Format_Type { // TODO(Alexander): add more types
     FormatType_ast,
     FormatType_value,
     FormatType_type,
-    FormatType_intermediate_code,
+    FormatType_bytecode_type,
 };
 
 // TODO(Alexander): add more types
@@ -463,7 +457,7 @@ enum Format_Type { // TODO(Alexander): add more types
 #define f_ast(x) FormatType_ast, (Ast*) (x)
 #define f_value(x) FormatType_value, (Value*) (x)
 #define f_type(x) FormatType_type, (Type*) (x)
-#define f_ic(x) FormatType_intermediate_code, (Intermediate_Code*) (x)
+#define f_bc_type(x) FormatType_bytecode_type, (Bytecode_Type) (x)
 
 void print(cstring format...);
 string string_print(cstring format...);

@@ -56,7 +56,7 @@ write_padding_to_file(File_Handle file_handle, umm size, umm aligned_size) {
     umm padding_size = aligned_size - size;
     //pln("pad: %", f_u64_HEX(padding_size));
     if (padding_size) {
-        void* padding = allocate_zeros(padding_size);
+        void* padding = New_Size(padding_size);
         DEBUG_write(file_handle, padding, (u32) padding_size);
         free(padding);
     }

@@ -213,6 +213,12 @@ is_aggregate_type(Type* type) {
             type->kind == TypeKind_Array);
 }
 
+bool
+is_aggregate_array_type(Type* type) {
+    return ((type->kind == TypeKind_Array && type->Array.kind != ArrayKind_Fixed_Inplace) ||
+            (type->kind == TypeKind_Basic && type->Basic.kind == Basic_string));
+}
+
 Type basic_type_definitions[] = {
 #define BASIC(ident, flags, keyword, size, limits) \
 { TypeKind_Basic, { Basic_##ident, flags, limits }, keyword, size, size },
@@ -242,6 +248,24 @@ global Type* t_type = &type_definition;
 #define BASIC(ident, ...) global Type* t_##ident = &basic_type_definitions[Basic_##ident];
 DEF_BASIC_TYPES
 #undef BASIC
+
+inline Type*
+normalize_type_for_casting(Type* type) {
+    // Make similar types 
+    if (type->kind == TypeKind_Pointer ||
+        type->kind == TypeKind_Function || 
+        type->kind == TypeKind_Type || 
+        type == t_cstring) {
+        
+        type = t_s64;
+    }
+    
+    if (type->kind == TypeKind_Enum) { 
+        type = type->Enum.type;
+    }
+    
+    return type;
+}
 
 Format_Type
 convert_type_to_format_type(Type* type) {
@@ -348,9 +372,18 @@ string_builder_push(String_Builder* sb, Type* type, bool multiline=false) {
             string_builder_push(sb, "*");
         } break;
         
-        case TypeKind_Struct: 
-        case TypeKind_Union:
+        case TypeKind_Struct: {
+            string_builder_push(sb, "struct ");
+            string_builder_push(sb, type->ident);
+        } break;
+        
+        case TypeKind_Union: {
+            string_builder_push(sb, "union ");
+            string_builder_push(sb, type->ident);
+        } break;
+        
         case TypeKind_Enum: {
+            string_builder_push(sb, "enum ");
             string_builder_push(sb, type->ident);
         } break;
         

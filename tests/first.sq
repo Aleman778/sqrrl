@@ -59,6 +59,14 @@ int_add_operator() {
 
 void
 @test_proc
+unsigned_int_divide_mixed() {
+    int x = -100;
+    uint y = 20;
+    assert(x / y == 214748359);
+}
+
+void
+@test_proc
 bool_logical_and_operator() {
     bool x = true;
     x = x && true;

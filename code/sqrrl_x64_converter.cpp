@@ -21,8 +21,21 @@ convert_bytecode_to_x64_machine_code(Bytecode* bytecode, Buffer* buf,
         convert_bytecode_function_to_x64_machine_code(&x64, func, buf);
         
         if (!use_absolute_ptrs && func->type_index < array_count(bytecode->imports)) {
-            push_u16(buf, 0x25FF); // FF 25    JMP RIP-relative
-            x64_create_u32_patch(&x64, buf, X64_PATCH_DYNAMIC_LIBRARY, func->type_index);
+            Bytecode_Import* import = &bytecode->imports[func->type_index];
+            
+            if (import->kind == BC_IMPORT_FUNC) {
+                push_u16(buf, 0x25FF); // FF 25    JMP RIP-relative
+                x64_create_u32_patch(&x64, buf, X64_PATCH_DYNAMIC_LIBRARY, import->func_index);
+                
+            } else if (import->kind == BC_IMPORT_GLOBAL) {
+                assert(import->global_index < array_count(bytecode->globals));
+                Bytecode_Global* g = &bytecode->globals[import->global_index];
+                push_u16(buf, 0x25FF); // FF 25    JMP RIP-relative
+                x64_create_u32_patch(&x64, buf, X64_PATCH_READ_WRITE_DATA, g->offset);
+                
+            } else {
+                verify_not_reached();
+            }
         }
     }
     
@@ -91,6 +104,10 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     
     // Windows calling convention stack setup
     s32 register_count = (s32) func->register_count;
+    if (func->max_caller_arg_count < 4) {
+        // Reserve spaces for HOME registers at minimum
+        func->max_caller_arg_count = 4;
+    }
     s32 stack_caller_args = func->max_caller_arg_count*8;
     x64->current_stack_size = stack_caller_args;
     x64->max_stack_size = x64->current_stack_size;
@@ -126,33 +143,13 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
             Bytecode_Function_Arg formal_arg = formal_args[arg_index];
             
             s64 src = arg_index*8;
-            s32 size = formal_arg.size;
-            s32 align = formal_arg.align;
-            if (arg_index == 0 && func->return_as_first_arg) {
-                // Only copy the pointer from return argument
-                size = 8; align = 8;
-            }
+            s64 dest = register_stack_alloc(x64, arg_index, formal_arg.type, 8, 8, false);
             
-            if (size < 8) {
-                size = 8; align = 8;
-            }
-            
-            s64 dest = register_stack_alloc(x64, arg_index, formal_arg.type, size, align, size > 8);
-            if (size == 8) {
-                // Load source value
-                // REX.W + 8B /r 	MOV RAX, RSP + disp 	RM
-                callee_args_disp[arg_index] =
-                    x64_move_memory_to_register_disp(buf, X64_RAX, X64_RSP, src);
-                x64_move_register_to_memory(buf, X64_RSP, dest, X64_RAX);
-                
-            } else {
-                // TODO(Alexander): we shouldn't copy this!!!
-                x64_lea(buf, X64_RDI, X64_RSP, dest);
-                callee_args_disp[arg_index] =
-                    x64_move_memory_to_register_disp(buf, X64_RSI, X64_RSP, src);
-                x64_move_immediate_to_register(buf, X64_RCX, size);
-                x64_rep_movsb(buf, X64_RDI, X64_RSI, X64_RCX);
-            }
+            // Load source value
+            // REX.W + 8B /r 	MOV RAX, RSP + disp 	RM
+            callee_args_disp[arg_index] =
+                x64_move_memory_to_register_disp(buf, X64_RAX, X64_RSP, src);
+            x64_move_register_to_memory(buf, X64_RSP, dest, X64_RAX);
         }
     }
     s32* variadic_data_ptr = 0;
@@ -161,8 +158,8 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
         int var_args = func->arg_count - 1;
         variadic_data_ptr = x64_lea_patch_disp(buf, X64_RAX, X64_RSP, func->arg_count*8);
         X64_Slot dest = get_slot(x64, var_args);
-        x64_move_register_to_memory(buf, X64_RSP, dest.disp, X64_RAX);
-        
+        x64_move_memory_to_register(buf, X64_RCX, X64_RSP, dest.disp);
+        x64_move_register_to_memory(buf, X64_RCX, 0, X64_RAX);
         //pln("%: arg_count = %", f_var(x64->bytecode->function_names[func->type_index]), f_int());
     }
     
@@ -229,10 +226,11 @@ void
 convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, 
                                           Bytecode_Function* func, 
                                           Bytecode_Instruction* insn) {
-    s64 rip = 0;
     Bytecode_Binary* bc = (Bytecode_Binary*) insn;
     
     switch (bc->opcode) {
+        case BC_NOOP: break;
+        
         case BC_DEBUG_BREAK: {
             push_u8(buf, 0xCC);
         } break;
@@ -423,6 +421,13 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                                         X64_RAX);
         } break;
         
+        case BC_LEA: {
+            X64_Slot src = get_slot(x64, bc->a_index);
+            x64_lea(buf, X64_RAX, X64_RSP, src.disp);
+            s32 disp = register_stack_alloc(x64, bc->res_index, bc->type, 8, 8, src.kind == X64_SLOT_RSP_DISP32_INPLACE);
+            x64_move_register_to_memory(buf, X64_RSP, disp, X64_RAX);
+        } break;
+        
         case BC_CALL: {
             Bytecode_Call* call = (Bytecode_Call*) bc;
             Bytecode_Function* target = x64->bytecode->functions[call->func_index];
@@ -505,9 +510,13 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_TRUNCATE: {
-            X64_Slot src = get_slot(x64, bc->a_index);
-            src.type = bc->type;
-            set_slot(x64, bc->res_index, src);
+            // TODO: TRUNCATE is a noop in x64 so we shouldn't need to copy the data
+            x64_move_slot_to_register(x64, buf, X64_RAX, bc->a_index);
+            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index, bc->type), X64_RAX);
+            
+            //X64_Slot src = get_slot(x64, bc->a_index);
+            //src.type = bc->type;
+            //set_slot(x64, bc->res_index, src);
             
             //Bytecode_Type type = register_type(func, bc->res_index);
             
@@ -550,7 +559,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_NEG: {
-            if (bc->type.kind & BC_TYPE_FLOAT) {
+            if (bc->type.kind == BC_TYPE_FLOAT) {
                 // XOR the sign float bit
                 Exported_Data sign_mask = export_size(x64->data_packer, Read_Data_Section, 
                                                       bc->type.size, bc->type.size);
@@ -580,8 +589,9 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         
         case BC_COPY: {
             X64_Slot src = get_slot(x64, bc->a_index);
+            Bytecode_Type type = bc->type.kind != BC_TYPE_VOID ? bc->type : src.type;
             x64_move_slot_to_register(x64, buf, X64_RAX, bc->a_index);
-            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index, src.type), X64_RAX);
+            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index, type), X64_RAX);
         } break;
         
         case BC_OR:

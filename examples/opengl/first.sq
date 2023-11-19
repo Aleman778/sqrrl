@@ -234,7 +234,7 @@ opengl_end_drawing(OpenGL* opengl, Render_Command* command, m4x4 mvp_transform) 
     
 }
 
-inline void @dump_bytecode
+inline void
 push_vertex(Render_Command* command, v3 pos, v2 texcoord, v4 tint) {
     assert((command.vertex_count + 1) * sizeof(Vertex) < command.vertex_data_size);
     command.vertices[command.vertex_count].pos = (command.transform * vec4(pos, 1.0f)).xyz;
@@ -493,7 +493,7 @@ aabb_intersects_aabb(AABB a, AABB b) {
 }
 
 
-int
+int @dump_bytecode
 main() {
     
     f32 aspect_ratio = 16.0f / 9.0f;

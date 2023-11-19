@@ -8,7 +8,6 @@
 #include "sqrrl_basic.cpp"
 
 #include "sqrrl_value.cpp"
-#include "sqrrl_data.cpp"
 #include "sqrrl_types.cpp"
 #include "sqrrl_test.cpp"
 #include "sqrrl_tokenizer.cpp"
@@ -383,6 +382,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     // Build initializer
     emit_initializer_function(&bytecode_builder);
+    
+    // Validate + optimize
+    validate_bytecode(&bytecode_builder.bytecode);
     
     // Print the bytecode
     String_Builder sb = {};

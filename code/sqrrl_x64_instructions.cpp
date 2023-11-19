@@ -65,6 +65,16 @@ x64_move_memory_to_register(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp) {
     x64_modrm(buf, dest, src, disp, 0);
 }
 
+inline void
+x64_move_register_to_register(Buffer* buf, X64_Reg dest, X64_Reg src) {
+    if (dest == src) return;
+    
+    // 89 /r 	MOV r/m64,r64 	MR
+    x64_rex(buf, REX_W, src);
+    push_u8(buf, 0x89);
+    x64_modrm_direct(buf, src, dest);
+}
+
 inline s32*
 x64_move_memory_to_register_disp(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp) {
     x64_rex(buf, REX_W, dest);
@@ -88,7 +98,7 @@ x64_lea_patch_disp(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp) {
 }
 
 void
-x64_move_extend(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp, int size, bool is_signed) {
+x64_move_extend_opcode(Buffer* buf, X64_Reg dest, X64_Reg src, int size, bool is_signed) {
     if (is_signed) {
         switch (size) {
             case 1: {
@@ -143,7 +153,21 @@ x64_move_extend(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp, int size, bool
         }
     }
     
+    
+}
+
+void
+x64_move_extend_memory_to_register(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp, 
+                                   int size, bool is_signed) {
+    x64_move_extend_opcode(buf, dest, src, size, is_signed);
     x64_modrm(buf, dest, src, disp, 0);
+}
+
+void
+x64_move_extend_register_to_register(Buffer* buf, X64_Reg dest, X64_Reg src,
+                                     int size, bool is_signed) {
+    x64_move_extend_opcode(buf, dest, src, size, is_signed);
+    x64_modrm_direct(buf, dest, src);
 }
 
 inline void
@@ -154,8 +178,10 @@ x64_lea(Buffer* buf, X64_Reg a, X64_Reg b, s64 disp) {
     x64_modrm(buf, a, b, disp, 0);
 }
 
-void
-x64_move_slot_to_register(X64_Assembler* x64, Buffer* buf, X64_Reg dest, int src_index) {
+
+
+X64_Reg
+_x64_move_slot_to_register_unchecked(X64_Assembler* x64, Buffer* buf, X64_Reg dest, int src_index) {
     X64_Slot src = get_slot(x64, src_index);
     switch (src.kind) {
         case X64_SLOT_RSP_DISP32_INPLACE: {
@@ -163,13 +189,50 @@ x64_move_slot_to_register(X64_Assembler* x64, Buffer* buf, X64_Reg dest, int src
         } break;
         
         case X64_SLOT_RSP_DISP32: {
-            x64_move_extend(buf, dest, X64_RSP, src.disp, src.type.size, src.type.flags & BC_FLAG_SIGNED);
+            x64_move_extend_memory_to_register(buf, dest, X64_RSP, src.disp, src.type.size,
+                                               src.type.flags & BC_FLAG_SIGNED);
+        } break;
+        
+        case X64_SLOT_REG: {
+            dest = src.reg;
+            x64_move_extend_register_to_register(buf, dest, src.reg, src.type.size,
+                                                 src.type.flags & BC_FLAG_SIGNED);
         } break;
         
         default: {
             pln("x64_move_slot_to_register - src_index = r%", f_int(src_index));
             unimplemented;
         } break;
+    }
+    
+    return dest;
+}
+
+X64_Reg
+_x64_move_slot_to_register(X64_Assembler* x64, Buffer* buf, X64_Reg dest_hint, int src_index) {
+    X64_Slot src = get_slot(x64, src_index);
+    alloc_register(x64, buf, src_index, src.type, true, dest_hint);
+    return _x64_move_slot_to_register_unchecked(x64, buf, dest, src_index);
+}
+
+void
+x64_move_register_to_slot(X64_Assembler* x64, Buffer* buf, Bytecode_Type dest_type, int dest_index, X64_Reg src) {
+    X64_Slot slot = get_slot(x64, dest_index);
+    if (slot.kind == X64_SLOT_EMPTY) {
+        slot = alloc_register(x64, dest_index, dest_type);
+    }
+    slot.type = dest_type;
+    set_slot(x64, dest_index, slot);
+    
+    if (slot.kind == X64_SLOT_RSP_DISP32 ||
+        slot.kind == X64_SLOT_RSP_DISP32_INPLACE) {
+        x64_move_register_to_memory(buf, X64_RSP, slot.disp, src);
+        
+    } else if (slot.kind == X64_SLOT_REG) {
+        x64_move_register_to_register(buf, slot.reg, src);
+        
+    } else {
+        verify_not_reached();
     }
 }
 

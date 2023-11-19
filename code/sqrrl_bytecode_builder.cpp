@@ -1505,6 +1505,7 @@ drop_register(Bytecode_Validation* bc_valid, Bytecode_Instruction* insn, int ind
             //bc_type_error(bc_valid, string_print("register r% is not unique", f_int(index)), insn->opcode);
         }
     }
+    r->init = 0;
     
     return r;
 }
@@ -1513,7 +1514,7 @@ inline void
 allocate_register(Bytecode_Validation* bc_valid, Bytecode_Instruction* insn, int index, Bytecode_Type type) {
     Bytecode_Register* r = drop_register(bc_valid, insn, index);
     r->type = type;
-    r->uses = 0;
+    r->uses = r->init ? 0 : (r->uses + 1); // if we reuse register => count it as a use instead!
     r->init = insn;
 }
 

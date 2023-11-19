@@ -190,7 +190,6 @@ end_tmp_scope(Bytecode_Builder* bc, int first) {
     for (int i = bc->next_register - 1; i >= first; i--) {
         drop_register(bc, i);
     }
-    bc->next_register = first;
     //pln("Drop to: %", f_int(bc->next_register));
 }
 

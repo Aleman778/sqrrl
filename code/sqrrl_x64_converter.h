@@ -69,10 +69,18 @@ enum X64_Slot_Kind : u8 {
 struct X64_Slot {
     X64_Slot_Kind kind;
     Bytecode_Type type;
+    
+    X64_Reg tmp_reg[3];
+    u8 tmp_reg_count;
+    
     union {
         s32 disp;
         X64_Reg reg;
         X64_VReg vreg;
+        struct {
+            s32 size;
+            s32 align;
+        };
     };
 };
 
@@ -95,21 +103,19 @@ struct X64_Patch {
 };
 
 // TODO(Alexander): optimize this structure to minimize collisions with callee saved and HOME registers...
-X64_Reg tmp_gpr_registers[] = {
+X64_Reg x64_tmp_gpr_registers[] = {
     X64_RAX, X64_RCX, X64_RDX, X64_RBX, X64_RSI, X64_RDI, X64_R8,
     X64_R9, X64_R10, X64_R11, X64_R12, X64_R13, X64_R14, X64_R15,
 };
-
-#define X64_TMP_GPR_COUNT 14
 
 struct X64_Assembler {
     Bytecode* bytecode;
     u32* stack;
     
     Memory_Arena arena;
+    //X64_Slot* slots;
+    
     X64_Slot* slots;
-    X64_Reg free_gpr[X64_TMP_GPR_COUNT];
-    int free_gpr_count;
     int allocated_gpr[X64_REG_COUNT];
     
     Data_Packer* data_packer;
@@ -130,41 +136,153 @@ struct X64_Assembler {
     bool use_absolute_ptrs;
 };
 
-inline X64_Slot
-get_slot(X64_Assembler* x64, int register_index) {
-    assert(register_index >= 0);
-    return x64->slots[register_index];
+inline int
+x64_next_free_register(X64_Assembler* x64 ) {
+    for (int i = 0; i < fixed_array_count(x64_tmp_gpr_registers); i++) {
+        if (x64->allocated_gpr[i] == -1) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 inline void
-set_slot(X64_Assembler* x64, int register_index, X64_Slot_Kind kind, Bytecode_Type type, s32 disp) {
-    x64->slots[register_index] = { kind, type, disp };
+x64_allocate_register(X64_Assembler* x64, Bytecode_Type type, int reg_index, X64_Reg preferred_reg) {
+    X64_Slot* slot = &x64->slots[reg_index];
+    if (slot->kind == X64_SLOT_EMPTY) {
+        slot->type = type;
+        slot->kind = X64_SLOT_RSP_DISP32;
+        
+        if (x64->allocated_gpr[preferred_reg] == -1) {
+            x64->allocated_gpr[preferred_reg] = reg_index;
+            slot->kind = X64_SLOT_REG;
+            
+        } else {
+            int i = x64_next_free_register(x64);
+            if (i != -1) {
+                slot->reg = x64_tmp_gpr_registers[i];
+                slot->kind = X64_SLOT_REG;
+                x64->allocated_gpr[preferred_reg] = slot->reg;
+            }
+        }
+    }
 }
 
 inline void
-set_slot(X64_Assembler* x64, int register_index, Bytecode_Type type, X64_Reg reg) {
-    x64->slots[register_index] = { X64_SLOT_REG, type, reg };
+x64_allocate_stack(X64_Assembler* x64, Bytecode_Type type, int reg_index,
+                   s32 size, s32 align, bool store_inplace) {
+    
+    X64_Slot* slot = &x64->slots[reg_index];
+    if (slot->kind == X64_SLOT_EMPTY) {
+        slot->type = type;
+        slot->kind = store_inplace ? X64_SLOT_RSP_DISP32_INPLACE : X64_SLOT_RSP_DISP32;
+        slot->size = size;
+        slot->align = align;
+    }
 }
 
 inline void
-set_slot(X64_Assembler* x64, int register_index, X64_Slot slot) {
-    x64->slots[register_index] = slot;
+x64_spill(X64_Assembler* x64, X64_Reg reg) {
+    int reg_index = x64->allocated_gpr[reg];
+    if (reg_index >= 0) {
+        X64_Slot* slot = &x64->slots[reg_index];
+        x64->allocated_gpr[reg] = -1;
+        slot->kind = X64_SLOT_RSP_DISP32;
+    }
+}
+
+inline X64_Reg
+x64_tmp_register(X64_Assembler* x64, int reg_index, X64_Reg hint_reg) {
+    X64_Reg reg;
+    int i = x64_next_free_register(x64);
+    if (i != -1) {
+        reg = x64_tmp_gpr_registers[i];
+    } else {
+        x64_spill(x64, hint_reg);
+        reg = hint_reg;
+    }
+    
+    X64_Slot* slot = &x64->slots[reg_index];
+    assert(slot->tmp_reg_count < 3);
+    slot->tmp_reg[slot->tmp_reg_count++] = reg;
+    return reg;
 }
 
 inline void
-drop_slot(X64_Assembler* x64, int register_index) {
-    X64_Slot slot = get_slot(x64, register_index);
+x64_drop(X64_Assembler* x64, int reg_index) {
+    X64_Slot slot = x64->slots[reg_index];
     if (slot.kind == X64_SLOT_REG) {
         x64->allocated_gpr[slot.reg] = -1;
+    }
+}
+
+
+inline X64_Slot
+get_slot(X64_Assembler* x64, int reg_index) {
+    return x64->slots[reg_index];
+}
+
+inline s32
+x64_register_displacement(X64_Assembler* x64, int slot_index, Bytecode_Type type=BC_PTR) {
+    //return x64->
+    return 0;
+}
+
+
+
+
+
+
+
+
+#if 0
+
+inline s32
+stack_alloc(X64_Assembler* x64, int slot_index, Bytecode_Type type, 
+            s32 size, s32 align, bool store_inplace) {
+    s32 result = x64->current_stack_size;
+    result = (s32) align_forward(result, align);
+    x64->current_stack_size = result + size;
+    //pln("stack alloc: r% - after x64->current_stack_size % (size %, align %)", f_int(slot_index), 
+    //f_int(x64->current_stack_size), f_int(size), f_int(align));
+    x64->max_stack_size = max(x64->max_stack_size, x64->current_stack_size);
+    X64_Slot_Kind slot_kind = store_inplace ? X64_SLOT_RSP_DISP32_INPLACE : X64_SLOT_RSP_DISP32;
+    set_slot(x64, slot_index, slot_kind, type, result);
+    
+    return result;
+}
+
+inline s32
+register_displacement(X64_Assembler* x64, int slot_index, Bytecode_Type type=BC_PTR) {
+    X64_Slot slot = get_slot(x64, slot_index);
+    //pln("register_displacement - r%, %, size % (disp %)", f_int(slot_index), f_cstring(bc_type_names[type.kind]), f_int(type.size), f_int(slot.disp));
+    if (slot.kind == X64_SLOT_EMPTY) {
+        return stack_alloc(x64, slot_index, type, 8, 8, false);
+    }
+    
+    assert(slot.kind == X64_SLOT_RSP_DISP32 ||
+           slot.kind == X64_SLOT_RSP_DISP32_INPLACE);
+    slot.type = type;
+    set_slot(x64, slot_index, slot);
+    return slot.disp;
+}
+
+inline void x64_move_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_Reg src);
+
+inline void
+x64_spill(X64_Assembler* x64, X64_Reg reg) {
+    int slot_index = x64->allocated_gpr[reg];
+    X64_Slot* slot = &x64->slots[slot_index];
+    if (slot->is_reg) {
+        x64->allocated_gpr[slot->reg] = -1;
         
         int last_allocated = x64->free_gpr_count - 1;
         int free_index = last_allocated;
         for (; free_index >= 0; free_index--) {
-            if (x64->free_gpr[free_index] == slot.reg) {
+            if (x64->free_gpr[free_index] == slot->reg) {
                 break;
             }
         }
-        
         
         if (last_allocated != free_index) {
             X64_Reg tmp = x64->free_gpr[last_allocated];
@@ -173,75 +291,57 @@ drop_slot(X64_Assembler* x64, int register_index) {
         }
         x64->free_gpr_count--;
     }
-    x64->slots[register_index] = {};
-}
-
-inline s32
-register_stack_alloc(X64_Assembler* x64, int register_index, Bytecode_Type type, 
-                     s32 size, s32 align, bool store_inplace) {
-    s32 result = x64->current_stack_size;
-    result = (s32) align_forward(result, align);
-    x64->current_stack_size = result + size;
-    //pln("stack alloc: r% - after x64->current_stack_size % (size %, align %)", f_int(register_index), 
-    //f_int(x64->current_stack_size), f_int(size), f_int(align));
-    x64->max_stack_size = max(x64->max_stack_size, x64->current_stack_size);
-    X64_Slot_Kind slot_kind = store_inplace ? X64_SLOT_RSP_DISP32_INPLACE : X64_SLOT_RSP_DISP32;
-    set_slot(x64, register_index, slot_kind, type, result);
     
-    return result;
+    slot->is_reg = false;
 }
-
-inline s32
-register_displacement(X64_Assembler* x64, int register_index, Bytecode_Type type=BC_PTR) {
-    X64_Slot slot = get_slot(x64, register_index);
-    //pln("register_displacement - r%, %, size % (disp %)", f_int(register_index), f_cstring(bc_type_names[type.kind]), f_int(type.size), f_int(slot.disp));
-    if (slot.kind == X64_SLOT_EMPTY) {
-        return register_stack_alloc(x64, register_index, type, 8, 8, false);
-    }
-    
-    assert(slot.kind == X64_SLOT_RSP_DISP32 ||
-           slot.kind == X64_SLOT_RSP_DISP32_INPLACE);
-    slot.type = type;
-    set_slot(x64, register_index, slot);
-    return slot.disp;
-}
-
-inline void x64_move_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_Reg src);
 
 void
 spill_register(X64_Assembler* x64, Buffer* buf, X64_Reg reg) {
-    int register_index = x64->allocated_gpr[reg];
-    if (register_index >= 0) {
-        Bytecode_Type type = get_slot(x64, register_index).type;
-        drop_slot(x64, register_index);
-        x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, register_index, type), reg);
+    int slot_index = x64->allocated_gpr[reg];
+    if (slot_index >= 0) {
+        Bytecode_Type type = get_slot(x64, slot_index).type;
+        drop_slot(x64, slot_index);
+        s32 disp = stack_alloc(x64, slot_index, type, 8, 8, false);
+        x64_move_register_to_memory(buf, X64_RSP, disp, reg);
     }
 }
 
+X64_Reg
+alloc_tmp_register(X64_Assembler* x64, Buffer* buf, X64_Reg spill_reg) {
+    if (x64->free_gpr_count < X64_TMP_GPR_COUNT) {
+        X64_Reg reg = x64->free_gpr[x64->free_gpr_count];
+        //x64->allocated_gpr[reg] = slot_index;
+        return reg;
+    } else {
+        spill_register(x64, buf, spill_reg);
+        return spill_reg;
+    }
+}
 
 X64_Slot
-alloc_register(X64_Assembler* x64, Buffer* buf, int register_index, Bytecode_Type type, bool force, X64_Reg force_spill) {
+alloc_register(X64_Assembler* x64, Buffer* buf, int slot_index, Bytecode_Type type) {
     bool spill = true;
-    if (type.flags & BC_FLAG_UNIQUE_REGISTER) {
-        if (x64->free_gpr_count < X64_TMP_GPR_COUNT) {
-            X64_Reg reg = x64->free_gpr[x64->free_gpr_count++];
-            x64->allocated_gpr[reg] = register_index;
-            set_slot(x64, register_index, type, reg);
-            spill = false;
-        }
+    if (type.flags & BC_FLAG_UNIQUE_REGISTER && x64->free_gpr_count < X64_TMP_GPR_COUNT) {
+        X64_Reg reg = x64->free_gpr[x64->free_gpr_count++];
+        x64->allocated_gpr[reg] = slot_index;
+        set_slot(x64, slot_index, type, reg);
+        spill = false;
     }
     
     if (spill) {
-        if (force) {
-            spill_register(x64, buf, force_spill);
-            set_slot(x64, register_index, X64_SLOT_REG, type, force_spill);
-        } else {
-            register_stack_alloc(x64, register_index, type, 8, 8, false);
-        }
+        stack_alloc(x64, slot_index, type, 8, 8, false);
     }
     
-    return get_slot(x64, register_index);
+    return get_slot(x64, slot_index);
 }
+
+// TODO: register_alloc -> X64_Reg
+//       stack_alloc -> s32 (disp)
+//       slot_alloc -> X64_Slot (calls register_alloc and stack_alloc)
+//X64_Slot
+//alloc_slot() {
+#endif
+
 
 // TODO(Alexander): we should probably return something more approporiate.
 X64_Assembler convert_bytecode_to_x64_machine_code(Bytecode* bytecode, 
@@ -297,13 +397,18 @@ global const u16 x64_jcc_opcodes[] = {
 //}
 
 inline void
-x64_rex(Buffer* buf, u8 flags, u8 reg=0, u8 rm=0) {
-    push_u8(buf, REX_PATTERN | flags | ((reg&8)>>1) | (rm&8)>>3);
+x64_rex(Buffer* buf, u8 flags, u8 r_reg=0, u8 b_rm=0, u8 x_index=0) {
+    push_u8(buf, REX_PATTERN | flags | ((r_reg&8)>>1) | ((x_index&8)>>2) | (b_rm&8)>>3);
 }
 
 inline void
 x64_sib(Buffer* buf, u8 scale, u8 index, u8 base) {
     push_u8(buf, scale << 6 | index << 3 | base);
+}
+
+inline void
+x64_rip_rel(Buffer* buf, u8 reg) {
+    push_u8(buf, ((u8) (reg&7)<<3) | (u8) X64_RBP);
 }
 
 inline void
@@ -339,23 +444,30 @@ x64_jump_address_for_label(X64_Assembler* x64, Buffer* buf, Bytecode_Function* f
 }
 
 inline void
-x64_modrm(Buffer* buf, u8 reg, u8 rm, s64 disp, s64 rip) {
+x64_modrm(Buffer* buf, u8 reg, u8 rm, s64 disp) {
     reg = reg % 16; 
     rm = rm % 16;
     
     if (disp < S8_MIN || disp > S8_MAX) {
-        push_u8(buf, MODRM_INDIRECT_DISP32 | (( reg&7)<<3) |  rm&7);
+        push_u8(buf, MODRM_INDIRECT_DISP32 | ((reg&7)<<3) |  rm&7);
         if (rm == X64_RSP) {
             push_u8(buf,  (rm << 3) |  rm);
         }
         push_u32(buf, (u32) disp);
     } else {
-        push_u8(buf, MODRM_INDIRECT_DISP8 | (( reg&7)<<3) |  rm&7);
+        push_u8(buf, MODRM_INDIRECT_DISP8 | ((reg&7)<<3) |  rm&7);
         if (rm == X64_RSP) {
-            push_u8(buf,  (rm << 3) |  rm);
+            push_u8(buf,  (rm << 3) | rm);
         }
         push_u8(buf, (u8) disp);
     }
+}
+
+inline void
+x64_modrm_sib(Buffer* buf, u8 reg, u8 scale, u8 index, u8 base, s64 disp) {
+    push_u8(buf, MODRM_INDIRECT_DISP32 | ((reg&7)<<3) | X64_RSP&7); // reg=RAX, rm=RSP (for SIB)
+    push_u8(buf, (scale << 6) | (index << 3) | base); // [base + (index * scale) + disp]
+    push_u32(buf, (u32) disp); // TODO(Alexander): we can optimize this to use DISP8 too!
 }
 
 inline void

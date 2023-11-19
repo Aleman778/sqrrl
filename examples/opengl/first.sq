@@ -298,10 +298,10 @@ push_box(Render_Command* command, v3 size, v4 tint) {
 }
 
 struct Image {
+    u8* data;
     int width;
     int height;
     int num_components;
-    u8* data;
 }
 
 Image

@@ -211,11 +211,11 @@ x64_move_register_to_slot(X64_Assembler* x64, Buffer* buf, int dest_index, X64_R
     switch (dest.kind) {
         case X64_SLOT_RSP_DISP32:
         case X64_SLOT_RSP_DISP32_INPLACE: {
-            x64_move_register_to_register(buf, dest.reg, src);
+            x64_move_register_to_memory(buf, X64_RSP, dest.disp, src);
         } break;
         
         case X64_SLOT_REG: {
-            x64_move_register_to_memory(buf, X64_RSP, dest.disp, src);
+            x64_move_register_to_register(buf, dest.reg, src);
         } break;
         
         default: {

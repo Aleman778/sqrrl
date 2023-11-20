@@ -193,20 +193,31 @@ x64_spill(X64_Assembler* x64, X64_Reg reg) {
 
 inline X64_Reg
 x64_tmp_register(X64_Assembler* x64, int reg_index, X64_Reg hint_reg) {
-    X64_Reg reg;
-    int i = x64_next_free_register(x64);
-    if (i != -1) {
-        reg = x64_tmp_gpr_registers[i];
-    } else {
-        x64_spill(x64, hint_reg);
-        reg = hint_reg;
+    X64_Slot* slot = &x64->slots[reg_index];
+    if (slot->kind != X64_SLOT_REG) {
+        X64_Reg reg;
+        int i = x64_next_free_register(x64);
+        if (i != -1) {
+            reg = x64_tmp_gpr_registers[i];
+        } else {
+            x64_spill(x64, hint_reg);
+            reg = hint_reg;
+        }
+        
+        assert(slot->tmp_reg_count < 3);
+        slot->tmp_reg[slot->tmp_reg_count++] = reg;
+        return reg;
     }
     
-    X64_Slot* slot = &x64->slots[reg_index];
-    assert(slot->tmp_reg_count < 3);
-    slot->tmp_reg[slot->tmp_reg_count++] = reg;
-    return reg;
+    return hint_reg;
 }
+
+inline X64_Reg
+x64_get_tmp_register(X64_Assembler* x64, int reg_index) {
+    X64_Slot* slot = &x64->slots[reg_index];
+    return slot->tmp_reg[0];
+}
+
 
 inline void
 x64_drop(X64_Assembler* x64, int reg_index) {
@@ -342,7 +353,6 @@ alloc_register(X64_Assembler* x64, Buffer* buf, int slot_index, Bytecode_Type ty
 //alloc_slot() {
 #endif
 
-
 // TODO(Alexander): we should probably return something more approporiate.
 X64_Assembler convert_bytecode_to_x64_machine_code(Bytecode* bytecode, 
                                                    Buffer* buf, 
@@ -352,6 +362,9 @@ X64_Assembler convert_bytecode_to_x64_machine_code(Bytecode* bytecode,
 void convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64,
                                                    Bytecode_Function* func,
                                                    Buffer* buf);
+
+
+void x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn);
 
 void convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, 
                                                Buffer* buf,

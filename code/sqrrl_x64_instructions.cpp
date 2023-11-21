@@ -16,7 +16,7 @@ x64_move_rax_u64(Buffer* buf, u64 disp) {
 }
 
 inline void
-x64_move_immediate_to_register_unchecked(Buffer* buf, X64_Reg dest, s32 immediate) { 
+x64_move_immediate_to_register(Buffer* buf, X64_Reg dest, s32 immediate) { 
     // REX.W + C7 /0 id 	MOV r/m64, imm32
     x64_rex(buf, REX_W, 0, dest);
     push_u8(buf, 0xC7);
@@ -27,7 +27,7 @@ x64_move_immediate_to_register_unchecked(Buffer* buf, X64_Reg dest, s32 immediat
 inline void
 x64_move8_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_Reg src) {
     // 88 /r 	MOV r/m8, r8 	MR
-    if (src&8) x64_rex(buf, 0, src);
+    if (src&8) x64_rex(buf, 0, src, dest);
     push_u8(buf, 0x88);
     x64_modrm(buf, src, dest, disp);
 }
@@ -36,7 +36,7 @@ inline void
 x64_move16_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_Reg src) {
     // 89 /r 	MOV r/m16, r16 	MR 	
     push_u8(buf, X64_OP_SIZE_PREFIX);
-    if (src&8) x64_rex(buf, 0, src);
+    if (src&8) x64_rex(buf, 0, src, dest);
     push_u8(buf, 0x89);
     x64_modrm(buf, src, dest, disp);
 }
@@ -44,7 +44,7 @@ x64_move16_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_Reg src) 
 inline void
 x64_move32_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_Reg src) {
     // 89 /r 	MOV r/m32, r32 	MR
-    if (src&8) x64_rex(buf, 0, src);
+    if (src&8) x64_rex(buf, 0, src, dest);
     push_u8(buf, 0x89);
     x64_modrm(buf, src, dest, disp);
 }
@@ -52,7 +52,7 @@ x64_move32_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_Reg src) 
 inline void
 x64_move_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_Reg src) {
     // 89 /r 	MOV r/m64,r64 	MR
-    x64_rex(buf, REX_W, src);
+    x64_rex(buf, REX_W, src, dest);
     push_u8(buf, 0x89);
     x64_modrm(buf, src, dest, disp);
 }
@@ -60,7 +60,7 @@ x64_move_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_Reg src) {
 inline void
 x64_move_memory_to_register(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp) {
     // REX.W + 8B /r 	MOV r64, r/m64 	RM
-    x64_rex(buf, REX_W, dest);
+    x64_rex(buf, REX_W, dest, src);
     push_u8(buf, 0x8B);
     x64_modrm(buf, dest, src, disp);
 }
@@ -70,14 +70,15 @@ x64_move_register_to_register(Buffer* buf, X64_Reg dest, X64_Reg src) {
     if (dest == src) return;
     
     // 89 /r 	MOV r/m64,r64 	MR
-    x64_rex(buf, REX_W, src);
+    x64_rex(buf, REX_W, src, dest);
     push_u8(buf, 0x89);
     x64_modrm_direct(buf, src, dest);
 }
 
 inline s32*
 x64_move_memory_to_register_disp(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp) {
-    x64_rex(buf, REX_W, dest);
+    // REX.W + 8B /r 	MOV r64, r/m64 	RM
+    x64_rex(buf, REX_W, dest, src);
     push_u8(buf, 0x8B);
     push_u8(buf, MODRM_INDIRECT_DISP32 | ((dest & 7) << 3) | (src & 7));
     push_u8(buf, 0x24); // SIB for RSP
@@ -86,15 +87,34 @@ x64_move_memory_to_register_disp(Buffer* buf, X64_Reg dest, X64_Reg src, s64 dis
     return result;
 }
 
+inline void
+x64_lea(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp) {
+    // REX.W + 8D /r 	LEA r64,m 	RM
+    x64_rex(buf, REX_W, dest, src);
+    push_u8(buf, 0x8D);
+    x64_modrm(buf, dest, src, disp);
+}
+
 inline s32*
 x64_lea_patch_disp(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp) {
-    x64_rex(buf, REX_W, dest);
+    // REX.W + 8D /r 	LEA r64,m 	RM
+    x64_rex(buf, REX_W, dest, src);
     push_u8(buf, 0x8D);
     push_u8(buf, MODRM_INDIRECT_DISP32 | ((dest & 7) << 3) | (src & 7));
     push_u8(buf, 0x24); // SIB for RSP
     s32* result = (s32*) (buf->data + buf->curr_used);
     push_u32(buf, (u32) disp);
     return result;
+}
+
+inline void
+x64_lea_sib(Buffer* buf, X64_Reg dest, u8 scale, X64_Reg index, X64_Reg base, s64 disp) {
+    // REX.W + 8D /r 	LEA r64,m 	RM
+    // LEA index [base_reg + (index * scale) + base_disp]
+    x64_rex(buf, REX_W, dest, base, index);
+    push_u8(buf, 0x8D);
+    x64_modrm_sib(buf, dest, scale, index, base, disp);
+    
 }
 
 void
@@ -170,14 +190,6 @@ x64_move_extend_register_to_register(Buffer* buf, X64_Reg dest, X64_Reg src,
     x64_modrm_direct(buf, dest, src);
 }
 
-inline void
-x64_lea(Buffer* buf, X64_Reg a, X64_Reg b, s64 disp) {
-    // REX.W + 8D /r 	LEA r64,m 	RM
-    x64_rex(buf, REX_W, a, b);
-    push_u8(buf, 0x8D);
-    x64_modrm(buf, a, b, disp);
-}
-
 X64_Reg
 x64_move_slot_to_register(X64_Assembler* x64, Buffer* buf, X64_Reg dest, int src_index) {
     X64_Slot src = get_slot(x64, src_index);
@@ -224,43 +236,6 @@ x64_move_register_to_slot(X64_Assembler* x64, Buffer* buf, int dest_index, X64_R
         } break;
     }
 }
-
-#if 0
-
-X64_Reg
-_x64_move_slot_to_register(X64_Assembler* x64, Buffer* buf, X64_Reg dest_hint, int src_index) {
-    X64_Slot src = get_slot(x64, src_index);
-    if (src.kind != X64_SLOT_REG) {
-        assert(src.kind == X64_SLOT_RSP_DISP32 ||
-               src.kind == X64_SLOT_RSP_DISP32_INPLACE);
-        X64_Reg dest = alloc_tmp_register(x64, buf, dest_hint);
-        _x64_move_slot_to_register_unchecked(x64, buf, dest, src_index);
-        return dest;
-    }
-    
-    return src.reg;
-}
-
-void
-x64_move_slot_to_specific_register(X64_Assembler* x64, Buffer* buf, X64_Reg dest, int src_index) {
-    bool spill = false;
-    X64_Slot src = get_slot(x64, src_index);
-    if (src.kind == X64_SLOT_REG) {
-        if (src.reg != dest) {
-            spill = true;
-        }
-    } else {
-        assert(src.kind == X64_SLOT_RSP_DISP32 ||
-               src.kind == X64_SLOT_RSP_DISP32_INPLACE);
-        spill = true;
-    }
-    
-    if (spill) {
-        spill_register(x64, buf, dest);
-        _x64_move_slot_to_register_unchecked(x64, buf, dest, src_index);
-    }
-}
-#endif
 
 inline void
 x64_inc(Buffer* buf, X64_Reg reg) {

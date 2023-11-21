@@ -1514,7 +1514,7 @@ inline void
 allocate_register(Bytecode_Validation* bc_valid, Bytecode_Instruction* insn, int index, Bytecode_Type type) {
     Bytecode_Register* r = drop_register(bc_valid, insn, index);
     r->type = type;
-    r->uses = r->init ? 0 : (r->uses + 1); // if we reuse register => count it as a use instead!
+    r->uses = r->init ? (r->uses + 1) : 0; // if we reuse register => count it as a use instead!
     r->init = insn;
 }
 
@@ -1805,7 +1805,7 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
                                       string_print("function `%` did not expect any return value", f_var(func_ident)));
                     }
                     
-                } else if (func->ret_count == 1) { 
+                } else if (func->ret_count == 1) {
                     if (bc->res_index >= 0) {
                         Bytecode_Type found = register_type(bc_valid, bc->res_index);
                         assert_type_equals(bc_valid, insn, expect, found);

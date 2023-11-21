@@ -952,7 +952,7 @@ arena_can_fit_size(Memory_Arena* arena, umm size, umm align) {
 (type*) arena_push_size(arena, (umm) sizeof(type), (umm) alignof(type))
 
 #define arena_push_array_of_structs(arena, count, type) \
-(type*) arena_push_size(arena, (umm) count*sizeof(type), (umm) alignof(type))
+(type*) arena_push_size(arena, (umm) (count)*sizeof(type), (umm) alignof(type))
 
 #define arena_get_data(arena, byte_offset) \
 (void*) ((u8*) (arena)->base + (byte_offset))

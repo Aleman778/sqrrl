@@ -204,8 +204,10 @@ x64_move_slot_to_register(X64_Assembler* x64, Buffer* buf, X64_Reg dest, int src
         } break;
         
         case X64_SLOT_REG: {
-            x64_move_extend_register_to_register(buf, dest, src.reg, src.type.size,
-                                                 src.type.flags & BC_FLAG_SIGNED);
+            if (src.reg != dest) {
+                x64_move_extend_register_to_register(buf, dest, src.reg, src.type.size,
+                                                     src.type.flags & BC_FLAG_SIGNED);
+            }
         } break;
         
         default: {

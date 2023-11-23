@@ -1512,9 +1512,13 @@ drop_register(Bytecode_Validation* bc_valid, Bytecode_Instruction* insn, int ind
 
 inline void
 allocate_register(Bytecode_Validation* bc_valid, Bytecode_Instruction* insn, int index, Bytecode_Type type) {
-    Bytecode_Register* r = drop_register(bc_valid, insn, index);
+    if (index < 0 || index >= bc_valid->register_count) {
+        bc_type_error(bc_valid, string_lit("invalid register found"), insn->opcode);
+    }
+    
+    Bytecode_Register* r = &bc_valid->registers[index];
     r->type = type;
-    r->uses = r->init ? (r->uses + 1) : 0; // if we reuse register => count it as a use instead!
+    r->uses = (r->init != 0) ? (r->uses + 1) : 0; // if we reuse register => count it as a use instead!
     r->init = insn;
 }
 

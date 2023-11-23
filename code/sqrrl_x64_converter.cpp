@@ -362,7 +362,10 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
         } break;
         
         case BC_EXTEND:
-        case BC_TRUNCATE: {
+        case BC_TRUNCATE:
+        case BC_INC:
+        case BC_DEC:
+        case BC_NOT: {
             tmp[0] = x64_allocate_tmp_register(x64, bc->a_index, X64_RAX);
             x64_allocate_register(x64, bc->type, bc->res_index, tmp[0]);
         } break;
@@ -380,21 +383,12 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
             unimplemented;
         } break;
         
-        case BC_INC:
-        case BC_DEC: {
-            unimplemented;
-        } break;
-        
         case BC_NEG: {
             if (bc->type.kind == BC_TYPE_FLOAT) {
                 unimplemented;
             } else {
                 unimplemented;
             }
-        } break;
-        
-        case BC_NOT: {
-            unimplemented;
         } break;
         
         case BC_OR:
@@ -406,7 +400,6 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
                 unimplemented;
                 
             } else {
-                
                 tmp[0] = x64_allocate_tmp_register(x64, bc->a_index, X64_RAX);
                 tmp[1] = x64_allocate_tmp_register(x64, bc->b_index, X64_RCX);
                 pln("tmp[0] = %, tmp[1] = %", f_int(tmp[0]), f_int(tmp[1]));
@@ -421,13 +414,10 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
             if (bc->type.kind == BC_TYPE_FLOAT) {
                 unimplemented;
             } else {
-                x64_spill(x64, X64_RAX);
+                x64_spill(x64, X64_RAX, bc->a_index);
                 x64_spill(x64, X64_RDX);
                 tmp[0] = X64_RAX;
-                // NOTE(Alexander): make sure b_index doesn't use RAX or RDX
-                x64->allocated_gpr[X64_RAX] = 0; x64->allocated_gpr[X64_RDX] = 0;
                 tmp[1] = x64_allocate_tmp_register(x64, bc->b_index, X64_RCX);
-                x64->allocated_gpr[X64_RAX] = -1; x64->allocated_gpr[X64_RDX] = -1;
                 
                 bool is_div = bc->opcode == BC_DIV_S || bc->opcode == BC_DIV_U;
                 x64_allocate_register(x64, bc->type, bc->res_index, is_div ? X64_RAX : X64_RDX);
@@ -438,9 +428,7 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
         case BC_SHR:
         case BC_SAR: {
             x64_spill(x64, X64_RCX);
-            x64->allocated_gpr[X64_RCX] = 0; // NOTE(Alexander): make sure we don't put a_index in RCX
             tmp[0] = x64_allocate_tmp_register(x64, bc->a_index, X64_RAX);
-            x64->allocated_gpr[X64_RCX] = -1;
             tmp[1] = X64_RCX;
             x64_allocate_register(x64, bc->type, bc->res_index, tmp[0]);
         } break;
@@ -795,17 +783,14 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         
         case BC_INC:
         case BC_DEC: {
-            unimplemented;
-#if 0
             assert(bc->type.kind != BC_TYPE_FLOAT && "inc/dec is not implemented for float types");
-            X64_Reg src = x64_move_slot_to_register(x64, buf, X64_RAX, bc->a_index);
+            x64_move_slot_to_register(x64, buf, tmp[0], bc->a_index);
             if (bc->opcode == BC_INC) {
-                x64_inc(buf, src);
+                x64_inc(buf, tmp[0]);
             } else {
-                x64_dec(buf, src);
+                x64_dec(buf, tmp[0]);
             }
-            x64_move_register_to_slot(x64, buf, bc->type, bc->res_index, src);
-#endif
+            x64_move_register_to_slot(x64, buf, bc->res_index, tmp[0]);
         } break;
         
         case BC_NEG: {
@@ -884,6 +869,10 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                     case BC_ADD: x64_add64(buf, a, b); break;
                     case BC_SUB: x64_sub64(buf, a, b); break;
                     case BC_MUL: x64_mul64(buf, a, b); break;
+                    case BC_DIV_S: x64_div64(buf, a, b, true); break;
+                    case BC_DIV_U: x64_div64(buf, a, b, false); break;
+                    case BC_MOD_S: x64_div64(buf, a, b, true); break;
+                    case BC_MOD_U: x64_div64(buf, a, b, false); break;
                     case BC_SHL: x64_shl(buf, a, b); break;
                     case BC_SHR: x64_shr(buf, a, b); break;
                     case BC_SAR: x64_sar(buf, a, b); break;

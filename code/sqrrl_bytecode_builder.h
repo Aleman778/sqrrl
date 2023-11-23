@@ -350,6 +350,7 @@ inline void
 bc_branch_if(Bytecode_Builder* bc, int label_index, int cond) {
     assert(cond >= 0 && "missing condition");
     Bytecode_Branch* branch = bc_instruction(bc, BC_BRANCH, Bytecode_Branch);
+    branch->type = BC_BOOL;
     branch->label_index = label_index;
     branch->cond = cond;
 }

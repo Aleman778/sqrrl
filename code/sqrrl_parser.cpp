@@ -2080,23 +2080,23 @@ internal inline Token
 next_semantical_token(Parser* parser) {
     //NOTE(alexander): filtering of comments and whitespace, maybe parameterize this later...
     Token token = advance_token(parser->tokenizer);
-    while (!is_semantical_token(token)) {
-        token = advance_token(parser->tokenizer);
-    }
-    
-    if (token.type == Token_EOF) {
-        // Try to load the next source group, if used
-        if (parser->source_groups) {
+    while (!is_semantical_token(token) || (token.type == Token_EOF)) {
+        if (token.type == Token_EOF && parser->source_groups) {
             parser->curr_source_group_index++;
             if (array_count(parser->source_groups) > parser->curr_source_group_index) {
                 Source_Group* group = parser->source_groups + parser->curr_source_group_index;
                 tokenizer_set_source_group(parser->tokenizer, group);
                 parser->c_compatibility_mode = group->c_compatibility_mode;
-                token = next_semantical_token(parser);
-            } else {
-                tokenizer_finalize(parser->tokenizer);
+                token = advance_token(parser->tokenizer);
+                continue;
             }
         }
+        
+        if (token.type == Token_EOF) {
+            tokenizer_finalize(parser->tokenizer);
+            return token;
+        }
+        token = advance_token(parser->tokenizer);
     }
     
     return token;

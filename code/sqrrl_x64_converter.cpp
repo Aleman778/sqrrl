@@ -119,6 +119,25 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     s32 stack_size = func->max_caller_arg_count*8;
     
     // Register allocation pass
+    Bytecode_Function_Arg* formal_args = function_arg_types(func);
+    for (int arg_index = 0; arg_index < func->arg_count; arg_index++) {
+        Bytecode_Function_Arg arg = formal_args[arg_index];
+        
+        bool use_stack = true; 
+        if (arg_index < 4 && is_power_of_two(arg.size & 0xF)) {
+            if (arg.type.kind == BC_TYPE_FLOAT) {
+                unimplemented;
+            } else {
+                X64_Reg home_reg = int_arg_registers_ccall_windows[arg_index];
+                x64_allocate_register(x64, arg.type, arg_index, home_reg);
+                use_stack = false;
+            }
+        }
+        
+        if (use_stack) {
+            x64_allocate_stack(x64, arg.type, arg_index, arg.size, arg.align, arg.size > 8);
+        }
+    }
     x64->tmp_registers = arena_push_array_of_structs(&x64->arena, func->insn_count*2, X64_Reg);
     int insn_index = 0;
     for_bc_insn(func, curr) {
@@ -126,9 +145,8 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     }
     
     // Calculate stack space used by spilled register
-    for (int slot_index = 0; slot_index < func->register_count; slot_index++) {
+    for (int slot_index = func->arg_count; slot_index < func->register_count; slot_index++) {
         X64_Slot slot = x64->slots[slot_index];
-        // TODO(Alexander): input argument registers!
         if (slot.kind == X64_SLOT_RSP_DISP32_INPLACE ||
             slot.kind == X64_SLOT_RSP_DISP32) {
             s32 disp = (s32) align_forward(stack_size, slot.align);
@@ -142,10 +160,8 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     stack_size = (s32) align_forward(stack_size + 8, 16) - 8;
     s32 stack_callee_args = stack_size + 8;
     
-    
     // Save HOME registers (TODO: move this it's windows calling convention only)
     // TODO(Alexander): this doens't handle returns larger than 8 bytes
-    Bytecode_Function_Arg* formal_args = function_arg_types(func);
     for (int arg_index = min((int) func->arg_count - 1, 3); arg_index >= 0; arg_index--) {
         Bytecode_Function_Arg formal_arg = formal_args[arg_index];
         bool is_float = formal_arg.type.kind == BC_TYPE_FLOAT;
@@ -158,6 +174,14 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
             x64_move_register_to_memory(buf, X64_RSP, arg_index*8 + 8, dest);
         }
     }
+    // Update stack locations for the our args to point to callee args
+    for (int arg_index = 0; arg_index < func->arg_count; arg_index++) {
+        X64_Slot slot = x64->slots[arg_index];
+        if (slot.kind == X64_SLOT_RSP_DISP32_INPLACE ||
+            slot.kind == X64_SLOT_RSP_DISP32) {
+            x64->slots[arg_index].disp = stack_callee_args + arg_index*8;
+        }
+    }
     
     if (stack_size > 0) {
         // Prologue
@@ -168,23 +192,6 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     }
     
 #if 0
-    // Copy registers to our local stack space
-    s32** callee_args_disp = 0;
-    if (func->arg_count > 0) {
-        callee_args_disp = arena_push_array_of_structs(&x64->arena, func->arg_count, s32*);
-        for (int arg_index = 0; arg_index < (int) func->arg_count; arg_index++) {
-            Bytecode_Function_Arg formal_arg = formal_args[arg_index];
-            
-            s64 src = arg_index*8;
-            s64 dest = 0;//stack_alloc(x64, arg_index, formal_arg.type, 8, 8, false);
-            
-            // Load source value
-            // REX.W + 8B /r 	MOV RAX, RSP + disp 	RM
-            callee_args_disp[arg_index] =
-                x64_move_memory_to_register_disp(buf, X64_RAX, X64_RSP, src);
-            x64_move_register_to_memory(buf, X64_RSP, dest, X64_RAX);
-        }
-    }
     s32* variadic_data_ptr = 0;
     if (func->is_variadic) {
         // Set the Var_Args data pointer
@@ -343,7 +350,52 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
         } break;
         
         case BC_CALL: {
-            unimplemented;
+            Bytecode_Call* call = (Bytecode_Call*) bc;
+            Bytecode_Function* target = x64->bytecode->functions[call->func_index];
+            int* args = (int*) bc_call_args(call);
+            
+            // TODO(Alexander): spill volatile  registers only as Windows x64 ABI
+            
+            // Spill HOME registers (if possible avoid it for correclty mapped registers)
+            int arg_count = call->arg_count - target->ret_count;
+            for (int arg_index = 0; arg_index < 4; arg_index++) {
+                X64_VReg home_float = float_arg_registers_ccall_windows[arg_index];
+                X64_Reg home_int = int_arg_registers_ccall_windows[arg_index];
+                
+                if (arg_index < arg_count) {
+                    int src_index = args[arg_index + target->ret_count];
+                    Bytecode_Type type = get_slot(x64, src_index).type;
+                    bool is_float = type.kind == BC_TYPE_FLOAT;
+                    
+                    if (is_float) {
+                        unimplemented;
+                        x64_spill(x64, home_int);
+                        //x64_spill(x64, home_float);
+                        //x64_spill(x64, dest, src_index);
+                        
+                    } else {
+                        pln("SPILL HOME, r%", f_int(src_index));
+                        x64_spill(x64, home_int, src_index);
+                        //x64_spill(x64, home_float);
+                    }
+                } else {
+                    x64_spill(x64, home_int);
+                }
+            }
+            
+            if (target->ret_count == 1) {
+                if (bc->type.kind == BC_TYPE_FLOAT) {
+                    unimplemented;
+                } else {
+                    x64_spill(x64, X64_RAX, args[0]);
+                    x64_allocate_register(x64, bc->type, args[0], X64_RAX);
+                }
+            }
+            
+            // Spill other volatile registers (windows x64 calling convention
+            x64_spill(x64, X64_R10);
+            x64_spill(x64, X64_R11);
+            // TODO: SPILL XMM0-5
         } break;
         
         case BC_CALL_INDIRECT: {
@@ -660,8 +712,6 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_CALL: {
-            unimplemented;
-#if 0
             Bytecode_Call* call = (Bytecode_Call*) bc;
             Bytecode_Function* target = x64->bytecode->functions[call->func_index];
             int* args = (int*) bc_call_args(call);
@@ -689,15 +739,15 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             if (target->ret_count == 1) {
                 // TODO(Alexander): Add support for floats!
                 if (bc->type.kind == BC_TYPE_FLOAT) {
-                    x64_move_float_register_to_memory(buf, X64_RSP,
-                                                      register_displacement(x64, args[0], bc->type),
-                                                      X64_XMM0, bc->type.size);
+                    unimplemented;
+                    //x64_move_
+                    //x64_move_float_register_to_memory(buf, X64_RSP,
+                    //register_displacement(x64, args[0], bc->type),
+                    //X64_XMM0, bc->type.size);
                 } else {
-                    x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, args[0], bc->type),
-                                                X64_RAX);
+                    x64_move_register_to_slot(x64, buf, args[0], X64_RAX);
                 }
             }
-#endif
         } break;
         
         case BC_CALL_INDIRECT: {

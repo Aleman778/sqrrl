@@ -1396,8 +1396,8 @@ type_equals(Bytecode_Type a, Bytecode_Type b) {
 }
 
 struct Bytecode_Register {
-    Bytecode_Instruction* init;
-    Bytecode_Type type;
+    //Bytecode_Instruction* init;
+    Bytecode_Type* type;
     int uses;
 };
 
@@ -1476,12 +1476,12 @@ register_type(Bytecode_Validation* bc_valid, int index) {
         return BC_VOID;
     }
     Bytecode_Register* r = &bc_valid->registers[index];
-    if (!r->init) {
+    if (!r->type) {
         bc_type_error(bc_valid, string_print("use of unallocated register r%", f_int(index)));
         return BC_VOID;
     }
     r->uses++;
-    return r->type;
+    return *r->type;
 }
 
 inline Bytecode_Register*
@@ -1491,35 +1491,34 @@ drop_register(Bytecode_Validation* bc_valid, Bytecode_Instruction* insn, int ind
     }
     
     Bytecode_Register* r = &bc_valid->registers[index];
-    if (r->init) {
+    if (r->type) {
         if (r->uses == 0) {
             //r->init->opcode = BC_NOOP;
             bc_type_error(bc_valid, string_print("register r% is a dead store", f_int(index)), insn->opcode);
             
         } else if (r->uses == 1) {
-            r->init->type.flags |= BC_FLAG_UNIQUE_REGISTER;
-            //bc_type_error(bc_valid, string_print("register r% is unique", f_int(index)), insn->opcode);
+            r->type->flags |= BC_FLAG_UNIQUE_REGISTER;
+            bc_type_error(bc_valid, string_print("register r% is unique", f_int(index)), insn->opcode);
             
         } else {
             // Need to mark this as shared register
             //bc_type_error(bc_valid, string_print("register r% is not unique", f_int(index)), insn->opcode);
         }
     }
-    r->init = 0;
+    r->type = 0;
     
     return r;
 }
 
 inline void
-allocate_register(Bytecode_Validation* bc_valid, Bytecode_Instruction* insn, int index, Bytecode_Type type) {
+allocate_register(Bytecode_Validation* bc_valid, Bytecode_Instruction* insn, int index) {
     if (index < 0 || index >= bc_valid->register_count) {
         bc_type_error(bc_valid, string_lit("invalid register found"), insn->opcode);
     }
     
     Bytecode_Register* r = &bc_valid->registers[index];
-    r->type = type;
-    r->uses = (r->init != 0) ? (r->uses + 1) : 0; // if we reuse register => count it as a use instead!
-    r->init = insn;
+    r->uses = (r->type != 0) ? (r->uses + 1) : 0; // if we reuse register => count it as a use instead!
+    r->type = &insn->type;
 }
 
 void
@@ -1530,6 +1529,17 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
     
     bc_valid->registers = New_Array(Bytecode_Register, func->register_count);
     bc_valid->register_count = func->register_count;
+    
+    // Allocate arguments
+    Bytecode_Instruction* first_insn = (Bytecode_Instruction*) ((u8*) func + func->first_insn);
+    Bytecode_Function_Arg* func_args = function_arg_types(func);
+    for (int arg_index = 0; arg_index < func->arg_count; arg_index++) {
+        Bytecode_Register* r = &bc_valid->registers[arg_index];
+        r->type = &func_args[arg_index].type;
+        r->uses = 0;
+    }
+    
+    pln("Analyzing function `%`...", f_var(func_ident));
     
     for_bc_insn(func, insn) {
         Bytecode_Binary* bc = (Bytecode_Binary*) insn;
@@ -1546,25 +1556,25 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
             
             case BC_INT_CONST: {
                 assert_int_type(bc_valid, insn, bc->type);
-                allocate_register(bc_valid, insn, bc->res_index, bc->type);
+                allocate_register(bc_valid, insn, bc->res_index);
             } break;
             
             case BC_F32_CONST:
             case BC_F64_CONST: {
                 assert_float_type(bc_valid, insn, bc->type);
-                allocate_register(bc_valid, insn, bc->res_index, bc->type);
+                allocate_register(bc_valid, insn, bc->res_index);
             } break;
             
             case BC_LOCAL:
             case BC_GLOBAL:
             case BC_FUNCTION: {
                 assert_type_equals(bc_valid, insn, BC_PTR, bc->type);
-                allocate_register(bc_valid, insn, bc->res_index, bc->type);
+                allocate_register(bc_valid, insn, bc->res_index);
             } break;
             
             case BC_LEA: {
                 assert_non_void_type(bc_valid, insn, register_type(func, bc->res_index));
-                allocate_register(bc_valid, insn, bc->res_index, BC_PTR);
+                allocate_register(bc_valid, insn, bc->res_index);
             } break;
             
             case BC_MEMCPY: {
@@ -1592,7 +1602,7 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
                 }
                 
                 if (target->ret_count) {
-                    allocate_register(bc_valid, insn, args[0], bc->type);
+                    allocate_register(bc_valid, insn, args[0]);
                 }
                 // TODO: Check argument types!
                 //assert_type_equals(bc_valid, insn, BC_PTR, base_type);
@@ -1605,7 +1615,7 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
                     register_type(bc_valid, args[i]);
                 }
                 if (call->ret_count) {
-                    allocate_register(bc_valid, insn, args[0], bc->type);
+                    allocate_register(bc_valid, insn, args[0]);
                 }
             } break;
             
@@ -1617,7 +1627,7 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
                     bc_type_error(bc_valid, string_lit("empty offset is a noop"), insn->opcode);
                 }
                 assert_type_equals(bc_valid, insn, BC_PTR, bc->type);
-                allocate_register(bc_valid, insn, bc->res_index, bc->type);
+                allocate_register(bc_valid, insn, bc->res_index);
             } break;
             
             case BC_ARRAY_ACCESS: {
@@ -1634,14 +1644,14 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
                 }
                 
                 assert_type_equals(bc_valid, insn, BC_PTR, bc->type);
-                allocate_register(bc_valid, insn, bc->res_index, bc->type);
+                allocate_register(bc_valid, insn, bc->res_index);
             } break;
             
             case BC_LOAD: {
                 Bytecode_Type src_type = register_type(bc_valid, bc->a_index);
                 assert_type_equals(bc_valid, insn, BC_PTR, src_type);
                 assert_non_void_type(bc_valid, insn, bc->type);
-                allocate_register(bc_valid, insn, bc->res_index, bc->type);
+                allocate_register(bc_valid, insn, bc->res_index);
             } break;
             
             case BC_STORE: {
@@ -1652,13 +1662,14 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
             case BC_COPY: {
                 Bytecode_Type src_type = register_type(bc_valid, bc->a_index);
                 bc->type = bc->type.kind != BC_TYPE_VOID ? bc->type : src_type;
-                allocate_register(bc_valid, insn, bc->res_index, bc->type);
+                allocate_register(bc_valid, insn, bc->res_index);
             } break;
             
             case BC_NEG: {
                 Bytecode_Type a = register_type(bc_valid, bc->a_index);
                 assert_non_void_type(bc_valid, insn, a);
-                allocate_register(bc_valid, insn, bc->res_index, a);
+                assert_type_equals(bc_valid, insn, bc->type, a);
+                allocate_register(bc_valid, insn, bc->res_index);
             } break;
             
             case BC_INC:
@@ -1666,7 +1677,8 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
             case BC_NOT: {
                 Bytecode_Type a = register_type(bc_valid, bc->a_index);
                 assert_int_type(bc_valid, insn, a);
-                allocate_register(bc_valid, insn, bc->res_index, a);
+                assert_type_equals(bc_valid, insn, bc->type, a);
+                allocate_register(bc_valid, insn, bc->res_index);
             } break;
             
             case BC_AND:
@@ -1679,7 +1691,8 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
                 Bytecode_Type b = register_type(bc_valid, bc->b_index);
                 assert_int_type(bc_valid, insn, a);
                 assert_int_type(bc_valid, insn, b);
-                allocate_register(bc_valid, insn, bc->res_index, a);
+                assert_type_equals(bc_valid, insn, bc->type, a);
+                allocate_register(bc_valid, insn, bc->res_index);
             } break;
             
             case BC_ADD:
@@ -1689,7 +1702,7 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
                 Bytecode_Type b = register_type(bc_valid, bc->b_index);
                 assert_type_equals(bc_valid, insn, a, b);
                 assert_type_equals(bc_valid, insn, bc->type, a);
-                allocate_register(bc_valid, insn, bc->res_index, bc->type);
+                allocate_register(bc_valid, insn, bc->res_index);
             } break;
             
             case BC_DIV_S:
@@ -1699,7 +1712,7 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
                 assert_signed_int(bc_valid, insn, a);
                 assert_type_equals(bc_valid, insn, a, b);
                 assert_type_equals(bc_valid, insn, bc->type, a);
-                allocate_register(bc_valid, insn, bc->res_index, bc->type);
+                allocate_register(bc_valid, insn, bc->res_index);
             } break;
             
             case BC_DIV_U:
@@ -1709,7 +1722,7 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
                 assert_unsigned_int_or_float(bc_valid, insn, a);
                 assert_type_equals(bc_valid, insn, a, b);
                 assert_type_equals(bc_valid, insn, bc->type, a);
-                allocate_register(bc_valid, insn, bc->res_index, bc->type);
+                allocate_register(bc_valid, insn, bc->res_index);
             } break;
             
             case BC_EQ:
@@ -1717,7 +1730,8 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
                 Bytecode_Type a = register_type(bc_valid, bc->a_index);
                 Bytecode_Type b = register_type(bc_valid, bc->b_index);
                 assert_type_equals(bc_valid, insn, a, b);
-                allocate_register(bc_valid, insn, bc->res_index, bc->type);
+                assert_type_equals(bc_valid, insn, bc->type, a);
+                allocate_register(bc_valid, insn, bc->res_index);
             } break;
             
             case BC_GT_S:
@@ -1728,7 +1742,8 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
                 Bytecode_Type b = register_type(bc_valid, bc->b_index);
                 assert_signed_int(bc_valid, insn, a);
                 assert_type_equals(bc_valid, insn, a, b);
-                allocate_register(bc_valid, insn, bc->res_index, bc->type);
+                assert_type_equals(bc_valid, insn, bc->type, a);
+                allocate_register(bc_valid, insn, bc->res_index);
             } break;
             
             case BC_GT_U:
@@ -1739,7 +1754,8 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
                 Bytecode_Type b = register_type(bc_valid, bc->b_index);
                 assert_unsigned_int_or_float(bc_valid, insn, a);
                 assert_type_equals(bc_valid, insn, a, b);
-                allocate_register(bc_valid, insn, bc->res_index, bc->type);
+                assert_type_equals(bc_valid, insn, bc->type, a);
+                allocate_register(bc_valid, insn, bc->res_index);
             } break;
             
             case BC_EXTEND: {
@@ -1752,7 +1768,8 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
                                                          f_bc_type(src_type), f_bc_type(dest_type)), insn->opcode);
                 }
                 // TODO(Alexander): test sizes
-                allocate_register(bc_valid, insn, bc->res_index, dest_type);
+                assert_type_equals(bc_valid, insn, bc->type, dest_type);
+                allocate_register(bc_valid, insn, bc->res_index);
             } break;
             
             case BC_TRUNCATE: {
@@ -1764,7 +1781,8 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
                     bc_type_error(bc_valid, string_print("cannot convert `%` to `%`", 
                                                          f_bc_type(src_type), f_bc_type(dest_type)), insn->opcode);
                 }
-                allocate_register(bc_valid, insn, bc->res_index, dest_type);
+                assert_type_equals(bc_valid, insn, bc->type, dest_type);
+                allocate_register(bc_valid, insn, bc->res_index);
             } break;
             
             case BC_FLOAT_TO_INT: {
@@ -1772,7 +1790,8 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
                 Bytecode_Type dest_type = bc->type;
                 assert_float_type(bc_valid, insn, src_type);
                 assert_int_type(bc_valid, insn, dest_type);
-                allocate_register(bc_valid, insn, bc->res_index, dest_type);
+                assert_type_equals(bc_valid, insn, bc->type, dest_type);
+                allocate_register(bc_valid, insn, bc->res_index);
             } break;
             
             case BC_INT_TO_FLOAT: {
@@ -1780,7 +1799,8 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
                 Bytecode_Type dest_type = bc->type;
                 assert_int_type(bc_valid, insn, src_type);
                 assert_float_type(bc_valid, insn, dest_type);
-                allocate_register(bc_valid, insn, bc->res_index, dest_type);
+                assert_type_equals(bc_valid, insn, bc->type, dest_type);
+                allocate_register(bc_valid, insn, bc->res_index);
             } break;
             
             case BC_FLOAT_TO_FLOAT: {
@@ -1788,7 +1808,8 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
                 Bytecode_Type dest_type = bc->type;
                 assert_float_type(bc_valid, insn, src_type);
                 assert_float_type(bc_valid, insn, dest_type);
-                allocate_register(bc_valid, insn, bc->res_index, dest_type);
+                assert_type_equals(bc_valid, insn, bc->type, dest_type);
+                allocate_register(bc_valid, insn, bc->res_index);
             } break;
             
             case BC_BRANCH: {
@@ -1877,6 +1898,10 @@ emit_function(Bytecode_Builder* bc, Bytecode_Function* func, Ast* ast,
     
     emit_statement(bc, ast->Decl_Stmt.stmt, 0, 0);
     
+    // Drop arguments
+    for (int arg_index = func->arg_count - 1; arg_index >= 0; arg_index--) {
+        drop_register(bc, arg_index);
+    }
     //for_map(bc->locals, local) {
     //pln("%: r% (is_ref = %)", f_var(local->key), f_int(local->value.index), f_bool(local->value.is_ref));
     //}

@@ -266,6 +266,7 @@ x64_drop(X64_Assembler* x64, int reg_index) {
 
 inline X64_Slot
 get_slot(X64_Assembler* x64, int reg_index) {
+    assert(reg_index >= 0);
     return x64->slots[reg_index];
 }
 

@@ -4,7 +4,7 @@ struct v2 {
     f32 x, y;
 }
 
-v2
+v2 @dump_bytecode
 operator-(v2 a, v2 b) {
     v2 result;
     result.x = a.x - b.x;

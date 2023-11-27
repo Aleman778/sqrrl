@@ -94,13 +94,10 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     arena_clear(&x64->arena);
     x64->slots = arena_push_array_of_structs(&x64->arena, func->register_count, X64_Slot);
     
-    // Restore free registers
-    //x64->free_gpr_count = 0;
-    //for (int i = 0; i < fixed_array_count(x64_tmp_gpr_registers); i++) {
-    //x64->free_gpr[i] = x64_tmp_gpr_registers[i];
-    //}
-    for (int i = 0; i < fixed_array_count(x64->allocated_gpr); i++) {
-        x64->allocated_gpr[i] = -1;
+    // Reset registers
+    for (int reg_id = 0; reg_id < X64_REG_COUNT; reg_id++) {
+        x64->allocated_registers[reg_id] = -1;
+        x64->registers_used[reg_id] = false;
     }
     
     // TODO(Alexander): most  of the code here is windows x64 calling convention specific
@@ -126,7 +123,9 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
         bool use_stack = true; 
         if (arg_index < 4 && is_power_of_two(arg.size & 0xF)) {
             if (arg.type.kind == BC_TYPE_FLOAT) {
-                unimplemented;
+                X64_Reg home_reg = float_arg_registers_ccall_windows[arg_index];
+                x64_allocate_float_register(x64, arg.type, arg_index, home_reg);
+                use_stack = false;
             } else {
                 X64_Reg home_reg = int_arg_registers_ccall_windows[arg_index];
                 x64_allocate_register(x64, arg.type, arg_index, home_reg);
@@ -152,13 +151,13 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
             s32 disp = (s32) align_forward(stack_size, slot.align);
             stack_size = disp + slot.size;
             x64->slots[slot_index].disp = disp;
-            pln("r% - disp = %", f_int(slot_index), f_int(disp));
         }
     }
     
     // Align stack by 16-bytes (excluding 8 bytes for return address)
-    stack_size = (s32) align_forward(stack_size + 8, 16) - 8;
-    s32 stack_callee_args = stack_size + 8;
+    if (stack_size > 0) {
+        stack_size = (s32) align_forward(stack_size + 8, 16) - 8;
+    }
     
     // Save HOME registers (TODO: move this it's windows calling convention only)
     // TODO(Alexander): this doens't handle returns larger than 8 bytes
@@ -166,7 +165,7 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
         Bytecode_Function_Arg formal_arg = formal_args[arg_index];
         bool is_float = formal_arg.type.kind == BC_TYPE_FLOAT;
         if (is_float) {
-            X64_VReg dest = float_arg_registers_ccall_windows[arg_index];
+            X64_Reg dest = float_arg_registers_ccall_windows[arg_index];
             x64_move_float_register_to_memory(buf, X64_RSP, arg_index*8 + 8, dest,
                                               formal_arg.type.size);
         } else {
@@ -174,7 +173,33 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
             x64_move_register_to_memory(buf, X64_RSP, arg_index*8 + 8, dest);
         }
     }
+    
+    // TODO(Alexander): windows calling convention, set calle saved to
+    // RBX, RBP, RDI, RSI, RSP, R12, R13, R14, R15, and XMM6-XMM15 because they are nonvolatile
+    bool callee_saved[X64_REG_COUNT] = {};
+    {
+        for (int i = 0; i < X64_REG_COUNT; i++) {
+            if (x64->registers_used[i] && x64_windows_nonvolatile_reg[i]) {
+                callee_saved[i] = true;
+            }
+        }
+        
+        bool is_callee_reg_saved[X64_REG_COUNT] = {};
+        for (int slot_index = 0; slot_index < func->register_count; slot_index++) {
+            X64_Slot slot = x64->slots[slot_index];
+            if (slot.kind == X64_SLOT_REG && x64_windows_nonvolatile_reg[slot.reg]) {
+                callee_saved[slot.reg] = true;
+            }
+        }
+    }
+    
     // Update stack locations for the our args to point to callee args
+    s32 stack_callee_args = stack_size + 8;
+    for (u8 reg = X64_RAX; reg < X64_REG_COUNT; reg++) {
+        if (callee_saved[reg]) {
+            stack_callee_args += 8 + ((reg & X64_XMM0) >> 1);
+        }
+    }
     for (int arg_index = 0; arg_index < func->arg_count; arg_index++) {
         X64_Slot slot = x64->slots[arg_index];
         if (slot.kind == X64_SLOT_RSP_DISP32_INPLACE ||
@@ -183,12 +208,51 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
         }
     }
     
+    // Register dump
+    pln("\nRegister dump:");
+    for (int slot_index = func->arg_count; slot_index < func->register_count; slot_index++) {
+        X64_Slot slot = get_slot(x64, slot_index);
+        switch (slot.kind) {
+            case X64_SLOT_RSP_DISP32_INPLACE: {
+                pln("r%: [RSP + %] (inplace)", f_int(slot_index), f_int(slot.disp));
+            } break;
+            
+            case X64_SLOT_RSP_DISP32: {
+                pln("r%: [RSP + %]", f_int(slot_index), f_int(slot.disp));
+            } break;
+            
+            case X64_SLOT_REG: {
+                pln("r%: %", f_int(slot_index), f_cstring(register_names[slot.reg]));
+            } break;
+        }
+    }
+    
+    // Save callee saved registers
+    for (int i = 0; i < X64_REG_COUNT; i++) {
+        // NOTE(Alexander): reverse order, push XMM registers first to ensure 16-byte alignment
+        X64_Reg reg = (X64_Reg) (X64_REG_COUNT - i - 1);
+        if (callee_saved[reg]) {
+            //pln("callee_saved: %", f_cstring(register_names[reg]))
+            if (reg & X64_XMM0) {
+                x64_sub64_immediate(buf, X64_RSP, 16);
+                
+                // F3 0F 7F /r MOVDQU xmm2/m128, xmm1
+                // TODO(Alexander): we should align the stack here and use MOVDQA instead!
+                push_u8(buf, 0xF3);
+                if (reg&8) x64_rex(buf, 0, reg);
+                push_u16(buf, 0x7F0F);
+                x64_modrm(buf, reg, X64_RSP, 0);
+            } else {
+                // 50+rd 	PUSH r64
+                x64_rex(buf, REX_W, reg, reg);
+                push_u8(buf, 0x50+(reg&7));
+            }
+        }
+    }
+    
+    // Prologue
     if (stack_size > 0) {
-        // Prologue
-        x64_rex(buf, REX_W); // sub rsp, stack_size
-        push_u8(buf, 0x81);
-        x64_modrm_direct(buf, 5, X64_RSP);
-        push_u32(buf, stack_size);
+        x64_sub64_immediate(buf, X64_RSP, stack_size);
     }
     
 #if 0
@@ -210,46 +274,81 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
         convert_bytecode_insn_to_x64_machine_code(x64, buf, func, curr, insn_index++);
     }
     
+    x64->curr_function->labels[0] = buf->data + buf->curr_used;
+    
+    // Epilogue
     if (stack_size > 0) {
-        // Epilogue
-        x64->curr_function->labels[0] = buf->data + buf->curr_used;
-        x64_rex(buf, REX_W); // add rsp, stack_usage
-        push_u8(buf, 0x81);
-        x64_modrm_direct(buf, 0, X64_RSP);
-        push_u32(buf, stack_size);
+        x64_add64_immediate(buf, X64_RSP, stack_size);
     }
+    
+    // Restore callee saved registers
+    for (int i = 0; i < X64_REG_COUNT; i++) {
+        X64_Reg reg = (X64_Reg) i;
+        if (callee_saved[reg]) {
+            if (reg & X64_XMM0) {
+                x64_add64_immediate(buf, X64_RSP, 16);
+                
+                // F3 0F 6F /r MOVDQU xmm1, xmm2/m128
+                // TODO(Alexander): we should align the stack here and use MOVDQA instead!
+                push_u8(buf, 0xF3);
+                if (reg&8) x64_rex(buf, 0, reg);
+                push_u16(buf, 0x6F0F);
+                x64_modrm(buf, reg, X64_RSP, 0);
+            } else {
+                // 58+rd 	POP r64
+                x64_rex(buf, REX_W, (u8) reg, (u8) reg);
+                push_u8(buf, 0x58+(reg&7));
+            }
+        }
+    }
+    
     push_u8(buf, 0xC3); // RET near
 }
 
 void
-convert_windows_x64_argument_list_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, int arg_count, int* args, int var_arg_start=-1) {
-    for (int arg_index = arg_count - 1; arg_index >= 0; arg_index--) {
-        int src_index = args[arg_index];
-        Bytecode_Type type = get_slot(x64, src_index).type;
-        bool is_float = type.kind == BC_TYPE_FLOAT;
+x64_allocate_windows_x64_argument_list(X64_Assembler* x64, Bytecode_Type ret_type, int ret_count, int* args, int arg_count) {
+    // Spill argument registers (windows x64 calling convention specific)
+    // Spill HOME registers (if possible avoid it for correclty mapped registers)
+    int actual_arg_count = arg_count - ret_count;
+    for (int arg_index = 0; arg_index < 4; arg_index++) {
+        X64_Reg home_float = float_arg_registers_ccall_windows[arg_index];
+        X64_Reg home_int = int_arg_registers_ccall_windows[arg_index];
         
-        if (is_float) {
-            X64_VReg dest = X64_XMM0;
-            dest = float_arg_registers_ccall_windows[arg_index];
-            x64_move_slot_to_float_register(x64, buf, (X64_VReg) dest, src_index);
-            if (arg_index >= 4 || arg_index >= var_arg_start) {
-                x64_move_float_register_to_memory(buf, X64_RSP, arg_index*8, (X64_VReg) dest,
-                                                  type.size);
-            }
+        if (arg_index < actual_arg_count) {
+            int src_index = args[arg_index + ret_count];
+            Bytecode_Type type = get_slot(x64, src_index).type;
+            bool is_float = type.kind == BC_TYPE_FLOAT;
             
-        } else {
-            X64_Reg dest = X64_RAX;
-            if (arg_index < 4) {
-                dest = int_arg_registers_ccall_windows[arg_index];
-            }
-            x64_move_slot_to_register(x64, buf, dest, src_index);
-            
-            if (arg_index >= 4 || arg_index >= var_arg_start) {
-                x64_move_register_to_memory(buf, X64_RSP, arg_index*8, dest);
+            if (is_float) {
+                x64_spill(x64, home_float, src_index);
+                x64_spill(x64, home_int);
                 
+            } else {
+                x64_spill(x64, home_int, src_index);
+                x64_spill(x64, home_float);
             }
+        } else {
+            x64_spill(x64, home_float);
+            x64_spill(x64, home_int);
         }
     }
+    
+    // Spill + allocate return register RAX/XMM0 (windows x64 calling convention specific)
+    if (ret_count == 1) {
+        if (ret_type.kind == BC_TYPE_FLOAT) {
+            x64_spill(x64, X64_XMM0, args[0]);
+            x64_allocate_float_register(x64, ret_type, args[0], X64_XMM0);
+        } else {
+            x64_spill(x64, X64_RAX, args[0]);
+            x64_allocate_register(x64, ret_type, args[0], X64_RAX);
+        }
+    }
+    
+    // Spill other volatile registers (windows x64 calling convention specific)
+    x64_spill(x64, X64_R10);
+    x64_spill(x64, X64_R11);
+    x64_spill(x64, X64_XMM4);
+    x64_spill(x64, X64_XMM5);
 }
 
 
@@ -281,11 +380,13 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
         } break;
         
         case BC_F32_CONST: {
-            x64_allocate_stack(x64, bc->type, bc->res_index, 4, 4, false);
+            tmp[0] = x64_allocate_tmp_float_register(x64, bc->res_index, X64_XMM4);
+            x64_allocate_float_register(x64, bc->type, bc->res_index, tmp[0]);
         } break;
         
         case BC_F64_CONST: {
-            x64_allocate_stack(x64, bc->type, bc->res_index, 8, 8, false);
+            tmp[0] = x64_allocate_tmp_float_register(x64, bc->res_index, X64_XMM4);
+            x64_allocate_float_register(x64, bc->type, bc->res_index, tmp[0]);
         } break;
         
         case BC_LOCAL: {
@@ -305,16 +406,16 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
             int stride = array_access->stride;
             if (is_power_of_two(stride) && stride < 8) {
                 
-                x64_allocate_tmp_register(x64, array_access->index, X64_RAX);
+                tmp[0] = x64_allocate_tmp_register(x64, array_access->index, X64_RAX);
                 X64_Slot base_slot = get_slot(x64, array_access->base);
                 if (base_slot.kind != X64_SLOT_RSP_DISP32_INPLACE) {
-                    x64_allocate_tmp_register(x64, array_access->base, X64_RCX);
+                    tmp[1] = x64_allocate_tmp_register(x64, array_access->base, X64_RCX);
                 }
-                x64_allocate_register(x64, bc->type, bc->res_index, X64_RAX);
+                x64_allocate_register(x64, bc->type, bc->res_index, tmp[0]);
             } else {
-                x64_allocate_tmp_register(x64, array_access->index, X64_RAX);
-                X64_Reg base = x64_allocate_tmp_register(x64, array_access->base, X64_RCX);
-                x64_allocate_register(x64, bc->type, bc->res_index, base);
+                tmp[0] = x64_allocate_tmp_register(x64, array_access->index, X64_RAX);
+                tmp[1] = x64_allocate_tmp_register(x64, array_access->base, X64_RCX);
+                x64_allocate_register(x64, bc->type, bc->res_index, tmp[1]);
             }
         } break;
         
@@ -329,16 +430,36 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
         } break;
         
         case BC_STORE: {
-            tmp[0] = x64_allocate_tmp_register(x64, bc->a_index, X64_RAX);
             X64_Slot ptr = get_slot(x64, bc->res_index);
-            if (ptr.kind != X64_SLOT_RSP_DISP32_INPLACE) {
-                tmp[1] = x64_allocate_tmp_register(x64, bc->res_index, X64_RCX);
+            if (ptr.type.kind == BC_TYPE_FLOAT) {
+                tmp[0] = x64_allocate_tmp_float_register(x64, bc->a_index, X64_XMM4);
+                if (ptr.kind != X64_SLOT_RSP_DISP32_INPLACE) {
+                    tmp[1] = x64_allocate_tmp_register(x64, bc->res_index, X64_RAX);
+                }
+                
+            } else {
+                tmp[0] = x64_allocate_tmp_register(x64, bc->a_index, X64_RAX);
+                if (ptr.kind != X64_SLOT_RSP_DISP32_INPLACE) {
+                    tmp[1] = x64_allocate_tmp_register(x64, bc->res_index, X64_RCX);
+                }
             }
         } break;
         
         case BC_LOAD: {
-            tmp[0] = x64_allocate_tmp_register(x64, bc->a_index, X64_RAX);
-            x64_allocate_register(x64, bc->type, bc->res_index, tmp[0]);
+            X64_Slot ptr = get_slot(x64, bc->a_index);
+            if (bc->type.kind == BC_TYPE_FLOAT) {
+                tmp[0] = x64_allocate_tmp_float_register(x64, -1, X64_XMM0);
+                if (ptr.kind != X64_SLOT_RSP_DISP32_INPLACE) {
+                    tmp[1] = x64_allocate_tmp_register(x64, bc->a_index, X64_RAX);
+                }
+                x64_allocate_float_register(x64, bc->type, bc->res_index, tmp[0]);
+            } else {
+                tmp[0] = x64_allocate_tmp_register(x64, -1, X64_RAX);
+                if (ptr.kind != X64_SLOT_RSP_DISP32_INPLACE) {
+                    tmp[1] = x64_allocate_tmp_register(x64, bc->a_index, X64_RCX);
+                }
+                x64_allocate_register(x64, bc->type, bc->res_index, tmp[0]);
+            }
         } break;
         
         case BC_LEA: {
@@ -353,53 +474,13 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
             Bytecode_Call* call = (Bytecode_Call*) bc;
             Bytecode_Function* target = x64->bytecode->functions[call->func_index];
             int* args = (int*) bc_call_args(call);
-            
-            // TODO(Alexander): spill volatile  registers only as Windows x64 ABI
-            
-            // Spill HOME registers (if possible avoid it for correclty mapped registers)
-            int arg_count = call->arg_count - target->ret_count;
-            for (int arg_index = 0; arg_index < 4; arg_index++) {
-                X64_VReg home_float = float_arg_registers_ccall_windows[arg_index];
-                X64_Reg home_int = int_arg_registers_ccall_windows[arg_index];
-                
-                if (arg_index < arg_count) {
-                    int src_index = args[arg_index + target->ret_count];
-                    Bytecode_Type type = get_slot(x64, src_index).type;
-                    bool is_float = type.kind == BC_TYPE_FLOAT;
-                    
-                    if (is_float) {
-                        unimplemented;
-                        x64_spill(x64, home_int);
-                        //x64_spill(x64, home_float);
-                        //x64_spill(x64, dest, src_index);
-                        
-                    } else {
-                        pln("SPILL HOME, r%", f_int(src_index));
-                        x64_spill(x64, home_int, src_index);
-                        //x64_spill(x64, home_float);
-                    }
-                } else {
-                    x64_spill(x64, home_int);
-                }
-            }
-            
-            if (target->ret_count == 1) {
-                if (bc->type.kind == BC_TYPE_FLOAT) {
-                    unimplemented;
-                } else {
-                    x64_spill(x64, X64_RAX, args[0]);
-                    x64_allocate_register(x64, bc->type, args[0], X64_RAX);
-                }
-            }
-            
-            // Spill other volatile registers (windows x64 calling convention
-            x64_spill(x64, X64_R10);
-            x64_spill(x64, X64_R11);
-            // TODO: SPILL XMM0-5
+            x64_allocate_windows_x64_argument_list(x64, bc->type, target->ret_count, args, call->arg_count);
         } break;
         
         case BC_CALL_INDIRECT: {
-            unimplemented;
+            Bytecode_Call_Indirect* call = (Bytecode_Call_Indirect*) bc;
+            int* args = bc_call_args(call);
+            x64_allocate_windows_x64_argument_list(x64, bc->type, call->ret_count, args, call->arg_count);
         } break;
         
         case BC_RETURN: {
@@ -422,24 +503,31 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
             x64_allocate_register(x64, bc->type, bc->res_index, tmp[0]);
         } break;
         
-        
         case BC_FLOAT_TO_INT: {
-            unimplemented;
+            tmp[0] = x64_allocate_tmp_float_register(x64, bc->a_index, X64_XMM4);
+            tmp[1] = x64_allocate_tmp_register(x64, bc->res_index, X64_RAX);
+            x64_allocate_register(x64, bc->type, bc->res_index, tmp[1]);
         } break;
         
         case BC_INT_TO_FLOAT: {
-            unimplemented;
+            tmp[0] = x64_allocate_tmp_register(x64, bc->a_index, X64_RAX);
+            tmp[1] = x64_allocate_tmp_float_register(x64, bc->res_index, X64_XMM4);
+            x64_allocate_float_register(x64, bc->type, bc->res_index, tmp[1]);
         } break;
         
         case BC_FLOAT_TO_FLOAT: {
-            unimplemented;
+            tmp[0] = x64_allocate_tmp_float_register(x64, bc->a_index, X64_XMM4);
+            x64_allocate_float_register(x64, bc->type, bc->res_index, tmp[0]);
         } break;
         
         case BC_NEG: {
             if (bc->type.kind == BC_TYPE_FLOAT) {
-                unimplemented;
+                tmp[0] = x64_allocate_tmp_float_register(x64, bc->a_index, X64_XMM4);
+                tmp[1] = x64_allocate_tmp_float_register(x64, bc->res_index, X64_XMM5);
+                x64_allocate_float_register(x64, bc->type, bc->res_index, tmp[0]);
             } else {
-                unimplemented;
+                tmp[0] = x64_allocate_tmp_register(x64, bc->a_index, X64_RAX);
+                x64_allocate_register(x64, bc->type, bc->res_index, tmp[0]);
             }
         } break;
         
@@ -449,12 +537,15 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
         case BC_SUB:
         case BC_MUL: {
             if (bc->type.kind == BC_TYPE_FLOAT) {
-                unimplemented;
+                tmp[0] = x64_allocate_tmp_float_register(x64, bc->a_index, X64_XMM4);
+                tmp[1] = x64_allocate_tmp_float_register(x64, bc->b_index, X64_XMM5);
+                pln("float arith: tmp[0] = %, tmp[1] = %", f_int(tmp[0]), f_int(tmp[1]));
+                x64_allocate_float_register(x64, bc->type, bc->res_index, tmp[0]);
                 
             } else {
                 tmp[0] = x64_allocate_tmp_register(x64, bc->a_index, X64_RAX);
                 tmp[1] = x64_allocate_tmp_register(x64, bc->b_index, X64_RCX);
-                pln("tmp[0] = %, tmp[1] = %", f_int(tmp[0]), f_int(tmp[1]));
+                pln("int arith: tmp[0] = %, tmp[1] = %", f_int(tmp[0]), f_int(tmp[1]));
                 x64_allocate_register(x64, bc->type, bc->res_index, tmp[0]);
             }
         } break;
@@ -464,7 +555,11 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
         case BC_MOD_S:
         case BC_MOD_U: {
             if (bc->type.kind == BC_TYPE_FLOAT) {
-                unimplemented;
+                tmp[0] = x64_allocate_tmp_float_register(x64, bc->a_index, X64_XMM4);
+                tmp[1] = x64_allocate_tmp_float_register(x64, bc->b_index, X64_XMM5);
+                pln("float arith: tmp[0] = %, tmp[1] = %", f_int(tmp[0]), f_int(tmp[1]));
+                x64_allocate_float_register(x64, bc->type, bc->res_index, tmp[0]);
+                
             } else {
                 x64_spill(x64, X64_RAX, bc->a_index);
                 x64_spill(x64, X64_RDX);
@@ -495,8 +590,11 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
         case BC_LT_U:
         case BC_LE_S:
         case BC_LE_U: {
-            if (bc->type.kind == BC_TYPE_FLOAT) {
-                unimplemented;
+            Bytecode_Type type = get_slot(x64, bc->a_index).type;
+            if (type.kind == BC_TYPE_FLOAT) {
+                tmp[0] = x64_allocate_tmp_float_register(x64, bc->a_index, X64_XMM4);
+                tmp[1] = x64_allocate_tmp_float_register(x64, bc->b_index, X64_XMM5);
+                x64_allocate_register(x64, bc->type, bc->res_index, X64_RAX);
                 
             } else {
                 tmp[0] = x64_allocate_tmp_register(x64, bc->a_index, X64_RAX);
@@ -524,6 +622,38 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
         default: {
             assert(0 && "invalid X64 instruction");
         } break;
+    }
+}
+
+void
+convert_windows_x64_argument_list_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, int arg_count, int* args, int var_arg_start=-1) {
+    for (int arg_index = arg_count - 1; arg_index >= 0; arg_index--) {
+        int src_index = args[arg_index];
+        Bytecode_Type type = get_slot(x64, src_index).type;
+        bool is_float = type.kind == BC_TYPE_FLOAT;
+        
+        if (is_float) {
+            X64_Reg dest = X64_XMM0;
+            if (arg_index < 4) {
+                dest = float_arg_registers_ccall_windows[arg_index];
+            }
+            x64_move_slot_to_float_register(x64, buf, dest, src_index);
+            if (arg_index >= 4 || arg_index >= var_arg_start) {
+                x64_move_float_register_to_memory(buf, X64_RSP, arg_index*8, dest, type.size);
+            }
+            
+        } else {
+            X64_Reg dest = X64_RAX;
+            if (arg_index < 4) {
+                dest = int_arg_registers_ccall_windows[arg_index];
+            }
+            x64_move_slot_to_register(x64, buf, dest, src_index);
+            
+            if (arg_index >= 4 || arg_index >= var_arg_start) {
+                x64_move_register_to_memory(buf, X64_RSP, arg_index*8, dest);
+                
+            }
+        }
     }
 }
 
@@ -569,19 +699,15 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         case BC_F32_CONST: {
             Exported_Data f32_data = export_struct(x64->data_packer, f32, Read_Data_Section);
             *((f32*) f32_data.data) = ((Bytecode_Const_F32*) bc)->val;
-            x64_move_const_to_float_register(x64, buf, X64_XMM5, f32_data, 4);
-            X64_Slot dest = get_slot(x64, bc->res_index);
-            assert(dest.kind == X64_SLOT_RSP_DISP32);
-            x64_move_float_register_to_memory(buf, X64_RSP, dest.disp, X64_XMM5, sizeof(f32));
+            x64_move_const_to_float_register(x64, buf, tmp[0], f32_data, 4);
+            x64_move_float_register_to_slot(x64, buf, bc->res_index, tmp[0]);
         } break;
         
         case BC_F64_CONST: {
             Exported_Data f64_data = export_struct(x64->data_packer, f64, Read_Data_Section);
             *((f64*) f64_data.data) = ((Bytecode_Const_F64*) bc)->val;
-            x64_move_const_to_float_register(x64, buf, X64_XMM5, f64_data, 8);
-            X64_Slot dest = get_slot(x64, bc->res_index);
-            assert(dest.kind == X64_SLOT_RSP_DISP32);
-            x64_move_float_register_to_memory(buf, X64_RSP, dest.disp, X64_XMM5, sizeof(f64));
+            x64_move_const_to_float_register(x64, buf, tmp[0], f64_data, 8);
+            x64_move_float_register_to_slot(x64, buf, bc->res_index, tmp[0]);
         } break;
         
         case BC_GLOBAL: {
@@ -605,7 +731,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_FUNCTION: {
-            int func_index = bc->b_index;
+            int func_index = bc->a_index;
             
             // REX.W + 8D /r 	LEA r64,m 	RM
             x64_rex(buf, REX_W);
@@ -645,7 +771,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                     x64_mul64_immediate(buf, index, index, stride);
                 }
                 x64_add64(buf, base, index);
-                x64_move_register_to_slot(x64, buf, bc->res_index, index);
+                x64_move_register_to_slot(x64, buf, bc->res_index, base);
             }
         } break;
         
@@ -660,7 +786,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                 
             } else {
                 X64_Reg base = tmp[0];
-                x64_move_slot_to_register(x64, buf ,base, field_access->base);
+                x64_move_slot_to_register(x64, buf, base, field_access->base);
                 x64_add64_immediate(buf, base, field_access->offset);
                 x64_move_register_to_slot(x64, buf, bc->res_index, base);
             }
@@ -672,7 +798,6 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             s32 disp = ptr.disp;
             X64_Reg dest = X64_RSP; 
             X64_Reg src = tmp[0];
-            x64_move_slot_to_register(x64, buf, src, bc->a_index);
             
             if (ptr.kind != X64_SLOT_RSP_DISP32_INPLACE) {
                 disp = 0;
@@ -681,26 +806,44 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             }
             
             Bytecode_Type type = get_slot(x64, bc->a_index).type;
-            switch (type.size) {
-                case 1: x64_move8_register_to_memory(buf, dest, disp, src); break;
-                case 2: x64_move16_register_to_memory(buf, dest, disp, src); break;
-                case 4: x64_move32_register_to_memory(buf, dest, disp, src); break;
-                default: x64_move_register_to_memory(buf, dest, disp, src); break;
+            if (type.kind == BC_TYPE_FLOAT) {
+                x64_move_slot_to_float_register(x64, buf, src, bc->a_index);
+                x64_move_float_register_to_memory(buf, dest, disp, src, type.size);
+                
+            } else {
+                x64_move_slot_to_register(x64, buf, src, bc->a_index);
+                
+                switch (type.size) {
+                    case 1: x64_move8_register_to_memory(buf, dest, disp, src); break;
+                    case 2: x64_move16_register_to_memory(buf, dest, disp, src); break;
+                    case 4: x64_move32_register_to_memory(buf, dest, disp, src); break;
+                    default: x64_move_register_to_memory(buf, dest, disp, src); break;
+                }
             }
         } break;
         
         case BC_LOAD: {
             X64_Slot ptr = get_slot(x64, bc->a_index);
-            X64_Reg src = tmp[0];
-            if (ptr.kind == X64_SLOT_RSP_DISP32_INPLACE) {
-                x64_move_slot_to_register(x64, buf, src, bc->a_index);
+            if (bc->type.kind == BC_TYPE_FLOAT) {
+                if (ptr.kind == X64_SLOT_RSP_DISP32_INPLACE) {
+                    x64_move_slot_to_float_register(x64, buf, tmp[0], bc->a_index);
+                    
+                } else {
+                    x64_move_slot_to_register(x64, buf, tmp[1], bc->a_index);
+                    x64_move_memory_to_float_register(buf, tmp[0], tmp[1], 0, bc->type.size);
+                }
+                x64_move_float_register_to_slot(x64, buf, bc->res_index, tmp[0]);
                 
             } else {
-                x64_move_slot_to_register(x64, buf, src, bc->a_index);
-                x64_move_memory_to_register(buf, src, src, 0);
+                if (ptr.kind == X64_SLOT_RSP_DISP32_INPLACE) {
+                    x64_move_memory_to_register(buf, tmp[0], X64_RSP, ptr.disp);
+                    
+                } else {
+                    x64_move_slot_to_register(x64, buf, tmp[1], bc->a_index);
+                    x64_move_memory_to_register(buf, tmp[0], tmp[1], 0);
+                }
+                x64_move_register_to_slot(x64, buf, bc->res_index, tmp[0]);
             }
-            
-            x64_move_register_to_slot(x64, buf, bc->res_index, src);
         } break;
         
         case BC_LEA: {
@@ -737,13 +880,8 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             }
             
             if (target->ret_count == 1) {
-                // TODO(Alexander): Add support for floats!
                 if (bc->type.kind == BC_TYPE_FLOAT) {
-                    unimplemented;
-                    //x64_move_
-                    //x64_move_float_register_to_memory(buf, X64_RSP,
-                    //register_displacement(x64, args[0], bc->type),
-                    //X64_XMM0, bc->type.size);
+                    x64_move_float_register_to_slot(x64, buf, args[0], X64_XMM0);
                 } else {
                     x64_move_register_to_slot(x64, buf, args[0], X64_RAX);
                 }
@@ -751,8 +889,6 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_CALL_INDIRECT: {
-            unimplemented;
-#if 0
             Bytecode_Call_Indirect* call = (Bytecode_Call_Indirect*) bc;
             
             int* args = bc_call_args(call);
@@ -760,19 +896,19 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                                                                   args + call->ret_count);
             
             // Indirect function call from register
-            x64_move_memory_to_register(buf, X64_RAX, X64_RSP,
-                                        register_displacement(x64, call->func_ptr_index));
+            x64_move_slot_to_register(x64, buf, X64_RAX, call->func_ptr_index);
             
             // FF /2 	CALL r/m64 	M 	
             push_u8(buf, 0xFF);
             x64_modrm_direct(buf, 2, X64_RAX);
             
             if (call->ret_count == 1) {
-                // TODO(Alexander): Add support for floats!
-                x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, args[0]),
-                                            X64_RAX);
+                if (bc->type.kind == BC_TYPE_FLOAT) {
+                    x64_move_float_register_to_slot(x64, buf, args[0], X64_XMM0);
+                } else {
+                    x64_move_register_to_slot(x64, buf, args[0], X64_RAX);
+                }
             }
-#endif
         } break;
         
         case BC_RETURN: {
@@ -801,34 +937,26 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_FLOAT_TO_INT: {
-            unimplemented;
-#if 0
+            X64_Reg float_reg = tmp[0], int_reg = tmp[1];
             X64_Slot src = get_slot(x64, bc->a_index);
-            x64_move_slot_to_float_register(x64, buf, X64_XMM0, bc->a_index);
-            x64_convert_float_to_int(buf, X64_RAX, X64_XMM0, src.type.size);
-            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index, bc->type), X64_RAX);
-#endif
+            x64_move_slot_to_float_register(x64, buf, float_reg, bc->a_index);
+            x64_convert_float_to_int(buf, int_reg, float_reg, src.type.size);
+            x64_move_register_to_slot(x64, buf, bc->res_index, int_reg);
         } break;
         
         case BC_INT_TO_FLOAT: {
-            unimplemented;
-#if 0
-            X64_Reg src = _x64_move_slot_to_register(x64, buf, X64_RAX, bc->a_index);
-            x64_convert_int_to_float(buf, X64_XMM0, src, bc->type.size);
-            x64_move_float_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index, bc->type),
-                                              X64_XMM0, bc->type.size);
-#endif
+            X64_Reg int_reg = tmp[0], float_reg = tmp[1];
+            X64_Reg src = x64_move_slot_to_register(x64, buf, int_reg, bc->a_index);
+            x64_convert_int_to_float(buf, float_reg, int_reg, bc->type.size);
+            x64_move_float_register_to_slot(x64, buf, bc->res_index, float_reg);
         } break;
         
         case BC_FLOAT_TO_FLOAT: {
-            unimplemented;
-#if 0
             X64_Slot src = get_slot(x64, bc->a_index);
             verify(src.type.size != bc->type.size);
-            x64_move_slot_to_float_register(x64, buf, X64_XMM0, bc->a_index);
-            x64_convert_float_to_float(buf, X64_XMM0, X64_XMM0, src.type.size);
-            x64_move_float_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index, bc->type), X64_XMM0, bc->type.size);
-#endif
+            x64_move_slot_to_float_register(x64, buf, tmp[0], bc->a_index);
+            x64_convert_float_to_float(buf, tmp[0], tmp[0], src.type.size);
+            x64_move_float_register_to_slot(x64, buf, bc->res_index, tmp[0]);
         } break;
         
         case BC_INC:
@@ -844,8 +972,6 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_NEG: {
-            unimplemented;
-#if 0
             if (bc->type.kind == BC_TYPE_FLOAT) {
                 // XOR the sign float bit
                 Exported_Data sign_mask = export_size(x64->data_packer, Read_Data_Section, 
@@ -856,26 +982,22 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                     *((u32*) sign_mask.data) = 0x80000000;
                 }
                 
-                x64_move_slot_to_float_register(x64, buf, X64_XMM4, bc->a_index);
-                x64_move_const_to_float_register(x64, buf, X64_XMM5, sign_mask, bc->type.size);
-                x64_xorps(buf, X64_XMM4, X64_XMM5, bc->type.size);
-                x64_move_float_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index, bc->type), X64_XMM4, bc->type.size);
+                x64_move_slot_to_float_register(x64, buf, tmp[0], bc->a_index);
+                x64_move_const_to_float_register(x64, buf, tmp[1], sign_mask, bc->type.size);
+                x64_xorps(buf, tmp[0], tmp[1], bc->type.size);
+                x64_move_float_register_to_slot(x64, buf, bc->res_index, tmp[0]);
             } else {
-                X64_Reg src = _x64_move_slot_to_register(x64, buf, X64_RAX, bc->a_index);
-                x64_neg(buf, src);
-                x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index, bc->type), src);
+                x64_move_slot_to_register(x64, buf, tmp[0], bc->a_index);
+                x64_neg(buf, tmp[0]);
+                x64_move_register_to_slot(x64, buf, bc->res_index, tmp[0]);
             }
-#endif
         } break;
         
         case BC_NOT: {
-            unimplemented;
-#if 0
             assert(bc->type.kind != BC_TYPE_FLOAT && "not is not implemented for float types");
-            X64_Reg src = _x64_move_slot_to_register(x64, buf, X64_RAX, bc->a_index);
-            x64_not(buf, src);
-            x64_move_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index, bc->type), src);
-#endif
+            x64_move_slot_to_register(x64, buf, tmp[0], bc->a_index);
+            x64_not(buf, tmp[0]);
+            x64_move_register_to_slot(x64, buf, bc->res_index, tmp[0]);
         } break;
         
         case BC_OR:
@@ -890,26 +1012,22 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         case BC_SHL:
         case BC_SHR:
         case BC_SAR: {
+            X64_Reg a = tmp[0], b = tmp[1];
             if (bc->type.kind == BC_TYPE_FLOAT) {
-                unimplemented;
-#if 0
-                x64_move_slot_to_float_register(x64, buf, X64_XMM4, bc->a_index);
-                x64_move_slot_to_float_register(x64, buf, X64_XMM5, bc->b_index);
+                x64_move_slot_to_float_register(x64, buf, a, bc->a_index);
+                x64_move_slot_to_float_register(x64, buf, b, bc->b_index);
                 
                 switch (bc->opcode) {
-                    case BC_ADD: x64_addss(buf, X64_XMM4, X64_XMM5, bc->type.size); break; 
-                    case BC_SUB: x64_subss(buf, X64_XMM4, X64_XMM5, bc->type.size); break; 
-                    case BC_MUL: x64_mulss(buf, X64_XMM4, X64_XMM5, bc->type.size); break; 
+                    case BC_ADD: x64_addss(buf, a, b, bc->type.size); break; 
+                    case BC_SUB: x64_subss(buf, a, b, bc->type.size); break; 
+                    case BC_MUL: x64_mulss(buf, a, b, bc->type.size); break; 
                     case BC_DIV_S: // TODO(Alexander): we should only have DIV!!!
-                    case BC_DIV_U: x64_divss(buf, X64_XMM4, X64_XMM5, bc->type.size); break;
+                    case BC_DIV_U: x64_divss(buf, a, b, bc->type.size); break;
                     default: unimplemented;
                 }
-                x64_move_float_register_to_memory(buf, X64_RSP, register_displacement(x64, bc->res_index, bc->type),
-                                                  X64_XMM4, bc->type.size);
-#endif
+                x64_move_float_register_to_slot(x64, buf, bc->res_index, a);
                 
             } else {
-                X64_Reg a = tmp[0], b = tmp[1];
                 x64_move_slot_to_register(x64, buf, a, bc->a_index);
                 x64_move_slot_to_register(x64, buf, b, bc->b_index);
                 
@@ -944,7 +1062,6 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         case BC_LE_S:
         case BC_LE_U: {
             Bytecode_Type type = get_slot(x64, bc->a_index).type;
-            
             if (type.kind == BC_TYPE_FLOAT) {
                 x64_move_slot_to_float_register(x64, buf, X64_XMM4, bc->a_index);
                 x64_move_slot_to_float_register(x64, buf, X64_XMM5, bc->b_index);

@@ -27,7 +27,7 @@ x64_move_immediate_to_register(Buffer* buf, X64_Reg dest, s32 immediate) {
 inline void
 x64_move8_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_Reg src) {
     // 88 /r 	MOV r/m8, r8 	MR
-    if (src&8) x64_rex(buf, 0, src, dest);
+    if (src&8 || dest&8) x64_rex(buf, 0, src, dest);
     push_u8(buf, 0x88);
     x64_modrm(buf, src, dest, disp);
 }
@@ -36,7 +36,7 @@ inline void
 x64_move16_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_Reg src) {
     // 89 /r 	MOV r/m16, r16 	MR 	
     push_u8(buf, X64_OP_SIZE_PREFIX);
-    if (src&8) x64_rex(buf, 0, src, dest);
+    if (src&8 || dest&8) x64_rex(buf, 0, src, dest);
     push_u8(buf, 0x89);
     x64_modrm(buf, src, dest, disp);
 }
@@ -44,7 +44,7 @@ x64_move16_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_Reg src) 
 inline void
 x64_move32_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_Reg src) {
     // 89 /r 	MOV r/m32, r32 	MR
-    if (src&8) x64_rex(buf, 0, src, dest);
+    if (src&8 || dest&8) x64_rex(buf, 0, src, dest);
     push_u8(buf, 0x89);
     x64_modrm(buf, src, dest, disp);
 }
@@ -348,6 +348,15 @@ x64_sub64(Buffer* buf, X64_Reg a, X64_Reg b) {
 }
 
 inline void
+x64_sub64_immediate(Buffer* buf, X64_Reg a, s32 imm) {
+    // REX.W + 81 /5 id 	SUB r/m64, imm32 	MI
+    x64_rex(buf, REX_W, 5, a);
+    push_u8(buf, 0x81);
+    x64_modrm_direct(buf, 5, a);
+    push_u32(buf, imm);
+}
+
+inline void
 x64_mul64(Buffer* buf, X64_Reg a, X64_Reg b) {
     // REX.W + 0F AF /r 	IMUL r64, r/m64 	RM
     x64_rex(buf, REX_W, a, b);
@@ -391,41 +400,83 @@ x64_cmp64(Buffer* buf, X64_Reg a, X64_Reg b) {
 }
 
 inline void
-x64_move_float_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_VReg src, int size) {
+x64_move_float_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_Reg src, int size) {
     // F3 0F 11 /r MOVSS xmm2/m32, xmm1
     // F2 0F 11 /r MOVSD xmm1/m64, xmm2
-    push_u24(buf, (size == 8) ? 0x110FF2 : 0x110FF3);
+    push_u8(buf, (size == 8) ? 0xF2 : 0xF3);
+    if (src&8 || dest&8) x64_rex(buf, 0, src, dest);
+    push_u16(buf, 0x110F);
     x64_modrm(buf, src, dest, disp);
 }
 
 inline void
-x64_move_memory_to_float_register(Buffer* buf, X64_VReg dest, X64_Reg src, s64 disp, int size) {
+x64_move_float_register_to_register(Buffer* buf, X64_Reg dest, X64_Reg src, int size) {
+    if (dest == src) return;
+    
+    // F3 0F 11 /r MOVSS xmm2/m32, xmm1
+    // F2 0F 11 /r MOVSD xmm1/m64, xmm2
+    push_u8(buf, (size == 8) ? 0xF2 : 0xF3);
+    if (src&8 || dest&8) x64_rex(buf, 0, src, dest);
+    push_u16(buf, 0x110F);
+    x64_modrm_direct(buf, src, dest);
+}
+
+inline void
+x64_move_memory_to_float_register(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp, int size) {
     // F3 0F 10 /r MOVSS xmm1, m32
     // F2 0F 10 /r MOVSD xmm1, m64
-    push_u24(buf, (size == 8) ? 0x100FF2 : 0x100FF3);
+    push_u8(buf, (size == 8) ? 0xF2 : 0xF3);
+    if (src&8 || dest&8) x64_rex(buf, 0, dest, src);
+    push_u16(buf, 0x100F);
     x64_modrm(buf, dest, src, disp);
 }
 
 inline void
-x64_move_slot_to_float_register(X64_Assembler* x64, Buffer* buf, X64_VReg dest, int src_index) {
-    X64_Slot src = get_slot(x64, src_index);
-    switch (src.kind) {
-        case X64_SLOT_RSP_DISP32: {
-            x64_move_memory_to_float_register(buf, dest, X64_RSP, src.disp, src.type.size);
-        } break;
-    }
-}
-
-inline void
-x64_move_const_to_float_register(X64_Assembler* x64, Buffer* buf, X64_VReg dest, Exported_Data data, int size) {
+x64_move_const_to_float_register(X64_Assembler* x64, Buffer* buf, X64_Reg dest, Exported_Data data, int size) {
     // F3 0F 10 /r MOVSS xmm1, m32
     // F2 0F 10 /r MOVSD xmm1, m64
-    push_u24(buf, (size == 8) ? 0x100FF2 : 0x100FF3);
+    push_u8(buf, (size == 8) ? 0xF2 : 0xF3);
+    if (dest&8) x64_rex(buf, 0, dest);
+    push_u16(buf, 0x100F);
     x64_modrm_exported_data(x64, buf, dest, data);
 }
 
 inline void
-x64_addss(Buffer* buf, X64_VReg a, X64_VReg b, int size) {
+x64_move_slot_to_float_register(X64_Assembler* x64, Buffer* buf, X64_Reg dest, int src_index) {
+    X64_Slot src = get_slot(x64, src_index);
+    switch (src.kind) {
+        case X64_SLOT_RSP_DISP32:
+        case X64_SLOT_RSP_DISP32_INPLACE: {
+            x64_move_memory_to_float_register(buf, dest, X64_RSP, src.disp, src.type.size);
+        } break;
+        
+        case X64_SLOT_REG: {
+            x64_move_float_register_to_register(buf, dest, src.reg, src.type.size);
+        } break;
+        
+        default: verify_not_reached();
+    }
+}
+
+inline void
+x64_move_float_register_to_slot(X64_Assembler* x64, Buffer* buf, int dest_index, X64_Reg src) {
+    X64_Slot dest = get_slot(x64, dest_index);
+    switch (dest.kind) {
+        case X64_SLOT_RSP_DISP32:
+        case X64_SLOT_RSP_DISP32_INPLACE: {
+            x64_move_float_register_to_memory(buf, X64_RSP, dest.disp, src, dest.type.size);
+        } break;
+        
+        case X64_SLOT_REG: {
+            x64_move_float_register_to_register(buf, dest.reg, src, dest.type.size);
+        } break;
+        
+        default: verify_not_reached();
+    }
+}
+
+inline void
+x64_addss(Buffer* buf, X64_Reg a, X64_Reg b, int size) {
     // F3 0F 58 /r ADDSS xmm1, xmm2/m32
     // F2 0F 58 /r ADDSD xmm1, xmm2/m64
     push_u24(buf, (size == 8) ? 0x580FF2 : 0x580FF3);
@@ -433,7 +484,7 @@ x64_addss(Buffer* buf, X64_VReg a, X64_VReg b, int size) {
 }
 
 inline void
-x64_subss(Buffer* buf, X64_VReg a, X64_VReg b, int size) {
+x64_subss(Buffer* buf, X64_Reg a, X64_Reg b, int size) {
     // F3 0F 5C /r SUBSS xmm1, xmm2/m32
     // F2 0F 5C /r SUBSD xmm1, xmm2/m64
     push_u24(buf, (size == 8) ? 0x5C0FF2 : 0x5C0FF3);
@@ -441,7 +492,7 @@ x64_subss(Buffer* buf, X64_VReg a, X64_VReg b, int size) {
 }
 
 inline void
-x64_mulss(Buffer* buf, X64_VReg a, X64_VReg b, int size) {
+x64_mulss(Buffer* buf, X64_Reg a, X64_Reg b, int size) {
     // F3 0F 59 /r MULSS xmm1,xmm2/m32 	A
     // F2 0F 59 /r MULSD xmm1,xmm2/m64 	A
     push_u24(buf, (size == 8) ? 0x590FF2 : 0x590FF3);
@@ -449,7 +500,7 @@ x64_mulss(Buffer* buf, X64_VReg a, X64_VReg b, int size) {
 }
 
 inline void
-x64_divss(Buffer* buf, X64_VReg a, X64_VReg b, int size) {
+x64_divss(Buffer* buf, X64_Reg a, X64_Reg b, int size) {
     // F3 0F 5E /r DIVSS xmm1, xmm2/m32 	A
     // F2 0F 5E /r DIVSD xmm1, xmm2/m64 	A
     push_u24(buf, (size == 8) ? 0x5E0FF2 : 0x5E0FF3);
@@ -457,7 +508,7 @@ x64_divss(Buffer* buf, X64_VReg a, X64_VReg b, int size) {
 }
 
 inline void
-x64_ucomiss(Buffer* buf, X64_VReg a, X64_VReg b, int size) {
+x64_ucomiss(Buffer* buf, X64_Reg a, X64_Reg b, int size) {
     // NP 0F 2E /r UCOMISS xmm1, xmm2/m32 	A
     // 66 0F 2E /r UCOMISD xmm1, xmm2/m64 	A
     if (size == 8) {
@@ -469,7 +520,7 @@ x64_ucomiss(Buffer* buf, X64_VReg a, X64_VReg b, int size) {
 }
 
 inline void
-x64_xorps(Buffer* buf, X64_VReg a, X64_VReg b, int size) {
+x64_xorps(Buffer* buf, X64_Reg a, X64_Reg b, int size) {
     // NP 0F 57 /r XORPS xmm1, xmm2/m128 	A
     // 66 0F 57 /r XORPD xmm1, xmm2/m128 	A
     if (size == 8) {
@@ -481,30 +532,35 @@ x64_xorps(Buffer* buf, X64_VReg a, X64_VReg b, int size) {
 }
 
 inline void
-x64_convert_float_to_int(Buffer* buf, X64_Reg dest, X64_VReg src, int size) {
+x64_convert_float_to_int(Buffer* buf, X64_Reg dest, X64_Reg src, int size) {
+    assert(src & 0x10);
     // F3 REX.W 0F 2C /r CVTTSS2SI r64, xmm1/m32
     // F2 REX.W 0F 2C /r CVTTSD2SI r64, xmm1/m64
     push_u8(buf, (size == 8) ? 0xF2 : 0xF3);
-    x64_rex(buf, REX_W);
+    x64_rex(buf, REX_W, dest, src);
     push_u16(buf, 0x2C0F);
     x64_modrm_direct(buf, dest, src);
 }
 
 inline void
-x64_convert_int_to_float(Buffer* buf, X64_VReg dest, X64_Reg src, int size) {
+x64_convert_int_to_float(Buffer* buf, X64_Reg dest, X64_Reg src, int size) {
+    assert(dest & 0x10);
     // F3 REX.W 0F 2A /r CVTSI2SS xmm1, r/m64
     // F2 REX.W 0F 2A /r CVTSI2SD xmm1, r/m64
     push_u8(buf, (size == 8) ? 0xF2 : 0xF3);
-    x64_rex(buf, REX_W);
+    x64_rex(buf, REX_W, dest, src);
     push_u16(buf, 0x2A0F);
     x64_modrm_direct(buf, dest, src);
 }
 
 inline void
-x64_convert_float_to_float(Buffer* buf, X64_VReg dest, X64_VReg src, int src_size) {
+x64_convert_float_to_float(Buffer* buf, X64_Reg dest, X64_Reg src, int src_size) {
+    assert(src & 0x10);
+    assert(dest & 0x10);
     // F3 0F 5A /r CVTSS2SD xmm1, xmm2/m32
     // F2 0F 5A /r CVTSD2SS xmm1, xmm2/m64
     push_u8(buf, (src_size == 8) ? 0xF2 : 0xF3);
+    if (src&8 || dest&8) x64_rex(buf, 0, dest, src);
     push_u16(buf, 0x5A0F);
     x64_modrm_direct(buf, dest, src);
 }

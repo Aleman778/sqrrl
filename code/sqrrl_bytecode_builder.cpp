@@ -1573,20 +1573,20 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
             } break;
             
             case BC_LEA: {
-                assert_non_void_type(bc_valid, insn, register_type(func, bc->res_index));
+                assert_non_void_type(bc_valid, insn, register_type(bc_valid, bc->a_index));
                 allocate_register(bc_valid, insn, bc->res_index);
             } break;
             
             case BC_MEMCPY: {
-                assert_type_equals(bc_valid, insn, BC_PTR, register_type(func, bc->res_index));
-                assert_type_equals(bc_valid, insn, BC_PTR, register_type(func, bc->a_index));
-                assert_int_type(bc_valid, insn, register_type(func, bc->b_index));
+                assert_type_equals(bc_valid, insn, BC_PTR, register_type(bc_valid, bc->res_index));
+                assert_type_equals(bc_valid, insn, BC_PTR, register_type(bc_valid, bc->a_index));
+                assert_int_type(bc_valid, insn, register_type(bc_valid, bc->b_index));
             } break;
             
             case BC_MEMSET: {
-                assert_type_equals(bc_valid, insn, BC_PTR, register_type(func, bc->res_index));
-                assert_int_type(bc_valid, insn, register_type(func, bc->a_index));
-                assert_int_type(bc_valid, insn, register_type(func, bc->b_index));
+                assert_type_equals(bc_valid, insn, BC_PTR, register_type(bc_valid, bc->res_index));
+                assert_int_type(bc_valid, insn, register_type(bc_valid, bc->a_index));
+                assert_int_type(bc_valid, insn, register_type(bc_valid, bc->b_index));
             } break;
             
             case BC_CALL: {
@@ -1655,6 +1655,7 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
             } break;
             
             case BC_STORE: {
+                assert_non_void_type(bc_valid, insn, register_type(bc_valid, bc->a_index));
                 Bytecode_Type dest_type = register_type(bc_valid, bc->res_index);
                 assert_type_equals(bc_valid, insn, BC_PTR, dest_type);
             } break;
@@ -2180,6 +2181,16 @@ string_builder_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
             
             string_builder_dump_bytecode_function_name(sb, bc, func);
             string_builder_dump_bytecode_call_args(sb, call->arg_count, args, func->ret_count);
+        } break;
+        
+        case BC_FUNCTION: {
+            Bytecode_Assign* func_insn = (Bytecode_Assign*) insn;
+            Bytecode_Function* func = bc->functions[func_insn->src_index];
+            
+            string_builder_push_format(sb, "r% = ", f_int(func_insn->dest_index));
+            string_builder_dump_bytecode_opcode(sb, insn);
+            
+            string_builder_dump_bytecode_function_name(sb, bc, func);
         } break;
         
         case BC_X64_RDTSC:

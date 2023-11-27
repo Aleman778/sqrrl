@@ -28,7 +28,7 @@ struct Soa {
 }
 
 void
-@test_proc
+@test_proc @dump_bytecode
 soa_struct_initializer() {
     int x = 50;
     f32 y = 20.5f;

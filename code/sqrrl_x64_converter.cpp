@@ -134,22 +134,22 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
         }
         
         if (use_stack) {
-            x64_allocate_stack(x64, arg.type, arg_index, arg.size, arg.align, arg.size > 8);
+            x64_spill_slot(x64, arg_index);
         }
     }
     x64->tmp_registers = arena_push_array_of_structs(&x64->arena, func->insn_count*2, X64_Reg);
     int insn_index = 0;
     for_bc_insn(func, curr) {
-        x64_simple_register_allocator(x64, curr, insn_index++);
+        stack_size = x64_simple_register_allocator(x64, curr, insn_index++, stack_size);
     }
     
     // Calculate stack space used by spilled register
     for (int slot_index = func->arg_count; slot_index < func->register_count; slot_index++) {
         X64_Slot slot = x64->slots[slot_index];
-        if (slot.kind == X64_SLOT_RSP_DISP32_INPLACE ||
-            slot.kind == X64_SLOT_RSP_DISP32) {
-            s32 disp = (s32) align_forward(stack_size, slot.align);
-            stack_size = disp + slot.size;
+        if (slot.kind == X64_SLOT_RSP_DISP32) {
+            // TODO(Alexander): for simplicity we always use 8-bytes for spilled registers
+            s32 disp = (s32) align_forward(stack_size, 8);
+            stack_size = disp + 8;
             x64->slots[slot_index].disp = disp;
         }
     }
@@ -255,18 +255,15 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
         x64_sub64_immediate(buf, X64_RSP, stack_size);
     }
     
-#if 0
-    s32* variadic_data_ptr = 0;
+    // Set Var_Args pointer if used
     if (func->is_variadic) {
         // Set the Var_Args data pointer
         int var_args = func->arg_count - 1;
-        variadic_data_ptr = x64_lea_patch_disp(buf, X64_RAX, X64_RSP, func->arg_count*8);
+        x64_lea(buf, X64_RAX, X64_RSP, stack_callee_args + func->arg_count*8);
         X64_Slot dest = get_slot(x64, var_args);
         x64_move_memory_to_register(buf, X64_RCX, X64_RSP, dest.disp);
         x64_move_register_to_memory(buf, X64_RCX, 0, X64_RAX);
-        //pln("%: arg_count = %", f_var(x64->bytecode->function_names[func->type_index]), f_int());
     }
-#endif
     
     // Codegen pass
     insn_index = 0;
@@ -352,8 +349,8 @@ x64_allocate_windows_x64_argument_list(X64_Assembler* x64, Bytecode_Type ret_typ
 }
 
 
-void
-x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn, int bc_index) {
+s32
+x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn, int bc_index, s32 stack_usage) {
     Bytecode_Binary* bc = (Bytecode_Binary*) bc_insn;
     X64_Reg* tmp = x64->tmp_registers + bc_index*2;
     tmp[0] = X64_REG_COUNT;
@@ -391,7 +388,7 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
         
         case BC_LOCAL: {
             Bytecode_Local* local = (Bytecode_Local*) bc;
-            x64_allocate_stack(x64, local->type, local->res_index, local->size, local->align, true);
+            stack_usage = x64_allocate_stack(x64, local->type, local->res_index, local->size, local->align, stack_usage);
         } break;
         
         case BC_GLOBAL: 
@@ -423,7 +420,13 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
             Bytecode_Field_Access* field_access = (Bytecode_Field_Access*) bc;
             X64_Slot src = get_slot(x64, field_access->base);
             
-            if (src.kind != X64_SLOT_RSP_DISP32_INPLACE) {
+            if (src.kind == X64_SLOT_RSP_DISP32_INPLACE) {
+                assert(x64->slots[bc->res_index].kind == X64_SLOT_EMPTY);
+                src.disp += field_access->offset;
+                set_slot(x64, field_access->res_index, src);
+                pln("r%: disp = %", f_int(field_access->res_index), f_int(src.disp));
+                
+            } else {
                 X64_Reg reg = x64_allocate_tmp_register(x64, field_access->base, X64_RAX);
                 x64_allocate_register(x64, bc->type, bc->res_index, reg);
             }
@@ -566,8 +569,8 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
                 tmp[0] = X64_RAX;
                 tmp[1] = x64_allocate_tmp_register(x64, bc->b_index, X64_RCX);
                 
-                bool is_div = bc->opcode == BC_DIV_S || bc->opcode == BC_DIV_U;
-                x64_allocate_register(x64, bc->type, bc->res_index, is_div ? X64_RAX : X64_RDX);
+                bool is_mod = bc->opcode == BC_MOD_S || bc->opcode == BC_MOD_U;
+                x64_allocate_register(x64, bc->type, bc->res_index, is_mod ? X64_RDX : X64_RAX);
             }
         } break;
         
@@ -623,6 +626,8 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
             assert(0 && "invalid X64 instruction");
         } break;
     }
+    
+    return stack_usage;
 }
 
 void
@@ -734,7 +739,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             int func_index = bc->a_index;
             
             // REX.W + 8D /r 	LEA r64,m 	RM
-            x64_rex(buf, REX_W);
+            x64_rex(buf, REX_W, tmp[0]);
             push_u8(buf, 0x8D);
             x64_rip_rel(buf, tmp[0]);
             x64_jump_address(x64, buf, &x64->functions[func_index].code);
@@ -779,12 +784,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             Bytecode_Field_Access* field_access = (Bytecode_Field_Access*) bc;
             X64_Slot src = get_slot(x64, field_access->base);
             
-            if (src.kind == X64_SLOT_RSP_DISP32_INPLACE) {
-                assert(x64->slots[bc->res_index].kind == X64_SLOT_EMPTY);
-                src.disp += field_access->offset;
-                x64->slots[field_access->res_index] = src;
-                
-            } else {
+            if (src.kind != X64_SLOT_RSP_DISP32_INPLACE) {
                 X64_Reg base = tmp[0];
                 x64_move_slot_to_register(x64, buf, base, field_access->base);
                 x64_add64_immediate(buf, base, field_access->offset);
@@ -1047,7 +1047,8 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                     default: unimplemented;
                 }
                 
-                x64_move_register_to_slot(x64, buf, bc->res_index, a);
+                bool is_mod = bc->opcode == BC_MOD_S || bc->opcode == BC_MOD_U;
+                x64_move_register_to_slot(x64, buf, bc->res_index, is_mod ? X64_RDX : a);
             }
         } break;
         

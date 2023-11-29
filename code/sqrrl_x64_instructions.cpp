@@ -95,18 +95,6 @@ x64_lea(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp) {
     x64_modrm(buf, dest, src, disp);
 }
 
-inline s32*
-x64_lea_patch_disp(Buffer* buf, X64_Reg dest, X64_Reg src, s64 disp) {
-    // REX.W + 8D /r 	LEA r64,m 	RM
-    x64_rex(buf, REX_W, dest, src);
-    push_u8(buf, 0x8D);
-    push_u8(buf, MODRM_INDIRECT_DISP32 | ((dest & 7) << 3) | (src & 7));
-    push_u8(buf, 0x24); // SIB for RSP
-    s32* result = (s32*) (buf->data + buf->curr_used);
-    push_u32(buf, (u32) disp);
-    return result;
-}
-
 inline void
 x64_lea_sib(Buffer* buf, X64_Reg dest, u8 scale, X64_Reg index, X64_Reg base, s64 disp) {
     // REX.W + 8D /r 	LEA r64,m 	RM
@@ -172,8 +160,6 @@ x64_move_extend_opcode(Buffer* buf, X64_Reg dest, X64_Reg src, int size, bool is
             } break;
         }
     }
-    
-    
 }
 
 void
@@ -479,7 +465,9 @@ inline void
 x64_addss(Buffer* buf, X64_Reg a, X64_Reg b, int size) {
     // F3 0F 58 /r ADDSS xmm1, xmm2/m32
     // F2 0F 58 /r ADDSD xmm1, xmm2/m64
-    push_u24(buf, (size == 8) ? 0x580FF2 : 0x580FF3);
+    push_u8(buf, (size == 8) ? 0xF2 : 0xF3);
+    if (a&8 || b&8) x64_rex(buf, 0, b, a);
+    push_u16(buf,0x580F);
     x64_modrm_direct(buf, a, b);
 }
 
@@ -487,7 +475,9 @@ inline void
 x64_subss(Buffer* buf, X64_Reg a, X64_Reg b, int size) {
     // F3 0F 5C /r SUBSS xmm1, xmm2/m32
     // F2 0F 5C /r SUBSD xmm1, xmm2/m64
-    push_u24(buf, (size == 8) ? 0x5C0FF2 : 0x5C0FF3);
+    push_u8(buf, (size == 8) ? 0xF2 : 0xF3);
+    if (a&8 || b&8) x64_rex(buf, 0, b, a);
+    push_u16(buf, 0x5C0F);
     x64_modrm_direct(buf, a, b);
 }
 
@@ -495,7 +485,9 @@ inline void
 x64_mulss(Buffer* buf, X64_Reg a, X64_Reg b, int size) {
     // F3 0F 59 /r MULSS xmm1,xmm2/m32 	A
     // F2 0F 59 /r MULSD xmm1,xmm2/m64 	A
-    push_u24(buf, (size == 8) ? 0x590FF2 : 0x590FF3);
+    push_u8(buf, (size == 8) ? 0xF2 : 0xF3);
+    if (a&8 || b&8) x64_rex(buf, 0, b, a);
+    push_u16(buf, 0x590F);
     x64_modrm_direct(buf, a, b);
 }
 
@@ -503,7 +495,9 @@ inline void
 x64_divss(Buffer* buf, X64_Reg a, X64_Reg b, int size) {
     // F3 0F 5E /r DIVSS xmm1, xmm2/m32 	A
     // F2 0F 5E /r DIVSD xmm1, xmm2/m64 	A
-    push_u24(buf, (size == 8) ? 0x5E0FF2 : 0x5E0FF3);
+    push_u8(buf, (size == 8) ? 0xF2 : 0xF3);
+    if (a&8 || b&8) x64_rex(buf, 0, b, a);
+    push_u16(buf, 0x5E0F);
     x64_modrm_direct(buf, a, b);
 }
 

@@ -664,16 +664,16 @@ emit_value_expression(Bytecode_Builder* bc, Ast* expr, int result) {
                     } break;
                     
                     case Op_Bitwise_Not: {
-                        emit_value_expression(bc, expr->Unary_Expr.first, result);
+                        int first = emit_value_fetch_expression(bc, expr->Unary_Expr.first);
                         if (result != -1) {
-                            bc_unary_arith(bc, bcresult_type, BC_NOT, result, result);
+                            bc_unary_arith(bc, bcresult_type, BC_NOT, result, first);
                         }
                     } break;
                     
                     case Op_Logical_Not: {
-                        emit_value_expression(bc, expr->Unary_Expr.first, result);
+                        int first = emit_value_fetch_expression(bc, expr->Unary_Expr.first);
                         if (result != -1) {
-                            emit_zero_compare(bc, type, result, result, false);
+                            emit_zero_compare(bc, type, result, first, false);
                         }
                     } break;
                     

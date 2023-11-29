@@ -865,15 +865,12 @@ arena_total_used(Memory_Arena* arena) {
 }
 
 inline void
-arena_grow(Memory_Arena* arena, umm block_size = 0) {
-    if (block_size == 0) {
-        if (arena->min_block_size == 0) {
-            arena->min_block_size = ARENA_DEFAULT_BLOCK_SIZE;
-        }
-        
-        block_size = arena->min_block_size;
+arena_grow(Memory_Arena* arena, umm allocation_size) {
+    if (arena->min_block_size == 0) {
+        arena->min_block_size = ARENA_DEFAULT_BLOCK_SIZE;
     }
     
+    umm block_size = max(arena->min_block_size, allocation_size + sizeof(Memory_Block));
     Memory_Block* block = allocate_memory_block(block_size);
     if (arena->current_block) {
         arena->total_used_minus_current += arena->current_block->used;
@@ -914,7 +911,7 @@ arena_push_size(Memory_Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT) {
     
     if (offset + size > arena_size) {
         //pln("offset (%) + size (%) > arena_size (%)", f_umm(offset), f_umm(size), f_umm(arena_size));
-        arena_grow(arena);
+        arena_grow(arena, size);
         offset = arena_aligned_offset(arena, size, align);
     }
     

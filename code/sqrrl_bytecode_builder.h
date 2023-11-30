@@ -21,8 +21,6 @@ struct Bytecode_Builder {
     
     Bytecode bytecode;
     
-    int next_register;
-    
     u32 block_depth;
     
     u32 next_type_index;
@@ -160,10 +158,9 @@ Bytecode_Instruction* add_bytecode_instruction(Bytecode_Builder* bc,
 inline int
 add_register(Bytecode_Builder* bc, Type* type=0) {
     assert(bc->curr_function);
-    int result = bc->next_register++;
-    if (bc->next_register > bc->curr_function->register_count) {
-        bc->curr_function->register_count = bc->next_register;
-    }
+    int result = (int) array_count(bc->registers);
+    array_push(bc->registers, true);
+    bc->curr_function->register_count = result + 1;
     //pln("Added register r% (largest r%)", f_int(result),
     //f_int(bc->curr_function->register_count));
     return result;
@@ -172,22 +169,26 @@ add_register(Bytecode_Builder* bc, Type* type=0) {
 inline void
 drop_register(Bytecode_Builder* bc, int index) {
     assert(bc->curr_function);
-    assert(index >= 0 && "invalid register");
-    Bytecode_Result* insn = bc_instruction(bc, BC_DROP, Bytecode_Result);
-    insn->res_index = index;
-    //pln("Dropped register r%", f_int(index));
-    // TODO: add drop instruction
-    //return bc->curr_function->register_count++;
+    assert(index >= 0 && index < array_count(bc->registers) && "invalid register");
+    
+    if (bc->registers[index]) {
+        Bytecode_Result* insn = bc_instruction(bc, BC_DROP, Bytecode_Result);
+        insn->res_index = index;
+        bc->registers[index] = false;
+        //pln("Dropped register r%", f_int(index));
+        // TODO: add drop instruction
+        //return bc->curr_function->register_count++;
+    }
 }
 
 int
 begin_tmp_scope(Bytecode_Builder* bc) {
-    return bc->next_register;
+    return (int) array_count(bc->registers);
 }
 
 void
 end_tmp_scope(Bytecode_Builder* bc, int first) { 
-    for (int i = bc->next_register - 1; i >= first; i--) {
+    for (int i = (int) array_count(bc->registers) - 1; i >= first; i--) {
         drop_register(bc, i);
     }
     //pln("Drop to: %", f_int(bc->next_register));

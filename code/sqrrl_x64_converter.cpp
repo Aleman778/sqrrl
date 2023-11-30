@@ -14,7 +14,6 @@ convert_bytecode_to_x64_machine_code(Bytecode* bytecode, Buffer* buf,
     
     u8* main_function_ptr = buf->data;
     for_array_v(bytecode->functions, func, func_index) {
-        pln("Compiling function `%`...", f_var(bytecode->function_names[func->type_index]));
         if (bytecode->entry_func_index == func_index) {
             main_function_ptr = buf->data + buf->curr_used;
         }
@@ -87,6 +86,11 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     
     if (func->is_imported || func->is_intrinsic) {
         return;
+    }
+    pln("Compiling function `%`...", f_var(x64->bytecode->function_names[func->type_index]));
+    
+    if (x64->bytecode->function_names[func->type_index] == Sym_main) {
+        //__debugbreak();
     }
     
     func->code_ptr = buf->data + buf->curr_used;
@@ -193,24 +197,28 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
         }
     }
     
-    // Update stack locations for the our args to point to callee args
-    s32 stack_callee_args = stack_size + 8;
+    // Saved registers increases our stack size thus increasing offset to caller args
+    s32 caller_arg_stack = stack_size + 8;
     for (u8 reg = X64_RAX; reg < X64_REG_COUNT; reg++) {
         if (callee_saved[reg]) {
-            stack_callee_args += 8 + ((reg & X64_XMM0) >> 1);
+            caller_arg_stack += 8 + ((reg & X64_XMM0) >> 1);
         }
     }
     for (int arg_index = 0; arg_index < func->arg_count; arg_index++) {
         X64_Slot slot = x64->slots[arg_index];
         if (slot.kind == X64_SLOT_RSP_DISP32_INPLACE ||
             slot.kind == X64_SLOT_RSP_DISP32) {
-            x64->slots[arg_index].disp = stack_callee_args + arg_index*8;
+            x64->slots[arg_index].disp = caller_arg_stack + arg_index*8;
         }
     }
+    pln("arg_count: %", f_int(func->arg_count));
+    pln("stack_size: %", f_int(stack_size));
+    pln("caller_arg_stack: %", f_int(caller_arg_stack));
     
+#if 1
     // Register dump
     pln("\nRegister dump:");
-    for (int slot_index = func->arg_count; slot_index < func->register_count; slot_index++) {
+    for (int slot_index = 0; slot_index < func->register_count; slot_index++) {
         X64_Slot slot = get_slot(x64, slot_index);
         switch (slot.kind) {
             case X64_SLOT_RSP_DISP32_INPLACE: {
@@ -226,13 +234,14 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
             } break;
         }
     }
+#endif
     
     // Save callee saved registers
     for (int i = 0; i < X64_REG_COUNT; i++) {
         // NOTE(Alexander): reverse order, push XMM registers first to ensure 16-byte alignment
         X64_Reg reg = (X64_Reg) (X64_REG_COUNT - i - 1);
         if (callee_saved[reg]) {
-            //pln("callee_saved: %", f_cstring(register_names[reg]))
+            pln("callee_saved: %", f_cstring(register_names[reg]));
             if (reg & X64_XMM0) {
                 x64_sub64_immediate(buf, X64_RSP, 16);
                 
@@ -258,8 +267,9 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     // Set Var_Args pointer if used
     if (func->is_variadic) {
         // Set the Var_Args data pointer
+        // TODO(Alexander): we should use the register allocate to free RAX and RCX
         int var_args = func->arg_count - 1;
-        x64_lea(buf, X64_RAX, X64_RSP, stack_callee_args + func->arg_count*8);
+        x64_lea(buf, X64_RAX, X64_RSP, caller_arg_stack + func->arg_count*8);
         X64_Slot dest = get_slot(x64, var_args);
         x64_move_memory_to_register(buf, X64_RCX, X64_RSP, dest.disp);
         x64_move_register_to_memory(buf, X64_RCX, 0, X64_RAX);
@@ -304,7 +314,6 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
 
 void
 x64_allocate_windows_x64_argument_list(X64_Assembler* x64, Bytecode_Type ret_type, int ret_count, int* args, int arg_count) {
-    // Spill argument registers (windows x64 calling convention specific)
     // Spill HOME registers (if possible avoid it for correclty mapped registers)
     int actual_arg_count = arg_count - ret_count;
     for (int arg_index = 0; arg_index < 4; arg_index++) {
@@ -330,22 +339,21 @@ x64_allocate_windows_x64_argument_list(X64_Assembler* x64, Bytecode_Type ret_typ
         }
     }
     
-    // Spill + allocate return register RAX/XMM0 (windows x64 calling convention specific)
-    if (ret_count == 1) {
-        if (ret_type.kind == BC_TYPE_FLOAT) {
-            x64_spill(x64, X64_XMM0, args[0]);
-            x64_allocate_float_register(x64, ret_type, args[0], X64_XMM0);
-        } else {
-            x64_spill(x64, X64_RAX, args[0]);
-            x64_allocate_register(x64, ret_type, args[0], X64_RAX);
-        }
-    }
-    
-    // Spill other volatile registers (windows x64 calling convention specific)
+    // Spill other volatile registers
+    x64_spill(x64, X64_RAX, args[0]);
     x64_spill(x64, X64_R10);
     x64_spill(x64, X64_R11);
     x64_spill(x64, X64_XMM4);
     x64_spill(x64, X64_XMM5);
+    
+    // Allocate return register RAX/XMM0
+    if (ret_count == 1) {
+        if (ret_type.kind == BC_TYPE_FLOAT) {
+            x64_allocate_float_register(x64, ret_type, args[0], X64_XMM0);
+        } else {
+            x64_allocate_register(x64, ret_type, args[0], X64_RAX);
+        }
+    }
 }
 
 
@@ -358,11 +366,14 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
     
     switch (bc->opcode) {
         case BC_NOOP: 
-        case BC_DEBUG_BREAK:
         case BC_BRANCH:
         case BC_LOOP:
         case BC_BLOCK:
         case BC_END: break;
+        
+        case BC_DEBUG_BREAK: {
+            //__debugbreak();
+        } break;
         
         case BC_DROP: {
             x64_drop(x64, bc->res_index);
@@ -391,9 +402,9 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
             stack_usage = x64_allocate_stack(x64, local->type, local->res_index, local->size, local->align, stack_usage);
         } break;
         
-        case BC_GLOBAL: 
+        case BC_GLOBAL:
         case BC_FUNCTION: {
-            tmp[0] = x64_allocate_tmp_register(x64, bc->a_index, X64_RAX);
+            tmp[0] = x64_allocate_tmp_register(x64, -1, X64_RAX);
             x64_allocate_register(x64, bc->type, bc->res_index, tmp[0]);
         } break;
         
@@ -427,8 +438,8 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
                 pln("r%: disp = %", f_int(field_access->res_index), f_int(src.disp));
                 
             } else {
-                X64_Reg reg = x64_allocate_tmp_register(x64, field_access->base, X64_RAX);
-                x64_allocate_register(x64, bc->type, bc->res_index, reg);
+                tmp[0] = x64_allocate_tmp_register(x64, field_access->base, X64_RAX);
+                x64_allocate_register(x64, bc->type, bc->res_index, tmp[0]);
             }
         } break;
         
@@ -443,8 +454,9 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
             } else {
                 tmp[0] = x64_allocate_tmp_register(x64, bc->a_index, X64_RAX);
                 if (ptr.kind != X64_SLOT_RSP_DISP32_INPLACE) {
-                    tmp[1] = x64_allocate_tmp_register(x64, bc->res_index, X64_RCX);
+                    tmp[1] = x64_allocate_tmp_register(x64, -1, X64_RCX);
                 }
+                assert(tmp[0] != tmp[1]);
             }
         } break;
         
@@ -625,6 +637,13 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
         default: {
             assert(0 && "invalid X64 instruction");
         } break;
+    }
+    
+    // Flag tmp registers as allocated
+    for (u8 i = 0; i < X64_REG_COUNT; i++) {
+        if (x64->allocated_registers[i] == -2) {
+            x64->allocated_registers[i] = -1;
+        }
     }
     
     return stack_usage;

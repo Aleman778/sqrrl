@@ -1346,7 +1346,7 @@ emit_initializer_function(Bytecode_Builder* bc) {
                 bc->curr_function = func;
                 bc->curr_insn = 0;
                 bc->block_depth = 0;
-                bc->next_register = 0; 
+                array_free(bc->registers);
             }
             
             
@@ -1410,9 +1410,9 @@ struct Bytecode_Validation {
 inline void
 bc_type_error(Bytecode_Validation* bc_valid, string message, Bytecode_Operator opcode=BC_NOOP) {
     if (opcode > BC_NOOP) {
-        pln("error: % %", f_cstring(bc_operator_names[opcode]), f_string(message));
+        //pln("error: % %", f_cstring(bc_operator_names[opcode]), f_string(message));
     } else {
-        pln("error: %", f_string(message));
+        //pln("error: %", f_string(message));
     }
     bc_valid->error_count++;
 }
@@ -1493,12 +1493,13 @@ drop_register(Bytecode_Validation* bc_valid, Bytecode_Instruction* insn, int ind
     Bytecode_Register* r = &bc_valid->registers[index];
     if (r->type) {
         if (r->uses == 0) {
+            // TODO(Alexander): this isn't valid unless we instruction is a drop and we only evaluate per basic block!!!
             //r->init->opcode = BC_NOOP;
-            bc_type_error(bc_valid, string_print("register r% is a dead store", f_int(index)), insn->opcode);
+            //bc_type_error(bc_valid, string_print("register r% is a dead store", f_int(index)), insn->opcode);
             
         } else if (r->uses == 1) {
             r->type->flags |= BC_FLAG_UNIQUE_REGISTER;
-            bc_type_error(bc_valid, string_print("register r% is unique", f_int(index)), insn->opcode);
+            //bc_type_error(bc_valid, string_print("register r% is unique", f_int(index)), insn->opcode);
             
         } else {
             // Need to mark this as shared register
@@ -1538,8 +1539,6 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
         r->type = &func_args[arg_index].type;
         r->uses = 0;
     }
-    
-    pln("Analyzing function `%`...", f_var(func_ident));
     
     for_bc_insn(func, insn) {
         Bytecode_Binary* bc = (Bytecode_Binary*) insn;
@@ -1850,7 +1849,8 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
     }
     
     if (bc_valid->error_count > 0) {
-        pln("result: function `%` compiled with % error(s)\n", f_var(func_ident), f_int(bc_valid->error_count));
+        // TODO(Alexander): this may be good to investigate later on to ensure the bytecode is correctly constructed
+        //pln("result: function `%` compiled with % error(s)\n", f_var(func_ident), f_int(bc_valid->error_count));
     }
 }
 
@@ -1874,7 +1874,7 @@ emit_function(Bytecode_Builder* bc, Bytecode_Function* func, Ast* ast,
     bc->curr_function = func;
     bc->curr_insn = 0;
     bc->block_depth = 0;
-    bc->next_register = func->arg_count;
+    array_free(bc->registers);
     if (is_main) {
         bc->bytecode.entry_func_index = func->type_index;
         Bytecode_Export main_export = {};
@@ -1895,6 +1895,12 @@ emit_function(Bytecode_Builder* bc, Bytecode_Function* func, Ast* ast,
     
     if (insert_debug_break) {
         bc_intrinsic(bc, BC_DEBUG_BREAK, 0, 0);
+    }
+    
+    // Push arguments
+    for (int arg_index = 0; arg_index < func->arg_count; arg_index++) {
+        int r = add_register(bc);
+        assert(arg_index == r);
     }
     
     emit_statement(bc, ast->Decl_Stmt.stmt, 0, 0);

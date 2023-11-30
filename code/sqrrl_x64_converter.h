@@ -187,6 +187,17 @@ x64_next_free_tmp_register(X64_Assembler* x64, X64_Reg tmp_reg_list[], int tmp_r
     return -1;
 }
 
+inline int
+x64_next_allocated_register(X64_Assembler* x64, X64_Reg tmp_reg_list[], int tmp_reg_list_count) {
+    for (int i = 0; i < tmp_reg_list_count; i++) {
+        u8 reg = tmp_reg_list[i];
+        if (x64->allocated_registers[reg] >= 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 inline void
 _x64_allocate_register(X64_Assembler* x64, Bytecode_Type type, int reg_index, 
                        X64_Reg preferred_reg, X64_Reg tmp_reg_list[], int tmp_reg_list_count) {
@@ -210,11 +221,11 @@ _x64_allocate_register(X64_Assembler* x64, Bytecode_Type type, int reg_index,
             if (i != -1) {
                 slot->reg = tmp_reg_list[i];
                 slot->kind = X64_SLOT_REG;
-                x64->allocated_registers[slot->reg] = reg_index;
             }
         }
         
         if (slot->kind == X64_SLOT_REG) {
+            x64->allocated_registers[slot->reg] = reg_index;
             pln("allocated % for r%", f_cstring(register_names[slot->reg]), f_int(x64->allocated_registers[slot->reg]));
         }
     }
@@ -268,6 +279,7 @@ x64_spill(X64_Assembler* x64, X64_Reg reg, int for_reg_index = -1) {
     } else if (reg_index == -1) {
         x64->allocated_registers[reg] = -2;
     }
+    x64->registers_used[reg] = true;
 }
 
 inline X64_Reg
@@ -275,7 +287,7 @@ _x64_allocate_tmp_register(X64_Assembler* x64, int reg_index,
                            X64_Reg preferred_reg, X64_Reg tmp_reg_list[], int tmp_reg_list_count) {
     X64_Slot slot = {};
     if (reg_index >= 0) {
-        x64->slots[reg_index];
+        slot = x64->slots[reg_index];
     }
     X64_Reg reg; 
     if (slot.kind != X64_SLOT_REG) {
@@ -283,12 +295,15 @@ _x64_allocate_tmp_register(X64_Assembler* x64, int reg_index,
             reg = preferred_reg;
         } else {
             int i = x64_next_free_tmp_register(x64, tmp_reg_list, tmp_reg_list_count);
-            if (i != -1) {
-                reg = tmp_reg_list[i];
-            } else {
-                x64_spill(x64, preferred_reg);
-                reg = preferred_reg;
+            if (i == -1) {
+                i = x64_next_allocated_register(x64, tmp_reg_list, tmp_reg_list_count);
+                x64_spill(x64, tmp_reg_list[i], reg_index);
             }
+            verify(i != -1 && "ran out of registers");
+            reg = tmp_reg_list[i];
+            
+            //x64_spill(x64, preferred_reg);
+            //reg = preferred_reg;
         }
         
         x64->allocated_registers[reg] = -2;
@@ -323,10 +338,13 @@ x64_drop_tmp_register(X64_Assembler* x64, X64_Reg reg) {
 
 inline void
 x64_drop(X64_Assembler* x64, int reg_index) {
+    // TODO(Alexander): do we need this? We kind of have the same behavior when calling _x64_allocate_tmp_register
+#if 0
     X64_Slot slot = x64->slots[reg_index];
-    if (slot.kind == X64_SLOT_REG && !(slot.type.flags & BC_FLAG_UNIQUE_REGISTER)) {
+    if (slot.kind == X64_SLOT_REG && (slot.type.flags & BC_FLAG_UNIQUE_REGISTER)) {
         x64->allocated_registers[slot.reg] = -1;
     }
+#endif
 }
 
 

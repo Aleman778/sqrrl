@@ -150,7 +150,7 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     // Calculate stack space used by spilled register
     for (int slot_index = func->arg_count; slot_index < func->register_count; slot_index++) {
         X64_Slot slot = x64->slots[slot_index];
-        if (slot.kind == X64_SLOT_RSP_DISP32) {
+        if (slot.kind == X64_SLOT_SPILL) {
             // TODO(Alexander): for simplicity we always use 8-bytes for spilled registers
             s32 disp = (s32) align_forward(stack_size, 8);
             stack_size = disp + 8;
@@ -206,8 +206,8 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     }
     for (int arg_index = 0; arg_index < func->arg_count; arg_index++) {
         X64_Slot slot = x64->slots[arg_index];
-        if (slot.kind == X64_SLOT_RSP_DISP32_INPLACE ||
-            slot.kind == X64_SLOT_RSP_DISP32) {
+        if (slot.kind == X64_SLOT_RSP_DISP32 ||
+            slot.kind == X64_SLOT_SPILL) {
             x64->slots[arg_index].disp = caller_arg_stack + arg_index*8;
         }
     }
@@ -221,11 +221,11 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     for (int slot_index = 0; slot_index < func->register_count; slot_index++) {
         X64_Slot slot = get_slot(x64, slot_index);
         switch (slot.kind) {
-            case X64_SLOT_RSP_DISP32_INPLACE: {
+            case X64_SLOT_RSP_DISP32: {
                 pln("r%: [RSP + %] (inplace)", f_int(slot_index), f_int(slot.disp));
             } break;
             
-            case X64_SLOT_RSP_DISP32: {
+            case X64_SLOT_SPILL: {
                 pln("r%: [RSP + %]", f_int(slot_index), f_int(slot.disp));
             } break;
             
@@ -383,8 +383,18 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
             s64 immediate = ((Bytecode_Const_Int*) bc)->val;
             if (immediate < S32_MIN || immediate > S32_MAX) {
                 x64_spill(x64, X64_RAX);
+                x64_allocate_register(x64, bc->type, bc->res_index, X64_RAX);
+                
+            } else if (bc->type.flags & BC_FLAG_UNIQUE_REGISTER) {
+                X64_Slot res = {};
+                res.kind = X64_SLOT_IMM32;
+                res.imm32 = (s32) immediate;
+                res.type = bc->type;
+                set_slot(x64, bc->res_index, res);
+                pln("IMM32: r%", f_int(bc->res_index));
+            } else {
+                x64_allocate_register(x64, bc->type, bc->res_index, X64_RAX);
             }
-            x64_allocate_register(x64, bc->type, bc->res_index, X64_RAX);
         } break;
         
         case BC_F32_CONST: {
@@ -410,13 +420,25 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
         
         case BC_ARRAY_ACCESS: {
             Bytecode_Array_Access* array_access = (Bytecode_Array_Access*) bc;
-            
+            X64_Slot base_slot = get_slot(x64, array_access->base);
+            X64_Slot index_slot = get_slot(x64, array_access->index);
             int stride = array_access->stride;
-            if (is_power_of_two(stride) && stride < 8) {
+            
+            if (index_slot.kind == X64_SLOT_IMM32) {
+                if (base_slot.kind == X64_SLOT_RSP_DISP32) {
+                    X64_Slot res = base_slot;
+                    res.disp += index_slot.imm32 * stride;
+                    set_slot(x64, array_access->res_index, res);
+                    
+                } else {
+                    tmp[0] = x64_allocate_tmp_register(x64, array_access->base, X64_RAX);
+                    x64_allocate_register(x64, bc->type, bc->res_index, tmp[0]);
+                }
+                
+            } else if (is_power_of_two(stride) && stride < 8) {
                 
                 tmp[0] = x64_allocate_tmp_register(x64, array_access->index, X64_RAX);
-                X64_Slot base_slot = get_slot(x64, array_access->base);
-                if (base_slot.kind != X64_SLOT_RSP_DISP32_INPLACE) {
+                if (base_slot.kind != X64_SLOT_RSP_DISP32) {
                     tmp[1] = x64_allocate_tmp_register(x64, array_access->base, X64_RCX);
                 }
                 x64_allocate_register(x64, bc->type, bc->res_index, tmp[0]);
@@ -431,7 +453,7 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
             Bytecode_Field_Access* field_access = (Bytecode_Field_Access*) bc;
             X64_Slot src = get_slot(x64, field_access->base);
             
-            if (src.kind == X64_SLOT_RSP_DISP32_INPLACE) {
+            if (src.kind == X64_SLOT_RSP_DISP32) {
                 assert(x64->slots[bc->res_index].kind == X64_SLOT_EMPTY);
                 src.disp += field_access->offset;
                 set_slot(x64, field_access->res_index, src);
@@ -447,16 +469,24 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
             X64_Slot ptr = get_slot(x64, bc->res_index);
             if (ptr.type.kind == BC_TYPE_FLOAT) {
                 tmp[0] = x64_allocate_tmp_float_register(x64, bc->a_index, X64_XMM4);
-                if (ptr.kind != X64_SLOT_RSP_DISP32_INPLACE) {
+                if (ptr.kind == X64_SLOT_SPILL) {
                     tmp[1] = x64_allocate_tmp_register(x64, bc->res_index, X64_RAX);
                 }
                 
             } else {
-                tmp[0] = x64_allocate_tmp_register(x64, bc->a_index, X64_RAX);
-                if (ptr.kind != X64_SLOT_RSP_DISP32_INPLACE) {
-                    tmp[1] = x64_allocate_tmp_register(x64, -1, X64_RCX);
+                
+                // mov tmp[0], a_index
+                
+                // mov tmp[1], [rsp + 8]
+                // mov [tmp[1]], tmp[0]
+                
+                if (ptr.kind == X64_SLOT_SPILL) {
+                    tmp[0] = x64_allocate_tmp_register(x64, bc->a_index, X64_RAX);
+                    tmp[1] = x64_allocate_tmp_register(x64, bc->res_index, X64_RCX);
+                } else {
+                    tmp[0] = x64_allocate_tmp_register(x64, bc->a_index, X64_RAX);
+                    x64_drop_if_register(x64, bc->res_index);
                 }
-                assert(tmp[0] != tmp[1]);
             }
         } break;
         
@@ -464,15 +494,15 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
             X64_Slot ptr = get_slot(x64, bc->a_index);
             if (bc->type.kind == BC_TYPE_FLOAT) {
                 tmp[0] = x64_allocate_tmp_float_register(x64, -1, X64_XMM0);
-                if (ptr.kind != X64_SLOT_RSP_DISP32_INPLACE) {
+                if (ptr.kind == X64_SLOT_SPILL) {
                     tmp[1] = x64_allocate_tmp_register(x64, bc->a_index, X64_RAX);
                 }
                 x64_allocate_float_register(x64, bc->type, bc->res_index, tmp[0]);
             } else {
-                tmp[0] = x64_allocate_tmp_register(x64, -1, X64_RAX);
-                if (ptr.kind != X64_SLOT_RSP_DISP32_INPLACE) {
-                    tmp[1] = x64_allocate_tmp_register(x64, bc->a_index, X64_RCX);
-                }
+                tmp[0] = x64_allocate_tmp_register(x64, bc->a_index, X64_RAX);
+                //if (ptr.kind != X64_SLOT_SPILL) {
+                //tmp[1] = x64_allocate_tmp_register(x64, bc->a_index, X64_RCX);
+                //}
                 x64_allocate_register(x64, bc->type, bc->res_index, tmp[0]);
             }
         } break;
@@ -705,7 +735,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                 
             } else {
                 X64_Slot dest = get_slot(x64, bc->res_index);
-                if (dest.kind == X64_SLOT_RSP_DISP32) {
+                if (dest.kind == X64_SLOT_SPILL) {
                     // REX.W + C7 /0 id 	MOV r/m64, imm32 	MI
                     x64_rex(buf, REX_W);
                     push_u8(buf, 0xC7);
@@ -714,7 +744,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                     
                 } else if (dest.kind == X64_SLOT_REG) {
                     x64_move_immediate_to_register(buf, dest.reg, (s32) immediate);
-                } else {
+                } else if (dest.kind != X64_SLOT_IMM32) {
                     verify_not_reached();
                 }
             }
@@ -768,15 +798,30 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         
         case BC_ARRAY_ACCESS: {
             Bytecode_Array_Access* array_access = (Bytecode_Array_Access*) bc;
+            X64_Slot base_slot = get_slot(x64, array_access->base);
+            X64_Slot index_slot = get_slot(x64, array_access->index);
             
             int stride = array_access->stride;
-            if (is_power_of_two(stride) && stride < 8) {
+            
+            if (index_slot.kind == X64_SLOT_IMM32) {
+                X64_Reg res = tmp[0];
+                s32 offset = index_slot.imm32 * stride;
+                if (base_slot.kind != X64_SLOT_RSP_DISP32) {
+                    if (base_slot.kind == X64_SLOT_SPILL) {
+                        x64_move_memory_to_register(buf, res, X64_RSP, base_slot.disp);
+                    }
+                    if (offset != 0) {
+                        x64_lea(buf, res, res, offset);
+                    }
+                    x64_move_register_to_slot(x64, buf, bc->res_index, res);
+                }
+                
+            } else if (is_power_of_two(stride) && stride < 8) {
                 X64_Reg index = tmp[0], base = tmp[1];
                 x64_move_slot_to_register(x64, buf, index, array_access->index);
                 
                 s64 disp = 0;
-                X64_Slot base_slot = get_slot(x64, array_access->base);
-                if (base_slot.kind == X64_SLOT_RSP_DISP32_INPLACE) {
+                if (base_slot.kind == X64_SLOT_RSP_DISP32) {
                     base = X64_RSP;
                     disp = base_slot.disp;
                 } else {
@@ -803,7 +848,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             Bytecode_Field_Access* field_access = (Bytecode_Field_Access*) bc;
             X64_Slot src = get_slot(x64, field_access->base);
             
-            if (src.kind != X64_SLOT_RSP_DISP32_INPLACE) {
+            if (src.kind != X64_SLOT_RSP_DISP32) {
                 X64_Reg base = tmp[0];
                 x64_move_slot_to_register(x64, buf, base, field_access->base);
                 x64_add64_immediate(buf, base, field_access->offset);
@@ -812,13 +857,20 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
         
         case BC_STORE: {
-            X64_Slot ptr = get_slot(x64, bc->res_index);
-            
-            s32 disp = ptr.disp;
-            X64_Reg dest = X64_RSP; 
             X64_Reg src = tmp[0];
             
-            if (ptr.kind != X64_SLOT_RSP_DISP32_INPLACE) {
+            s32 disp = 0;
+            X64_Reg dest = X64_RSP; 
+            X64_Slot ptr = get_slot(x64, bc->res_index);
+            if (ptr.kind == X64_SLOT_RSP_DISP32) {
+                disp = ptr.disp;
+                dest = X64_RSP;
+                
+            } else if (ptr.kind == X64_SLOT_REG) {
+                disp = 0;
+                dest = ptr.reg;
+                
+            } else if (ptr.kind == X64_SLOT_SPILL) {
                 disp = 0;
                 dest = tmp[1];
                 x64_move_slot_to_register(x64, buf, dest, bc->res_index);
@@ -844,7 +896,7 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         case BC_LOAD: {
             X64_Slot ptr = get_slot(x64, bc->a_index);
             if (bc->type.kind == BC_TYPE_FLOAT) {
-                if (ptr.kind == X64_SLOT_RSP_DISP32_INPLACE) {
+                if (ptr.kind == X64_SLOT_RSP_DISP32) {
                     x64_move_slot_to_float_register(x64, buf, tmp[0], bc->a_index);
                     
                 } else {
@@ -854,21 +906,28 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                 x64_move_float_register_to_slot(x64, buf, bc->res_index, tmp[0]);
                 
             } else {
-                if (ptr.kind == X64_SLOT_RSP_DISP32_INPLACE) {
-                    x64_move_memory_to_register(buf, tmp[0], X64_RSP, ptr.disp);
+                X64_Slot dest = get_slot(x64, bc->res_index);
+                bool is_signed = dest.type.flags & BC_FLAG_SIGNED;
+                if (ptr.kind == X64_SLOT_SPILL) {
+                    x64_move_slot_to_register(x64, buf, tmp[0], bc->a_index);
+                    x64_move_extend_memory_to_register(buf, tmp[0], tmp[0], 0, dest.type.size, is_signed);
                     
+                } else if (ptr.kind == X64_SLOT_RSP_DISP32) {
+                    x64_move_extend_memory_to_register(buf, tmp[0], X64_RSP, ptr.disp, dest.type.size, is_signed);
+                } else if (ptr.kind == X64_SLOT_REG) {
+                    x64_move_extend_memory_to_register(buf, tmp[0], ptr.reg, 0, dest.type.size, is_signed);
                 } else {
-                    x64_move_slot_to_register(x64, buf, tmp[1], bc->a_index);
-                    x64_move_memory_to_register(buf, tmp[0], tmp[1], 0);
+                    verify_not_reached();
                 }
+                
                 x64_move_register_to_slot(x64, buf, bc->res_index, tmp[0]);
             }
         } break;
         
         case BC_LEA: {
             X64_Slot src = get_slot(x64, bc->a_index);
-            assert(src.kind == X64_SLOT_RSP_DISP32 ||
-                   src.kind == X64_SLOT_RSP_DISP32_INPLACE);
+            assert(src.kind == X64_SLOT_SPILL ||
+                   src.kind == X64_SLOT_RSP_DISP32);
             x64_lea(buf, tmp[0], X64_RSP, src.disp);
             x64_move_register_to_slot(x64, buf, bc->res_index, tmp[0]);
         } break;

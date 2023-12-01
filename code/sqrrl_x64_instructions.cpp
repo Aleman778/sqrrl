@@ -180,11 +180,11 @@ X64_Reg
 x64_move_slot_to_register(X64_Assembler* x64, Buffer* buf, X64_Reg dest, int src_index) {
     X64_Slot src = get_slot(x64, src_index);
     switch (src.kind) {
-        case X64_SLOT_RSP_DISP32_INPLACE: {
+        case X64_SLOT_RSP_DISP32: {
             x64_lea(buf, dest, X64_RSP, src.disp);
         } break;
         
-        case X64_SLOT_RSP_DISP32: {
+        case X64_SLOT_SPILL: {
             x64_move_extend_memory_to_register(buf, dest, X64_RSP, src.disp, src.type.size,
                                                src.type.flags & BC_FLAG_SIGNED);
         } break;
@@ -194,6 +194,10 @@ x64_move_slot_to_register(X64_Assembler* x64, Buffer* buf, X64_Reg dest, int src
                 x64_move_extend_register_to_register(buf, dest, src.reg, src.type.size,
                                                      src.type.flags & BC_FLAG_SIGNED);
             }
+        } break;
+        
+        case X64_SLOT_IMM32: {
+            x64_move_immediate_to_register(buf, dest, src.imm32);
         } break;
         
         default: {
@@ -209,8 +213,8 @@ void
 x64_move_register_to_slot(X64_Assembler* x64, Buffer* buf, int dest_index, X64_Reg src) {
     X64_Slot dest = get_slot(x64, dest_index);
     switch (dest.kind) {
-        case X64_SLOT_RSP_DISP32:
-        case X64_SLOT_RSP_DISP32_INPLACE: {
+        case X64_SLOT_SPILL:
+        case X64_SLOT_RSP_DISP32: {
             x64_move_register_to_memory(buf, X64_RSP, dest.disp, src);
         } break;
         
@@ -431,8 +435,8 @@ inline void
 x64_move_slot_to_float_register(X64_Assembler* x64, Buffer* buf, X64_Reg dest, int src_index) {
     X64_Slot src = get_slot(x64, src_index);
     switch (src.kind) {
-        case X64_SLOT_RSP_DISP32:
-        case X64_SLOT_RSP_DISP32_INPLACE: {
+        case X64_SLOT_SPILL:
+        case X64_SLOT_RSP_DISP32: {
             x64_move_memory_to_float_register(buf, dest, X64_RSP, src.disp, src.type.size);
         } break;
         
@@ -448,8 +452,8 @@ inline void
 x64_move_float_register_to_slot(X64_Assembler* x64, Buffer* buf, int dest_index, X64_Reg src) {
     X64_Slot dest = get_slot(x64, dest_index);
     switch (dest.kind) {
-        case X64_SLOT_RSP_DISP32:
-        case X64_SLOT_RSP_DISP32_INPLACE: {
+        case X64_SLOT_SPILL:
+        case X64_SLOT_RSP_DISP32: {
             x64_move_float_register_to_memory(buf, X64_RSP, dest.disp, src, dest.type.size);
         } break;
         

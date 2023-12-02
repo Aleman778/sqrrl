@@ -222,11 +222,11 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
         X64_Slot slot = get_slot(x64, slot_index);
         switch (slot.kind) {
             case X64_SLOT_RSP_DISP32: {
-                pln("r%: [RSP + %] (inplace)", f_int(slot_index), f_int(slot.disp));
+                pln("r%: [RSP + %]", f_int(slot_index), f_int(slot.disp));
             } break;
             
             case X64_SLOT_SPILL: {
-                pln("r%: [RSP + %]", f_int(slot_index), f_int(slot.disp));
+                pln("r%: [RSP + %] (spill)", f_int(slot_index), f_int(slot.disp));
             } break;
             
             case X64_SLOT_REG: {
@@ -496,6 +496,8 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
                 tmp[0] = x64_allocate_tmp_float_register(x64, -1, X64_XMM0);
                 if (ptr.kind == X64_SLOT_SPILL) {
                     tmp[1] = x64_allocate_tmp_register(x64, bc->a_index, X64_RAX);
+                } else {
+                    x64_drop_if_register(x64, bc->a_index);
                 }
                 x64_allocate_float_register(x64, bc->type, bc->res_index, tmp[0]);
             } else {
@@ -904,18 +906,26 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         
         case BC_LOAD: {
             X64_Slot ptr = get_slot(x64, bc->a_index);
+            X64_Slot dest = get_slot(x64, bc->res_index);
+            
             if (bc->type.kind == BC_TYPE_FLOAT) {
-                if (ptr.kind == X64_SLOT_RSP_DISP32) {
-                    x64_move_slot_to_float_register(x64, buf, tmp[0], bc->a_index);
-                    
-                } else {
+                if (ptr.kind == X64_SLOT_SPILL) {
                     x64_move_slot_to_register(x64, buf, tmp[1], bc->a_index);
                     x64_move_memory_to_float_register(buf, tmp[0], tmp[1], 0, bc->type.size);
+                    
+                } else if (ptr.kind == X64_SLOT_RSP_DISP32) {
+                    x64_move_slot_to_float_register(x64, buf, tmp[0], bc->a_index);
+                    
+                } else if (ptr.kind == X64_SLOT_REG) {
+                    x64_move_memory_to_float_register(buf, tmp[0], ptr.reg, 0, dest.type.size);
+                    
+                } else {
+                    verify_not_reached();
                 }
+                
                 x64_move_float_register_to_slot(x64, buf, bc->res_index, tmp[0]);
                 
             } else {
-                X64_Slot dest = get_slot(x64, bc->res_index);
                 bool is_signed = dest.type.flags & BC_FLAG_SIGNED;
                 if (ptr.kind == X64_SLOT_SPILL) {
                     x64_move_slot_to_register(x64, buf, tmp[0], bc->a_index);

@@ -1398,6 +1398,7 @@ type_equals(Bytecode_Type a, Bytecode_Type b) {
 struct Bytecode_Register {
     //Bytecode_Instruction* init;
     Bytecode_Type* type;
+    int block_index;
     int uses;
 };
 
@@ -1405,6 +1406,7 @@ struct Bytecode_Validation {
     Bytecode_Register* registers;
     s32 register_count;
     s32 error_count;
+    int block_index;
 };
 
 inline void
@@ -1497,7 +1499,7 @@ drop_register(Bytecode_Validation* bc_valid, Bytecode_Instruction* insn, int ind
             //r->init->opcode = BC_NOOP;
             //bc_type_error(bc_valid, string_print("register r% is a dead store", f_int(index)), insn->opcode);
             
-        } else if (r->uses == 1) {
+        } else if (r->uses == 1 && bc_valid->block_index == r->block_index) {
             r->type->flags |= BC_FLAG_UNIQUE_REGISTER;
             //bc_type_error(bc_valid, string_print("register r% is unique", f_int(index)), insn->opcode);
             
@@ -1519,6 +1521,7 @@ allocate_register(Bytecode_Validation* bc_valid, Bytecode_Instruction* insn, int
     
     Bytecode_Register* r = &bc_valid->registers[index];
     r->uses = (r->type != 0) ? (r->uses + 1) : 0; // if we reuse register => count it as a use instead!
+    r->block_index = bc_valid->block_index;
     r->type = &insn->type;
 }
 
@@ -1544,10 +1547,13 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
         Bytecode_Binary* bc = (Bytecode_Binary*) insn;
         switch (bc->opcode) {
             case BC_NOOP:
+            case BC_DEBUG_BREAK: break;
+            
             case BC_BLOCK:
             case BC_LOOP:
-            case BC_END:
-            case BC_DEBUG_BREAK: break;
+            case BC_END:{
+                bc_valid->block_index++;
+            } break;
             
             case BC_DROP: {
                 drop_register(bc_valid, insn, bc->res_index);

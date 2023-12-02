@@ -172,6 +172,8 @@ x64_move_extend_memory_to_register(Buffer* buf, X64_Reg dest, X64_Reg src, s64 d
 void
 x64_move_extend_register_to_register(Buffer* buf, X64_Reg dest, X64_Reg src,
                                      int size, bool is_signed) {
+    if (dest == src && !(size == 1 || size == 2 || size == 4)) return;
+    
     x64_move_extend_opcode(buf, dest, src, size, is_signed);
     x64_modrm_direct(buf, dest, src);
 }

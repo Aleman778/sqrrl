@@ -30,7 +30,8 @@ int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm), bool is_debugger_present) {
     
-    Compiler_Task compiler_task = CompilerTask_Build;//CompilerTask_Run;
+    //Compiler_Task compiler_task = CompilerTask_Run;
+    Compiler_Task compiler_task = CompilerTask_Build;
     Backend_Type target_backend = Backend_X64;
     
     {
@@ -245,7 +246,13 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     tcx.target_backend = target_backend;
     tcx.data_packer = &data_packer;
     
-    if (type_check_ast_file(&tcx, &ast_file, &interp) != 0) {
+    type_check_ast_file(&tcx, &ast_file, &interp);
+    if (tcx.error_count == 0 && !tcx.entry_point) {
+        type_error(&tcx, string_lit("`main` function must be defined"), empty_span);
+        return 1;
+    }
+    
+    if (tcx.error_count != 0) {
         for_array(ast_file.units, cu, _) {
             if (!(cu->ast && cu->ast->kind == Ast_Decl_Stmt)) continue;
             
@@ -374,7 +381,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     // Build the bytecode
     for_array(ast_file.units, cu, _3) {
         if (cu->bytecode_function) {
-            bool is_main = cu->ident == Sym_main;
+            bool is_main = cu->is_main;
             emit_function(&bytecode_builder, cu->bytecode_function, cu->ast,
                           is_main, is_debugger_present && is_main);
         }
@@ -449,6 +456,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 Bytecode* bc = &bytecode_builder.bytecode;
                 Bytecode_Function* main_func = bc->functions[bc->entry_func_index];
                 u8* code_entry_point = (u8*) main_func->code_ptr;
+                pln("start: %", f_u64_HEX(code_entry_point));
                 if (main_func->ret_count == 1) {
                     Bytecode_Type ret_type = function_ret_types(main_func)->type;
                     

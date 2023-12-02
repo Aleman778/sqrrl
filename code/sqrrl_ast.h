@@ -329,6 +329,8 @@ struct Compilation_Unit {
     Bytecode_Function* bytecode_function;
     
     s64 external_address;
+    
+    bool is_main;
 };
 
 struct Ast_File {

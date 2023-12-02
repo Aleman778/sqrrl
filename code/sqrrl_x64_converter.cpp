@@ -635,16 +635,25 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
         case BC_LT_U:
         case BC_LE_S:
         case BC_LE_U: {
+            Bytecode_Branch* branch = (Bytecode_Branch*) ((u8*) bc + bc->next_insn);
+            bool setcc = branch->opcode != BC_BRANCH;
+            
+            
             Bytecode_Type type = get_slot(x64, bc->a_index).type;
             if (type.kind == BC_TYPE_FLOAT) {
                 tmp[0] = x64_allocate_tmp_float_register(x64, bc->a_index, X64_XMM4);
                 tmp[1] = x64_allocate_tmp_float_register(x64, bc->b_index, X64_XMM5);
-                x64_allocate_register(x64, bc->type, bc->res_index, X64_RAX);
+                if (setcc) {
+                    x64_spill(x64, X64_RAX);
+                    x64_allocate_register(x64, bc->type, bc->res_index, X64_RAX);
+                }
                 
             } else {
                 tmp[0] = x64_allocate_tmp_register(x64, bc->a_index, X64_RAX);
                 tmp[1] = x64_allocate_tmp_register(x64, bc->b_index, X64_RCX);
-                x64_allocate_register(x64, bc->type, bc->res_index, tmp[0]);
+                if (setcc) {
+                    x64_allocate_register(x64, bc->type, bc->res_index, tmp[0]);
+                }
             }
         } break;
         
@@ -1140,11 +1149,13 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         case BC_LT_U:
         case BC_LE_S:
         case BC_LE_U: {
+            X64_Reg dest = tmp[0];
             Bytecode_Type type = get_slot(x64, bc->a_index).type;
             if (type.kind == BC_TYPE_FLOAT) {
                 x64_move_slot_to_float_register(x64, buf, X64_XMM4, bc->a_index);
                 x64_move_slot_to_float_register(x64, buf, X64_XMM5, bc->b_index);
                 x64_ucomiss(buf, X64_XMM4, X64_XMM5, type.size);
+                dest = X64_RAX;
                 
             } else {
                 X64_Reg a = tmp[0], b = tmp[1];
@@ -1159,9 +1170,8 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
                 push_u16(buf, x64_jcc_opcodes[bc->opcode - BC_EQ]);
                 x64_jump_address_for_label(x64, buf, func, branch->label_index);
             } else {
-                // setcc
-                push_u24(buf, x64_setcc_opcodes[bc->opcode - BC_EQ]); 
-                x64_move_register_to_slot(x64, buf, bc->res_index, X64_RAX);
+                x64_setcc(buf, bc->opcode, dest);
+                x64_move_register_to_slot(x64, buf, bc->res_index, dest);
             }
         } break;
         

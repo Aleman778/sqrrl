@@ -190,10 +190,10 @@ x64_move_slot_to_register(X64_Assembler* x64, Buffer* buf, X64_Reg dest, int src
         } break;
         
         case X64_SLOT_REG: {
-            if (src.reg != dest) {
-                x64_move_extend_register_to_register(buf, dest, src.reg, src.type.size,
-                                                     src.type.flags & BC_FLAG_SIGNED);
-            }
+            //if (src.reg != dest) {
+            x64_move_extend_register_to_register(buf, dest, src.reg, src.type.size,
+                                                 src.type.flags & BC_FLAG_SIGNED);
+            //}
         } break;
         
         case X64_SLOT_IMM32: {
@@ -388,6 +388,22 @@ x64_cmp64(Buffer* buf, X64_Reg a, X64_Reg b) {
     push_u8(buf, 0x3B);
     x64_modrm_direct(buf, a, b);
 }
+
+
+global const u16 x64_setcc_opcodes[] = {
+    // BC_EQ, BC_GT_S,  BC_GT_U,  BC_GE_S,  BC_GE_U,
+    0x940F, 0x9F0F, 0x970F, 0x9D0F, 0x930F,
+    // BC_LT_U, BC_LT_S, BC_LE_U, BC_LE_S,  BC_NEQ,
+    0x920F, 0x9C0F, 0x960F, 0x9E0F, 0x950F
+};
+
+inline void
+x64_setcc(Buffer* buf, Bytecode_Operator opcode, X64_Reg dest) {
+    // setcc 
+    push_u16(buf, x64_setcc_opcodes[opcode - BC_EQ]); 
+    x64_modrm_direct(buf, 0, dest);
+}
+
 
 inline void
 x64_move_float_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_Reg src, int size) {

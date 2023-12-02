@@ -534,13 +534,6 @@ global const X64_Reg float_arg_registers_ccall_windows[] {
 #define MODRM_INDIRECT_DISP8 0x40
 #define MODRM_INDIRECT_DISP32 0x80
 
-global const u32 x64_setcc_opcodes[] = {
-    // BC_EQ, BC_GT_S,  BC_GT_U,  BC_GE_S,  BC_GE_U,
-    0xC0940F, 0xC09F0F, 0xC0970F, 0xC09D0F, 0xC0930F,
-    // BC_LT_U, BC_LT_S, BC_LE_U, BC_LE_S,  BC_NEQ,
-    0xC0920F, 0xC09C0F, 0xC0960F, 0xC09E0F, 0xC0950F
-};
-
 global const u16 x64_jcc_opcodes[] = {
     0x840F, 0x8F0F, 0x870F, 0x8D0F, 0x830F, 0x820F, 0x8C0F, 0x860F, 0x8E0F, 0x850F
 };

@@ -132,8 +132,9 @@ struct X64_Patch {
 // TODO(Alexander): optimize this structure to minimize collisions with callee saved and HOME registers...
 // TODO(Alexander): also we need some heauristic to optimize register allocation
 X64_Reg x64_tmp_gpr_registers[] = {
-    X64_RAX, X64_RCX, X64_RDX, // X64_RBX, X64_RSI, X64_RDI, X64_R8,
-    //X64_R9, X64_R10, X64_R11, X64_R12, X64_R13, X64_R14, X64_R15,
+    X64_RAX, X64_RCX, X64_RDX, X64_R8, X64_R9,
+    // X64_RBX, X64_RSI, X64_RDI,
+    // X64_R10, X64_R11, X64_R12, X64_R13, X64_R14, X64_R15,
 };
 
 X64_Reg x64_tmp_xmm_registers[] = {
@@ -150,6 +151,7 @@ struct X64_Assembler {
     //X64_Slot* slots;
     
     X64_Slot* slots;
+    bool* call_spilled;
     X64_Reg* tmp_registers;
     int allocated_registers[X64_REG_COUNT];
     bool registers_used[X64_REG_COUNT];
@@ -263,21 +265,22 @@ x64_allocate_stack(X64_Assembler* x64, Bytecode_Type type, int reg_index,
 }
 
 inline void
-x64_spill_slot(X64_Assembler* x64, int reg_index, int unallocated_val=-1) {
+x64_spill_slot(X64_Assembler* x64, int reg_index, int unallocated_val=-1, bool function_call_spill=false) {
     X64_Slot* slot = &x64->slots[reg_index];
     if (slot->kind == X64_SLOT_REG) {
         x64->allocated_registers[slot->reg] = unallocated_val;
+        x64->call_spilled[reg_index] = function_call_spill;
     }
     slot->kind = X64_SLOT_SPILL;
 }
 
 inline void
-x64_spill(X64_Assembler* x64, X64_Reg reg, int for_reg_index = -1) {
+x64_spill(X64_Assembler* x64, X64_Reg reg, int for_reg_index = -1, bool function_call_spill=false) {
     int reg_index = x64->allocated_registers[reg];
     if (reg_index >= 0 && reg_index != for_reg_index) {
         pln("SPILL r% for %", f_int(reg_index), f_cstring(register_names[reg]));
         // HACK(Alexander): 
-        x64_spill_slot(x64, reg_index, -2);
+        x64_spill_slot(x64, reg_index, -2, function_call_spill);
     } else if (reg_index == -1) {
         x64->allocated_registers[reg] = -2;
     }

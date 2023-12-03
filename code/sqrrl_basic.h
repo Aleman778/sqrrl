@@ -900,7 +900,7 @@ arena_aligned_offset(Memory_Arena* arena, umm size, umm align) {
 
 void*
 arena_push_size(Memory_Arena* arena, umm size, umm align=DEFAULT_ALIGNMENT) {
-    assert(size > 0);
+    if (size == 0) return 0;
     
     umm offset = 0;
     umm arena_size = 0;

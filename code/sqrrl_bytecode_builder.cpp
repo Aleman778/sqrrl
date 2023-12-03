@@ -1549,9 +1549,9 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
             case BC_NOOP:
             case BC_DEBUG_BREAK: break;
             
-            case BC_BLOCK:
             case BC_LOOP:
-            case BC_END:{
+            case BC_BLOCK:
+            case BC_END: {
                 bc_valid->block_index++;
             } break;
             
@@ -1622,6 +1622,12 @@ validate_bytecode_function(Bytecode* bytecode, Bytecode_Function* func, string_i
                 if (call->ret_count) {
                     allocate_register(bc_valid, insn, args[0]);
                 }
+            } break;
+            
+            case BC_X64_RDTSC: {
+                Bytecode_Call_Indirect* call = (Bytecode_Call_Indirect*) bc;
+                int* args = bc_call_args(call);
+                allocate_register(bc_valid, insn, args[0]);
             } break;
             
             case BC_FIELD_ACCESS: {

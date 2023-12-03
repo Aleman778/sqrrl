@@ -97,6 +97,7 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
     
     arena_clear(&x64->arena);
     x64->slots = arena_push_array_of_structs(&x64->arena, func->register_count, X64_Slot);
+    x64->call_spilled = arena_push_array_of_structs(&x64->arena, func->register_count, bool);
     
     // Reset registers
     for (int reg_id = 0; reg_id < X64_REG_COUNT; reg_id++) {
@@ -226,7 +227,11 @@ convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64, Bytecode_Funct
             } break;
             
             case X64_SLOT_SPILL: {
-                pln("r%: [RSP + %] (spill)", f_int(slot_index), f_int(slot.disp));
+                if (x64->call_spilled[slot_index]) {
+                    pln("r%: [RSP + %] (spill from function call)", f_int(slot_index), f_int(slot.disp));
+                } else {
+                    pln("r%: [RSP + %] (spill)", f_int(slot_index), f_int(slot.disp));
+                }
             } break;
             
             case X64_SLOT_REG: {
@@ -326,25 +331,25 @@ x64_allocate_windows_x64_argument_list(X64_Assembler* x64, Bytecode_Type ret_typ
             bool is_float = type.kind == BC_TYPE_FLOAT;
             
             if (is_float) {
-                x64_spill(x64, home_float, src_index);
+                x64_spill(x64, home_float, src_index, true);
                 x64_spill(x64, home_int);
                 
             } else {
-                x64_spill(x64, home_int, src_index);
+                x64_spill(x64, home_int, src_index, true);
                 x64_spill(x64, home_float);
             }
         } else {
-            x64_spill(x64, home_float);
-            x64_spill(x64, home_int);
+            x64_spill(x64, home_float, -1, false);
+            x64_spill(x64, home_int, -1, false);
         }
     }
     
     // Spill other volatile registers
-    x64_spill(x64, X64_RAX, args[0]);
-    x64_spill(x64, X64_R10);
-    x64_spill(x64, X64_R11);
-    x64_spill(x64, X64_XMM4);
-    x64_spill(x64, X64_XMM5);
+    x64_spill(x64, X64_RAX, args[0], false);
+    x64_spill(x64, X64_R10, -1, false);
+    x64_spill(x64, X64_R11, -1, false);
+    x64_spill(x64, X64_XMM4, -1, false);
+    x64_spill(x64, X64_XMM5, -1, false);
     
     // Allocate return register RAX/XMM0
     if (ret_count == 1) {
@@ -537,8 +542,14 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
         case BC_COPY: {
             X64_Slot src = get_slot(x64, bc->a_index);
             Bytecode_Type type = bc->type.kind != BC_TYPE_VOID ? bc->type : src.type;
-            tmp[0] = x64_allocate_tmp_register(x64, bc->a_index, X64_RAX);
-            x64_allocate_register(x64, type, bc->res_index, tmp[0]);
+            if (type.kind == BC_TYPE_FLOAT) {
+                tmp[0] = x64_allocate_tmp_float_register(x64, bc->a_index, X64_XMM4);
+                x64_allocate_float_register(x64, type, bc->res_index, tmp[0]);
+                
+            } else {
+                tmp[0] = x64_allocate_tmp_register(x64, bc->a_index, X64_RAX);
+                x64_allocate_register(x64, type, bc->res_index, tmp[0]);
+            }
         } break;
         
         case BC_EXTEND:
@@ -672,7 +683,10 @@ x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn,
             // NOTE(Alexander): rdtsc puts lower part in EAX and upper part in EDX
             x64_spill(x64, X64_RAX);
             x64_spill(x64, X64_RDX);
-            x64_allocate_register(x64, bc->type, bc->res_index, X64_RAX);
+            
+            Bytecode_Call_Indirect* call = (Bytecode_Call_Indirect*) bc;
+            int* args = bc_call_args(call);
+            x64_allocate_register(x64, bc->type, args[0], X64_RAX);
         } break;
         
         default: {
@@ -1024,7 +1038,18 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
             }
         } break;
         
-        case BC_COPY:
+        case BC_COPY: {
+            X64_Reg src = tmp[0];
+            if (bc->type.kind == BC_TYPE_FLOAT) {
+                x64_move_slot_to_float_register(x64, buf, src, bc->a_index);
+                x64_move_float_register_to_slot(x64, buf, bc->res_index, src);
+                
+            } else {
+                x64_move_slot_to_register(x64, buf, src, bc->a_index);
+                x64_move_register_to_slot(x64, buf, bc->res_index, src);
+            }
+        } break;
+        
         case BC_EXTEND:
         case BC_TRUNCATE: {
             // TODO(Alexander): can we optimize truncate, it shouldn't need any move

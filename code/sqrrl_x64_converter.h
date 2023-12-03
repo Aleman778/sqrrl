@@ -1,4 +1,6 @@
 
+#define X64_DEBUG 0
+
 enum X64_Reg: u8 {
     X64_RAX,
     X64_RCX,
@@ -214,7 +216,9 @@ _x64_allocate_register(X64_Assembler* x64, Bytecode_Type type, int reg_index,
             return;
         }
         
+#if X64_DEBUG
         pln("pref: % r%", f_cstring(register_names[preferred_reg]), f_int(x64->allocated_registers[preferred_reg]));
+#endif
         if (x64->allocated_registers[preferred_reg] <= -1) {
             x64->allocated_registers[preferred_reg] = reg_index;
             slot->kind = X64_SLOT_REG;
@@ -230,7 +234,9 @@ _x64_allocate_register(X64_Assembler* x64, Bytecode_Type type, int reg_index,
         
         if (slot->kind == X64_SLOT_REG) {
             x64->allocated_registers[slot->reg] = reg_index;
+#if X64_DEBUG
             pln("allocated % for r% (size %)", f_cstring(register_names[slot->reg]), f_int(x64->allocated_registers[slot->reg]), f_int(type.size));
+#endif
         }
     }
 }
@@ -278,7 +284,9 @@ inline void
 x64_spill(X64_Assembler* x64, X64_Reg reg, int for_reg_index = -1, bool function_call_spill=false) {
     int reg_index = x64->allocated_registers[reg];
     if (reg_index >= 0 && reg_index != for_reg_index) {
+#if X64_DEBUG
         pln("SPILL r% for %", f_int(reg_index), f_cstring(register_names[reg]));
+#endif
         // HACK(Alexander): 
         x64_spill_slot(x64, reg_index, -2, function_call_spill);
     } else if (reg_index == -1) {
@@ -381,120 +389,6 @@ x64_register_displacement(X64_Assembler* x64, int slot_index, Bytecode_Type type
     //return x64->
     return 0;
 }
-
-
-
-
-
-
-
-
-#if 0
-
-inline s32
-stack_alloc(X64_Assembler* x64, int slot_index, Bytecode_Type type, 
-            s32 size, s32 align, bool store_inplace) {
-    s32 result = x64->current_stack_size;
-    result = (s32) align_forward(result, align);
-    x64->current_stack_size = result + size;
-    //pln("stack alloc: r% - after x64->current_stack_size % (size %, align %)", f_int(slot_index), 
-    //f_int(x64->current_stack_size), f_int(size), f_int(align));
-    x64->max_stack_size = max(x64->max_stack_size, x64->current_stack_size);
-    X64_Slot_Kind slot_kind = store_inplace ? X64_SLOT_RSP_DISP32 : X64_SLOT_RSP_DISP32;
-    set_slot(x64, slot_index, slot_kind, type, result);
-    
-    return result;
-}
-
-inline s32
-register_displacement(X64_Assembler* x64, int slot_index, Bytecode_Type type=BC_PTR) {
-    X64_Slot slot = get_slot(x64, slot_index);
-    //pln("register_displacement - r%, %, size % (disp %)", f_int(slot_index), f_cstring(bc_type_names[type.kind]), f_int(type.size), f_int(slot.disp));
-    if (slot.kind == X64_SLOT_EMPTY) {
-        return stack_alloc(x64, slot_index, type, 8, 8, false);
-    }
-    
-    assert(slot.kind == X64_SLOT_RSP_DISP32 ||
-           slot.kind == X64_SLOT_RSP_DISP32);
-    slot.type = type;
-    set_slot(x64, slot_index, slot);
-    return slot.disp;
-}
-
-inline void x64_move_register_to_memory(Buffer* buf, X64_Reg dest, s64 disp, X64_Reg src);
-
-inline void
-x64_spill(X64_Assembler* x64, X64_Reg reg) {
-    int slot_index = x64->allocated_registers[reg];
-    X64_Slot* slot = &x64->slots[slot_index];
-    if (slot->is_reg) {
-        x64->allocated_registers[slot->reg] = -1;
-        
-        int last_allocated = x64->free_gpr_count - 1;
-        int free_index = last_allocated;
-        for (; free_index >= 0; free_index--) {
-            if (x64->free_gpr[free_index] == slot->reg) {
-                break;
-            }
-        }
-        
-        if (last_allocated != free_index) {
-            X64_Reg tmp = x64->free_gpr[last_allocated];
-            x64->free_gpr[last_allocated] = x64->free_gpr[free_index];
-            x64->free_gpr[free_index] = tmp;
-        }
-        x64->free_gpr_count--;
-    }
-    
-    slot->is_reg = false;
-}
-
-void
-spill_register(X64_Assembler* x64, Buffer* buf, X64_Reg reg) {
-    int slot_index = x64->allocated_registers[reg];
-    if (slot_index >= 0) {
-        Bytecode_Type type = get_slot(x64, slot_index).type;
-        drop_slot(x64, slot_index);
-        s32 disp = stack_alloc(x64, slot_index, type, 8, 8, false);
-        x64_move_register_to_memory(buf, X64_RSP, disp, reg);
-    }
-}
-
-X64_Reg
-alloc_tmp_register(X64_Assembler* x64, Buffer* buf, X64_Reg spill_reg) {
-    if (x64->free_gpr_count < X64_TMP_GPR_COUNT) {
-        X64_Reg reg = x64->free_gpr[x64->free_gpr_count];
-        //x64->allocated_registers[reg] = slot_index;
-        return reg;
-    } else {
-        spill_register(x64, buf, spill_reg);
-        return spill_reg;
-    }
-}
-
-X64_Slot
-alloc_register(X64_Assembler* x64, Buffer* buf, int slot_index, Bytecode_Type type) {
-    bool spill = true;
-    if (type.flags & BC_FLAG_UNIQUE_REGISTER && x64->free_gpr_count < X64_TMP_GPR_COUNT) {
-        X64_Reg reg = x64->free_gpr[x64->free_gpr_count++];
-        x64->allocated_registers[reg] = slot_index;
-        set_slot(x64, slot_index, type, reg);
-        spill = false;
-    }
-    
-    if (spill) {
-        stack_alloc(x64, slot_index, type, 8, 8, false);
-    }
-    
-    return get_slot(x64, slot_index);
-}
-
-// TODO: register_alloc -> X64_Reg
-//       stack_alloc -> s32 (disp)
-//       slot_alloc -> X64_Slot (calls register_alloc and stack_alloc)
-//X64_Slot
-//alloc_slot() {
-#endif
 
 // TODO(Alexander): we should probably return something more approporiate.
 X64_Assembler convert_bytecode_to_x64_machine_code(Bytecode* bytecode, 

@@ -234,7 +234,7 @@ opengl_end_drawing(OpenGL* opengl, Render_Command* command, m4x4 mvp_transform) 
     
 }
 
-inline void @dump_bytecode
+inline void
 push_vertex(Render_Command* command, v3 pos, v2 texcoord, v4 tint) {
     assert((command.vertex_count + 1) * sizeof(Vertex) < command.vertex_data_size);
     command.vertices[command.vertex_count].pos = (command.transform * vec4(pos, 1.0f)).xyz;
@@ -298,10 +298,10 @@ push_box(Render_Command* command, v3 size, v4 tint) {
 }
 
 struct Image {
+    u8* data;
     int width;
     int height;
     int num_components;
-    u8* data;
 }
 
 Image
@@ -547,7 +547,7 @@ main() {
     v3 velocity;
     v3 acceleration;
     
-    v3 pos;
+    v3 camera_p;
     
     scale = 4.0f;
     pan_x = 0;
@@ -555,9 +555,9 @@ main() {
     {
         f32 look_at_angle = degrees_to_radians(pan_x);
         f32 look_up_angle = degrees_to_radians(-pan_y);
-        pos.x = player_p.x + scale*(cos(look_at_angle) * cos(look_up_angle));
-        pos.y = player_p.y + scale*sin(look_up_angle);
-        pos.z = player_p.z + scale*(sin(look_at_angle) * cos(look_up_angle));
+        camera_p.x = player_p.x + scale*(cos(look_at_angle) * cos(look_up_angle));
+        camera_p.y = player_p.y + scale*sin(look_up_angle);
+        camera_p.z = player_p.z + scale*(sin(look_at_angle) * cos(look_up_angle));
     }
     
     bool mouse_lock;
@@ -645,9 +645,9 @@ main() {
             scale = max(scale - 1.0f*get_mouse_wheel_delta(), 0.2f);
         }
         
-        pos.x = player_p.x + scale*(cos(look_at_angle) * cos(look_up_angle));
-        pos.y = player_p.y + scale*sin(look_up_angle);
-        pos.z = player_p.z + scale*(sin(look_at_angle) * cos(look_up_angle));
+        camera_p.x = player_p.x + scale*(cos(look_at_angle) * cos(look_up_angle));
+        camera_p.y = player_p.y + scale*sin(look_up_angle);
+        camera_p.z = player_p.z + scale*(sin(look_at_angle) * cos(look_up_angle));
         
         //
         // Update player movement
@@ -722,11 +722,11 @@ main() {
         
         //pos.y = -scale*sin(degrees_to_radians(pan_y));
         //pos.z = scale*cos(look_at_angle);//sin(look_at_angle);
-        m4x4 view = m4x4_look_at(pos, player_p, vec3(0.0f, 1.0f, 0.0f));
+        m4x4 view = m4x4_look_at(camera_p, player_p, vec3(0.0f, 1.0f, 0.0f));
         //view = m4x4_translate(vec3(pos.x, pos.y, pos.z))*view;
         //m4x4 view = m4x4_translate(vec3(0.0f, 0.0f, 3.0f));
         view = m4x4_inverse(view);
-        view = view*m4x4_translate(vec3(-pos.x, -pos.y, -pos.z));
+        view = view*m4x4_translate(vec3(-camera_p.x, -camera_p.y, -camera_p.z));
         
         m4x4 projection = m4x4_perspective(45, aspect_ratio, 0.001f, 1000.0f);
         //m4x4 projection = m4x4_orthographic(0.0f, 0.0f, screen_size.width, screen_size.height,

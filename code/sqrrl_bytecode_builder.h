@@ -4,11 +4,14 @@ struct Bc_Local {
     bool is_ref;
 };
 
+
 struct Bytecode_Builder {
     Memory_Arena arena;
     
-    map(string_id, Bc_Local)* locals;
     map(string_id, int)* globals;
+    map(string_id, Bc_Local)* locals;
+    array(bool)* registers;
+    array(array(int)*)* block_scopes;
     
     Bytecode_Function* curr_function;
     Bytecode_Instruction* curr_insn;
@@ -91,22 +94,6 @@ to_bytecode_type(Type* type) {
     return result;
 }
 
-inline int
-add_register(Bytecode_Builder* bc, Type* type=0) {
-    assert(bc->curr_function);
-    //pln("Added register r%", f_int(bc->curr_function->register_count));
-    return bc->curr_function->register_count++;
-}
-
-inline void
-drop_register(Bytecode_Builder* bc, int index) {
-    assert(bc->curr_function);
-    assert(index >= 0 && "invalid register");
-    //pln("Dropped register r%", f_int(index));
-    // TODO: add drop instruction
-    //return bc->curr_function->register_count++;
-}
-
 void emit_value_expression(Bytecode_Builder* bc, Ast* expr, int result=-1);
 
 int emit_value_fetch_expression(Bytecode_Builder* bc, Ast* expr);
@@ -137,6 +124,10 @@ void emit_statement(Bytecode_Builder* bc, Ast* stmt, s32 break_label, s32 contin
 Bytecode_Function* emit_function(Bytecode_Builder* bc, Bytecode_Function* func, Ast* ast,
                                  bool is_main, bool insert_debug_break);
 
+void emit_initializer_function(Bytecode_Builder* bc);
+
+void validate_bytecode(Bytecode* bytecode);
+
 Bytecode_Function* add_bytecode_function(Bytecode_Builder* bc, Type* type);
 
 Bytecode_Instruction* add_bytecode_insn(Bytecode_Builder* bc, 
@@ -163,6 +154,45 @@ int add_bytecode_global(Bytecode_Builder* bc,
 Bytecode_Instruction* add_bytecode_instruction(Bytecode_Builder* bc, 
                                                Bytecode_Operator opcode, 
                                                umm size, umm align);
+
+inline int
+add_register(Bytecode_Builder* bc, Type* type=0) {
+    assert(bc->curr_function);
+    int result = (int) array_count(bc->registers);
+    array_push(bc->registers, true);
+    bc->curr_function->register_count = result + 1;
+    //pln("Added register r% (largest r%)", f_int(result),
+    //f_int(bc->curr_function->register_count));
+    return result;
+}
+
+inline void
+drop_register(Bytecode_Builder* bc, int index) {
+    assert(bc->curr_function);
+    assert(index >= 0 && index < array_count(bc->registers) && "invalid register");
+    
+    if (bc->registers[index]) {
+        Bytecode_Result* insn = bc_instruction(bc, BC_DROP, Bytecode_Result);
+        insn->res_index = index;
+        bc->registers[index] = false;
+        //pln("Dropped register r%", f_int(index));
+        // TODO: add drop instruction
+        //return bc->curr_function->register_count++;
+    }
+}
+
+int
+begin_tmp_scope(Bytecode_Builder* bc) {
+    return (int) array_count(bc->registers);
+}
+
+void
+end_tmp_scope(Bytecode_Builder* bc, int first) { 
+    for (int i = (int) array_count(bc->registers) - 1; i >= first; i--) {
+        drop_register(bc, i);
+    }
+    //pln("Drop to: %", f_int(bc->next_register));
+}
 
 inline int
 bc_const_int(Bytecode_Builder* bc, Type* type, int res_index, s64 val) {
@@ -321,6 +351,7 @@ inline void
 bc_branch_if(Bytecode_Builder* bc, int label_index, int cond) {
     assert(cond >= 0 && "missing condition");
     Bytecode_Branch* branch = bc_instruction(bc, BC_BRANCH, Bytecode_Branch);
+    branch->type = BC_BOOL;
     branch->label_index = label_index;
     branch->cond = cond;
 }
@@ -396,23 +427,27 @@ bc_function(Bytecode_Builder* bc, int res_index, int func_index) {
     return insn->dest_index;
 }
 
-inline void
+inline int
 bc_begin_block(Bytecode_Builder* bc, Bytecode_Operator opcode=BC_BLOCK) {
     bc_instruction(bc, opcode, Bytecode_Instruction);
     bc->curr_function->block_count++;
     bc->block_depth++;
+    return begin_tmp_scope(bc);
 }
 
-inline void
+inline int
 bc_begin_loop_block(Bytecode_Builder* bc) {
-    bc_begin_block(bc, BC_LOOP);
+    return bc_begin_block(bc, BC_LOOP);
 }
 
 inline void
-bc_end_block(Bytecode_Builder* bc) {
+bc_end_block(Bytecode_Builder* bc, int first_register=-1) {
     assert(bc->block_depth > 0);
     bc_instruction(bc, BC_END, Bytecode_Instruction);
     bc->block_depth--;
+    if (first_register >= 0) {
+        end_tmp_scope(bc, first_register);
+    }
 }
 
 void string_builder_dump_bytecode_type(String_Builder* sb, Bytecode_Type type);

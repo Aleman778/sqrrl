@@ -212,6 +212,13 @@ run_compiler_tests(string filename,
         }
     }
     
+    // Build initializer
+    emit_initializer_function(&bytecode_builder);
+    
+    // Validate + optimize
+    validate_bytecode(&bytecode_builder.bytecode);
+    
+    
     // Print the bytecode
     String_Builder sb = {};
     for_array(ast_file.units, cu, _4) {

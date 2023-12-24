@@ -57,6 +57,8 @@ struct Type_Context {
     
     Data_Packer* data_packer;
     
+    Type* entry_point;
+    
     map(string_id, Type*)* locals;
     map(string_id, Type*)* globals;
     
@@ -64,6 +66,7 @@ struct Type_Context {
     map(string_id, Type*)* global_type_table;
     
     map(Type*, Type*)* type_to_pointer;
+    ;
     
     map(Type*, Overloaded_Operator_List)* overloaded_operators;
     map(string_id, Overloaded_Function_List)* overloaded_functions;

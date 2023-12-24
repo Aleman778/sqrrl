@@ -3281,6 +3281,10 @@ type_infer_ast(Type_Context* tcx, Interp* interp, Compilation_Unit* cu,
         if (type && type->kind == TypeKind_Function) {
             push_type_scope(tcx);
             type->Function.unit = cu;
+            if (cu->ident == Sym_main) {
+                cu->is_main = true;
+                tcx->entry_point = type;
+            }
             //pln("cu: % (%)", f_var(type->Function.ident), f_u64_HEX(cu));
             
             // Store the arguments in local context

@@ -149,8 +149,9 @@ window_should_close() {
         g_win32.window_height = (int) (client_rect.bottom - client_rect.top);
     }
     
-    g_win32.is_running = true;
-    //pln("g_win32.is_running = %", );
+    if (is_key_down(KEY_ALT) && is_key_down(KEY_F4)) {
+        g_win32.is_running = false;
+    }
     
     return !g_win32.is_running;
 }

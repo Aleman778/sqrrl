@@ -26,13 +26,71 @@
 typedef int asm_main(void);
 typedef f32 asm_f32_main(void);
 
+
+struct Parsed_Args {
+    string filename;
+    string output_filename;
+    string working_directory;
+    Backend_Type backend;
+    Compiler_Task task;
+};
+
+Parsed_Args
+compiler_parse_args(int argc, char** argv) {
+    Parsed_Args result = {};
+    result.task = CompilerTask_Run;
+    result.backend = Backend_X64;
+    
+    for (int arg_index = 1; arg_index < argc; arg_index++) {
+        string arg = string_lit(argv[arg_index]);
+        
+        if (string_equals(arg, string_lit("test"))) {
+            if (arg_index + 1 < argc) {
+                result.filename = string_lit(argv[++arg_index]);
+            } else {
+                result.filename = string_lit("../tests/first.sq");
+                result.working_directory = string_lit("../tests/");
+            }
+            result.task = CompilerTask_Test;
+            
+        } else if (string_equals(arg, string_lit("-wasm"))) {
+            result.backend = Backend_WASM;
+            
+        } else if (string_equals(arg, string_lit("-x64"))) {
+            result.backend = Backend_X64;
+            
+        } else if (string_equals(arg, string_lit("-output"))) {
+            if (arg_index + 1 < argc) {
+                result.output_filename = string_lit(argv[++arg_index]);
+            } else {
+                result.task = CompilerTask_Exit;
+                pln("error: expected file name after -output");
+                return result;
+            }
+            
+        } else {
+            if (result.filename.data) {
+                result.task = CompilerTask_Exit;
+                pln("error: expected only single filename as input");
+                return result;
+            }
+            result.filename = arg;
+        }
+    }
+    
+    if (!result.filename.data) {
+        result.task = CompilerTask_Exit;
+        pln("Usage: sqrrl file.sq");
+        return result;
+    }
+    
+    return result;
+}
+
+
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm), bool is_debugger_present) {
-    
-    //Compiler_Task compiler_task = CompilerTask_Run;
-    Compiler_Task compiler_task = CompilerTask_Build;
-    Backend_Type target_backend = Backend_X64;
     
     {
         // Put dummy file as index 0
@@ -45,63 +103,16 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         map_put(file_index_table, ident, 0);
     }
     
-    string filepath = {};
-    string output_filepath = {};
+    Parsed_Args compiler = compiler_parse_args(argc, argv);
     
-    if (argc > 1) {
-#if BUILD_TEST
-        if (string_equals(string_lit(argv[1]), string_lit("test"))) {
-            if (argc > 2) {
-                filepath = string_lit(argv[2]);
-            } else {
-                filepath = string_lit("../tests/first.sq");
-                working_directory = string_lit("../tests/");
-            }
-            return run_compiler_tests(filepath, asm_buffer, asm_size, asm_make_executable,
-                                      is_debugger_present);
-        }
-#endif
-        
-        if (argc > 2) {
-            if (string_equals(string_lit(argv[1]), string_lit("-wasm"))) {
-                target_backend = Backend_WASM;
-            } else if (string_equals(string_lit(argv[1]), string_lit("-x64"))) {
-                target_backend = Backend_X64;
-            }
-            
-            filepath = string_lit(argv[2]);
-        } else {
-            filepath = string_lit(argv[1]);
-        }
-        
-        if (argc > 3) {
-            if (string_equals(string_lit(argv[2]), string_lit("-output"))) {
-                output_filepath = string_lit(argv[3]);
-            }
-        }
-    } else {
-#if  BUILD_DEBUG
-        // TODO(Alexander): temporary files for testing
-        //filepath = string_lit("../personal/first.sq");
-        //filepath = string_lit("../modules/basic.sq");
-        filepath = string_lit("../../platformer/code/win32_platform.cpp");
-        //filepath = string_lit("../examples/backend_test.sq");
-        //filepath = string_lit("../examples/raytracer/first.cpp");
-        //filepath = string_lit("../tests/preprocessor.sq");
-        
-        //filepath = string_lit("../examples/simple.cpp");
-        //filepath = string_lit("../examples/even_simpler.sq");
-        //filepath = string_lit("simple.exe");
-#else
-        if (argc <= 1) {
-            pln("Usage: sqrrl file.sq");
-            return 0;
-        }
-#endif
+    if (compiler.task == CompilerTask_Exit) {
+        return 0;
     }
     
-    string filename = filepath;
-    
+    if (compiler.task == CompilerTask_Test) {
+        return run_compiler_tests(compiler.filename, asm_buffer, asm_size, asm_make_executable,
+                                  is_debugger_present);
+    }
     
     // TODO(Alexander): this is hardcoded for now
     t_string->size = sizeof(string);
@@ -116,48 +127,27 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     vars_initialize_keywords_and_symbols();
     
     // Read entire source file
-    Loaded_Source_File file = read_entire_source_file(filename);
-    
-    string output_filename = output_filepath;
-    if (!output_filename.data) {
-        // TODO(Alexander): this is kind of a HACK to extract the name without extension and replacing with new extension
-        string name_part = string_view(file.abspath.data + file.filedir.count, 
-                                       file.abspath.data + file.abspath.count - file.extension.count - 1);
-        output_filename = string_concat(name_part, ".exe");
-    }
-    
+    Loaded_Source_File file = read_entire_source_file(compiler.filename);
     if (!file.is_valid) {
         return -1;
     }
     
-    // Print DOS stub
-#if 0
-    for (int byte_index = 0; byte_index < file.source.count; byte_index++) {
-        if (byte_index == 0xb0) {
-            return 0;
-        }
-        u8 byte = file.source.data[byte_index];
-        if (byte > 0xF) {
-            printf("0x%hhX, ", byte);
-        } else {
-            printf("0x0%hhX, ", byte);
-        }
-        
-        if (byte_index % 10 == 9) {
-            printf("\n");
-        }
+    if (!compiler.output_filename.data) {
+        string name_part = string_view(file.abspath.data + file.filedir.count, 
+                                       file.abspath.data + file.abspath.count - file.extension.count - 1);
+        // TODO(Alexander): hardcoded .exe
+        compiler.output_filename = string_concat(name_part, ".exe");
     }
-    printf("\n\n");
-#endif
-    
-    //pe_dump_executable(file.source);
     
     // TODO(Alexander): this is hackish solution, we should rely on OS service to do this
-    working_directory = filepath;
-    working_directory.count = 0;
-    for (int index = 0; index < filepath.count; index++) {
-        if (filepath.data[index] == '\\' || filepath.data[index] == '/') {
-            working_directory.count = index + 1;
+    {
+        working_directory = compiler.filename;
+        working_directory.count = 0;
+        string filename = compiler.filename;
+        for (int index = 0; index < compiler.filename.count; index++) {
+            if (filename.data[index] == '\\' || filename.data[index] == '/') {
+                working_directory.count = index + 1;
+            }
         }
     }
     
@@ -171,16 +161,15 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         define_target.is_valid = true;
         string_id ident;
         ident = vars_save_cstring("BUILD_TARGET_X64");
-        define_target.integral = target_backend == Backend_X64;
-        define_target.source = target_backend == Backend_X64 ? one : zero;
+        define_target.integral = compiler.backend == Backend_X64;
+        define_target.source = compiler.backend == Backend_X64 ? one : zero;
         map_put(preprocessor.macros, ident, define_target);
         
         ident = vars_save_cstring("BUILD_TARGET_WASM");
-        define_target.integral = target_backend == Backend_WASM;
-        define_target.source = target_backend == Backend_WASM ? one : zero;
+        define_target.integral = compiler.backend == Backend_WASM;
+        define_target.source = compiler.backend == Backend_WASM ? one : zero;
         map_put(preprocessor.macros, ident, define_target);
     }
-    
     
     string preprocessed_source = preprocess_file(&preprocessor, 
                                                  file.source, file.abspath, file.extension, file.index);
@@ -243,7 +232,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     // Typecheck the AST
     Interp interp = {};
     Type_Context tcx = {};
-    tcx.target_backend = target_backend;
+    tcx.target_backend = compiler.backend;
     tcx.data_packer = &data_packer;
     
     type_check_ast_file(&tcx, &ast_file, &interp);
@@ -412,7 +401,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         string_builder_free(&sb);
     }
     
-    switch (target_backend) {
+    switch (compiler.backend) {
         case Backend_X64: {
             Buffer buf = {};
             buf.data = (u8*) asm_buffer;
@@ -420,26 +409,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             
             X64_Assembler x64 = convert_bytecode_to_x64_machine_code(&bytecode_builder.bytecode,
                                                                      &buf, &data_packer, 
-                                                                     compiler_task == CompilerTask_Run);
+                                                                     compiler.task == CompilerTask_Run);
             
-#if 0
-            pln("\nX64 Machine Code (% bytes):", f_umm(buf.curr_used));
-            for (int byte_index = 0; byte_index < buf.curr_used; byte_index++) {
-                u8 byte = ((u8*) asm_buffer)[byte_index];
-                if (byte > 0xF) {
-                    printf("%hhX ", byte);
-                } else {
-                    printf("0%hhX ", byte);
-                }
-                
-                if (byte_index % 80 == 79) {
-                    printf("\n");
-                }
-            }
-            printf("\n\n");
-#endif
-            
-            if (compiler_task == CompilerTask_Run) {
+            if (compiler.task == CompilerTask_Run) {
                 // NOTE(Alexander): Run machine code
                 asm_make_executable(buf.data, buf.curr_used);
                 //DEBUG_add_debug_symbols(&ast_file, (u8*) asm_buffer);
@@ -456,7 +428,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 Bytecode* bc = &bytecode_builder.bytecode;
                 Bytecode_Function* main_func = bc->functions[bc->entry_func_index];
                 u8* code_entry_point = (u8*) main_func->code_ptr;
-                pln("start: %", f_u64_HEX(code_entry_point));
                 if (main_func->ret_count == 1) {
                     Bytecode_Type ret_type = function_ret_types(main_func)->type;
                     
@@ -476,7 +447,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     pln("\nJIT exited with code: 0");
                 }
                 
-            } else if (compiler_task == CompilerTask_Build) {
+            } else if (compiler.task == CompilerTask_Build) {
                 
                 // NOTE(Alexander): Build initial PE executable
                 Bytecode* bc = &bytecode_builder.bytecode;
@@ -500,11 +471,11 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 
                 
                 // NOTE(Alexander): write the PE executable to file
-                cstring exe_filename = string_to_cstring(output_filename);
+                cstring exe_filename = string_to_cstring(compiler.output_filename);
                 File_Handle exe_file = DEBUG_open_file_for_writing(exe_filename);
                 write_pe_executable_to_file(exe_file, &pe);
                 DEBUG_close_file(exe_file);
-                pln("\nWrote executable: %", f_string(output_filename));
+                pln("\nWrote executable: %", f_string(compiler.output_filename));
                 
                 //Read_File_Result exe_data = DEBUG_read_entire_file(exe_filename);
                 //pe_dump_executable(create_string(exe_data.contents_size, (u8*) exe_data.contents));

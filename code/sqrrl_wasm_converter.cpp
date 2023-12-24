@@ -8,6 +8,10 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* bc, B
             // noop, doesn't exist in wasm AFAIK
         } break;
         
+        case BC_DROP: {
+            // TODO(Alexander): implement this later
+        } break;
+        
         case BC_INT_CONST: {
             wasm_prepare_store(buf);
             wasm_i64_const(buf, (s64) ((Bytecode_Const_Int*) bc)->val);
@@ -682,19 +686,20 @@ convert_to_wasm_module(Bytecode* bc, Data_Packer* data_packer, s64 stk_usage, Bu
         
         push_leb128_u32(buf, 1); 
         push_u8(buf, 0x7F);
-        wasm.tmp_local_i32 = func->arg_count;
+        int num_locals = func->arg_count - func->ret_count;
+        wasm.tmp_local_i32 = num_locals;
         
         push_leb128_u32(buf, 1); 
         push_u8(buf, 0x7E);
-        wasm.tmp_local_i64 = func->arg_count + 1;
+        wasm.tmp_local_i64 = num_locals + 1;
         
         push_leb128_u32(buf, 1); 
         push_u8(buf, 0x7D);
-        wasm.tmp_local_f32 = func->arg_count + 2;
+        wasm.tmp_local_f32 = num_locals + 2;
         
         push_leb128_u32(buf, 1); 
         push_u8(buf, 0x7C);
-        wasm.tmp_local_f64 = func->arg_count + 3;
+        wasm.tmp_local_f64 = num_locals + 3;
         
         convert_bytecode_function_to_wasm(&wasm, buf, bc, func);
         

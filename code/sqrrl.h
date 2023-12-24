@@ -26,8 +26,11 @@ enum Backend_Type {
 };
 
 enum Compiler_Task {
+    CompilerTask_Exit = 0,
+    
     CompilerTask_Run,
     CompilerTask_Build,
+    CompilerTask_Test,
 };
 
 

@@ -493,7 +493,7 @@ aabb_intersects_aabb(AABB a, AABB b) {
 }
 
 
-int @dump_bytecode
+int
 main() {
     
     f32 aspect_ratio = 16.0f / 9.0f;

@@ -438,7 +438,7 @@ pass_value_to_callback(void cb(int)*, int val) {
 }
 
 void
-@test_proc @dump_bytecode
+@test_proc
 call_function_pointer_with_arg() {
     pass_value_to_callback(&check_int, 42);
 }

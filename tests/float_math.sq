@@ -1,7 +1,7 @@
 #include <test_support.sq>
 
 void
-@test_proc @dump_bytecode
+@test_proc
 int_to_f32_implicit_conversion() {
     int x = 100;
     f32 y = 100.0f;

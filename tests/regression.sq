@@ -32,7 +32,7 @@ struct Entity {
     Entity_State states;
 }
 
-inline bool @dump_bytecode @dump_ast
+inline bool
 bitflag_operations_is_set(Entity* entity) {
     return (bool) is_bit_set(entity.states, 9);
 }

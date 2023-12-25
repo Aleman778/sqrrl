@@ -38,7 +38,7 @@ struct Parsed_Args {
 Parsed_Args
 compiler_parse_args(int argc, char** argv) {
     Parsed_Args result = {};
-    result.task = CompilerTask_Run;
+    result.task = CompilerTask_Build;
     result.backend = Backend_X64;
     
     for (int arg_index = 1; arg_index < argc; arg_index++) {
@@ -58,6 +58,9 @@ compiler_parse_args(int argc, char** argv) {
             
         } else if (string_equals(arg, string_lit("-x64"))) {
             result.backend = Backend_X64;
+            
+        } else if (string_equals(arg, string_lit("-run"))) {
+            result.task = CompilerTask_Run;
             
         } else if (string_equals(arg, string_lit("-output"))) {
             if (arg_index + 1 < argc) {

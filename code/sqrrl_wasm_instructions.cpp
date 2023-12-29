@@ -200,17 +200,17 @@ wasm_load_extend(Buffer* buf, Bytecode_Type type, u32 offset) {
 }
 
 inline void
-wasm_load_register_extend(Bytecode_Function* func, Buffer* buf, int register_index) {
-    Bytecode_Type type = register_type(func, register_index);
+wasm_load_register_extend(WASM_Assembler* wasm, Buffer* buf, int register_index) {
+    Bytecode_Type type = wasm_register_type(wasm, register_index);
     wasm_push_stack_pointer(buf);
     wasm_load_extend(buf, type, register_index*8);
 }
 
 void
-wasm_load_register(Bytecode_Function* func, Buffer* buf, int register_index) {
+wasm_load_register(WASM_Assembler* wasm, Buffer* buf, int register_index) {
     wasm_push_stack_pointer(buf);
     
-    Bytecode_Type type = register_type(func, register_index);
+    Bytecode_Type type = wasm_register_type(wasm, register_index);
     if (type.kind == BC_TYPE_FLOAT) {
         if (type.size == 8) {
             push_u8(buf, 0x2B); // f64.load
@@ -242,7 +242,9 @@ wasm_prepare_store(Buffer* buf, int swap_local=-1) {
 }
 
 void
-wasm_store_register(Buffer* buf, Bytecode_Type type, int register_index) {
+wasm_store_register(WASM_Assembler* wasm, Buffer* buf, Bytecode_Type type, int register_index) {
+    wasm->slots[register_index] = { type };
+    
     if (type.kind == BC_TYPE_FLOAT) {
         if (type.size == 8) {
             push_u8(buf, 0x39); // f64.store

@@ -1080,3 +1080,57 @@ push_leb128_s64(Buffer* buf, s64 num) {
         buf->curr_used++;
     }
 }
+
+u32
+decode_leb128_u32(u8** curr, u8* end) {
+    u32 result = 0;
+    u32 shift = 0;
+    u8 byte;
+    
+    do {
+        if (*curr >= end) {
+            pln("error: reached end of buffer when reading reading u32 number");
+            return 0;
+        }
+        
+        byte = **curr;
+        *curr += 1;
+        
+        if (shift < 32) {
+            result |= (uint32_t)(byte & 0x7F) << shift;
+            shift += 7;
+        }
+    } while (byte & 0x80);
+    
+    return result;
+}
+
+s64
+decode_leb128_s64(u8** curr, u8* end) {
+    s64 result = 0;
+    u32 shift = 0;
+    u8 byte;
+    
+    do {
+        if (*curr >= end) {
+            pln("error: reached end of buffer when reading reading s64 number");
+            return 0;
+        }
+        
+        byte = **curr;
+        *curr += 1;
+        
+        if (shift < 32) {
+            result |= (s64) (byte & 0x7F) << shift;
+            shift += 7;
+        }
+        
+    } while (byte & 0x80);
+    
+    // Sign bit extension - if sign bit of byte is set and int32 didn't yet fill out
+    if (shift < 32 && (byte & 0x40)) {
+        result |= (~0 << shift); // Sign extend
+    }
+    
+    return result;
+}

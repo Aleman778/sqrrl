@@ -113,6 +113,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
     if (compiler.task == CompilerTask_Test) {
+        working_directory = compiler.working_directory;
         return run_compiler_tests(compiler.filename, asm_buffer, asm_size, asm_make_executable,
                                   is_debugger_present);
     }
@@ -500,6 +501,11 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             DEBUG_write(wasm_file, buffer.data, (u32) buffer.curr_used);
             DEBUG_close_file(wasm_file);
             pln("\nWrote executable: simple.wasm");
+            
+            String_Builder wat_sb = {};
+            convert_wasm_binary_to_text(&wat_sb, buffer.data, buffer.data + buffer.curr_used);
+            pln("%", f_string(string_builder_to_string_nocopy(&wat_sb)));
+            string_builder_free(&wat_sb);
             
             pln("\nRunning: `wasm2wat simple.wasm`:");
             fflush(stdout);

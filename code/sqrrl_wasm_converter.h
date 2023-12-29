@@ -54,9 +54,17 @@ const u8 wasm_comparator_opcodes[] = {
     0x47, 0x52, 0x5C, 0x62, // BC_NEQ
 };
 
+struct WASM_Slot {
+    Bytecode_Type type;
+};
+
 struct WASM_Assembler {
+    Memory_Arena arena;
+    
     s64 stack_size;
     s64 stack_offset_for_locals;
+    
+    WASM_Slot* slots; // bytecode registers == wasm slots atm.
     
     u32 rdata_offset;
     u32 data_offset;
@@ -66,6 +74,11 @@ struct WASM_Assembler {
     u32 tmp_local_f32;
     u32 tmp_local_f64;
 };
+
+Bytecode_Type
+wasm_register_type(WASM_Assembler* wasm, int register_index) {
+    return wasm->slots[register_index].type;
+}
 
 inline u32
 wasm_tmp_local(WASM_Assembler* wasm, Bytecode_Type type) {
@@ -93,3 +106,53 @@ struct WASM_Debug {
     WASM_Section_Marker markers[WASMSection_Count];
     int marker_count;
 };
+
+#define WASM_MAGIC_NUMBER 0x6D736100
+#define WASM_VERSION 0x01
+
+#define DEF_WASM_INSTRUCTIONS \
+WASM_VAR("local.get", 0x20) \
+WASM_VAR("local.set", 0x21) \
+WASM_VAR("local.tee", 0x22) \
+WASM_VAR("global.get", 0x23) \
+WASM_VAR("global.set", 0x24) \
+\
+WASM_MEM("i32.load", 0x28) \
+WASM_MEM("i64.load", 0x29) \
+WASM_MEM("f32.load", 0x2A) \
+WASM_MEM("f64.load", 0x2B) \
+WASM_MEM("i32.load8_s", 0x2C) \
+WASM_MEM("i32.load8_u", 0x2D) \
+WASM_MEM("i32.load16_s", 0x2E) \
+WASM_MEM("i32.load16_u", 0x2F) \
+WASM_MEM("i64.load8_s", 0x30) \
+WASM_MEM("i64.load8_u", 0x31) \
+WASM_MEM("i64.load16_s", 0x32) \
+WASM_MEM("i64.load16_u", 0x33) \
+WASM_MEM("i64.load32_s", 0x34) \
+WASM_MEM("i64.load32_u", 0x35) \
+WASM_MEM("i32.store", 0x36) \
+WASM_MEM("i64.store", 0x37) \
+WASM_MEM("f32.store", 0x38) \
+WASM_MEM("f64.store", 0x39) \
+WASM_MEM("i32.store8", 0x3A) \
+WASM_MEM("i32.store16", 0x3B) \
+WASM_MEM("i64.store8", 0x3C) \
+WASM_MEM("i64.store16", 0x3D) \
+WASM_MEM("i64.store32", 0x3E) \
+\
+WASM_BIN("i64.add", 0x7C) \
+WASM_BIN("i64.sub", 0x7D) \
+WASM_BIN("i64.mul", 0x7E) \
+WASM_BIN("i64.div_s", 0x7F) \
+WASM_BIN("i64.div_u", 0x80) \
+WASM_BIN("i64.rem_s", 0x81) \
+WASM_BIN("i64.rem_u", 0x82) \
+WASM_BIN("i64.and", 0x83) \
+WASM_BIN("i64.or", 0x84) \
+WASM_BIN("i64.xor", 0x85) \
+WASM_BIN("i64.shl", 0x86) \
+WASM_BIN("i64.shr_s", 0x87) \
+WASM_BIN("i64.shr_u", 0x88) \
+WASM_BIN("i64.rotl", 0x89) \
+WASM_BIN("i64.rotr", 0x8A)

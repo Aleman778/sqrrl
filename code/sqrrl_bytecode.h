@@ -175,11 +175,6 @@ struct Bytecode_Function {
     // arguments types and lastly instructions
 };
 
-inline Bytecode_Type
-register_type(Bytecode_Function* func, int register_index) {
-    return BC_PTR;
-}
-
 inline Bytecode_Function_Arg*
 function_ret_types(Bytecode_Function* func) {
     return (Bytecode_Function_Arg*) (func + 1);

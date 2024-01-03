@@ -115,6 +115,7 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* modul
             wasm_i64_load(buf, 0);
             Bytecode_Type ptr_type = { BC_TYPE_INT, 8, 0 };
             wasm_store_register(wasm, buf, ptr_type, bc->res_index);
+            wasm->slots[bc->res_index] = { bc->type };
         } break;
         
         case BC_STORE: {
@@ -279,7 +280,7 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* modul
         case BC_SHL:
         case BC_SAR:
         case BC_SHR: {
-            Bytecode_Type type = wasm_register_type(wasm, bc->a_index);
+            Bytecode_Type type = bc->type;
             wasm_prepare_store(buf);
             wasm_load_register_extend(wasm, buf, bc->a_index);
             wasm_load_register_extend(wasm, buf, bc->b_index);

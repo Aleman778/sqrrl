@@ -2035,6 +2035,10 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             //result.type->size = sizeof(smm);
             //result.type->align = alignof(smm);
             
+            if (ast->Function_Type.mods & AstDeclModifier_Export) {
+                result.type->Function.is_exported = true;
+            }
+            
             if (ast->Function_Type.attributes) {
                 
                 // Parse attributes

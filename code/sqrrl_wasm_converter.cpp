@@ -45,6 +45,12 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* modul
             wasm_store_register(wasm, buf, bc->type, bc->res_index);
         } break;
         
+        case BC_FUNCTION: {
+            wasm_prepare_store(buf);
+            wasm_i64_const(buf, bc->a_index);
+            wasm_store_register(wasm, buf, bc->type, bc->res_index);
+        } break;
+        
         case BC_GLOBAL: {
             Bytecode_Global* g = &module->globals[bc->a_index];
             wasm_prepare_store(buf);
@@ -61,14 +67,14 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* modul
         } break;
         
         case BC_ARRAY_ACCESS: {
-            Bytecode_Type ptr_type = wasm_register_type(wasm, bc->a_index);
+            Bytecode_Array_Access* array_access = (Bytecode_Array_Access*) bc;
             wasm_prepare_store(buf);
             wasm_push_stack_pointer(buf);
             wasm_i64_load(buf, bc->a_index*8);
             wasm_push_stack_pointer(buf);
             wasm_i64_load(buf, bc->b_index*8);
-            if (ptr_type.size > 1) {
-                wasm_i64_const(buf, ptr_type.size);
+            if (array_access->stride > 1) {
+                wasm_i64_const(buf, array_access->stride);
                 wasm_i64_mul(buf);
             }
             wasm_i64_add(buf);
@@ -97,7 +103,6 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* modul
         case BC_COPY: {
             // TODO(Alexander): 64-bit addressing support!
             wasm_prepare_store(buf);
-            wasm_push_stack_pointer(buf);
             wasm_load_register(wasm, buf, bc->a_index);
             wasm_store_register(wasm, buf, bc->type, bc->res_index);
         } break;
@@ -121,7 +126,11 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* modul
             wasm_load_extend(buf, val_type, bc->a_index*8); // [ptr (a), val (b)] 
             
             if (val_type.kind == BC_TYPE_FLOAT) {
-                wasm_store_register(wasm, buf, val_type, 0); // []: ptr <- val
+                if (val_type.size == 8) {
+                    wasm_f64_store(buf, 0);
+                } else {
+                    wasm_f32_store(buf, 0);
+                }
             } else {
                 switch (val_type.size) {
                     case 1: {
@@ -143,7 +152,8 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* modul
             }
         } break;
         
-        case BC_CALL: {
+        case BC_CALL:
+        case BC_CALL_INDIRECT: {
             Bytecode_Call* call = (Bytecode_Call*) bc;
             Bytecode_Function* target = module->functions[call->func_index];
             
@@ -155,12 +165,20 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* modul
                 wasm_load_register(wasm, buf, src_index);
             }
             
-            push_u8(buf, 0x10); // call
-            push_leb128_u32(buf, call->func_index);
+            if (bc->opcode == BC_CALL_INDIRECT) {
+                unimplemented;
+                // TODO(Alexander): we need support for finding type declarations in bytecode for just the signature of indirect calls.
+                //Bytecode_Call_Indirect* indirect_call = (Bytecode_Call_Indirect*) bc;
+                //wasm_i32_load(buf, indirect_call->func_ptr_index*8);
+                //push_u8(buf, 0x11); // call_indirect
+            } else {
+                push_u8(buf, 0x10); // call
+                push_leb128_u32(buf, call->func_index);
+            }
             
             if (target->ret_count == 1) {
                 wasm_prepare_store(buf, wasm_tmp_local(wasm, bc->type));
-                wasm_store_register(wasm, buf, bc->type, bc->res_index);
+                wasm_store_register(wasm, buf, bc->type, args[0]);
             }
         } break;
         
@@ -197,9 +215,7 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* modul
                 wasm_push_stack_pointer(buf);
                 
                 // Condition is always stored as i32
-                push_u8(buf, 0x28); // i32.load
-                push_leb128_u32(buf, 2);
-                push_leb128_u32(buf, branch->cond*8);
+                wasm_i32_load(buf, branch->cond*8);
                 push_u8(buf, 0x0D); // br_if
             } else {
                 push_u8(buf, 0x0C); // br
@@ -347,12 +363,10 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* modul
         } break;
         
         case BC_MEMSET: {
-            
             wasm_push_stack_pointer(buf);
             wasm_i32_load(buf, bc->res_index*8);
             
-            wasm_push_stack_pointer(buf);
-            wasm_i32_load(buf, bc->a_index*8);
+            wasm_i32_const(buf, bc->a_index);
             
             push_u8(buf, 0x41); // i32.const
             push_leb128_s32(buf, bc->b_index);
@@ -370,6 +384,8 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* modul
 void
 convert_bytecode_function_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* module, Bytecode_Function* func) {
     free_arena(&wasm->arena);
+    
+    pln("\nBuilding WASM for `%`...", f_var(module->function_names[func->type_index]));
     
     u32 block_depth = 0;
     
@@ -537,7 +553,7 @@ DEBUG_wasm_end(WASM_Debug* debug, Buffer* buf) {
     }
     
     string s = string_builder_to_string_nocopy(&sb);
-    pln("%", f_string(s));
+    //pln("%", f_string(s));
     string_builder_free(&sb);
 }
 
@@ -691,6 +707,18 @@ convert_to_wasm_module(Bytecode* module, Data_Packer* data_packer, s64 stk_usage
     }
     wasm_set_vec_size(buf, function_section_start);
     
+    // Table section (4)
+    DEBUG_wasm_begin_section(&debug, WASMSection_Table, buf);
+    push_u8(buf, WASMSection_Table);
+    smm table_section_start = buf->curr_used;
+    push_u32(buf, 0); // reserve space for the size
+    push_leb128_u32(buf, 1); // num tables (we only need one table containing all funcrefs)
+    push_u8(buf, 0x70); // 0x70 - funcref
+    push_u8(buf, 0x01); // 0x01 - define min and max
+    push_leb128_u32(buf, (u32) array_count(module->functions));
+    push_leb128_u32(buf, (u32) array_count(module->functions));
+    wasm_set_vec_size(buf, table_section_start);
+    
     // Memory section (5)
     DEBUG_wasm_begin_section(&debug, WASMSection_Memory, buf);
     push_u8(buf, WASMSection_Memory);
@@ -726,7 +754,7 @@ convert_to_wasm_module(Bytecode* module, Data_Packer* data_packer, s64 stk_usage
     push_u8(buf, WASMSection_Export);
     smm export_section_start = buf->curr_used;
     push_u32(buf, 0); // reserve space for the size
-    push_leb128_u32(buf, 2); // number of exports
+    push_leb128_u32(buf, (u32) array_count(module->exports) + 2);
     
     // - export relevant functions
     for_array(module->exports, ex, _11) {
@@ -735,11 +763,32 @@ convert_to_wasm_module(Bytecode* module, Data_Packer* data_packer, s64 stk_usage
         push_leb128_u32(buf, ex->func_index); // funcidx of entrypoint
     }
     
-    // - export[1] (for memidx 0)
+    // - export table
+    wasm_push_string(buf, string_lit("functions")); // name of export
+    push_u8(buf, 0x01); // 0x01 = tableidx
+    push_leb128_u32(buf, 0); // function table 0
+    
+    // - export memory
     wasm_push_string(buf, string_lit("memory")); // name of export
     push_u8(buf, 0x02); // 0x02 = memidx
     push_leb128_u32(buf, 0); // main memidx
+    
     wasm_set_vec_size(buf, export_section_start);
+    
+    // Element section (9)
+    DEBUG_wasm_begin_section(&debug, WASMSection_Element, buf);
+    push_u8(buf, WASMSection_Element);
+    smm element_section_start = buf->curr_used;
+    push_u32(buf, 0); // reserve space for the size
+    push_leb128_u32(buf, 1); // num tables
+    push_leb128_u32(buf, 0); // 0 - elem option 0 (mode active)
+    wasm_i32_const(buf, 0); // table0 + offset 0
+    push_u8(buf, 0x0B); // end
+    push_leb128_u32(buf, (u32) array_count(module->functions)); // num funcrefs
+    for (int i = 0; i < array_count(module->functions); i++) {
+        push_leb128_u32(buf, i); // funcidx
+    }
+    wasm_set_vec_size(buf, element_section_start);
     
     // Code section (10)
     DEBUG_wasm_begin_section(&debug, WASMSection_Code, buf);
@@ -767,7 +816,7 @@ convert_to_wasm_module(Bytecode* module, Data_Packer* data_packer, s64 stk_usage
         
         push_leb128_u32(buf, 1); 
         push_u8(buf, 0x7F);
-        int num_locals = func->arg_count - func->ret_count;
+        int num_locals = func->arg_count;
         wasm.tmp_local_i32 = num_locals;
         
         push_leb128_u32(buf, 1); 
@@ -801,8 +850,7 @@ convert_to_wasm_module(Bytecode* module, Data_Packer* data_packer, s64 stk_usage
     // TODO(Alexander): there probably isn't much point in separating these two
     // since there is no memory overwrite protection supported.
     push_u8(buf, 0); // active memory 0
-    push_u8(buf, 0x41); // i32.const
-    push_leb128_s32(buf, wasm.rdata_offset); // memory offset (expr)
+    wasm_i32_const(buf, wasm.rdata_offset);
     push_u8(buf, 0x0B); // end
     
     push_leb128_u32(buf, memory_size); // size of memory
@@ -821,7 +869,7 @@ convert_to_wasm_module(Bytecode* module, Data_Packer* data_packer, s64 stk_usage
 }
 
 u8*
-convert_wasm_insn_to_text(String_Builder* sb, u8* begin, u8* curr, u8* end, int block_depth) {
+convert_wasm_insn_to_text(String_Builder* sb, Bytecode* module, u8* begin, u8* curr, u8* end, int block_depth) {
     string_builder_push_format(sb, "%: ", f_u64_HEX(curr - begin));
     for (int i = 0; i < block_depth; i++) string_builder_push(sb, "  ");
     u8 opcode = *curr++;
@@ -834,13 +882,23 @@ convert_wasm_insn_to_text(String_Builder* sb, u8* begin, u8* curr, u8* end, int 
         case 0x0C: string_builder_push_format(sb, "br %", f_s64(decode_leb128_u32(&curr, end))); break;
         case 0x0D: string_builder_push_format(sb, "br_if %", f_s64(decode_leb128_u32(&curr, end))); break;
         case 0x0F: string_builder_push(sb, "return"); break;
-        case 0x10: string_builder_push_format(sb, "call func%", f_u32(decode_leb128_u32(&curr, end))); break;
+        case 0x10: string_builder_push_format(sb, "call %", f_var(module->function_names[decode_leb128_u32(&curr, end)])); break;
         
         case 0x41: string_builder_push_format(sb, "i32.const %", f_s64(decode_leb128_s64(&curr, end))); break;
         case 0x42: string_builder_push_format(sb, "i64.const %", f_s64(decode_leb128_s64(&curr, end))); break;
         
         case 0x6A: string_builder_push(sb, "i32.add"); break;
         case 0x6B: string_builder_push(sb, "i32.sub"); break;
+        
+        case 0xFC: {
+            if (*curr++ == 0x0B) {
+                curr++;
+                string_builder_push(sb, "memory.fill");
+            } else {
+                curr += 2;
+                string_builder_push(sb, "memory.copy");
+            }
+        } break;
         
 #define WASM_CTL(mnemonic, opcode) \
 case opcode: string_builder_push(sb, mnemonic); curr++; break;
@@ -865,7 +923,7 @@ f_uint(pow(2, decode_leb128_u32(&curr, end)))); break;
 }
 
 void
-convert_wasm_code_to_text(String_Builder* sb, u8* begin, u8* curr, u8* end) {
+convert_wasm_code_to_text(String_Builder* sb, Bytecode* module, u8* begin, u8* curr, u8* end, u8* typeidx) {
     
     u32 func_count = decode_leb128_u32(&curr, end);
     
@@ -878,14 +936,16 @@ convert_wasm_code_to_text(String_Builder* sb, u8* begin, u8* curr, u8* end) {
             curr++;
         }
         
-        string_builder_push_format(sb, "\nfunc%:\n", f_uint(func_index));
+        
+        u32 type_index = decode_leb128_u32(&typeidx, end);
+        string_builder_push_format(sb, "\n%:\n", f_var(module->function_names[type_index]));
         
         int block_depth = 0;
         while (curr < func_end) {
             u8 opcode = *curr;
             if (opcode == 0x0B) block_depth--;
             
-            curr = convert_wasm_insn_to_text(sb, begin, curr, func_end, block_depth);
+            curr = convert_wasm_insn_to_text(sb, module, begin, curr, func_end, block_depth);
             
             if (opcode == 0x02 || opcode == 0x03) block_depth++;
         }
@@ -893,7 +953,7 @@ convert_wasm_code_to_text(String_Builder* sb, u8* begin, u8* curr, u8* end) {
 }
 
 void
-convert_wasm_binary_to_text(String_Builder* sb, u8* begin, u8* end) {
+convert_wasm_binary_to_text(String_Builder* sb, Bytecode* module, u8* begin, u8* end) {
     u8* curr = begin;
     
     u32 magic_number = *((u32*) curr); curr += 4;
@@ -909,11 +969,17 @@ convert_wasm_binary_to_text(String_Builder* sb, u8* begin, u8* end) {
         return;
     }
     
+    u8* typeidx = 0;
+    
     while (curr < end) {
         u8 section = *curr++;
         int section_size = decode_leb128_u32(&curr, end);
-        if (section == WASMSection_Code) {
-            convert_wasm_code_to_text(sb, begin, curr, curr + section_size);
+        if (section == WASMSection_Function) {
+            typeidx = curr;
+            decode_leb128_u32(&typeidx, typeidx + section_size);
+            
+        } else if (section == WASMSection_Code) {
+            convert_wasm_code_to_text(sb, module, begin, curr, curr + section_size, typeidx);
         }
         
         curr += section_size;

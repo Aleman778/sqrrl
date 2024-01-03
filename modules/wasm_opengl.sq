@@ -1,7 +1,6 @@
 
-@link("display")
+@link("gl")
 extern void webgl_canvas_init();
 
 #define APIENTRY
 #define GLAPI @link("gl") extern
-#include <opengl.sq>

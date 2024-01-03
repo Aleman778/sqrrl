@@ -82,7 +82,7 @@ wasm_register_type(WASM_Assembler* wasm, int register_index) {
 
 inline u32
 wasm_tmp_local(WASM_Assembler* wasm, Bytecode_Type type) {
-    if (type.kind & BC_TYPE_FLOAT) {
+    if (type.kind == BC_TYPE_FLOAT) {
         return (type.size == 8) ? wasm->tmp_local_f64 : wasm->tmp_local_f32;
     } else {
         return wasm->tmp_local_i64;

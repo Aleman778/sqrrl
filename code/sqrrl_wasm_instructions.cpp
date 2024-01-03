@@ -75,6 +75,20 @@ wasm_i32_store(Buffer* buf, u32 offset) {
 }
 
 inline void
+wasm_f32_store(Buffer* buf, u32 offset) {
+    push_u8(buf, 0x38); // f32.store
+    push_leb128_u32(buf, 2);
+    push_leb128_u32(buf, offset);
+}
+
+inline void
+wasm_f64_store(Buffer* buf, u32 offset) {
+    push_u8(buf, 0x39); // f64.store
+    push_leb128_u32(buf, 3);
+    push_leb128_u32(buf, offset);
+}
+
+inline void
 wasm_i64_store8(Buffer* buf, u32 offset) {
     push_u8(buf, 0x3C); // i64.store8
     push_leb128_u32(buf, 0);

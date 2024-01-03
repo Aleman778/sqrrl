@@ -14,6 +14,7 @@ VAR(defer)    \
 VAR(do)       \
 VAR(else)     \
 VAR(enum)     \
+VAR(export)   \
 VAR(false)    \
 VAR(for)      \
 VAR(global)   \

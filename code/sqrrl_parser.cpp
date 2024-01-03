@@ -2012,6 +2012,11 @@ parse_top_level_declaration(Parser* parser, Ast_File* ast_file) {
                 mods |= AstDeclModifier_No_Inline;
             } continue;
             
+            case Kw_export: {
+                next_token(parser);
+                mods |= AstDeclModifier_Export;
+            } continue;
+            
             case Kw_extern: {
                 next_token(parser);
                 mods |= AstDeclModifier_External;

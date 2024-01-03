@@ -128,7 +128,7 @@ AST(Named_Type,        "named", Ast*)           \
 AST(Array_Type,        "array", struct {        \
 Ast* elem_type;                                 \
 Ast* shape;                                     \
-b32 is_dynamic;                                \
+b32 is_dynamic;                                 \
 })                                              \
 AST(Pointer_Type,      "pointer", Ast*)         \
 AST(Tuple_Type,        "tuple", struct {        \
@@ -140,7 +140,7 @@ Ast* ident;                                     \
 Ast* attributes;                                \
 Ast* return_type;                               \
 Ast* arguments;                                 \
-Operator overload_operator;                    \
+Operator overload_operator;                     \
 Ast_Decl_Modifier mods;                         \
 })                                              \
 AST(Struct_Type,       "struct", struct {       \
@@ -212,9 +212,10 @@ enum Ast_Kind {
 typedef s32 Ast_Decl_Modifier;
 enum {
     AstDeclModifier_None           = 0,
-    AstDeclModifier_Inline         = bit(1),
-    AstDeclModifier_Always_Inline  = bit(2),
-    AstDeclModifier_No_Inline      = bit(3),
+    AstDeclModifier_Inline         = bit(0),
+    AstDeclModifier_Always_Inline  = bit(1),
+    AstDeclModifier_No_Inline      = bit(2),
+    AstDeclModifier_Export         = bit(3),
     AstDeclModifier_Internal       = bit(4),
     AstDeclModifier_External       = bit(5),
     AstDeclModifier_Global         = bit(6),
@@ -538,6 +539,13 @@ string_builder_push(String_Builder* sb, Ast_Decl_Modifier mods) {
             } 
             next++;
             string_builder_push(sb, "no_inline");
+        }
+        if (is_bitflag_set(mods, AstDeclModifier_Export)) {
+            if (next) {
+                string_builder_push(sb, ", "); 
+            } 
+            next++;
+            string_builder_push(sb, "export");
         }
         if (is_bitflag_set(mods, AstDeclModifier_External)) {
             if (next) {

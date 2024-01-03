@@ -1994,6 +1994,13 @@ add_bytecode_function(Bytecode_Builder* bc, Type* type) {
     array_push(bc->bytecode.functions, func);
     array_push(bc->bytecode.function_names, type->Function.ident);
     
+    if (type->Function.is_exported) {
+        Bytecode_Export export_desc = {};
+        export_desc.function = type->Function.ident;
+        export_desc.func_index = func->type_index;
+        array_push(bc->bytecode.exports, export_desc);
+    }
+    
     return func;
 }
 

@@ -164,12 +164,24 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         define_target.is_integral = true;
         define_target.is_valid = true;
         string_id ident;
-        ident = vars_save_cstring("BUILD_TARGET_X64");
+        
+        // TODO(Alexander): we need better way to describe and determine these flags
+        ident = vars_save_cstring("BUILD_ARCH_X64");
         define_target.integral = compiler.backend == Backend_X64;
         define_target.source = compiler.backend == Backend_X64 ? one : zero;
         map_put(preprocessor.macros, ident, define_target);
         
-        ident = vars_save_cstring("BUILD_TARGET_WASM");
+        ident = vars_save_cstring("BUILD_ABI_WINDOWS");
+        define_target.integral = compiler.backend == Backend_X64;
+        define_target.source = compiler.backend == Backend_X64 ? one : zero;
+        map_put(preprocessor.macros, ident, define_target);
+        
+        ident = vars_save_cstring("BUILD_ARCH_WASM32");
+        define_target.integral = compiler.backend == Backend_WASM;
+        define_target.source = compiler.backend == Backend_WASM ? one : zero;
+        map_put(preprocessor.macros, ident, define_target);
+        
+        ident = vars_save_cstring("BUILD_ABI_WASM");
         define_target.integral = compiler.backend == Backend_WASM;
         define_target.source = compiler.backend == Backend_WASM ? one : zero;
         map_put(preprocessor.macros, ident, define_target);
@@ -503,7 +515,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             pln("\nWrote executable: simple.wasm");
             
             String_Builder wat_sb = {};
-            convert_wasm_binary_to_text(&wat_sb, buffer.data, buffer.data + buffer.curr_used);
+            convert_wasm_binary_to_text(&wat_sb, &bytecode_builder.bytecode, buffer.data, buffer.data + buffer.curr_used);
             pln("%", f_string(string_builder_to_string_nocopy(&wat_sb)));
             string_builder_free(&wat_sb);
             

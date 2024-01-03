@@ -150,6 +150,7 @@ struct Type_Function {
     void* intrinsic;
     
     b32 is_imported;
+    b32 is_exported;
     b32 is_intrinsic;
     b32 is_variadic;
     b32 dump_bytecode;

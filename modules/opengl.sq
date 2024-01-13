@@ -1,8 +1,8 @@
 
-#if BUILD_ABI_WINDOWS
+#if BUILD_TARGET_WINDOWS
 #include "win32_opengl.sq"
 
-#elif BUILD_ABI_WASM
+#elif BUILD_TARGET_WASM
 #include "wasm_opengl.sq"
 #endif
 

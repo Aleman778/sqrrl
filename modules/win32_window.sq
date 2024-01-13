@@ -48,7 +48,7 @@ void
 init_window(int width, int height, string title) {
     assert(!g_win32.window, "window is already initialized");
     
-    HINSTANCE h_instance = GetModuleHandleA(0);
+    HINSTANCE h_instance = GetModuleHandleA((cstring) 0);
     
     WNDCLASSA wndclass = {};
     wndclass.style = CS_HREDRAW | CS_VREDRAW;

@@ -165,13 +165,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         define_target.is_valid = true;
         string_id ident;
         
-        // TODO(Alexander): we need better way to describe and determine these flags
+        // TODO(Alexander): we need a better way to select (for cross compilation) or determine these flags
         ident = vars_save_cstring("BUILD_ARCH_X64");
-        define_target.integral = compiler.backend == Backend_X64;
-        define_target.source = compiler.backend == Backend_X64 ? one : zero;
-        map_put(preprocessor.macros, ident, define_target);
-        
-        ident = vars_save_cstring("BUILD_ABI_WINDOWS");
         define_target.integral = compiler.backend == Backend_X64;
         define_target.source = compiler.backend == Backend_X64 ? one : zero;
         map_put(preprocessor.macros, ident, define_target);
@@ -181,7 +176,12 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         define_target.source = compiler.backend == Backend_WASM ? one : zero;
         map_put(preprocessor.macros, ident, define_target);
         
-        ident = vars_save_cstring("BUILD_ABI_WASM");
+        ident = vars_save_cstring("BUILD_TARGET_WINDOWS");
+        define_target.integral = compiler.backend == Backend_X64;
+        define_target.source = compiler.backend == Backend_X64 ? one : zero;
+        map_put(preprocessor.macros, ident, define_target);
+        
+        ident = vars_save_cstring("BUILD_TARGET_WASM");
         define_target.integral = compiler.backend == Backend_WASM;
         define_target.source = compiler.backend == Backend_WASM ? one : zero;
         map_put(preprocessor.macros, ident, define_target);

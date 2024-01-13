@@ -46,9 +46,9 @@ function glAttachShader(program, shader) {
 }
 
 function glGenBuffers(n, out_buffers) {
-    const buffers = new BigUint64Array(wasm_memory.buffer, out_buffers, n);
+    const buffers = new Uint32Array(wasm_memory.buffer, out_buffers, n);
     for (let i = 0; i < n; i++) {
-        buffers[i] = BigInt(js_objects.push(gl.createBuffer()) - 1);
+        buffers[i] = js_objects.push(gl.createBuffer()) - 1;
     }
 }
 
@@ -63,6 +63,32 @@ function glBufferData(target, size, data, usage) {
 
 function glEnableVertexAttribArray(attrib) {
     gl.enableVertexAttribArray(attrib);
+}
+
+function glGenTextures(n, out_textures) {
+    const buffers = new Uint32Array(wasm_memory.buffer, out_textures, n);
+    for (let i = 0; i < n; i++) {
+        buffers[i] = js_objects.push(gl.createTexture()) - 1;
+    }
+}
+
+function glBindTexture(target, texture) {
+    gl.bindTexture(target, js_objects[texture]);
+}
+
+function glActiveTexture(texture) {
+    gl.activeTexture(texture);
+}
+
+function glTexImage2D(target, level, internalformat, width, height, border, format, type, pixel_ptr) {
+    const pixel_size = 4; // TODO: hardcoded pixel size, calculate this from format and type
+    const size = width*height*pixel_size;
+    const pixels = new Uint8Array(wasm_memory.buffer, Number(pixel_ptr), size)
+    gl.texImage2D(target, level, internalformat, width, height, border, format, type, pixels);
+}
+
+function glTexParameteri(target, pname, param) {
+    gl.texParameteri(target, pname, param);
 }
 
 function glDrawArrays(mode, first, count) {
@@ -139,7 +165,13 @@ function glUseProgram(program) {
 
 function glGetUniformLocation(program, cstring) {
     const string = deref_cstring(cstring);
-    return BigInt(js_objects.push(gl.getUniformLocation(js_objects[program], string)) - 1);
+    const uniform = gl.getUniformLocation(js_objects[program], string);
+    console.log(string, uniform);
+    return BigInt(js_objects.push(uniform) - 1);
+}
+
+function glUniform1i(uniform, value) {
+    gl.uniform1i(js_objects[uniform], value);
 }
 
 function glUniformMatrix4fv(uniform, count, transpose, ptr) {
@@ -174,7 +206,7 @@ function print(ptr) {
 
 function webgl_canvas_init() {
     const canvas = document.querySelector("#mainDisplay");
-    gl = canvas.getContext("webgl");
+    gl = canvas.getContext("webgl2");
 
     if (gl === null) {
         alert("Unable to initialize WebGL. Your browser or machine may not support it.");
@@ -553,6 +585,14 @@ const importObject = {
         glVertexAttribP4ui: (a0, a1, a2, a3) => glVertexAttribP4ui(Number(a0), Number(a1), Number(a2), Number(a3)),
         glVertexAttribP4uiv: (a0, a1, a2, a3) => glVertexAttribP4uiv(Number(a0), Number(a1), Number(a2), Number(a3)),
         webgl_canvas_init: () => webgl_canvas_init(),
+        webgl_fetch_tex2d: function (target, level, internalformat, src) {
+            src = deref_string(src);
+            const image = new Image();
+            image.addEventListener('load', function () {
+                gl.texImage2D(Number(target), Number(level), Number(internalformat), gl.RGBA, gl.UNSIGNED_BYTE, image);
+            });
+            image.src = src;
+        }
     },
     basic: {
         print: (a0) => print(Number(a0)),
@@ -564,6 +604,17 @@ const importObject = {
         },
         stop_main_loop: function (callback) {
             main_loop_function = null;
+        }
+    },
+    math: {
+        cos: function (x) {
+            return Math.cos(x);
+        },
+        sin: function (x) {
+            return Math.sin(x);
+        },
+        tan: function (x) {
+            return Math.tan(x);
         }
     }
 };
@@ -578,6 +629,3 @@ function start() {
 }
 
 start();
-
-
-

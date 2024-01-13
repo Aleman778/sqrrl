@@ -563,13 +563,22 @@ auto_type_conversion(Type_Context* tcx, Type* target_type, Ast* node, Operator o
         } else {
             bool can_be_converted_by_value = node->kind == Ast_Value;
             
-            // TODO(Alexander): make sure we don't convert string value to a number
+            // NOTE(Alexander): disallow conversion from string to different type
             if (node->Value.type == Value_string || node->Value.type == Value_cstring) {
                 if (!(target_type->kind == TypeKind_Basic &&
                       target_type->Basic.flags == BasicFlag_String)) {
                     can_be_converted_by_value = false;
                 }
             }
+            
+            // NOTE(Alexander): disallow conversion from numbers (except 0) to string type
+            if (is_integer(node->Value)) {
+                if (target_type->kind == TypeKind_Basic &&
+                    target_type->Basic.kind == Basic_string) {
+                    can_be_converted_by_value = false;
+                }
+            }
+            
             
             if (can_be_converted_by_value) {
                 node->type = target_type;
@@ -2666,52 +2675,52 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
 }
 
 bool
-type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool is_rhs_value, Span span, Operator op, bool report_error) {
-    assert(lhs && rhs);
+type_check_assignment(Type_Context* tcx, Type* dest, Type* src, bool is_src_value, Span span, Operator op, bool report_error) {
+    assert(dest && src);
     
-    //if (lhs->kind == TypeKind_Any || rhs->kind == TypeKind_Any) {
+    //if (dest->kind == TypeKind_Any || src->kind == TypeKind_Any) {
     //return true;
     //}
     
-    if (lhs->kind == TypeKind_Enum) {
-        //pln("lhs - before: %", f_type(lhs));
-        lhs = lhs->Enum.type;
-        //pln("lhs - after: %", f_type(lhs));
-        //pln("rhs - before: %", f_type(rhs));
+    if (dest->kind == TypeKind_Enum) {
+        //pln("dest - before: %", f_type(dest));
+        dest = dest->Enum.type;
+        //pln("dest - after: %", f_type(dest));
+        //pln("src - before: %", f_type(src));
     }
     
-    if (rhs->kind == TypeKind_Enum) {
-        rhs = rhs->Enum.type;
+    if (src->kind == TypeKind_Enum) {
+        src = src->Enum.type;
     }
     
-    if (is_rhs_value && lhs->kind == TypeKind_Pointer) {
+    if (is_src_value && dest->kind == TypeKind_Pointer) {
         return true;
     }
     
-    if (lhs->kind == TypeKind_Pointer && 
-        rhs->kind == TypeKind_Basic && 
-        rhs->Basic.flags & BasicFlag_Integer) {
+    if (dest->kind == TypeKind_Pointer && 
+        src->kind == TypeKind_Basic && 
+        src->Basic.flags & BasicFlag_Integer) {
         
         return true;
     }
     
-    if (lhs->kind != rhs->kind) {
+    if (dest->kind != src->kind) {
         // NOCHECKIN
         if (report_error) {
-            type_error_mismatch(tcx, lhs, rhs, span);
+            type_error_mismatch(tcx, dest, src, span);
         }
         return false;
     }
     
-    switch (lhs->kind) {
+    switch (dest->kind) {
         case TypeKind_Void: break;
         
         case TypeKind_Basic: {
             
             if (operator_is_comparator(op) && 
-                lhs->Basic.flags & BasicFlag_Integer &&
-                rhs->Basic.flags & BasicFlag_Integer) {
-                if ((lhs->Basic.flags & BasicFlag_Unsigned) != (rhs->Basic.flags & BasicFlag_Unsigned)) {
+                dest->Basic.flags & BasicFlag_Integer &&
+                src->Basic.flags & BasicFlag_Integer) {
+                if ((dest->Basic.flags & BasicFlag_Unsigned) != (src->Basic.flags & BasicFlag_Unsigned)) {
                     if (report_error) {
                         type_error(tcx, 
                                    string_lit("comparison with both signed and unsigned integers"),
@@ -2724,48 +2733,37 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool is_rhs_value
             bool lossy = false;
             
             
-            if ((lhs->Basic.flags & (BasicFlag_Floating | BasicFlag_Integer)) &&
-                (rhs->Basic.flags & (BasicFlag_Floating | BasicFlag_Integer))) {
+            if ((dest->Basic.flags & (BasicFlag_Floating | BasicFlag_Integer)) &&
+                (src->Basic.flags & (BasicFlag_Floating | BasicFlag_Integer))) {
                 
-                if (is_rhs_value) {
+                if (is_src_value) {
                     return true;
                 }
                 
-                bool lhs_float = lhs->Basic.flags & BasicFlag_Floating;
-                bool rhs_float = rhs->Basic.flags & BasicFlag_Floating;
-                if (lhs_float == rhs_float) {
-                    lossy = lhs->size < rhs->size;
+                bool dest_float = dest->Basic.flags & BasicFlag_Floating;
+                bool src_float = src->Basic.flags & BasicFlag_Floating;
+                if (dest_float == src_float) {
+                    lossy = dest->size < src->size;
                 } else {
-                    lossy = rhs_float;
+                    lossy = src_float;
                 }
                 
-            } else if (rhs->Basic.kind == Basic_string) {
-                lossy = (lhs->Basic.flags & BasicFlag_String) == 0;
+            } else if (src->Basic.kind == Basic_string) {
+                lossy = (dest->Basic.flags & BasicFlag_String) == 0;
                 
-            } else if (rhs->Basic.kind == Basic_cstring) {
-                lossy = lhs->Basic.kind != Basic_cstring;
+            } else if (dest->Basic.kind == Basic_string) {
+                lossy = (src->Basic.flags & BasicFlag_String) == 0;
+                
+            } else if (src->Basic.kind == Basic_cstring) {
+                lossy = dest->Basic.kind != Basic_cstring;
+                
+            } else if (dest->Basic.kind == Basic_cstring) {
+                lossy = src->Basic.kind != Basic_cstring;
             }
-            
-            
-#if 0
-            bool lossy = lhs->size < rhs->size;
-            if (!lossy && ) {
-                lossy = rhs->Basic.flags & BasicFlag_Integer;
-            }
-            
-            if (!lossy && rhs->Basic.flags & BasicFlag_Floating) {
-                lossy = lhs->Basic.flags & BasicFlag_Integer;
-            }
-            
-            if (!lossy && rhs->Basic.flags & BasicFlag_Integer) {
-                lossy = (lhs->Basic.flags & BasicFlag_Floating | BasicFlag_Integer);
-            }
-#endif
-            
             
             if (op == Op_Logical_And || op == Op_Logical_Or) {
-                if (((lhs->Basic.flags & BasicFlag_String) || (lhs->Basic.flags & BasicFlag_Integer)) &&
-                    ((rhs->Basic.flags & BasicFlag_String) || (rhs->Basic.flags & BasicFlag_Integer))) {
+                if (((dest->Basic.flags & BasicFlag_String) || (dest->Basic.flags & BasicFlag_Integer)) &&
+                    ((src->Basic.flags & BasicFlag_String) || (src->Basic.flags & BasicFlag_Integer))) {
                     lossy = false;
                 }
             }
@@ -2774,7 +2772,7 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool is_rhs_value
                 if (report_error) {
                     type_error(tcx, 
                                string_print("conversion from `%` to `%`, possible loss of data",
-                                            f_type(rhs), f_type(lhs)),
+                                            f_type(src), f_type(dest)),
                                span);
                 }
                 return false;
@@ -2782,20 +2780,20 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool is_rhs_value
         } break;
         
         case TypeKind_Array: {
-            bool success = type_equals(lhs->Array.type, rhs->Array.type);
+            bool success = type_equals(dest->Array.type, src->Array.type);
             
-            if (lhs->Array.kind != rhs->Array.kind) {
+            if (dest->Array.kind != src->Array.kind) {
                 success = false;
             }
             
-            if (lhs->Array.kind == ArrayKind_Fixed_Inplace &&
-                lhs->Array.capacity != rhs->Array.capacity) {
+            if (dest->Array.kind == ArrayKind_Fixed_Inplace &&
+                dest->Array.capacity != src->Array.capacity) {
                 success = false;
             }
             
             if (!success) {
                 if (report_error) {
-                    type_error_mismatch(tcx, lhs, rhs, span);
+                    type_error_mismatch(tcx, dest, src, span);
                 }
                 return false;
             }
@@ -2805,24 +2803,24 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool is_rhs_value
         case TypeKind_Struct:
         case TypeKind_Union: {
             // TODO(Alexander): this will not work for anonymous structs
-            if (lhs != rhs) {
+            if (dest != src) {
                 if (report_error) {
-                    type_error_mismatch(tcx, lhs, rhs, span);
+                    type_error_mismatch(tcx, dest, src, span);
                 }
                 return false;
             }
         } break;
         
         case TypeKind_Pointer: {
-            if (lhs->Pointer && lhs->Pointer->kind == TypeKind_Void) {
+            if (dest->Pointer && dest->Pointer->kind == TypeKind_Void) {
                 return true;
                 
             } else {
                 // Strict type check for non void* assignment
-                bool success = type_equals(lhs->Pointer, rhs->Pointer);
+                bool success = type_equals(dest->Pointer, src->Pointer);
                 if (!success) {
                     if (report_error) {
-                        type_error_mismatch(tcx, lhs, rhs, span);
+                        type_error_mismatch(tcx, dest, src, span);
                     }
                     return false;
                 }
@@ -2830,15 +2828,15 @@ type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool is_rhs_value
         } break;
         
         case TypeKind_Function: {
-            array(Type*)* lhs_args = lhs->Function.arg_types;
-            array(Type*)* rhs_args = rhs->Function.arg_types;
+            array(Type*)* dest_args = dest->Function.arg_types;
+            array(Type*)* src_args = src->Function.arg_types;
             
-            if (array_count(lhs_args) != array_count(rhs_args)) {
+            if (array_count(dest_args) != array_count(src_args)) {
                 return false;
             }
             
-            for_array_v(lhs->Function.arg_types, la, arg_index) {
-                if (!type_equals(la, rhs_args[arg_index])) {
+            for_array_v(dest->Function.arg_types, la, arg_index) {
+                if (!type_equals(la, src_args[arg_index])) {
                     return false;
                 }
             }

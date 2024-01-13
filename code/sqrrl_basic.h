@@ -642,7 +642,8 @@ string_builder_to_string_nocopy(String_Builder* sb) {
 #define array_free(a) arrfree(a)
 #define array_push(a, x) arrput(a, x)
 #define array_pop(a) arrpop(a)
-#define array_first(a) (array_count(a) ? (a) : 0)
+#define array_first_ptr(a) (array_count(a) ? (a) : 0)
+#define array_last_ptr(a) (array_count(a) ? (&arrlast(a)) : 0)
 #define array_last(a) arrlast(a)
 #define array_insert(a, x, p) arrins(a, p, x)
 #define array_remove(a, p) arrdel(a, p)
@@ -710,58 +711,6 @@ for (auto it = map; it < map + map_count(map); it++)
 #define string_map_remove(m, k) shdel(m, k)
 #define string_map_new_arena(m) sh_new_arena(m)
 #define string_map_set_default_value(m, v) shdefault(m, v)
-
-int 
-compare_ints(void* a, void* b) {
-    return *(int*) a - *(int*) b;
-}
-
-int
-compare_smm(void* a, void* b) {
-    return (int) (*(smm*) a - *(smm*) b);
-}
-
-struct Binary_Search_Result  {
-    void* value;
-    smm index;
-    b32 exact_match;
-};
-
-Binary_Search_Result
-_binary_search(void* arr, void* val, smm count, smm size, 
-               int (*compare)(void*, void*)) {
-    Binary_Search_Result result = {};
-    smm low = 0, high = count - 1;
-    //pln("low = %, high = %", f_smm(low), f_smm(high));
-    
-    while (low <= high) {
-        smm mid = (high - low) / 2 + low;
-        result.index = mid;
-        
-        void* elem = (u8*) arr + mid*size;
-        //pln("low = %, high = %, *val = %", f_smm(low), f_smm(high), f_smm(*((smm*) val)));
-        
-        int cmp = compare(val, elem);
-        //pln("% - % = %", f_smm(*((smm*) val)), f_smm(*((smm*) elem)), f_int(cmp));
-        if (cmp > 0) {
-            low = mid + 1;
-        } else if (cmp < 0) {
-            high = mid - 1;
-            //if (low > high) {
-            //result.index = max(mid - 1, 0);
-            //}
-        } else {
-            result.exact_match = true;
-            break;
-        }
-    }
-    
-    result.value = (u8*) arr + result.index*size;
-    return result;
-}
-
-#define binary_search(arr, val, compare) \
-_binary_search(arr, &(val), array_count(arr), sizeof(arr), compare)
 
 // NOTE(Alexander): hash map
 

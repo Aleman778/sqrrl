@@ -306,12 +306,12 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                         map_put(preprocessor->loaded_file_indices, included_file.index, prev_num_includes + 1);
                         preprocessor->abort_curr_file = false;
                         
-                        preprocess_file(preprocessor, 
-                                        included_file.source, 
-                                        included_file.abspath, 
-                                        included_file.extension,
-                                        included_file.index);
-                        preprocessor->is_system_header = prev_system_header_flag;
+                        push_file_to_preprocess(preprocessor, 
+                                                included_file.source, 
+                                                included_file.abspath, 
+                                                included_file.extension,
+                                                included_file.index,
+                                                prev_system_header_flag);
                         preprocessor->abort_curr_file = false; // if #pragma once hit then restore it
                         preprocessor->curr_file_index = curr_file_index;
                     } else {
@@ -418,7 +418,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
 }
 
 internal Preprocessor_Line
-preprocess_splice_next_line(Preprocessor* preprocessor, Tokenizer* t) {
+preprocess_splice_next_line(Tokenizer* t) {
     if (t->curr != t->end) {
         t->line_number++;
     }
@@ -476,7 +476,7 @@ preprocess_actual_argument_next_token(Preprocessor* preprocessor, Tokenizer* t, 
         string_builder_push(sb, string_view(begin, token.source.data));
     }
     if (token.type == Token_EOF) {
-        preprocess_splice_next_line(preprocessor, t);
+        preprocess_splice_next_line(t);
         token = advance_semantical_token(t);
     }
     
@@ -796,51 +796,53 @@ internal bool
 preprocess_line(Preprocessor* preprocessor, String_Builder* sb, Tokenizer* t) {
     u8* base = t->curr;
     
+    umm curr_used = sb->curr_used;
     Token token = push_non_semantical_tokens(t, sb);
     Token first_token = token;
     if (token.type == Token_Directive) {
         preprocess_directive(preprocessor, t);
+        sb->curr_used = curr_used;
         return false;
     }
     
-    if (preprocessor->curr_branch_taken) {
-        
-        while (is_token_valid(token)) {
-            switch (token.type) {
-                case Token_Ident: {
-                    string_id ident = vars_save_string(token.source);
-                    
-                    if (!preprocess_try_expand_ident(preprocessor, sb, t, {}, {}, ident)) {
-                        string_builder_push(sb, token.source);
-                    }
-                } break;
-                
-                case Token_Directive: {
-                    pln("failed on line:\n`%`", f_string(string_view(base, t->end)));
-                    pln("first token is `%`", f_token(first_token.type));
-                    if (first_token.type == Token_Ident) {
-                        pln("== `%`", f_string(first_token.source));
-                    }
-                    preprocess_error(preprocessor, string_lit("preprocessor directive (#) must start at the beginning of a line"));
-                } break;
-                
-                case Token_Concatenator: {
-                    preprocess_error(preprocessor, string_lit("preprocessor concatenator (##) can only be used inside macro"));
-                } break;
-                
-                case Token_Backslash:
-                case Token_Line_Comment:
-                case Token_Block_Comment: break;
-                
-                default: {
-                    string_builder_push(sb, token.source);
-                } break;
-            }
-            
-            token = advance_token(t);
-        }
-    } else {
+    if (!preprocessor->curr_branch_taken) {
+        sb->curr_used = curr_used;
         return false;
+    }
+    
+    while (is_token_valid(token)) {
+        switch (token.type) {
+            case Token_Ident: {
+                string_id ident = vars_save_string(token.source);
+                
+                if (!preprocess_try_expand_ident(preprocessor, sb, t, {}, {}, ident)) {
+                    string_builder_push(sb, token.source);
+                }
+            } break;
+            
+            case Token_Directive: {
+                pln("failed on line:\n`%`", f_string(string_view(base, t->end)));
+                pln("first token is `%`", f_token(first_token.type));
+                if (first_token.type == Token_Ident) {
+                    pln("== `%`", f_string(first_token.source));
+                }
+                preprocess_error(preprocessor, string_lit("preprocessor directive (#) must start at the beginning of a line"));
+            } break;
+            
+            case Token_Concatenator: {
+                preprocess_error(preprocessor, string_lit("preprocessor concatenator (##) can only be used inside macro"));
+            } break;
+            
+            case Token_Backslash:
+            case Token_Line_Comment:
+            case Token_Block_Comment: break;
+            
+            default: {
+                string_builder_push(sb, token.source);
+            } break;
+        }
+        
+        token = advance_token(t);
     }
     
     return true;
@@ -966,82 +968,88 @@ preprocess_finalize_code(string source) {
     return string_builder_to_string_nocopy(&sb);
 }
 
+void
+push_file_to_preprocess(Preprocessor* preprocessor, 
+                        string source, string filepath, string extension, 
+                        int file_index, bool is_system_header) {
+    
+    Preprocessor_State state = {};
+    tokenizer_set_source(&state.tokenizer, source, filepath, file_index);
+    state.tokenizer.end = state.tokenizer.curr;
+    state.is_c_or_cpp_file = (string_equals(extension, string_lit("c")) ||
+                              string_equals(extension, string_lit("h")) ||
+                              string_equals(extension, string_lit("cpp")) ||
+                              string_equals(extension, string_lit("hpp")));
+    state.is_valid = true;
+    state.is_system_header = is_system_header;
+    array_push(preprocessor->file_stack, state);
+}
+
+internal inline Source_Group
+begin_source_group(Preprocessor* preprocessor, u32 next_line_number) {
+    Source_Group result = {};
+    Preprocessor_State* state = array_last_ptr(preprocessor->file_stack);
+    if (!state) return result;
+    
+    result.offset = preprocessor->output.curr_used;
+    result.file_index = (u32) state->tokenizer.file_index;
+    result.c_compatibility_mode = state->is_c_or_cpp_file;
+    result.line = next_line_number;
+    return result;
+}
+
+internal inline void
+end_source_group(Preprocessor* preprocessor, Source_Group group) {
+    array_push(preprocessor->source_groups, group);
+}
+
+internal inline Preprocessor_State
+pop_file(Preprocessor* preprocessor) {
+    Preprocessor_State result = {};
+    if (array_count(preprocessor->file_stack) > 0) {
+        result = array_pop(preprocessor->file_stack); 
+    }
+    return result;
+}
+
 string
-preprocess_file(Preprocessor* preprocessor, 
-                string source, string filepath, string extension, int file_index) {
-    Tokenizer* prev_tokenizer = preprocessor->tokenizer;
-    
-    Tokenizer tokenizer = {};
-    tokenizer_set_source(&tokenizer, source, filepath, file_index);
-    preprocessor->tokenizer = &tokenizer;
-    tokenizer.end = tokenizer.curr;
-    
-    bool is_c_cpp_code = (string_equals(extension, string_lit("c")) ||
-                          string_equals(extension, string_lit("h")) ||
-                          string_equals(extension, string_lit("cpp")) ||
-                          string_equals(extension, string_lit("hpp")));
-    
-    umm curr_line_number = 0;
-    u8* curr = source.data;
-    u8* end = source.data + source.count;
-    
+preprocess_file(Preprocessor* preprocessor) {
     String_Builder* sb = &preprocessor->output;
-    string_builder_ensure_capacity(sb, source.count);
+    preprocessor->curr_branch_taken = true;
+    
+    if (!array_count(preprocessor->file_stack)) {
+        return string_builder_to_string_nocopy(sb);
+    }
     
     
-    smm initial_if_result_stack_count = array_count(preprocessor->if_result_stack);
-    
+    Source_Group current_group = begin_source_group(preprocessor, 0);
+    Preprocessor_State* state = array_last_ptr(preprocessor->file_stack);
     
 #if BUILD_DEBUG
-    string_builder_push(sb, string_print("// File: `%`\n", f_string(tokenizer.file)));
+    if (state) string_builder_push(sb, string_print("\n// Preprocessing file: `%`...\n", f_string(state->tokenizer.file)));
 #endif
     
-    //if (array_count(preprocessor->if_result_stack) == 0) {
-    preprocessor->curr_branch_taken = true;
-    //}
-    
-    //array_push(preprocessor->if_result_stack, preprocessor->curr_branch_taken);
-    //preprocessor->curr_branch_taken = true;
-    
-    Source_Group current_group = {};
-    current_group.file_index = file_index;
-    // TODO(Alexander): deosn't have to be C compat, but for now we assume that
-    current_group.c_compatibility_mode = is_c_cpp_code;
-    
-    while (tokenizer.curr < tokenizer.end_of_file) {
-        u8* curr_line = curr;
+    while (state) {
+        if (state->tokenizer.curr >= state->tokenizer.end_of_file) {
+            array_pop(preprocessor->file_stack);
+            state = array_last_ptr(preprocessor->file_stack);
+            if (state) {
+                string_builder_ensure_capacity(sb, state->tokenizer.source.count);
+            }
+            continue;
+        }
         
+        //u8* curr_line = state->curr_line;
         
-        //if (string_equals(string_lit("winuser.h"), tokenizer.file)) {
-        //__debugbreak();
-        //}
-        
-        //if (tokenizer.line_number == 937) {
-        //pln("%", f_string(tokenizer.file));
-        //if (string_equals(string_lit("winnt.h"), tokenizer.file)) {
-        //
-        //__debugbreak();
-        //}
-        //}
-        
-        
-        Preprocessor_Line line = preprocess_splice_next_line(preprocessor, &tokenizer);
-        //pln("Line %: `%`", f_int(line.curr_line_number), f_string(line.substring));
-        curr += line.substring.count;
-        curr_line_number = tokenizer.line_number;
+        Preprocessor_Line line = preprocess_splice_next_line(&state->tokenizer);
+        state->curr_line += line.substring.count;
+        state->curr_line_number = line.curr_line_number;
         preprocessor->preprocessed_lines += line.next_line_number - line.curr_line_number;
         
         umm begin_used = sb->curr_used;
-        bool run_finalize = preprocess_line(preprocessor, sb, &tokenizer);
+        bool run_finalize = preprocess_line(preprocessor, sb, &state->tokenizer);
         umm end_used = sb->curr_used;
-        
-        //if (preprocessor->error_count > 50) {
-        //if (preprocessor->error_count < 1000) { // hack to only print once, while it unrolls the recursion
-        //pln("preprocessor reported more than 50 errors, exiting...");
-        //}
-        //preprocessor->error_count = 1000;
-        //return {};
-        //}
+        pln("% Line % (range %-%):\n`%`", f_char(preprocessor->curr_branch_taken ? '+' : '-'), f_int(line.curr_line_number + 1), f_int(begin_used), f_int(end_used), f_string(line.substring));
         
         if (preprocessor->abort_curr_file) {
             //Loaded_Source_File* file = get_source_file_by_index(preprocessor->curr_file_index);
@@ -1068,21 +1076,18 @@ preprocess_file(Preprocessor* preprocessor,
             
             //pln("%", f_string(string_builder_to_string_nocopy(sb)));
             
-            // If we skip a line we will start a new source group
             if (begin_used != end_used) {
-                array_push(preprocessor->source_groups, current_group);
-                current_group = {};
-                current_group.offset = sb->curr_used;
-                current_group.file_index = file_index;
-                current_group.c_compatibility_mode = is_c_cpp_code;
-                current_group.line = (u32) line.next_line_number;
+                // Start new group because one or more lines was skipped (due to #if/#else)
+                end_source_group(preprocessor, current_group);
+                current_group = begin_source_group(preprocessor, (u32) line.next_line_number);
             }
             
             if (current_group.count == 0) {
                 current_group.offset = end_used;
             }
+            
             int empty_lines = (int) line.next_line_number - (int) line.curr_line_number;
-            //pln("Empty lines = %", f_int(empty_lines));
+            pln("^- Empty lines = %", f_int(empty_lines));
             for(int i = 0; i < empty_lines; i++) string_builder_push(sb, "\n");
             current_group.count += empty_lines;
         }
@@ -1092,6 +1097,7 @@ preprocess_file(Preprocessor* preprocessor,
         array_push(preprocessor->source_groups, current_group);
     }
     
+#if 0
     if (array_count(preprocessor->if_result_stack) != initial_if_result_stack_count) {
         // TODO(Alexander): add error message and clear if stack
         if (!preprocessor->abort_curr_file) {
@@ -1105,9 +1111,7 @@ preprocess_file(Preprocessor* preprocessor,
             array_push(preprocessor->if_result_stack, IfStk_Taken);
         }
     }
-    
-    preprocessor->tokenizer = prev_tokenizer; // restore previous tokenizer
-    //preprocessor->curr_branch_taken = array_pop(preprocessor->if_result_stack);
+#endif
     
     return string_builder_to_string_nocopy(sb);
 }

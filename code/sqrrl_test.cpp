@@ -129,10 +129,12 @@ run_compiler_tests(string filename,
         return -1;
     }
     
+    
     // Preprocess
     Preprocessor preprocessor = {};
-    string preprocessed_source = preprocess_file(&preprocessor, 
-                                                 file.source, file.abspath, file.extension, file.index);
+    push_file_to_preprocess(&preprocessor, 
+                            file.source, file.abspath, file.extension, file.index, false);
+    string preprocessed_source = preprocess_file(&preprocessor);
     
     // Parse preprocessed source
     Tokenizer tokenizer = {};

@@ -187,10 +187,11 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         map_put(preprocessor.macros, ident, define_target);
     }
     
-    string preprocessed_source = preprocess_file(&preprocessor, 
-                                                 file.source, file.abspath, file.extension, file.index);
+    push_file_to_preprocess(&preprocessor, 
+                            file.source, file.abspath, file.extension, file.index, false);
+    string preprocessed_source = preprocess_file(&preprocessor);
     
-    //pln("Preprocessed % lines", f_s64(preprocessor.preprocessed_lines));
+    pln("Preprocessed % lines", f_s64(preprocessor.preprocessed_lines));
     
     bool flag_print_ast = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_AST));
     bool flag_run_ast_interp = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_RUN_AST_INTERP));
@@ -200,11 +201,11 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     bool flag_print_asm = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_ASM));
     
     // TODO(alexander): temp printing source
-    //pln("Preprocessed source:\n%", f_string(preprocessed_source));
+    pln("Preprocessed source:\n%", f_string(preprocessed_source));
     //DEBUG_write_entire_file("preprocessed.sq", preprocessed_source.data,
     //(u32) preprocessed_source.count);
     
-#if 0
+#if 1
     // Source group debugging
     for_array(preprocessor.source_groups, group, index) {
         pln("group(%): file_index: %, line: %, offset: %, count: %\nSource:", f_int(index), f_uint(group->file_index), f_uint(group->line), f_umm(group->offset), f_umm(group->count));

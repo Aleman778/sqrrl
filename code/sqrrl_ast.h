@@ -255,25 +255,63 @@ struct Span_Data {
     u32 file_index;
 };
 
+smm
+calculate_line_number_from_byte_offset(array(smm)* lines, smm offset) {
+    smm low = 0;
+    smm high = array_count(lines) - 1;
+    
+    while (low <= high) {
+        if (offset >= lines[high]) {
+            return high;
+        }
+        
+        smm mid = (low + high) / 2;
+        
+        if (offset == lines[mid]) {
+            return mid;
+        }
+        
+        if (mid > 0 && offset >= lines[mid - 1] && offset < lines[mid]) {
+            return mid - 1;
+        }
+        
+        if (offset < lines[mid]) {
+            high = mid - 1;
+        } else {
+            low = mid + 1;
+        }
+    }
+    
+    return 0;
+}
+
 Span_Data
 calculate_span_data(array(smm)* lines, Span span) {
     smm offset = span.offset;
     
-    //pln("line count = %", f_int(array_count(lines)));
+    pln("span = %, %, %", f_int(span.offset), f_int(span.count), f_int(span.file_index));
+    pln("line count = %", f_int(array_count(lines)));
+    for (int i = 0; i < array_count(lines); i++) {
+        pln("line %: %", f_int(i), f_int(lines[i]));
+    }
     
-    Binary_Search_Result begin = binary_search(lines, offset, compare_smm);
+    
+    smm begin = calculate_line_number_from_byte_offset(lines, offset);
     smm span_end = (smm) span.offset + (smm) span.count;
-    Binary_Search_Result end = binary_search(lines, span_end, compare_smm);
+    smm end = calculate_line_number_from_byte_offset(lines, span_end);
     
-    if (begin.index > 0) {
-        begin.value = (smm*) begin.value - 1;
+    pln("begin = %, end %", f_int(begin), f_int(end));
+    
+    smm begin_offset = lines[begin];
+    if (begin > 0) {
+        begin_offset = begin_offset - 1; // TODO(Alexander): what is this for?
     }
     
     Span_Data result;
-    result.begin_line = (u32) begin.index;
-    result.begin_column = (u32) ((smm) span.offset - *((smm*) begin.value));
-    result.end_line = (u32) end.index;
-    result.end_column = (u32) ((smm) span.offset + (smm) span.count - *(smm*) end.value);
+    result.begin_line = (u32) begin;
+    result.begin_column = (u32) ((smm) span.offset - begin_offset);
+    result.end_line = (u32) end;
+    result.end_column = (u32) ((smm) span.offset + (smm) span.count - lines[end]);
     result.file_index = span.file_index;
     return result;
 }

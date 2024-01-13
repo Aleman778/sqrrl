@@ -27,8 +27,18 @@ enum If_Stk_Status {
     IfStk_Prev_Taken,
 };
 
+struct Preprocessor_State {
+    Tokenizer tokenizer;
+    u8* curr_line;
+    umm curr_line_number;
+    
+    bool is_c_or_cpp_file;
+    bool is_system_header;
+    bool is_valid;
+};
+
 struct Preprocessor {
-    Tokenizer* tokenizer;
+    array(Preprocessor_State)* file_stack;
     
     map(string_id, Preprocessor_Macro)* macros;
     map(string_id, bool)* macro_in_use;
@@ -43,14 +53,16 @@ struct Preprocessor {
     u32 curr_file_index;
     map(u32, u32)* loaded_file_indices;
     
-    b32 abort_curr_file;
-    b32 is_system_header;
     s32 error_count;
+    
+    bool abort_curr_file;
+    bool is_system_header;
 };
 
 internal void
 preprocess_error(Preprocessor* preprocessor, string message) {
-    Tokenizer* t = preprocessor->tokenizer;
+    
+    Tokenizer* t = &array_last(preprocessor->file_stack).tokenizer;
     preprocessor->error_count++;
     pln("%:%:%: error: %", 
         f_string(t->file), f_umm(t->line_number + 1), f_umm(t->column_number + 1),
@@ -65,6 +77,8 @@ void preprocess_expand_macro(Preprocessor* preprocessor,
                              Preprocessor_Macro macro, 
                              Replacement_List args);
 
+void push_file_to_preprocess(Preprocessor* preprocessor, 
+                             string source, string filepath, string extension, 
+                             int file_index, bool is_system_header);
 
-string preprocess_file(Preprocessor* preprocecssor, 
-                       string source, string filename, string extension, int file_index);
+string preprocess_file(Preprocessor* preprocecssor);

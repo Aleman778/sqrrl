@@ -409,6 +409,7 @@ load_texture(string filename,
     Image image = load_image(filename);
     return create_texture(image, min_filter, mag_filter, wrap_s, wrap_s);
 }
+
 struct Font {
     Texture texture;
     
@@ -535,8 +536,8 @@ main() {
     } else {
         ExitProcess(0);
     }
-    opengl.uniform_texture = glGetUniformLocation(opengl.program, (GLchar*) string_to_cstring("u_texture"));
-    opengl.uniform_mvp = glGetUniformLocation(opengl.program, (GLchar*) string_to_cstring("u_mvp"));
+    opengl.uniform_texture = glGetUniformLocation(opengl.program, "u_texture");
+    opengl.uniform_mvp = glGetUniformLocation(opengl.program, "u_mvp");
     
     v2 screen_size;
     

@@ -163,7 +163,9 @@ convert_bytecode_insn_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* modul
                  arg_index < call->arg_count;
                  arg_index++) {
                 int src_index = args[arg_index];
-                wasm_load_register(wasm, buf, src_index);
+                Bytecode_Type type = wasm_register_type(wasm, src_index);
+                wasm_push_stack_pointer(buf);
+                wasm_load_extend(buf, type, src_index*8);
             }
             
             if (bc->opcode == BC_CALL_INDIRECT) {
@@ -401,6 +403,8 @@ convert_bytecode_function_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* m
             wasm->stack_size += bc->a_index;
         }
     }
+    wasm->stack_size = align_forward(wasm->stack_size, 16);
+    pln("wasm->stack_size = %", f_int(wasm->stack_size));
     
     wasm->slots = arena_push_array_of_structs(&wasm->arena, register_count, WASM_Slot);
     
@@ -575,11 +579,11 @@ convert_to_wasm_module(Bytecode* module, Data_Packer* data_packer, s64 stk_usage
     
     // TODO(Alexander): make configurable
     u32 stack_size = kilobytes(32); // half a WASM page
+    u32 rdata_size = (u32) align_forward(arena_total_used(&data_packer->rdata_arena), 16);
     WASM_Assembler wasm = {};
-    wasm.rdata_offset = stack_size;
-    wasm.data_offset = stack_size + (u32) arena_total_used(&data_packer->rdata_arena);
-    u32 memory_size = (u32) (arena_total_used(&data_packer->rdata_arena) +
-                             arena_total_used(&data_packer->data_arena));
+    wasm.rdata_offset = (u32) align_forward(stack_size, 16);
+    wasm.data_offset = wasm.rdata_offset + rdata_size;
+    u32 memory_size = rdata_size + (u32) arena_total_used(&data_packer->data_arena);
     
     // Define module
     push_u32(buf, 0x6D736100); // Signature (.asm)
@@ -857,6 +861,8 @@ convert_to_wasm_module(Bytecode* module, Data_Packer* data_packer, s64 stk_usage
     push_leb128_u32(buf, memory_size); // size of memory
     u8* dest = buf->data + buf->curr_used;
     u32 copied_size = (u32) copy_memory_block(dest, data_packer->rdata_arena.current_block);
+    copied_size = (u32) align_forward(copied_size, 16);
+    // TODO: for safety clear padding bits
     dest = buf->data + buf->curr_used + copied_size;
     copied_size += (u32) copy_memory_block(dest, data_packer->data_arena.current_block);
     assert(memory_size == copied_size);

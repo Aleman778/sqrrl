@@ -1,0 +1,144 @@
+#include <opengl.sq>
+
+GLuint
+opengl_compile_shader(GLenum shader_type, string source) {
+    GLuint shader = glCreateShader(shader_type);
+    
+    glShaderSource(shader, 1, 
+                   cast(GLchar**) &source.data, 
+                   cast(GLint*) &source.count);
+    glCompileShader(shader);
+    
+    GLint success;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        // TODO: COMPILER BUG: wasn't possible to just use a stack allocated array?!??!
+        string message;
+        message.data = (u8*) alloc(1024);
+        message.count = 0;
+        glGetShaderInfoLog(shader, 1024, cast(GLsizei*) &message.count, cast(GLchar*) message.data);
+        print(message);
+        free(message.data);
+        return 0;
+    }
+    
+    return shader;
+}
+
+GLuint
+opengl_compile_shader_program(string vertex_source, string fragment_source) {
+    GLuint program = glCreateProgram();
+    GLuint vs = opengl_compile_shader(GL_VERTEX_SHADER, vertex_source);
+    GLuint fs = opengl_compile_shader(GL_FRAGMENT_SHADER, fragment_source);
+    if (vs && fs) {
+        glAttachShader(program, vs);
+        glAttachShader(program, fs);
+        glLinkProgram(program);
+        glDeleteShader(vs);
+        glDeleteShader(fs);
+        
+        int success;
+        glGetProgramiv(program, GL_LINK_STATUS, &success);
+        if (!success) {
+            // TODO: COMPILER BUG: wasn't possible to just use a stack allocated array?!??!
+            string message;
+            message.data = (u8*) alloc(1024);
+            message.count = 0;
+            glGetProgramInfoLog(program, 1024, cast(GLsizei*) &message.count, cast(GLchar*) message.data);
+            print(message);
+            free(message.data);
+            return 0;
+        }
+    }
+    
+    return program;
+}
+
+GLuint
+opengl_create_texture(void* data,
+                      int width,
+                      int height,
+                      int num_components) {
+    
+    GLuint result;
+    glGenTextures(1, &result);
+    
+    glBindTexture(GL_TEXTURE_2D, result);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    
+    GLenum format;
+    switch (num_components) {
+        case 1: { format = GL_RED; }
+        case 2: { format = GL_RG; }
+        case 3: { format = GL_RGB; }
+        case 4: { format = GL_RGBA; }
+    }
+    
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0,
+                 format, GL_UNSIGNED_BYTE, data);
+    
+    return result;
+}
+
+enum Texture_Filter {
+    Point,
+    Bilinear,
+    Trilinear
+}
+
+void
+opengl_set_texture_filter(Texture_Filter filter) {
+    switch (filter) {
+        case Texture_Filter.Point: {
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        }
+        
+        case Texture_Filter.Bilinear: {
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        }
+        
+        case Texture_Filter.Trilinear: {
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            // TODO(Alexander): generate mipmaps!
+        }
+    }
+}
+
+enum Texture_Wrap {
+    Repeat,
+    Clamp,
+    Mirror_Repeat,
+    Mirror_Clamp,
+}
+
+void
+opengl_set_texture_wrap(Texture_Wrap wrap) {
+    switch (wrap) {
+        case Texture_Wrap.Repeat: {
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        }
+        
+        case Texture_Wrap.Clamp: {
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        }
+        
+        case Texture_Wrap.Mirror_Repeat: {
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+        }
+        
+        case Texture_Wrap.Mirror_Clamp: {
+            // TODO(Alexander): add constants for this (it might not be 3.3 compatible)
+            //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_CLAMP_TO_EDGE);
+            //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_CLAMP_TO_EDGE);
+        }
+    }
+}

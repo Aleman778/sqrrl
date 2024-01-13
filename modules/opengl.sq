@@ -1,3 +1,4 @@
+
 #if BUILD_ABI_WINDOWS
 #include "win32_opengl.sq"
 
@@ -8,30 +9,6 @@
 #ifndef GLAPI
 #error GLAPI not set
 #endif
-
-typedef void GLvoid;
-typedef u32 GLenum;
-typedef f32 GLfloat;
-typedef s32 GLint;
-typedef s32 GLsizei;
-typedef u32 GLbitfield;
-typedef f64 GLdouble;
-typedef u32 GLuint;
-typedef u8 GLboolean;
-typedef u8 GLubyte;
-typedef f32 GLclampf;
-typedef f64 GLclampd;
-typedef smm GLsizeiptr;
-typedef smm GLintptr;
-typedef s8 GLchar;
-typedef s16 GLshort;
-typedef s8 GLbyte;
-typedef u16 GLushort;
-typedef u16 GLhalf;
-//typedef struct __GLsync* GLsync;
-typedef void* GLsync;
-typedef u64 GLuint64;
-typedef s64 GLint64;
 
 struct OpenGL_Info {
     string vendor;

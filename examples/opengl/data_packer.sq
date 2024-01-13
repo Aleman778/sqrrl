@@ -1,0 +1,131 @@
+
+#include <basic.sq>
+#include <stb_image.sq>
+
+struct Image {
+    u8* data;
+    int width;
+    int height;
+    int num_components;
+}
+
+Image
+load_image(string filename) {
+    Image result;
+    cstring cfilename = string_to_cstring(filename);
+    u8* data = stbi_load(cfilename, &result.width, &result.height, &result.num_components, 0);
+    cstring_free(cfilename);
+    
+    if (!data) {
+        pln("Failed to load image `%`", filename);
+    }
+    
+    result.data = data;
+    return result;
+}
+
+
+void
+platform_error(string msg) {
+    pln("error: %", msg);
+}
+
+typedef void* File_Handle;
+
+File_Handle
+open_file_for_writing(cstring filename) {
+    DeleteFileA(filename);
+    HANDLE file_handle = CreateFileA(filename, GENERIC_WRITE, FILE_SHARE_WRITE, 0, OPEN_ALWAYS, 0, 0);
+    
+    if (file_handle == INVALID_HANDLE_VALUE) {
+        platform_error(string_print("file `%` is not possible to write to", filename));
+        return 0;
+    }
+    
+    return (File_Handle) file_handle;
+}
+
+bool
+write_file(File_Handle file_handle, void* data, u32 size) {
+    DWORD out_size = 0;
+    bool success = (bool) WriteFile((HANDLE) file_handle, data, size, &out_size, 0);
+    return out_size == size && success;
+}
+
+bool
+write_file(File_Handle file_handle, string s) {
+    return write_file(file_handle, s.data, (u32) s.count);
+}
+
+bool
+close_file(File_Handle file_handle) {
+    return (bool) CloseHandle((HANDLE) file_handle);
+}
+
+bool
+write_entire_file(cstring filename, void* data, u32 size) {
+    File_Handle file_handle = open_file_for_writing(filename);
+    bool success = write_file(file_handle, data, size);
+    close_file(file_handle);
+    return success;
+}
+
+void
+free_file_memory(void* memory) {
+    VirtualFree(memory, 0, MEM_RELEASE);
+}
+
+string
+read_entire_file(File_Handle file_handle, cstring filename) {
+    string result;
+    
+    LARGE_INTEGER file_size;
+    if (GetFileSizeEx(file_handle, &file_size)) {
+        if ((u32) file_size.QuadPart > U32_MAX) {
+            platform_error(string_print("file `%` exeeds maximum file size of 4GB", filename));
+            return result;
+        }
+        
+        result.count = file_size.QuadPart;
+        result.data = (u8*) VirtualAlloc(0, result.count, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+        
+        if (result.data) {
+            if (!ReadFile(file_handle, result.data, (u32) result.count, 0, 0)) {
+                platform_error(string_print("failed to read file `%`, win32 error code: `0x%` see\nhttps://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes for more info", 
+                                            filename, GetLastError()));
+                
+                free_file_memory(result.data);
+                result.count = 0;
+                result.data = 0;
+            }
+            
+        } else {
+            platform_error(string_print("out of memory when allocating space for `%`", filename));
+        }
+        
+    } else {
+        platform_error(string_print("failed to read file `%`", filename));
+    }
+    
+    return result;
+}
+
+int
+main() {
+    Image img = load_image("../examples/opengl/grass.jpg");
+    pln("image = %", img);
+    
+    
+    File_Handle file = open_file_for_writing("simple.data");
+    if (!file) {
+        return 1;
+    }
+    
+    int size = img.width*img.height*img.num_components;
+    write_file(file, string_print("grass.jpg,image,%,%,%,%;", 
+                                  size, img.width, img.height, img.num_components));
+    write_file(file, img.data, size);
+    close_file(file);
+    
+    return 0;
+}

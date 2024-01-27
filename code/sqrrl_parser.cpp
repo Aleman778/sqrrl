@@ -766,6 +766,93 @@ parse_block_statement(Parser* parser, Token* token=0) {
     return result;
 }
 
+inline internal Ast*
+parse_if_directive_block(Parser* parser) {
+    Token first_token = peek_token(parser);
+    
+    Ast* result = parse_block_or_single_statement(parser);
+    Ast* list_head = 0;
+    while (!peek_token_match(parser, Token_Directive, false)) {
+        if (!list_head) {
+            list_head = push_ast_node(parser, &first_token);
+            list_head->kind = Ast_Compound;
+            list_head->Compound.node = result;
+            list_head->Compound.next = push_ast_node(parser);
+            result = list_head;
+        }
+        
+        Ast* node = parse_block_or_single_statement(parser);
+        Ast* next = list_head->Compound.next;
+        next->kind = Ast_Compound;
+        next->Compound.node = node;
+        next->Compound.next = push_ast_node(parser);
+        list_head->Compound.next = next;
+        list_head = next;
+    }
+    
+    pln("parse_if_directive: %", f_ast(result));
+    return result;
+}
+
+Ast*
+parse_directive(Parser* parser, bool inside_if_scope=false) {
+    assert(parser->current_token.type == Token_Directive);
+    Token start_token = parser->current_token;
+    Ast* result = 0;
+    if (!next_token_if_matched(parser, Token_Ident, true)) {
+        return result;
+    }
+    
+    Token token = parser->current_token;
+    Var keyword = (Var) vars_save_string(token.source);
+    switch (keyword) {
+        case Kw_if:
+        case Sym_elif: {
+            if (keyword == Sym_elif && !inside_if_scope) {
+                parse_error(parser, start_token, string_lit("`#elif` found outside `#if` scope"));
+            }
+            
+            
+            result = push_ast_node(parser);
+            result->kind = Ast_If_Directive;
+            result->If_Directive.cond = parse_expression(parser);
+            result->If_Directive.then_block = parse_if_directive_block(parser);
+            
+            if (next_token_if_matched(parser, Token_Directive)) {
+                if (parse_keyword(parser, Sym_endif, false)) {
+                    result->If_Directive.else_block = push_ast_node(parser);
+                    
+                } else {
+                    result->If_Directive.else_block = parse_directive(parser, true);
+                }
+            } else {
+                result->If_Directive.else_block = push_ast_node(parser);
+            }
+        } break;
+        
+        case Kw_else: {
+            if (inside_if_scope) {
+                result = parse_if_directive_block(parser);
+                if (next_token_if_matched(parser, Token_Directive)) {
+                    parse_keyword(parser, Sym_endif);
+                }
+            } else {
+                parse_error(parser, start_token, string_lit("`#else` found outside `#if` scope"));
+            }
+        } break;
+        
+        case Sym_endif: {
+            parse_error(parser, start_token, string_lit("`#endif` found outside `#if` scope"));
+        } break;
+        
+        default: {
+            parse_error(parser, start_token, string_print("`#%` is not a directive", f_var(keyword)));
+        } break;
+    }
+    
+    return result;
+}
+
 Ast*
 parse_statement(Parser* parser, bool report_error) {
     Token token = peek_token(parser);
@@ -945,6 +1032,10 @@ parse_statement(Parser* parser, bool report_error) {
                 }
             }
         }
+    } else if (token.type == Token_Directive) {
+        next_token(parser);
+        result = parse_directive(parser);
+        
     } else if (token.type == Token_String) {
         next_token(parser);
         
@@ -952,9 +1043,11 @@ parse_statement(Parser* parser, bool report_error) {
         token = next_token(parser);
         result = parse_block_statement(parser, &token);
         result->Block_Stmt.context = context;
+        
     } else if (token.type == Token_Open_Brace) {
         result = parse_block_statement(parser, &token);
-    } if (token.type == Token_Open_Bracket) {
+        
+    } else if (token.type == Token_Open_Bracket) {
         Ast* type = parse_type(parser, true);
         result = parse_assign_statement(parser, type);
     }
@@ -1186,7 +1279,7 @@ parse_switch_case(Parser* parser) {
         result->Switch_Case.cond = parse_expression(parser, false);
         next_token_if_matched(parser, Token_Colon);
         if (peek_token_match(parser, Token_Open_Brace, false)) {
-            result->Switch_Case.stmt = parse_block_statement(parser, false);
+            result->Switch_Case.stmt = parse_block_or_single_statement(parser);
         } else {
             Token token = peek_token(parser);
             if (!(token.type == Token_Ident && vars_save_string(token.source) == Kw_case)) {
@@ -1819,35 +1912,19 @@ parse_pointer_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_M
     return base_type;
 }
 
-internal void
-push_static_ast_node(Parser* parser, Ast_File* ast_file, Ast* node) {
-    if (!ast_file->static_block_first || !ast_file->static_block_last) {
-        Ast* first = push_ast_node(parser);
-        first->kind = Ast_Compound;
-        ast_file->static_block_first = first;
-        ast_file->static_block_last = first;
-    }
-    
-    Ast* next = push_ast_node(parser);
-    next->kind = Ast_Compound;
-    Ast* last = ast_file->static_block_last;
-    last->Compound.node = node;
-    last->Compound.next = next;
-    ast_file->static_block_last = last->Compound.next;
-}
-
 void
 register_top_level_declaration(Parser* parser, Ast_File* ast_file, 
                                Ast* decl, Ast* attributes, Ast_Decl_Modifier mods) {
-    if (decl->kind < Ast_Stmt_Begin && decl->kind > Ast_Stmt_End) {
-        // TODO(Alexander): we need to decide what to do about this?
-        unimplemented;
-        return;
-    }
     
     switch (decl->kind) {
         case Ast_Block_Stmt: {
             for_compound(decl->Block_Stmt.stmts, it) {
+                register_top_level_declaration(parser, ast_file, it, attributes, mods);
+            }
+        } break;
+        
+        case Ast_Compound: {
+            for_compound(decl, it) {
                 register_top_level_declaration(parser, ast_file, it, attributes, mods);
             }
         } break;
@@ -1858,7 +1935,6 @@ register_top_level_declaration(Parser* parser, Ast_File* ast_file,
             if (ident && (decl->Decl_Stmt.stmt || (mods & AstDeclModifier_External))) {
                 
                 // TODO(Alexander): decls is deprecated use units instead
-                map_put(ast_file->decls, ident, decl);
                 
                 // Replicate attributes and modifiers to decl/type
                 if (decl->Decl_Stmt.type) {
@@ -1915,14 +1991,11 @@ register_top_level_declaration(Parser* parser, Ast_File* ast_file,
             string_id ident = try_unwrap_ident(decl->Assign_Stmt.ident);
             if (ident) {
                 // TODO(Alexander): decls is deprecated use units instead
-                map_put(ast_file->decls, ident, decl);
                 
                 Compilation_Unit comp_unit = {};
                 comp_unit.ident = ident;
                 comp_unit.ast = decl;
                 array_push(ast_file->units, comp_unit);
-                
-                push_static_ast_node(parser, ast_file, decl);
             }
         } break;
         
@@ -1940,7 +2013,6 @@ register_top_level_declaration(Parser* parser, Ast_File* ast_file,
                         
                     } else {
                         string_id ident = ast_unwrap_ident(part);
-                        map_put(ast_file->decls, ident, decl);
                         
                         comp_unit.ident = ident;
                         array_push(ast_file->units, comp_unit);
@@ -1949,7 +2021,6 @@ register_top_level_declaration(Parser* parser, Ast_File* ast_file,
             } else {
                 if (decl->Typedef.ident) {
                     string_id ident = ast_unwrap_ident(decl->Typedef.ident);
-                    map_put(ast_file->decls, ident, decl);
                     comp_unit.ident = ident;
                     array_push(ast_file->units, comp_unit);
                 } else {
@@ -1960,8 +2031,24 @@ register_top_level_declaration(Parser* parser, Ast_File* ast_file,
             }
         } break;
         
+        case Ast_If_Directive: {
+            Value value = comptime_eval_expression(parser->tcx, decl->If_Directive.cond);
+            if (is_integer(value)) {
+                if (value_to_bool(value)) {
+                    register_top_level_declaration(parser, ast_file, decl->If_Directive.then_block, 0, 0);
+                    
+                } else {
+                    register_top_level_declaration(parser, ast_file, decl->If_Directive.else_block, 0, 0);
+                }
+                
+            } else {
+                // Evaluate the if later when we have more information
+                array_push(ast_file->if_directives, decl);
+            }
+        } break;
+        
         default: {
-            push_static_ast_node(parser, ast_file, decl);
+            unimplemented;
         } break;
     }
 }
@@ -2057,13 +2144,6 @@ Ast_File
 parse_file(Parser* parser) {
     Ast_File result = {};
     
-    // If source_groups are used start by tokenizing the first
-    if (parser->source_groups && array_count(parser->source_groups) > 0) {
-        Source_Group* group = parser->source_groups + parser->curr_source_group_index;
-        tokenizer_set_source_group(parser->tokenizer, group);
-        parser->c_compatibility_mode = group->c_compatibility_mode;
-    }
-    
     Token token = peek_token(parser);
     while (is_token_valid(token)) {
         
@@ -2086,17 +2166,6 @@ next_semantical_token(Parser* parser) {
     //NOTE(alexander): filtering of comments and whitespace, maybe parameterize this later...
     Token token = advance_token(parser->tokenizer);
     while (!is_semantical_token(token) || (token.type == Token_EOF)) {
-        if (token.type == Token_EOF && parser->source_groups) {
-            parser->curr_source_group_index++;
-            if (array_count(parser->source_groups) > parser->curr_source_group_index) {
-                Source_Group* group = parser->source_groups + parser->curr_source_group_index;
-                tokenizer_set_source_group(parser->tokenizer, group);
-                parser->c_compatibility_mode = group->c_compatibility_mode;
-                token = advance_token(parser->tokenizer);
-                continue;
-            }
-        }
-        
         if (token.type == Token_EOF) {
             tokenizer_finalize(parser->tokenizer);
             return token;

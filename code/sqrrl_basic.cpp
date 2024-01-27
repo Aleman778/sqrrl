@@ -123,7 +123,7 @@ print(const char* format...) {
                 } break;
                 
                 case FormatType_ast: {
-                    print_ast(va_arg(args, Ast*), 0);
+                    print_ast(va_arg(args, Ast*));
                 } break;
                 
                 case FormatType_bytecode_type: {

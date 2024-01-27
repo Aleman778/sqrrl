@@ -227,6 +227,7 @@ tokenizer_set_substring(Tokenizer* tokenizer, string substring,
 }
 
 struct Source_Group {
+    umm file_offset;
     umm offset;
     umm count;
     
@@ -240,14 +241,20 @@ struct Source_Group {
 inline void
 tokenizer_set_source_group(Tokenizer* tokenizer, Source_Group* group) {
     u8* data = tokenizer->source.data + group->offset;
-    tokenizer->start = data;
-    
     string source_substring = create_string(group->count, data);
     tokenizer_set_substring(tokenizer, source_substring, group->line, group->column, group->file_index);
     
     // TODO(Alexander): maybe cache file_index?
     Loaded_Source_File* file = get_source_file_by_index(group->file_index);
     tokenizer->file = file->abspath;
+    if (group->line == 0) {
+        array_free(tokenizer->lines);
+    }
+    
+    tokenizer->start = data;
+    if (tokenizer->lines) {
+        tokenizer->start -= array_last(tokenizer->lines);
+    }
 }
 
 struct Tokenizer_State {

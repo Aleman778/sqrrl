@@ -42,7 +42,7 @@ enum Compiler_Task {
 #include "sqrrl_platform.h"
 #include "sqrrl_intrinsics.h"
 #include "sqrrl_vars.h"
-#include "sqrrl_source.h"
+#include "sqrrl_source_file.h"
 #include "sqrrl_tokenizer.h"
 #include "sqrrl_bytecode.h"
 #include "sqrrl_value.h"

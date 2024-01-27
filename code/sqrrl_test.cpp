@@ -132,15 +132,18 @@ run_compiler_tests(string filename,
     
     // Preprocess
     Preprocessor preprocessor = {};
-    push_file_to_preprocess(&preprocessor, 
-                            file.source, file.abspath, file.extension, file.index, false);
-    string preprocessed_source = preprocess_file(&preprocessor);
+    //push_file_to_preprocess(&preprocessor, 
+    //file.source, file.abspath, file.extension, file.index, false);
+    // TODO(Alexander): fixme
+    
+    //string preprocessed_source = preprocess_file(&preprocessor);
+    string preprocessed_source = string_lit("");
     
     // Parse preprocessed source
     Tokenizer tokenizer = {};
     tokenizer_set_source(&tokenizer, preprocessed_source, filename, file.index);
     Parser parser = {};
-    parser.source_groups = preprocessor.source_groups;
+    //parser.source_groups = preprocessor.source_groups;
     parser.tokenizer = &tokenizer;
     Ast_File ast_file = parse_file(&parser);
     if (ast_file.error_count > 0) {

@@ -123,6 +123,13 @@ AST(Return_Stmt,       "return", struct {       \
 Ast* expr;                                      \
 })                                              \
 AST_GROUP(Stmt_End,    "statement")             \
+AST_GROUP(Directive_Begin,    "directive")             \
+AST(If_Directive,       "#if", struct {       \
+Ast* cond;                                      \
+Ast* then_block;                                \
+Ast* else_block;                                \
+})                                              \
+AST_GROUP(Directive_End,    "directive")             \
 AST_GROUP(Type_Begin,  "type")                  \
 AST(Named_Type,        "named", Ast*)           \
 AST(Array_Type,        "array", struct {        \
@@ -257,6 +264,8 @@ struct Span_Data {
 
 smm
 calculate_line_number_from_byte_offset(array(smm)* lines, smm offset) {
+    if (!lines) return 0;
+    
     smm low = 0;
     smm high = array_count(lines) - 1;
     
@@ -289,23 +298,19 @@ Span_Data
 calculate_span_data(array(smm)* lines, Span span) {
     smm offset = span.offset;
     
-    pln("span = %, %, %", f_int(span.offset), f_int(span.count), f_int(span.file_index));
-    pln("line count = %", f_int(array_count(lines)));
-    for (int i = 0; i < array_count(lines); i++) {
-        pln("line %: %", f_int(i), f_int(lines[i]));
-    }
-    
+    //pln("span = %, %, %", f_int(span.offset), f_int(span.count), f_int(span.file_index));
+    //pln("line count = %", f_int(array_count(lines)));
+    //for (int i = 0; i < array_count(lines); i++) {
+    //pln("line %: %", f_int(i), f_int(lines[i]));
+    //}
     
     smm begin = calculate_line_number_from_byte_offset(lines, offset);
     smm span_end = (smm) span.offset + (smm) span.count;
     smm end = calculate_line_number_from_byte_offset(lines, span_end);
     
-    pln("begin = %, end %", f_int(begin), f_int(end));
+    //pln("begin = %, end %", f_int(begin), f_int(end));
     
     smm begin_offset = lines[begin];
-    if (begin > 0) {
-        begin_offset = begin_offset - 1; // TODO(Alexander): what is this for?
-    }
     
     Span_Data result;
     result.begin_line = (u32) begin;
@@ -361,8 +366,6 @@ struct Bytecode_Function;
 
 struct Compilation_Unit {
     Ast* ast;
-    Interp* interp;
-    Value interp_result;
     string_id ident;
     
     Bytecode_Function* bytecode_function;
@@ -373,11 +376,10 @@ struct Compilation_Unit {
 };
 
 struct Ast_File {
-    Ast_Decl_Table* decls;
-    Ast* static_block_first; // compound, start of linked list
-    Ast* static_block_last; // compound, end of linked list
     s32 error_count;
     
+    array(Ast*)* if_directives;
+    array(Ast*)* macro_directives;
     array(Compilation_Unit)* units;
 };
 
@@ -419,6 +421,16 @@ is_ast_expr(Ast* ast) {
 inline bool
 is_ast_stmt(Ast* ast) {
     return ast && ast->kind > Ast_Stmt_Begin && ast->kind < Ast_Stmt_End;
+}
+
+inline bool
+is_ast_directive(Ast* ast) {
+    return ast && ast->kind > Ast_Directive_Begin && ast->kind < Ast_Directive_End;
+}
+
+inline bool
+is_ast_stmt_or_directive(Ast* ast) {
+    return ast && ast->kind > Ast_Stmt_Begin && ast->kind < Ast_Directive_End;
 }
 
 inline bool
@@ -625,7 +637,7 @@ string_builder_push(String_Builder* sb, Ast_Decl_Modifier mods) {
 }
 
 void
-string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spacing=0) {
+string_builder_push(String_Builder* sb, Ast* node, u32 spacing=0) {
     if (!node || node->kind == Ast_Exported_Data) {
         return;
     }
@@ -658,7 +670,7 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
         } break;
         
         case Ast_Attribute: {
-            string_builder_push(sb, node->Attribute.expr, tokenizer, spacing);
+            string_builder_push(sb, node->Attribute.expr, spacing);
         } break;
         
         case Ast_Aggregate_Expr: {
@@ -667,20 +679,20 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
             string_builder_push_format(sb, "(First_Index %", 
                                        f_smm(node->Aggregate_Expr.first_index));
             string_builder_push(sb, ")");
-            string_builder_push(sb, node->Aggregate_Expr.elements, tokenizer, spacing);
+            string_builder_push(sb, node->Aggregate_Expr.elements, spacing);
         } break;
         
         case Ast_Assign_Stmt: {
             string_builder_push(sb, node->Assign_Stmt.mods);
-            string_builder_push(sb, node->Assign_Stmt.type, tokenizer, spacing);
-            string_builder_push(sb, node->Assign_Stmt.ident, tokenizer, spacing);
-            string_builder_push(sb, node->Assign_Stmt.expr, tokenizer, spacing);
+            string_builder_push(sb, node->Assign_Stmt.type, spacing);
+            string_builder_push(sb, node->Assign_Stmt.ident, spacing);
+            string_builder_push(sb, node->Assign_Stmt.expr, spacing);
         } break;
         
         case Ast_Unary_Expr: {
             assert_enum(Op, node->Unary_Expr.op);
             string_builder_push_format(sb, " (%)", f_cstring(operator_strings[node->Unary_Expr.op]));
-            string_builder_push(sb, node->Unary_Expr.first, tokenizer, spacing);
+            string_builder_push(sb, node->Unary_Expr.first, spacing);
         } break;
         
         case Ast_Binary_Expr: {
@@ -693,44 +705,38 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
                 string_builder_push(sb, node->Binary_Expr.overload);
                 string_builder_push_format(sb, ">)");
             }
-            string_builder_push(sb, node->Binary_Expr.first, tokenizer, spacing);
-            string_builder_push(sb, node->Binary_Expr.second, tokenizer, spacing);
+            string_builder_push(sb, node->Binary_Expr.first, spacing);
+            string_builder_push(sb, node->Binary_Expr.second, spacing);
         } break;
         
         case Ast_Call_Expr: {
-            string_builder_push(sb, node->Call_Expr.ident, tokenizer, spacing);
-            string_builder_push(sb, node->Call_Expr.args, tokenizer, spacing);
+            string_builder_push(sb, node->Call_Expr.ident, spacing);
+            string_builder_push(sb, node->Call_Expr.args, spacing);
         } break;
         
         case Ast_Compound: {
             for_compound(node, child_node) {
-                string_builder_push(sb, child_node, tokenizer, spacing);
+                string_builder_push(sb, child_node, spacing);
             }
         } break;
         
         case Ast_Function_Type: {
             string_builder_push(sb, node->Function_Type.mods);
-            string_builder_push(sb, node->Function_Type.return_type, tokenizer, spacing);
-            string_builder_push(sb, node->Function_Type.ident, tokenizer, spacing);
-            string_builder_push(sb, node->Function_Type.attributes, tokenizer, spacing);
-            string_builder_push(sb, node->Function_Type.arguments, tokenizer, spacing);
+            string_builder_push(sb, node->Function_Type.return_type, spacing);
+            string_builder_push(sb, node->Function_Type.ident, spacing);
+            string_builder_push(sb, node->Function_Type.attributes, spacing);
+            string_builder_push(sb, node->Function_Type.arguments, spacing);
         } break;
         
         default: {
             // otherwise parse all possible children
-            string_builder_push(sb, node->children[0], tokenizer, spacing);
-            string_builder_push(sb, node->children[1], tokenizer, spacing);
-            string_builder_push(sb, node->children[2], tokenizer, spacing);
-            string_builder_push(sb, node->children[3], tokenizer, spacing);
-            string_builder_push(sb, node->children[4], tokenizer, spacing);
+            string_builder_push(sb, node->children[0], spacing);
+            string_builder_push(sb, node->children[1], spacing);
+            string_builder_push(sb, node->children[2], spacing);
+            string_builder_push(sb, node->children[3], spacing);
+            string_builder_push(sb, node->children[4], spacing);
         } break;
     }
-    
-#if 0
-    // HACK(alexander): this is for debugging spans
-    Span_Data span = calculate_span_data(tokenizer->lines, node->span);
-    printf(" in examples/demo.sq:%u:%u to %u:%u", span.begin_line, span.begin_col, span.end_line, span.end_col);
-#endif
     
     spacing -= 2;
     string_builder_push(sb, ")");
@@ -740,10 +746,10 @@ string_builder_push(String_Builder* sb, Ast* node, Tokenizer* tokenizer, u32 spa
 }
 
 void
-print_ast(Ast* node, Tokenizer* t) {
+print_ast(Ast* node) {
     String_Builder sb = {};
     string_builder_alloc(&sb, 1000);
-    string_builder_push(&sb, node, t);
+    string_builder_push(&sb, node);
     string result = string_builder_to_string_nocopy(&sb);
     pln("%", f_string(result));
     string_builder_free(&sb);

@@ -1,7 +1,6 @@
 
 struct Parser {
-    array(Source_Group)* source_groups;
-    s32 curr_source_group_index;
+    Type_Context* tcx;
     
     Tokenizer* tokenizer;
     Token current_token;

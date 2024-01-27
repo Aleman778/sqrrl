@@ -5,7 +5,9 @@ struct Loaded_Source_File {
     string filename;
     string extension;
     string source;
-    array(smm)* lines; // TODO(Alexander): should we store lines here?
+    
+    array(smm)* lines;
+    
     u32 index;
     b32 is_valid;
     // TODO(Alexander): maybe flag for system header files?

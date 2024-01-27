@@ -34,8 +34,13 @@ utf8_advance_character(Tokenizer* tokenizer) {
     if (tokenizer->curr && tokenizer->curr != tokenizer->next) {
         tokenizer->column_number++;
         if (*tokenizer->curr == '\n') {
+            if (!tokenizer->lines) {
+                array_push(tokenizer->lines, 0);
+            }
             array_push(tokenizer->lines, (smm) (tokenizer->next - tokenizer->start));
-            //pln("Line %: `%`", f_umm(array_count(tokenizer->lines)), f_string(string_view(tokenizer->curr_line, tokenizer->next)));
+            //pln("Line % (%): `%`", f_umm(array_count(tokenizer->lines)),
+            //f_smm(array_last(tokenizer->lines)),
+            //f_string(string_view(tokenizer->curr_line, tokenizer->next)));
             tokenizer->curr_line = tokenizer->next;
             tokenizer->line_number++;
             tokenizer->column_number = 0;
@@ -64,7 +69,8 @@ utf8_advance_character(Tokenizer* tokenizer) {
     tokenizer->next += character.num_bytes;
 }
 
-u8 //NOTE(alexander): utf8_string needs atleast 4 slots available, returns number of slots actually used.
+//NOTE(alexander): utf8_string needs atleast 4 slots available, returns number of slots actually used.
+u8
 utf32_convert_to_utf8(u32 utf32, u8* utf8_string) {
     u8 bytes = 0;
     if (utf32 < 0x80) {

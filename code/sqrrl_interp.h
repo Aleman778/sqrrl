@@ -8,18 +8,15 @@ struct Interp_Scope {
 };
 
 struct Interp {
-    Interp_Scope* global_scope;
     Interp_Scope* curr_scope;
+    
+    Type_Context tcx;
     
     Memory_Arena stack;
     smm base_pointer;
     
     s32 block_depth;
     s32 error_count;
-    
-    // TODO(Alexander): maybe turn this into a bitflag later...
-    b32 set_undeclared_to_zero;
-    b32 flag_running_in_bytecode;
 };
 
 enum Interp_Value_Mod {

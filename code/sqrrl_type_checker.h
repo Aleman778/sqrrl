@@ -43,7 +43,7 @@ struct Dynamic_Library {
 
 struct Library_Imports {
     array(Library_Function)* functions;
-    bool resolve_at_compile_time;
+    bool resolve_at_runtime;
     
     bool is_valid;
 };
@@ -53,6 +53,8 @@ struct Library_Import_Table {
 };
 
 struct Type_Context {
+    Interp* interp;
+    
     Memory_Arena type_arena;
     
     Data_Packer* data_packer;
@@ -66,7 +68,6 @@ struct Type_Context {
     map(string_id, Type*)* global_type_table;
     
     map(Type*, Type*)* type_to_pointer;
-    ;
     
     map(Type*, Overloaded_Operator_List)* overloaded_operators;
     map(string_id, Overloaded_Function_List)* overloaded_functions;
@@ -80,9 +81,6 @@ struct Type_Context {
     
     Type* return_type;
     
-    // TODO(Alexander): this can be made into a bitflag later
-    b32 set_undeclared_to_s64;
-    
     s32 block_depth;
     s32 error_count;
     s32 warning_count;
@@ -92,7 +90,7 @@ void
 print_span_location(Span span) {
     if (span.file_index > 0) {
         Loaded_Source_File* file = get_source_file_by_index(span.file_index);
-        if (file) {
+        if (file && file->lines) {
             Span_Data result = calculate_span_data(file->lines, span);
             print("%:%:%: ", f_string(file->abspath), f_u32(result.begin_line + 1), f_u32(result.begin_column + 1));
         }

@@ -1,6 +1,7 @@
 
 // TODO(Alexander): add custom string interner to avoid bloating the global one.
 
+#if 0
 internal Value
 preprocess_parse_and_eval_constant_expression(Preprocessor* preprocessor, Tokenizer* t) {
     u8* base = t->curr;
@@ -205,16 +206,7 @@ preprocess_parse_define(Preprocessor* preprocessor, Tokenizer* t) {
 #endif
 }
 
-internal inline bool
-check_if_curr_branch_is_taken(array(If_Stk_Status)* if_stack) {
-    bool result = true;
-    int it_index = 0;
-    for_array_v (if_stack, it, _) {
-        result = result && (it == IfStk_Taken);
-    }
-    return result;
-}
-
+#if 0
 internal void
 preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
     Token token = advance_semantical_token(t);
@@ -306,12 +298,12 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                         map_put(preprocessor->loaded_file_indices, included_file.index, prev_num_includes + 1);
                         preprocessor->abort_curr_file = false;
                         
-                        push_file_to_preprocess(preprocessor, 
-                                                included_file.source, 
-                                                included_file.abspath, 
-                                                included_file.extension,
-                                                included_file.index,
-                                                prev_system_header_flag);
+                        //push_file_to_preprocess(preprocessor, 
+                        //included_file.source, 
+                        //included_file.abspath, 
+                        //included_file.extension,
+                        //included_file.index,
+                        //prev_system_header_flag);
                         preprocessor->abort_curr_file = false; // if #pragma once hit then restore it
                         preprocessor->curr_file_index = curr_file_index;
                     } else {
@@ -394,9 +386,8 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
                     if (symbol == Sym_ifndef) {
                         value = !value;
                     }
-#if 0
+                    
                     pln("#ifdef % == %", f_var(ident), f_bool(value));
-#endif
                     array_push(preprocessor->if_result_stack, value ? IfStk_Taken : IfStk_Not_Taken);
                     preprocessor->curr_branch_taken =
                         check_if_curr_branch_is_taken(preprocessor->if_result_stack);
@@ -416,6 +407,7 @@ preprocess_directive(Preprocessor* preprocessor, Tokenizer* t) {
         }
     }
 }
+#endif
 
 internal Preprocessor_Line
 preprocess_splice_next_line(Tokenizer* t) {
@@ -972,7 +964,6 @@ void
 push_file_to_preprocess(Preprocessor* preprocessor, 
                         string source, string filepath, string extension, 
                         int file_index, bool is_system_header) {
-    
     Preprocessor_State state = {};
     tokenizer_set_source(&state.tokenizer, source, filepath, file_index);
     state.tokenizer.end = state.tokenizer.curr;
@@ -1011,7 +1002,6 @@ pop_file(Preprocessor* preprocessor) {
     }
     return result;
 }
-
 string
 preprocess_file(Preprocessor* preprocessor) {
     String_Builder* sb = &preprocessor->output;
@@ -1021,21 +1011,20 @@ preprocess_file(Preprocessor* preprocessor) {
         return string_builder_to_string_nocopy(sb);
     }
     
-    
     Source_Group current_group = begin_source_group(preprocessor, 0);
-    Preprocessor_State* state = array_last_ptr(preprocessor->file_stack);
-    
-#if BUILD_DEBUG
-    if (state) string_builder_push(sb, string_print("\n// Preprocessing file: `%`...\n", f_string(state->tokenizer.file)));
-#endif
-    
-    while (state) {
+    Preprocessor_State* prev_state = array_last_ptr(preprocessor->file_stack);
+    while (array_count(preprocessor->file_stack)) {
+        
+        Preprocessor_State* state = array_last_ptr(preprocessor->file_stack);
+        if (prev_state != state) {
+            pln("== File: % ==", f_string(state->tokenizer.file));
+            end_source_group(preprocessor, current_group);
+            current_group = begin_source_group(preprocessor, (u32) state->curr_line_number);
+        }
+        prev_state = state;
+        
         if (state->tokenizer.curr >= state->tokenizer.end_of_file) {
             array_pop(preprocessor->file_stack);
-            state = array_last_ptr(preprocessor->file_stack);
-            if (state) {
-                string_builder_ensure_capacity(sb, state->tokenizer.source.count);
-            }
             continue;
         }
         
@@ -1114,4 +1103,339 @@ preprocess_file(Preprocessor* preprocessor) {
 #endif
     
     return string_builder_to_string_nocopy(sb);
+}
+#endif
+
+inline u8*
+preprocess_scan_identifier(u8* curr, u8* end) {
+    if (is_ident_start(*curr++)) {
+        while (curr < end) {
+            if (!is_ident_continue(*curr)) {
+                break;
+            }
+            curr++;
+        }
+    }
+    
+    return curr;
+}
+
+inline u8*
+preprocess_scan_to_char(u8* curr, u8* end, u8 expect) {
+    while (curr < end) {
+        if (*curr == expect) {
+            break;
+        }
+        curr++;
+    }
+    return curr;
+}
+
+enum {
+    State_Ready         = bit(0),
+    State_Line_Comment  = bit(1),
+    State_Block_Comment = bit(2),
+    State_Angle_Bracket = bit(3),
+    State_Double_Quote  = bit(4),
+    State_Directive     = bit(5),
+    State_Ident_Start   = bit(6),
+    State_Backslash     = bit(7),
+    State_End_Of_Line   = bit(8),
+    State_End_Of_File   = bit(9),
+    
+    End_States_Begin_Filename = State_Double_Quote | State_Angle_Bracket | State_End_Of_Line,
+    End_States_Main_Loop = State_Directive | State_Ident_Start,
+};
+
+struct Preprocess_Stm_Result {
+    u8* next;
+    int state;
+};
+
+inline Preprocess_Stm_Result
+preprocess_stm(u8* curr, u8* end, u32* line_number, int exit_states) {
+    int state = State_Ready;
+    
+    while (state & ~exit_states) {
+        if (curr >= end) {
+            state = State_End_Of_File;
+            break;
+        }
+        
+        u8 ch = *curr++;
+        if (state == State_Line_Comment) {
+            if (ch == '\\') {
+                curr = preprocess_scan_to_char(curr, end, '\n') + 1;
+                *line_number += 1;
+                
+            } else if (ch == '\n') {
+                state = State_End_Of_Line;
+                *line_number += 1;
+                break;
+            }
+            
+        } else if (state == State_Block_Comment) {
+            if (ch == '\n') {
+                *line_number += 1;
+                
+            } else if (ch == '*' && *curr == '/') {
+                curr++;
+                state = State_Ready;
+            }
+            
+        } else {
+            state = State_Ready;
+            
+            if (ch == '/' && *curr == '/') {
+                state = State_Line_Comment;
+                curr++;
+                
+            } else if (ch == '/' && *curr == '*') {
+                state = State_Block_Comment;
+                curr++;
+                
+            } else if (ch == '\n') {
+                *line_number += 1;
+                state = State_End_Of_Line;
+                
+            } else if (ch == '"') {
+                state = State_Double_Quote;
+                
+            } else if (ch == '<') {
+                state = State_Angle_Bracket;
+                
+            } else if (ch == '\\') {
+                state = State_Backslash;
+                
+            } else if (ch == '#') {
+                state = State_Directive;
+                
+            } else if (is_ident_start(ch)) {
+                state = State_Ident_Start;
+            }
+        }
+    }
+    
+    Preprocess_Stm_Result result = { curr, state };
+    return result;
+}
+
+inline u8*
+preprocess_scan_to_next_line(u8* curr, u8* end, u32* line_number) {
+    for (;;) {
+        curr = preprocess_stm(curr, end, line_number, State_End_Of_Line | State_Backslash).next;
+        if (curr[-1] == '\\') {
+            *line_number += 1;
+            curr = preprocess_scan_to_char(curr, end, '\n') + 1;
+        } else {
+            break;
+        }
+    }
+    return curr;
+}
+
+Value
+preprocess_eval_string(Preprocessor* p, string source) {
+    // TODO: We need to expand any preprocessor macros first!
+    Tokenizer tokenizer = {};
+    tokenizer_set_source(&tokenizer, source, p->file, p->file_index, p->line_number);
+    
+    Parser parser = {};
+    parser.tokenizer = &tokenizer;
+    
+    // TODO(Alexander): could really use some scratch memory to allocate the nodes
+    Ast* expr = parse_expression(&parser);
+    
+    if (parser.error_count > 0) {
+        pln("\nFailed while parsing source:\n`%`", f_string(source));
+        p->error_count += parser.error_count;
+        Value value = {};
+        return value;
+    }
+    
+    Type_Context tcx = {};
+    //tcx.set_undeclared_to_s64 = preprocessor->is_system_header;
+    type_infer_expression(&tcx, expr, t_s64, true);
+    
+    Interp interp = {};
+    //interp.set_undeclared_to_zero = preprocessor->is_system_header;
+    Interp_Value result = interp_expression(&interp, expr);
+    p->error_count += interp.error_count;
+    return result.value;
+}
+
+u8*
+preprocess_directive(Preprocessor* p) {
+    int begin_col_number = p->column_number;
+    
+    u8* curr = p->src + p->src_offset;
+    u8* end = p->src + p->src_count;
+    
+    u8* ident_begin = curr;
+    curr = preprocess_scan_identifier(ident_begin, end);
+    string ident_source = string_view(ident_begin, curr);
+    pln("%:%:%: directive `#%`", f_string(p->file), f_int(p->line_number + 1), f_int(begin_col_number + 1), f_string(ident_source));
+    
+    string_id ident = vars_save_string(ident_source);
+    switch (ident) {
+        case Sym_include: {
+            if (p->curr_branch_taken) {
+                curr = preprocess_stm(curr, end, &p->line_number, End_States_Begin_Filename).next;
+                
+                Loaded_Source_File included_file = {};
+                u8 ch = curr[-1];
+                if (ch == '"') {
+                    u8* file_begin = curr;
+                    curr = preprocess_scan_to_char(curr, end, '"');
+                    string filename = string_view(file_begin, curr++);
+                    
+                    included_file = read_entire_system_header_file(filename);
+                    pln("#include \"%\"\n", f_string(filename));
+                    
+                    
+                } else if (ch == '<') {
+                    u8* file_begin = curr;
+                    curr = preprocess_scan_to_char(curr, end, '>');
+                    string filename = string_view(file_begin, curr++);
+                    
+                    Loaded_Source_File* curr_file =
+                        get_source_file_by_index(p->file_index);
+                    included_file = read_entire_source_file(filename, curr_file);
+                    pln("#include <%>\n", f_string(filename));
+                    
+                } else {
+                    pln("error: `#include` expected `\"filename\"` or `<filename>`");
+                }
+                
+                if (included_file.is_valid) {
+                    unimplemented;
+                }
+            }
+        } break;
+        
+        case Sym_import: {
+            if (p->curr_branch_taken) {
+                unimplemented;
+            }
+        } break;
+        
+        case Sym_define: {
+            if (p->curr_branch_taken) {
+                unimplemented;
+            }
+        } break;
+        
+        case Kw_if: {
+            u8* begin_cond = curr;
+            curr = preprocess_scan_to_next_line(curr, end, &p->line_number);
+            
+            if (p->curr_branch_taken) {
+                string cond_source = string_view(begin_cond, curr - 1);
+                pln("#if%", f_string(cond_source));
+                
+                Value value = preprocess_eval_string(p, cond_source);
+                If_Stk_Status result = value_to_bool(value) ? IfStk_Taken : IfStk_Not_Taken;
+                array_push(p->if_result_stack, result);
+                p->curr_branch_taken = check_if_curr_branch_is_taken(p->if_result_stack);
+                
+            } else {
+                array_push(p->if_result_stack, IfStk_Not_Taken);
+            }
+        } break;
+        
+        case Sym_elif: {
+            u8* begin_cond = curr;
+            curr = preprocess_scan_to_next_line(curr, end, &p->line_number);
+            
+            if (array_count(p->if_result_stack) > 0) {
+                If_Stk_Status last_result = array_last(p->if_result_stack);
+                if (last_result) {
+                    p->curr_branch_taken = false;
+                    array_last(p->if_result_stack) = IfStk_Prev_Taken;
+                } else {
+                    string cond_source = string_view(begin_cond, curr - 1);
+                    Value value = preprocess_eval_string(p, cond_source);
+                    array_last(p->if_result_stack) = 
+                        value_to_bool(value) ? IfStk_Taken : IfStk_Not_Taken;
+                    
+                    p->curr_branch_taken =
+                        check_if_curr_branch_is_taken(p->if_result_stack);
+                }
+            } else {
+                preprocess_error(p, string_lit("`#elif` found outside `#if` scope"));
+            }
+        } break;
+        
+        case Kw_else: {
+            curr = preprocess_scan_to_next_line(curr, end, &p->line_number);
+            
+            if (array_count(p->if_result_stack) > 0) {
+                If_Stk_Status last_result = array_last(p->if_result_stack);
+                if (last_result) {
+                    p->curr_branch_taken = false;
+                    array_last(p->if_result_stack) = IfStk_Prev_Taken;
+                } else {
+                    array_last(p->if_result_stack) = IfStk_Taken;
+                    p->curr_branch_taken =
+                        check_if_curr_branch_is_taken(p->if_result_stack);
+                }
+            } else {
+                preprocess_error(p, string_lit("`#else` found outside `#if` scope"));
+            }
+            // TODO(Alexander): detect two else in row
+        } break;
+        
+        case Sym_endif: {
+            curr = preprocess_scan_to_next_line(curr, end, &p->line_number);
+            
+            if (array_count(p->if_result_stack) > 0) {
+                array_pop(p->if_result_stack);
+                p->curr_branch_taken =
+                    check_if_curr_branch_is_taken(p->if_result_stack);
+            } else {
+                preprocess_error(p, string_lit("`#endif` found outside `#if` scope"));
+            }
+        } break;
+    }
+    
+    p->src_offset = (u64) (curr - p->src);
+    return curr;
+}
+
+void
+preprocess(string source, string file, u32 file_index) {
+    
+    String_Builder string_builder = {};
+    String_Builder* sb = &string_builder;
+    
+    Preprocessor p = {};
+    p.src = source.data;
+    p.src_count = source.count;
+    p.file_index = file_index;
+    p.file = file;
+    string_builder_alloc(&p.dest, p.dest.curr_used + source.count);
+    
+    u8* curr = p.src;
+    u8* end = source.data + source.count;
+    while (curr < end) {
+        Preprocess_Stm_Result stm = preprocess_stm(curr, end, &p.line_number, End_States_Main_Loop);
+        if (stm.state == State_Directive) {
+            curr++;
+            p.src_offset = (u64) (stm.next - p.src);
+            curr = preprocess_directive(&p);
+            p.column_number = 0;
+            
+        } else if (stm.state == State_Ident_Start && p.curr_branch_taken) {
+            int begin_col_number = p.column_number;
+            u8* ident_begin = stm.next - 1;
+            curr = preprocess_scan_identifier(ident_begin, end);
+            
+            string ident_source = string_view(ident_begin, curr);
+            pln("%:%:%: ident `%`", f_string(file), f_int(p.line_number + 1), f_int(begin_col_number + 1), f_string(ident_source));
+            p.column_number = begin_col_number + (u32) ident_source.count;
+            
+        } else {
+            curr = stm.next;
+        }
+    }
 }

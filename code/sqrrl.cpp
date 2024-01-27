@@ -12,6 +12,7 @@
 #include "sqrrl_test.cpp"
 #include "sqrrl_tokenizer.cpp"
 #include "sqrrl_preprocessor.cpp"
+#include "sqrrl_comptime.cpp"
 #include "sqrrl_parser.cpp"
 #include "sqrrl_type_checker.cpp"
 #include "sqrrl_interp.cpp"
@@ -155,86 +156,75 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         }
     }
     
-    Preprocessor preprocessor = {};
+    
+    
+    Data_Packer data_packer = {};
+    data_packer.rdata_arena.flags |= ArenaPushFlag_Align_From_Zero;
+    data_packer.data_arena.flags |= ArenaPushFlag_Align_From_Zero;
+    
+    Interp interp = {};
+    Interp_Scope global_scope = {};
+    interp.curr_scope = &global_scope;
+    
+    Type_Context tcx = {};
+    tcx.interp = &interp;
+    tcx.target_backend = compiler.backend;
+    tcx.data_packer = &data_packer;
+    
     
     {
-        string zero = string_lit("0");
-        string one = string_lit("1");
-        Preprocessor_Macro define_target = {};
-        define_target.is_integral = true;
-        define_target.is_valid = true;
-        string_id ident;
+        // TODO(Alexander): update the values later
+        string_id ident = vars_save_cstring("OS_WINDOWS");
+        map_put(tcx.globals, ident, t_s64);
+        Interp_Value interp_value = {};
+        interp_value.value = create_signed_int_value(compiler.backend == Backend_X64);
+        interp_value.type = *t_s64;
+        push_interp_value(&interp, t_s64, ident, interp_value);
         
-        // TODO(Alexander): we need a better way to select (for cross compilation) or determine these flags
-        ident = vars_save_cstring("BUILD_ARCH_X64");
-        define_target.integral = compiler.backend == Backend_X64;
-        define_target.source = compiler.backend == Backend_X64 ? one : zero;
-        map_put(preprocessor.macros, ident, define_target);
+        ident = vars_save_cstring("ARCH_X64");
+        map_put(tcx.globals, ident, t_s64);
+        interp_value.value = create_signed_int_value(compiler.backend == Backend_X64);
+        interp_value.type = *t_s64;
+        push_interp_value(&interp, t_s64, ident, interp_value);
         
-        ident = vars_save_cstring("BUILD_ARCH_WASM32");
-        define_target.integral = compiler.backend == Backend_WASM;
-        define_target.source = compiler.backend == Backend_WASM ? one : zero;
-        map_put(preprocessor.macros, ident, define_target);
+        ident = vars_save_cstring("OS_LINUX");
+        map_put(tcx.globals, ident, t_s64);
+        interp_value.value = create_signed_int_value(0);
+        push_interp_value(&interp, t_s64, ident, interp_value);
         
-        ident = vars_save_cstring("BUILD_TARGET_WINDOWS");
-        define_target.integral = compiler.backend == Backend_X64;
-        define_target.source = compiler.backend == Backend_X64 ? one : zero;
-        map_put(preprocessor.macros, ident, define_target);
+        ident = vars_save_cstring("OS_WEB");
+        map_put(tcx.globals, ident, t_s64);
+        interp_value.value = create_signed_int_value(compiler.backend == Backend_WASM);
+        push_interp_value(&interp, t_s64, ident, interp_value);
         
-        ident = vars_save_cstring("BUILD_TARGET_WASM");
-        define_target.integral = compiler.backend == Backend_WASM;
-        define_target.source = compiler.backend == Backend_WASM ? one : zero;
-        map_put(preprocessor.macros, ident, define_target);
+        ident = vars_save_cstring("ARCH_WASM32");
+        map_put(tcx.globals, ident, t_s64);
+        interp_value.value = create_signed_int_value(compiler.backend == Backend_WASM);
+        push_interp_value(&interp, t_s64, ident, interp_value);
     }
     
-    push_file_to_preprocess(&preprocessor, 
-                            file.source, file.abspath, file.extension, file.index, false);
-    string preprocessed_source = preprocess_file(&preprocessor);
+    string preprocessed_source = file.source;
     
-    pln("Preprocessed % lines", f_s64(preprocessor.preprocessed_lines));
+    bool flag_print_ast = true; //value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_AST));
+    bool flag_run_ast_interp = false; //value_to_bool(preprocess_eval_macro(&preprocessor, Sym_RUN_AST_INTERP));
+    bool flag_print_bc  = false; //value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_BYTECODE));
+    bool flag_run_bc_interp  = false; //value_to_bool(preprocess_eval_macro(&preprocessor, Sym_RUN_BYTECODE_INTERP));
+    bool flag_print_asm_vreg = false; //value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_ASM_VREG));
+    bool flag_print_asm = false; //value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_ASM));
     
-    bool flag_print_ast = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_AST));
-    bool flag_run_ast_interp = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_RUN_AST_INTERP));
-    bool flag_print_bc  = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_BYTECODE));
-    bool flag_run_bc_interp  = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_RUN_BYTECODE_INTERP));
-    bool flag_print_asm_vreg = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_ASM_VREG));
-    bool flag_print_asm = value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_ASM));
-    
-    // TODO(alexander): temp printing source
-    pln("Preprocessed source:\n%", f_string(preprocessed_source));
-    //DEBUG_write_entire_file("preprocessed.sq", preprocessed_source.data,
-    //(u32) preprocessed_source.count);
-    
-#if 1
-    // Source group debugging
-    for_array(preprocessor.source_groups, group, index) {
-        pln("group(%): file_index: %, line: %, offset: %, count: %\nSource:", f_int(index), f_uint(group->file_index), f_uint(group->line), f_umm(group->offset), f_umm(group->count));
-        
-        string group_source = create_string(group->count, preprocessed_source.data + group->offset);
-        pln("%\n\n", f_string(group_source));
-    }
-#endif
-    
-    if (preprocessor.error_count > 0) {
-        pln("\nErrors (%) found during preprocessing, exiting...\n", f_u32(preprocessor.error_count));
-        return 1;
-    }
-    
-    // Lexer
+    // Parsing
     Tokenizer tokenizer = {};
     tokenizer_set_source(&tokenizer, preprocessed_source, file.abspath, file.index);
-    // TODO(alexander): calculate line number!
-    
     Parser parser = {};
-    parser.source_groups = preprocessor.source_groups;
+    parser.tcx = &tcx;
     parser.tokenizer = &tokenizer;
-    Ast_File ast_file = parse_file(&parser);
     
+    Ast_File ast_file = parse_file(&parser);
     if (ast_file.error_count > 0) {
         if (flag_print_ast) {
             pln("AST (without types):");
             for_array(ast_file.units, unit, _) {
-                print_ast(unit->ast, &tokenizer);
+                print_ast(unit->ast);
             }
         }
         
@@ -242,16 +232,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         return 1;
     }
     
-    Data_Packer data_packer = {};
-    data_packer.rdata_arena.flags |= ArenaPushFlag_Align_From_Zero;
-    data_packer.data_arena.flags |= ArenaPushFlag_Align_From_Zero;
     
     // Typecheck the AST
-    Interp interp = {};
-    Type_Context tcx = {};
-    tcx.target_backend = compiler.backend;
-    tcx.data_packer = &data_packer;
-    
     type_check_ast_file(&tcx, &ast_file, &interp);
     if (tcx.error_count == 0 && !tcx.entry_point) {
         type_error(&tcx, string_lit("`main` function must be defined"), empty_span);
@@ -264,7 +246,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             
             if (flag_print_ast || (cu->ast->type->kind == TypeKind_Function &&
                                    cu->ast->type->Function.dump_ast)) {
-                print_ast(cu->ast, &tokenizer);
+                print_ast(cu->ast);
             }
         }
         
@@ -277,7 +259,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         
         if (flag_print_ast || (cu->ast->type->kind == TypeKind_Function &&
                                cu->ast->type->Function.dump_ast)) {
-            print_ast(cu->ast, &tokenizer);
+            print_ast(cu->ast);
         }
     }
     
@@ -315,14 +297,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             import.name = function->name;
             
             
-            if (it->value.resolve_at_compile_time) {
-                import.kind = BC_IMPORT_FUNC;
-                import.func_index = func->type_index;
-                
-                func->code_ptr = type->Function.external_address;
-                function->bc_func_index = func->type_index;
-                
-            } else {
+            if (it->value.resolve_at_runtime) {
                 if (!library.data) {
                     library = export_struct(&data_packer, Dynamic_Library, Data_Section);
                     int lib_global = add_bytecode_global(&bytecode_builder, library);
@@ -348,6 +323,13 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     dynamic_library->functions = dynamic_fn;
                     push_relocation(&data_packer, library, import_fn);
                 }
+                
+            } else {
+                import.kind = BC_IMPORT_FUNC;
+                import.func_index = func->type_index;
+                
+                func->code_ptr = type->Function.external_address;
+                function->bc_func_index = func->type_index;
             }
             
             array_push(bytecode_builder.bytecode.imports, import);

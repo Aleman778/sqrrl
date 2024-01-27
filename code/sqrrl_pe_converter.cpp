@@ -187,7 +187,7 @@ push_coff_import_directory_table(Data_Packer* data_packer,
     
     COFF_Import_Directory_Table* idt = 0;
     for_map(import_table->libs, it) {
-        if (!it->value.resolve_at_compile_time) {
+        if (it->value.resolve_at_runtime) {
             continue;
         }
         
@@ -215,7 +215,7 @@ push_coff_import_directory_table(Data_Packer* data_packer,
         COFF_Import_Directory_Table* entry = idt;
         
         for_map(import_table->libs, it) {
-            if (!it->value.resolve_at_compile_time) {
+            if (it->value.resolve_at_runtime) {
                 continue;
             }
             

@@ -15,15 +15,8 @@ interp_expression(Interp* interp, Ast* ast) {
         case Ast_Ident: {
             result = get_interp_value(interp, ast->type, ast->Ident);
             if (is_void(result.value)) {
-                if (interp->set_undeclared_to_zero) {
-                    result.value = {};
-                    result.value.type = Value_signed_int;
-                    result.type = *t_int;
-                    
-                } else {
-                    interp_error(interp, string_print("undeclared identifier `%`", 
-                                                      f_string(vars_load_string(ast->Ident))));
-                }
+                interp_error(interp, string_print("undeclared identifier `%`", 
+                                                  f_string(vars_load_string(ast->Ident))));
             }
         } break;
         
@@ -372,16 +365,9 @@ interp_function_call(Interp* interp, Ast* args, Type* function_type) {
                 // TODO(alexander): only write to result if it is an actual return value!
                 
             } else {
-                // TODO(Alexander): this is not supposed to ever be the case, maybe assert instead!
-                // NOTE(Alexander): what about FFI?
-                
-                if (type->Function.is_imported) {
-                    result.value = type->Function.interp_intrinsic(interp, variadic_arguments);
-                } else {
-                    interp_error(interp,
-                                 string_print("`%` function has no definition and is no intrinsic",
-                                              f_var(function_type->Function.ident)));
-                }
+                interp_error(interp,
+                             string_print("`%` function has no definition",
+                                          f_var(function_type->Function.ident)));
             }
             
             // Pop the scope and free the data stored in the scope
@@ -596,129 +582,5 @@ interp_block(Interp* interp, Ast* ast) {
     }
     
     interp->block_depth--;
-    return result;
-}
-
-Value
-interp_intrinsic_print(Interp* interp, array(Interp_Value)* var_args) {
-    Interp_Value format = get_interp_value(interp, t_cstring, vars_save_cstring("format"));
-    
-    if (format.value.type == Value_string || 
-        (format.type.kind == TypeKind_Basic && format.type.Basic.kind == Basic_string)) {
-        
-        if (var_args) {
-            String_Builder sb = {};
-            
-            // TODO(Alexander): this is a hack, bytecode use Memory_String
-            u8* scan;
-            u8* scan_end;
-            if (interp->flag_running_in_bytecode) {
-                Memory_String format_string = format.value.data.mstr;
-                scan = (u8*) format_string;
-                scan_end = scan + memory_string_count(format_string);
-            } else {
-                string format_string = format.value.data.str;
-                int format_count = (int) format_string.count;
-                scan = (u8*) format_string.data;
-                scan_end = scan + format_count;
-            }
-            u8* scan_at_prev_percent = scan;
-            
-            int var_arg_index = 0;
-            int count_until_percent = 0;
-            while (scan < scan_end) {
-                if (*scan++ == '%') {
-                    if (count_until_percent > 0) {
-                        string substring = create_string(count_until_percent, scan_at_prev_percent);
-                        string_builder_push(&sb, substring);
-                        count_until_percent = 0;
-                    }
-                    scan_at_prev_percent = scan;
-                    
-                    if (*scan == '%') {
-                        string_builder_push(&sb, "%");
-                        scan += 2;
-                        continue;
-                    }
-                    
-                    if (var_arg_index >= array_count(var_args)) {
-                        interp_error(interp, string_print("not enough arguments passed to function"));
-                        string_builder_free(&sb);
-                        return {};
-                    }
-                    
-                    Interp_Value* var_arg;
-                    Format_Type format_type;
-                    if (interp->flag_running_in_bytecode) {
-                        Interp_Value* format_arg = var_args + var_arg_index++;
-                        var_arg = var_args + var_arg_index++;
-                        format_type = (Format_Type) value_to_s64(format_arg->value);
-                    } else {
-                        var_arg = var_args + var_arg_index++;
-                        format_type = convert_type_to_format_type(&var_arg->type);
-                        if (format_type == FormatType_None) {
-                            // NOTE(Alexander): if type didn't help then we guess based on value
-                            format_type = convert_value_type_to_format_type(var_arg->value.type);
-                        }
-                    }
-                    
-                    void* value_data;
-                    if (var_arg->value.type == Value_string) {
-                        value_data = &var_arg->value.data;
-                    } else {
-                        value_data = var_arg->value.data.data;
-                    }
-                    
-                    if (format_type == FormatType_None) {
-                        string_builder_push(&sb, "%");
-                    } else {
-                        string_builder_push_format(&sb, "%", format_type, value_data);
-                    }
-                } else {
-                    count_until_percent++;
-                }
-            }
-            if (count_until_percent > 0) {
-                string substring = create_string(count_until_percent, scan_at_prev_percent);
-                string_builder_push(&sb, substring);
-            }
-            printf("%.*s", (int) sb.curr_used, (char*) sb.data);
-            string_builder_free(&sb);
-        } else {
-            pln("%", f_string(format.value.data.str));
-        }
-    } else {
-        interp_error(interp, string_print("expected `string` as first argument, found `%`",
-                                          f_type(&format.type)));
-    }
-    
-    return {};
-}
-
-Value
-interp_intrinsic_debug_break(Interp* interp, array(Interp_Value)* var_args) {
-    // TODO(Alexander): this is a msvc intrinsic
-    //__debugbreak();
-    
-    // __builtin_trap or inline int3 asm should be used for gcc etc.
-    Value result = {};
-    return result;
-}
-
-Value
-interp_intrinsic_assert(Interp* interp, array(Interp_Value)* var_args) {
-    Interp_Value expr = get_interp_value(interp, t_s32, vars_save_cstring("expr"));
-    
-    if (expr.value.type == Value_signed_int || 
-        (expr.type.kind == TypeKind_Basic &&
-         is_bitflag_set(expr.type.Basic.flags, BasicFlag_Integer))) {
-        // TODO(Alexander): add support for file and line number here
-        intrinsic_test_proc_assert((int) expr.value.data.signed_int, "user code", "interp", 0);
-    } else {
-        interp_error(interp, string_print("expected `int` as first argument, found `%`",
-                                          f_type(&expr.type)));
-    }
-    
-    Value result = {};
     return result;
 }

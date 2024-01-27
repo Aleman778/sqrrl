@@ -678,9 +678,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                         expr->Exported_Data = export_type_info(tcx->data_packer, type);
                         
                     } else {
-                        if (tcx->set_undeclared_to_s64) {
-                            result = t_s64;
-                        } else if (report_error) {
+                        if (report_error) {
                             // NOTE(Alexander): copypasta
                             type_error(tcx, 
                                        string_print("`%` is an undeclared identifier", 
@@ -2196,7 +2194,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     
                     // Compiler only sets up empty pointers that user code has to set.
                     Library_Imports import = map_get(tcx->import_table.libs, library_id);
-                    import.resolve_at_compile_time = !dynamic_library_id;
+                    import.resolve_at_runtime = dynamic_library_id;
                     import.is_valid = true;
                     
                     Library_Function lib_func = {};
@@ -3273,7 +3271,6 @@ type_infer_ast(Type_Context* tcx, Interp* interp, Compilation_Unit* cu,
     
     bool result = true;
     Ast* ast = cu->ast;
-    cu->interp = interp;
     
     tcx->return_type = 0;
     if (ast->kind == Ast_Decl_Stmt) {
@@ -3328,6 +3325,7 @@ type_infer_ast(Type_Context* tcx, Interp* interp, Compilation_Unit* cu,
     } else if (is_ast_stmt(ast)) {
         Type* type = type_infer_statement(tcx, ast, report_error);
         result = type;
+        
     } else {
         assert(0 && "illegal type: expected X_Stmt or any X_Type node");
     }
@@ -3446,20 +3444,15 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* cu) {
     }
     
     if (result) {
-        
-        if (cu->ast->kind != Ast_Decl_Stmt) {
+        if (ast->kind != Ast_Decl_Stmt) {
             //pln("interp statement:%\n", f_ast(ast));
-            Interp_Value interp_result = interp_statement(cu->interp, ast);
-            cu->interp_result = interp_result.value;
+            interp_statement(tcx->interp, ast);
+            // TODO(Alexander): this code is slightly confusing we interpret this so
+            // we can access the value later (maybe rename the function to something more approporiate)
         }
     }
     
     return result;
-}
-
-void
-flush_stdout() {
-    fflush(stdout);
 }
 
 void
@@ -3474,7 +3467,6 @@ type->Function.is_variadic = _is_variadic; \
 string_id ident = vars_save_cstring(#name); \
 type->Function.ident = ident; \
 type->Function.unit = 0; \
-type->Function.interp_intrinsic = interp_intrinsic_fp; \
 type->Function.intrinsic = intrinsic_fp; \
 type->Function.is_intrinsic = true; \
 type->Function.return_type = normalize_basic_types(_return_type); \
@@ -3499,13 +3491,10 @@ intrin_name->Function.first_default_arg_index++; \
     // the ability to create these functions yet, need FFI!
     // We will still have intrinsics but these intrinsics are just for debugging
     
-    // Intrinsic syntax: void debug_break()
-    // Inserts a breakpoint (e.g. int3 on x64) to enable debugger
-    push_intrinsic(debug_break, false, &interp_intrinsic_debug_break, &interp_intrinsic_debug_break, t_void);
-    
-    // Intrinsic syntax: void __debugbreak()
-    // Inserts a breakpoint (e.g. int3 on x64) to enable debugger
-    push_intrinsic(__debug_break, false, &interp_intrinsic_debug_break, &interp_intrinsic_debug_break, t_void);
+    // Intrinsic syntax: void debug_break() or void __debugbreak()
+    // Inserts a breakpoint (e.g. int3 on x64) to signal the debugger
+    push_intrinsic(debug_break, false, 0, 0, t_void);
+    push_intrinsic(__debug_break, false, 0, 0, t_void);
     
     // Intrinsic syntax: umm sizeof(T)
     push_intrinsic(sizeof, false, 0, &type_sizeof, t_umm);

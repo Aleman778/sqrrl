@@ -132,7 +132,7 @@ struct Tokenizer {
     
     string source;
     string file;
-    umm file_index;
+    u32 file_index;
     umm line_number; // starts at zero
     umm column_number; // starts at zero
     u32 curr_utf32_character; // the current character as unicode codepoint
@@ -160,7 +160,7 @@ tokenization_error(Tokenizer* t, cstring message) {
 void utf8_advance_character(Tokenizer* tokenizer);
 
 inline void
-tokenizer_set_source(Tokenizer* tokenizer, string source, string file, umm file_index, umm line_number=0) {
+tokenizer_set_source(Tokenizer* tokenizer, string source, string file, u32 file_index, umm line_number=0) {
     tokenizer->start = source.data;
     tokenizer->end = tokenizer->start + source.count;
     tokenizer->end_of_file = tokenizer->end;
@@ -188,7 +188,7 @@ inline void
 tokenizer_finalize(Tokenizer* tokenizer) {
     if (tokenizer->file_index > 0) {
         // We load previous line numbers
-        Loaded_Source_File* file = get_source_file_by_index((u32) tokenizer->file_index);
+        Source_File* file = get_source_file_by_index((u32) tokenizer->file_index);
         if (file) {
             file->lines = tokenizer->lines;
         }
@@ -198,7 +198,7 @@ tokenizer_finalize(Tokenizer* tokenizer) {
 
 inline void 
 tokenizer_set_substring(Tokenizer* tokenizer, string substring, 
-                        smm first_line_number, smm first_column_number, umm file_index) {
+                        smm first_line_number, smm first_column_number, u32 file_index) {
     
     tokenizer_finalize(tokenizer);
     //pln("substr: file_index = %,  ");
@@ -217,7 +217,7 @@ tokenizer_set_substring(Tokenizer* tokenizer, string substring,
     tokenizer->column_number = first_column_number;
     
     if (file_index > 0) {
-        Loaded_Source_File* file = get_source_file_by_index((u32) file_index);
+        Source_File* file = get_source_file_by_index((u32) file_index);
         if (file) {
             tokenizer->lines = file->lines;
         }
@@ -245,7 +245,7 @@ tokenizer_set_source_group(Tokenizer* tokenizer, Source_Group* group) {
     tokenizer_set_substring(tokenizer, source_substring, group->line, group->column, group->file_index);
     
     // TODO(Alexander): maybe cache file_index?
-    Loaded_Source_File* file = get_source_file_by_index(group->file_index);
+    Source_File* file = get_source_file_by_index(group->file_index);
     tokenizer->file = file->abspath;
     if (group->line == 0) {
         array_free(tokenizer->lines);

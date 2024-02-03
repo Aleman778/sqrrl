@@ -459,6 +459,8 @@ parse_atom(Parser* parser, bool report_error, u8 min_prec) {
         } break;
         
         case Token_Open_Paren: {
+            // TODO(Alexander): refactor this, I think we might have to either resolve
+            // the ambiguity at type inference stage or use `cast(int) x` syntax
             
             //__debugbreak();
             // TODO(Alexander): this is a hack, parenthesized and cast expressions are sightly ambiguous 
@@ -790,12 +792,11 @@ parse_if_directive_block(Parser* parser) {
         list_head = next;
     }
     
-    pln("parse_if_directive: %", f_ast(result));
     return result;
 }
 
 Ast*
-parse_directive(Parser* parser, bool inside_if_scope=false) {
+parse_directive(Parser* parser) {
     assert(parser->current_token.type == Token_Directive);
     Token start_token = parser->current_token;
     Ast* result = 0;
@@ -808,10 +809,10 @@ parse_directive(Parser* parser, bool inside_if_scope=false) {
     switch (keyword) {
         case Kw_if:
         case Sym_elif: {
-            if (keyword == Sym_elif && !inside_if_scope) {
+            if (keyword == Sym_elif && !parser->inside_if_directive) {
                 parse_error(parser, start_token, string_lit("`#elif` found outside `#if` scope"));
             }
-            
+            parser->inside_if_directive++;
             
             result = push_ast_node(parser);
             result->kind = Ast_If_Directive;
@@ -823,7 +824,7 @@ parse_directive(Parser* parser, bool inside_if_scope=false) {
                     result->If_Directive.else_block = push_ast_node(parser);
                     
                 } else {
-                    result->If_Directive.else_block = parse_directive(parser, true);
+                    result->If_Directive.else_block = parse_directive(parser);
                 }
             } else {
                 result->If_Directive.else_block = push_ast_node(parser);
@@ -831,11 +832,12 @@ parse_directive(Parser* parser, bool inside_if_scope=false) {
         } break;
         
         case Kw_else: {
-            if (inside_if_scope) {
+            if (parser->inside_if_directive) {
                 result = parse_if_directive_block(parser);
                 if (next_token_if_matched(parser, Token_Directive)) {
                     parse_keyword(parser, Sym_endif);
                 }
+                parser->inside_if_directive--;
             } else {
                 parse_error(parser, start_token, string_lit("`#else` found outside `#if` scope"));
             }
@@ -843,6 +845,45 @@ parse_directive(Parser* parser, bool inside_if_scope=false) {
         
         case Sym_endif: {
             parse_error(parser, start_token, string_lit("`#endif` found outside `#if` scope"));
+            parser->inside_if_directive--;
+        } break;
+        
+        case Sym_define: {
+            result = push_ast_node(parser);
+            result->kind = Ast_Define_Directive;
+            result->Define_Directive.ident = parse_identifier(parser);
+            
+            if (peek_token_match(parser, Token_Open_Paren, false)) {
+                unimplemented;
+            }
+            
+            result->Define_Directive.stmt = parse_statement(parser);
+        } break;
+        
+        case Sym_include: {
+            string filename = {};
+            
+            result = push_ast_node(parser);
+            result->kind = Ast_Include_Directive;
+            
+            bool module_path = next_token_if_matched(parser, Token_Lt, false);
+            if (next_token_if_matched(parser, Token_String, false)) {
+                token = parser->current_token;
+                filename = string_unquote_nocopy(token.source);
+            }
+            if (module_path) next_token_if_matched(parser, Token_Gt, true);
+            
+            if (filename.data) {
+                result->Include_Directive.filename = filename;
+                
+                if (!parser->inside_if_directive) {
+                    Source_File* file = get_source_file_by_index(parser->tokenizer->file_index);
+                    interp_push_source_file(parser->tcx->interp, filename, file);
+                }
+            } else {
+                parse_error(parser, peek_token(parser),
+                            string_lit("error: `#include` expected `\"filename\"` or `<filename>`"));
+            }
         } break;
         
         default: {
@@ -1913,29 +1954,23 @@ parse_pointer_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_M
 }
 
 void
-register_top_level_declaration(Parser* parser, Ast_File* ast_file, 
-                               Ast* decl, Ast* attributes, Ast_Decl_Modifier mods) {
-    
+register_top_level_declaration(Type_Context* tcx, Ast_File* ast_file, Ast* decl, Ast* attributes, Ast_Decl_Modifier mods) {
     switch (decl->kind) {
         case Ast_Block_Stmt: {
             for_compound(decl->Block_Stmt.stmts, it) {
-                register_top_level_declaration(parser, ast_file, it, attributes, mods);
+                register_top_level_declaration(tcx, ast_file, it, attributes, mods);
             }
         } break;
         
         case Ast_Compound: {
             for_compound(decl, it) {
-                register_top_level_declaration(parser, ast_file, it, attributes, mods);
+                register_top_level_declaration(tcx, ast_file, it, attributes, mods);
             }
         } break;
         
         case Ast_Decl_Stmt: {
             string_id ident = try_unwrap_ident(decl->Decl_Stmt.ident);
-            
             if (ident && (decl->Decl_Stmt.stmt || (mods & AstDeclModifier_External))) {
-                
-                // TODO(Alexander): decls is deprecated use units instead
-                
                 // Replicate attributes and modifiers to decl/type
                 if (decl->Decl_Stmt.type) {
                     Ast* type_ast = decl->Decl_Stmt.type;
@@ -1973,36 +2008,17 @@ register_top_level_declaration(Parser* parser, Ast_File* ast_file,
                         } break;
                     }
                 }
-                
-                Compilation_Unit comp_unit = {};
-                comp_unit.ident = ident;
-                
-                //pln("Push decl `%`", f_string(vars_load_string(ident)));
-                
-                comp_unit.ast = decl->Decl_Stmt.type;
-                array_push(ast_file->units, comp_unit);
-                
-                comp_unit.ast = decl;
-                array_push(ast_file->units, comp_unit);
             }
+            
+            array_push(ast_file->declarations, decl);
         } break;
         
         case Ast_Assign_Stmt: {
-            string_id ident = try_unwrap_ident(decl->Assign_Stmt.ident);
-            if (ident) {
-                // TODO(Alexander): decls is deprecated use units instead
-                
-                Compilation_Unit comp_unit = {};
-                comp_unit.ident = ident;
-                comp_unit.ast = decl;
-                array_push(ast_file->units, comp_unit);
-            }
+            array_push(ast_file->declarations, decl);
         } break;
         
+#if 0
         case Ast_Typedef: {
-            Compilation_Unit comp_unit = {};
-            comp_unit.ast = decl;
-            
             if (is_ast_compound(decl->Typedef.ident)) {
                 
                 for_compound(decl->Typedef.ident, part) {
@@ -2012,17 +2028,14 @@ register_top_level_declaration(Parser* parser, Ast_File* ast_file,
                         pln("%", f_ast(part));
                         
                     } else {
-                        string_id ident = ast_unwrap_ident(part);
-                        
-                        comp_unit.ident = ident;
-                        array_push(ast_file->units, comp_unit);
+                        cu.ident = ast_unwrap_ident(part);;
+                        array_push(module->compilation_units, cu);
                     }
                 }
             } else {
                 if (decl->Typedef.ident) {
-                    string_id ident = ast_unwrap_ident(decl->Typedef.ident);
-                    comp_unit.ident = ident;
-                    array_push(ast_file->units, comp_unit);
+                    cu.ident = ast_unwrap_ident(decl->Typedef.ident);
+                    array_push(module->compilation_units, cu);
                 } else {
                     pln("typedef error: %", f_ast(decl));
                     //type_error(tcx, "")
@@ -2030,24 +2043,25 @@ register_top_level_declaration(Parser* parser, Ast_File* ast_file,
                 
             }
         } break;
+#endif
         
         case Ast_If_Directive: {
-            Value value = comptime_eval_expression(parser->tcx, decl->If_Directive.cond);
-            if (is_integer(value)) {
-                if (value_to_bool(value)) {
-                    register_top_level_declaration(parser, ast_file, decl->If_Directive.then_block, 0, 0);
-                    
-                } else {
-                    register_top_level_declaration(parser, ast_file, decl->If_Directive.else_block, 0, 0);
-                }
-                
-            } else {
-                // Evaluate the if later when we have more information
-                array_push(ast_file->if_directives, decl);
-            }
+            //if (!try_expand_if_directive(tcx, ast_file, decl)) {
+            // Failed to expand #if, try again later
+            array_push(ast_file->declarations, decl);
+            //}
+        } break;
+        
+        case Ast_Define_Directive: {
+            array_push(ast_file->declarations, decl);
+        } break;
+        
+        case Ast_Include_Directive: {
+            interp_push_source_file(tcx->interp, decl->Include_Directive.filename, ast_file->source);
         } break;
         
         default: {
+            // TODO(Alexander): add a parse error!
             unimplemented;
         } break;
     }
@@ -2134,32 +2148,34 @@ parse_top_level_declaration(Parser* parser, Ast_File* ast_file) {
     
     token = peek_token(parser);
     Ast* decl = parse_statement(parser);
-    register_top_level_declaration(parser, ast_file, decl, attributes, mods);
+    register_top_level_declaration(parser->tcx, ast_file, decl, attributes, mods);
     
     while (next_token_if_matched(parser, Token_Semi, false));
 }
 
-
-Ast_File
-parse_file(Parser* parser) {
-    Ast_File result = {};
+Ast_File*
+parse_file(Parser* parser, Source_File* source_file) {
+    Ast_File* result = arena_push_struct(&parser->ast_arena, Ast_File);
+    result->source = source_file;
+    
+    string source = read_entire_source_file(source_file);
+    if (!source.data) {
+        return result;
+    }
+    
+    Tokenizer tokenizer = {};
+    tokenizer_set_source(&tokenizer, source, source_file->abspath, source_file->index);
+    parser->tokenizer = &tokenizer;
     
     Token token = peek_token(parser);
     while (is_token_valid(token)) {
+        parse_top_level_declaration(parser, result);
         
-        parse_top_level_declaration(parser, &result);
         token = peek_token(parser);
-        
-        //if (parser->error_count > 10) {
-        //pln("Found more than 10 parsing errors, exiting parsing...");
-        //break;
-        //}
     }
     
-    result.error_count = parser->error_count;
     return result;
 }
-
 
 internal inline Token
 next_semantical_token(Parser* parser) {

@@ -129,6 +129,14 @@ Ast* cond;                                      \
 Ast* then_block;                                \
 Ast* else_block;                                \
 })                                              \
+AST(Include_Directive,       "#include", struct {       \
+string filename;                                \
+})                                              \
+AST(Define_Directive,       "#define", struct {       \
+Ast* ident;                                      \
+Ast* arguments;                                \
+Ast* stmt;                                \
+})                                              \
 AST_GROUP(Directive_End,    "directive")             \
 AST_GROUP(Type_Begin,  "type")                  \
 AST(Named_Type,        "named", Ast*)           \
@@ -356,6 +364,7 @@ struct Ast {
         Ast* children[5];
     };
     Type* type;
+    Value_Data val;
     Token token;
     Span span;
 };
@@ -366,21 +375,23 @@ struct Bytecode_Function;
 
 struct Compilation_Unit {
     Ast* ast;
-    string_id ident;
-    
     Bytecode_Function* bytecode_function;
-    
     s64 external_address;
+    
+    string_id ident;
     
     bool is_main;
 };
 
 struct Ast_File {
-    s32 error_count;
+    Source_File* source;
     
-    array(Ast*)* if_directives;
-    array(Ast*)* macro_directives;
-    array(Compilation_Unit)* units;
+    array(Ast*)* declarations;
+};
+
+struct Ast_Module {
+    Memory_Arena ast_arena;
+    array(Ast_File*)* files;
 };
 
 inline bool
@@ -390,7 +401,9 @@ should_ast_stmt_end_with_semicolon(Ast* node) {
              node->kind == Ast_If_Stmt ||
              node->kind == Ast_Switch_Stmt ||
              node->kind == Ast_For_Stmt ||
-             node->kind == Ast_While_Stmt);
+             node->kind == Ast_While_Stmt ||
+             node->kind == Ast_If_Directive ||
+             node->kind == Ast_Include_Directive);
 }
 
 inline bool
@@ -726,6 +739,10 @@ string_builder_push(String_Builder* sb, Ast* node, u32 spacing=0) {
             string_builder_push(sb, node->Function_Type.ident, spacing);
             string_builder_push(sb, node->Function_Type.attributes, spacing);
             string_builder_push(sb, node->Function_Type.arguments, spacing);
+        } break;
+        
+        case Ast_Include_Directive: {
+            string_builder_push_format(sb, " \"%\"", f_string(node->Include_Directive.filename));
         } break;
         
         default: {

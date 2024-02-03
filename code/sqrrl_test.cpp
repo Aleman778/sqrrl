@@ -62,15 +62,17 @@ run_test(void* param) {
         
         Interp* interp = test->interp;
         u32 prev_num_failed = test->num_failed;
-        interp_function_call(interp, 0, unit->ast->type);
+        
+        unimplemented;
+        //interp_function_call(interp, 0, unit->ast->type);
         //pln("interp: %, errors = %", f_var(unit->ident), f_int(interp.error_count));
         
         //pln("num_tests = %", f_int(curr_test->num_tests));
-        if (interp->error_count > 0) {
-            test->num_failed += interp->error_count;
-            test->num_tests +=  interp->error_count;
-            interp->error_count = 0;
-        }
+        //if (interp->error_count > 0) {
+        //test->num_failed += interp->error_count;
+        //test->num_tests +=  interp->error_count;
+        //interp->error_count = 0;
+        //}
         
         if (prev_num_failed != test->num_failed) {
             curr_execution->failed = true;
@@ -124,24 +126,17 @@ run_compiler_tests(string filename,
     vars_initialize_keywords_and_symbols();
     
     // Load source code
-    Loaded_Source_File file = read_entire_source_file(filename);
-    if (!file.is_valid) {
-        return -1;
-    }
-    
+    //Source_File file = read_entire_source_file(filename);
+    //if (!file.is_valid) {
+    //return -1;
+    //}
     
     // Preprocess
-    Preprocessor preprocessor = {};
-    //push_file_to_preprocess(&preprocessor, 
-    //file.source, file.abspath, file.extension, file.index, false);
-    // TODO(Alexander): fixme
-    
-    //string preprocessed_source = preprocess_file(&preprocessor);
-    string preprocessed_source = string_lit("");
+    string preprocessed_source = string_lit("");//file.source;
     
     // Parse preprocessed source
     Tokenizer tokenizer = {};
-    tokenizer_set_source(&tokenizer, preprocessed_source, filename, file.index);
+    tokenizer_set_source(&tokenizer, preprocessed_source, filename, 0); // TODO: hardcoded file_index
     Parser parser = {};
     //parser.source_groups = preprocessor.source_groups;
     parser.tokenizer = &tokenizer;
@@ -195,7 +190,7 @@ run_compiler_tests(string filename,
             Type* type = cu->ast->type;
             string_id ident = ast_unwrap_ident(cu->ast->Assign_Stmt.ident);
             
-            void* data = get_interp_value_pointer(&interp, ident);
+            void* data = interp_get_data_pointer(&interp, ident);
             if (!data) {
                 type_error(&tcx, string_print("compiler bug: value of `%` is void", f_var(ident)),
                            cu->ast->span);

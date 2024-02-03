@@ -1,3 +1,6 @@
+#define OS_WINDOWS 1
+#define OS_LINUX 0
+
 #include "sqrrl.cpp"
 
 #include <windows.h>

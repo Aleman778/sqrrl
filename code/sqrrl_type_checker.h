@@ -52,8 +52,21 @@ struct Library_Import_Table {
     map(string_id, Library_Imports)* libs;
 };
 
+struct Type_And_Value {
+    Type* type;
+    Value value;
+};
+
+struct Scope {
+    Scope* parent;
+    
+    map(string_id, Type_And_Value)* entries;
+};
+
 struct Type_Context {
     Interp* interp;
+    
+    Scope* scope;
     
     Memory_Arena type_arena;
     
@@ -89,7 +102,7 @@ struct Type_Context {
 void
 print_span_location(Span span) {
     if (span.file_index > 0) {
-        Loaded_Source_File* file = get_source_file_by_index(span.file_index);
+        Source_File* file = get_source_file_by_index(span.file_index);
         if (file && file->lines) {
             Span_Data result = calculate_span_data(file->lines, span);
             print("%:%:%: ", f_string(file->abspath), f_u32(result.begin_line + 1), f_u32(result.begin_column + 1));
@@ -303,8 +316,6 @@ Type* type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, boo
 
 bool type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool rhs_is_value, Span span,
                            Operator op=Op_Assign, bool report_error=true);
-s32 type_check_ast_file(Type_Context* tcx, Ast_File* ast_file, Interp* interp);
-
 
 struct Create_Type_From_Ast_Result {
     Type* type;

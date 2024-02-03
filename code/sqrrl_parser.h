@@ -2,6 +2,9 @@
 struct Parser {
     Type_Context* tcx;
     
+    array(Ast*) ast;
+    Memory_Arena ast_arena;
+    
     Tokenizer* tokenizer;
     Token current_token;
     Token peeked_tokens[2];
@@ -9,10 +12,11 @@ struct Parser {
     
     s32 error_count;
     
-    b32 c_compatibility_mode;
-    b32 abort_curr_file;
+    int inside_if_directive;
     
-    Memory_Arena ast_arena;
+    bool c_compatibility_mode;
+    bool abort_curr_file;
+    
 };
 
 inline Ast*

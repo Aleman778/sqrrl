@@ -9,10 +9,8 @@
 
 #include "sqrrl_value.cpp"
 #include "sqrrl_types.cpp"
-#include "sqrrl_test.cpp"
+//#include "sqrrl_test.cpp"
 #include "sqrrl_tokenizer.cpp"
-#include "sqrrl_preprocessor.cpp"
-#include "sqrrl_comptime.cpp"
 #include "sqrrl_parser.cpp"
 #include "sqrrl_type_checker.cpp"
 #include "sqrrl_interp.cpp"
@@ -91,21 +89,14 @@ compiler_parse_args(int argc, char** argv) {
     return result;
 }
 
+void 
+test_exception_handler(u32 exception_code, string message) {
+    unimplemented;
+};
 
 int // NOTE(alexander): this is called by the platform layer
 compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                     void (*asm_make_executable)(void*, umm), bool is_debugger_present) {
-    
-    {
-        // Put dummy file as index 0
-        Loaded_Source_File file = {};
-        file.filename = string_lit("invalid");
-        file.source = string_lit("");
-        array_push(loaded_source_files, file);
-        
-        string_id ident = Kw_invalid;
-        map_put(file_index_table, ident, 0);
-    }
     
     Parsed_Args compiler = compiler_parse_args(argc, argv);
     
@@ -115,8 +106,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     if (compiler.task == CompilerTask_Test) {
         working_directory = compiler.working_directory;
-        return run_compiler_tests(compiler.filename, asm_buffer, asm_size, asm_make_executable,
-                                  is_debugger_present);
+        unimplemented;
+        return 0; // TODO(Alexander): add back the test runner
+        //return run_compiler_tests(compiler.filename, asm_buffer, asm_size, asm_make_executable,
+        //is_debugger_present);
     }
     
     // TODO(Alexander): this is hardcoded for now
@@ -131,15 +124,49 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     vars_initialize_keywords_and_symbols();
     
-    // Read entire source file
-    Loaded_Source_File file = read_entire_source_file(compiler.filename);
-    if (!file.is_valid) {
-        return -1;
+    Data_Packer data_packer = {};
+    data_packer.rdata_arena.flags |= ArenaPushFlag_Align_From_Zero;
+    data_packer.data_arena.flags |= ArenaPushFlag_Align_From_Zero;
+    
+    Interp interp = {};
+    
+    Type_Context tcx = {};
+    init_type_context(&tcx, &interp, &data_packer, compiler.backend);
+    tcx.scope = &interp.global_scope;
+    
+    {
+        // TODO(Alexander): make it possible to override these values
+        interp_put_global(&interp, 
+                          vars_save_cstring("OS_WINDOWS"),
+                          t_s64,
+                          create_signed_int_value(OS_WINDOWS));
+        
+        interp_put_global(&interp, 
+                          vars_save_cstring("OS_LINUX"),
+                          t_s64,
+                          create_signed_int_value(OS_LINUX));
+        
+        interp_put_global(&interp,
+                          vars_save_cstring("OS_WEB"),
+                          t_s64,
+                          create_signed_int_value(compiler.backend == Backend_WASM));
+        
+        interp_put_global(&interp,
+                          vars_save_cstring("ARCH_X64"),
+                          t_s64,
+                          create_signed_int_value(compiler.backend == Backend_X64));
+        
+        interp_put_global(&interp,
+                          vars_save_cstring("ARCH_WASM32"),
+                          t_s64,
+                          create_signed_int_value(compiler.backend == Backend_WASM));
     }
     
+    interp_push_source_file(&interp, compiler.filename);
     if (!compiler.output_filename.data) {
-        string name_part = string_view(file.abspath.data + file.filedir.count, 
-                                       file.abspath.data + file.abspath.count - file.extension.count - 1);
+        Source_File* file = interp.source_files[0];
+        string name_part = string_view(file->abspath.data + file->filedir.count, 
+                                       file->abspath.data + file->abspath.count - file->extension.count - 1);
         // TODO(Alexander): hardcoded .exe
         compiler.output_filename = string_concat(name_part, ".exe");
     }
@@ -156,96 +183,71 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         }
     }
     
-    
-    
-    Data_Packer data_packer = {};
-    data_packer.rdata_arena.flags |= ArenaPushFlag_Align_From_Zero;
-    data_packer.data_arena.flags |= ArenaPushFlag_Align_From_Zero;
-    
-    Interp interp = {};
-    Interp_Scope global_scope = {};
-    interp.curr_scope = &global_scope;
-    
-    Type_Context tcx = {};
-    tcx.interp = &interp;
-    tcx.target_backend = compiler.backend;
-    tcx.data_packer = &data_packer;
-    
-    
-    {
-        // TODO(Alexander): update the values later
-        string_id ident = vars_save_cstring("OS_WINDOWS");
-        map_put(tcx.globals, ident, t_s64);
-        Interp_Value interp_value = {};
-        interp_value.value = create_signed_int_value(compiler.backend == Backend_X64);
-        interp_value.type = *t_s64;
-        push_interp_value(&interp, t_s64, ident, interp_value);
-        
-        ident = vars_save_cstring("ARCH_X64");
-        map_put(tcx.globals, ident, t_s64);
-        interp_value.value = create_signed_int_value(compiler.backend == Backend_X64);
-        interp_value.type = *t_s64;
-        push_interp_value(&interp, t_s64, ident, interp_value);
-        
-        ident = vars_save_cstring("OS_LINUX");
-        map_put(tcx.globals, ident, t_s64);
-        interp_value.value = create_signed_int_value(0);
-        push_interp_value(&interp, t_s64, ident, interp_value);
-        
-        ident = vars_save_cstring("OS_WEB");
-        map_put(tcx.globals, ident, t_s64);
-        interp_value.value = create_signed_int_value(compiler.backend == Backend_WASM);
-        push_interp_value(&interp, t_s64, ident, interp_value);
-        
-        ident = vars_save_cstring("ARCH_WASM32");
-        map_put(tcx.globals, ident, t_s64);
-        interp_value.value = create_signed_int_value(compiler.backend == Backend_WASM);
-        push_interp_value(&interp, t_s64, ident, interp_value);
+    // Parse source files in our module
+    Ast_Module ast_module = {};
+    Parser parser = {};
+    for (int i = 0; i < array_count(interp.source_files); i++) {
+        Source_File* file = interp.source_files[i];
+        pln("Parsing file `%`...", f_string(file->abspath));
+        Ast_File* ast_file = parse_file(&parser, file);
+        array_push(ast_module.files, ast_file);
     }
     
-    string preprocessed_source = file.source;
-    
-    bool flag_print_ast = true; //value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_AST));
-    bool flag_run_ast_interp = false; //value_to_bool(preprocess_eval_macro(&preprocessor, Sym_RUN_AST_INTERP));
-    bool flag_print_bc  = false; //value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_BYTECODE));
-    bool flag_run_bc_interp  = false; //value_to_bool(preprocess_eval_macro(&preprocessor, Sym_RUN_BYTECODE_INTERP));
-    bool flag_print_asm_vreg = false; //value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_ASM_VREG));
-    bool flag_print_asm = false; //value_to_bool(preprocess_eval_macro(&preprocessor, Sym_PRINT_ASM));
-    
-    // Parsing
-    Tokenizer tokenizer = {};
-    tokenizer_set_source(&tokenizer, preprocessed_source, file.abspath, file.index);
-    Parser parser = {};
-    parser.tcx = &tcx;
-    parser.tokenizer = &tokenizer;
-    
-    Ast_File ast_file = parse_file(&parser);
-    if (ast_file.error_count > 0) {
-        if (flag_print_ast) {
-            pln("AST (without types):");
-            for_array(ast_file.units, unit, _) {
-                print_ast(unit->ast);
-            }
-        }
-        
+    if (parser.error_count > 0) {
         pln("\nErrors found during parsing, exiting...\n");
         return 1;
     }
     
+    // Type infer directives
+    array(Compilation_Unit)* compilation_units = 0;
+    for (int ast_file_index  = 0;
+         ast_file_index < array_count(ast_module.files);
+         ast_file_index++) {
+        Ast_File* ast_file = ast_module.files[ast_file_index];
+        
+        for (int decl_index = 0;
+             decl_index < array_count(ast_file->declarations);
+             decl_index++) {
+            Ast* decl = ast_file->declarations[decl_index];
+            if (is_ast_directive(decl)) {
+                Compilation_Unit cu = {};
+                cu.ast = decl;
+                array_push(compilation_units, cu);
+            }
+        }
+    }
+    pln("Before:");
+    for_array_it(compilation_units, cu) {
+        print_ast(cu->ast);
+    }
+    
+    
+    run_type_checker(&tcx, compilation_units);
+    
+    pln("After:");
+    for_array_it(compilation_units, cu) {
+        print_ast(cu->ast);
+    }
+    
+    array_free(compilation_units);
     
     // Typecheck the AST
-    type_check_ast_file(&tcx, &ast_file, &interp);
+    run_type_checker(&tcx, compilation_units);
     if (tcx.error_count == 0 && !tcx.entry_point) {
         type_error(&tcx, string_lit("`main` function must be defined"), empty_span);
         return 1;
     }
     
+    bool flag_dump_ast    = value_to_bool(interp_get_value(&interp, Sym_DUMP_AST));
+    bool flag_dump_bc     = value_to_bool(interp_get_value(&interp, Sym_DUMP_BYTECODE));
+    bool flag_dump_disasm = value_to_bool(interp_get_value(&interp, Sym_DUMP_DISASM));
+    
     if (tcx.error_count != 0) {
-        for_array(ast_file.units, cu, _) {
+        for_array(compilation_units, cu, _) {
             if (!(cu->ast && cu->ast->kind == Ast_Decl_Stmt)) continue;
             
-            if (flag_print_ast || (cu->ast->type->kind == TypeKind_Function &&
-                                   cu->ast->type->Function.dump_ast)) {
+            if (flag_dump_ast || (cu->ast->type->kind == TypeKind_Function &&
+                                  cu->ast->type->Function.dump_ast)) {
                 print_ast(cu->ast);
             }
         }
@@ -254,32 +256,18 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         return 1;
     }
     
-    for_array(ast_file.units, cu, _) {
+    for_array(compilation_units, cu, _) {
         if (!(cu->ast && cu->ast->kind == Ast_Decl_Stmt)) continue;
         
-        if (flag_print_ast || (cu->ast->type->kind == TypeKind_Function &&
-                               cu->ast->type->Function.dump_ast)) {
+        if (flag_dump_ast || (cu->ast->type->kind == TypeKind_Function &&
+                              cu->ast->type->Function.dump_ast)) {
             print_ast(cu->ast);
         }
-    }
-    
-    if (flag_run_ast_interp) {
-        // Interpret the AST
-        Type* function_type = load_type_declaration(&tcx, Sym_main, empty_span, true);
-        assert(function_type->kind == TypeKind_Function);
-        Interp_Value result = interp_function_call(&interp, 0, function_type);
-        if (result.modifier == InterpValueMod_Return && is_integer(result.value)) {
-            pln("AST interpreter exited with code %\n", f_int((int) result.value.data.signed_int));
-        } else {
-            pln("AST interpreter exited with code 0\n");
-        }
-        return 0;
     }
     
     Bytecode_Builder bytecode_builder = {};
     bytecode_builder.data_packer = &data_packer;
     bytecode_builder.interp = &interp;
-    
     
     // First create functions imported from libraries
     for_map(tcx.import_table.libs, it) {
@@ -336,7 +324,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         }
     }
     
-    for_array(ast_file.units, cu, _2) {
+    for_array(compilation_units, cu, _2) {
         if (!cu->bytecode_function && cu->ast->kind == Ast_Decl_Stmt) {
             Type* type = cu->ast->type;
             if (type->kind == TypeKind_Function) {
@@ -353,7 +341,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 continue;
             }
             
-            void* data = get_interp_value_pointer(&interp, ident);
+            void* data = interp_get_data_pointer(&interp, ident);
             if (!data) {
                 type_error(&tcx, string_print("compiler bug: value of `%` is void", f_var(ident)),
                            cu->ast->span);
@@ -367,7 +355,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
     // Build the bytecode
-    for_array(ast_file.units, cu, _3) {
+    for_array(compilation_units, cu, _3) {
         if (cu->bytecode_function) {
             bool is_main = cu->is_main;
             emit_function(&bytecode_builder, cu->bytecode_function, cu->ast,
@@ -383,10 +371,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     // Print the bytecode
     String_Builder sb = {};
-    for_array(ast_file.units, cu, _4) {
-        if (flag_print_bc || (cu->ast && cu->ast->type && 
-                              cu->ast->type->kind == TypeKind_Function &&
-                              cu->ast->type->Function.dump_bytecode)) {
+    for_array(compilation_units, cu, _4) {
+        if (flag_dump_bc || (cu->ast && cu->ast->type && 
+                             cu->ast->type->kind == TypeKind_Function &&
+                             cu->ast->type->Function.dump_bytecode)) {
             
             string_builder_dump_bytecode_function(&sb, &bytecode_builder.bytecode,
                                                   cu->bytecode_function);
@@ -510,3 +498,4 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     return 0;
 }
+

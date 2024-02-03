@@ -81,7 +81,7 @@ typedef const char*  cstring;
 
 // NOTE(Alexander): memory operations
 // TODO(Alexander): implement memcpy ourselves
-#define copy_memory memcpy
+#define copy_memory(dest, src, size) memcpy(dest, src, size)
 
 void DEBUG_log_backtrace();
 
@@ -654,6 +654,9 @@ string_builder_to_string_nocopy(String_Builder* sb) {
 #define array_count(a) arrlen(a)
 #define array_set_count(a, c) arrsetlen(a, c)
 
+#define for_array_it(arr, it) \
+for (auto it = arr; it && it <= &array_last(arr); it++)
+
 #define for_array(arr, it, it_index) \
 int it_index = 0; \
 for (auto it = arr; \
@@ -905,6 +908,16 @@ arena_can_fit_size(Memory_Arena* arena, umm size, umm align) {
 
 #define arena_get_struct(arena, type, byte_offset) \
 (type*) ((u8*) (arena)->base + (byte_offset))
+
+
+inline string
+arena_string_copy(Memory_Arena* arena, string str) {
+    string result;
+    result.count = str.count;
+    result.data = (u8*) arena_push_size(arena, str.count, 1);
+    copy_memory(result.data, str.data, str.count);
+    return result;
+}
 
 
 inline void

@@ -1,65 +1,4 @@
 
-#if 0
-void
-test_type_rules() {
-    // Type rules
-    
-    {
-        // 1. Int + int
-        int x;
-        x = (s32) 10 + (s64) 20;
-        x = (u32) 10 + (s64) 20;
-        x = (s32) 10 + (u64) 20;
-        x = (s64) 10 + (u64) 20;
-        x = 10u + 20ll;
-        x = 10 + 20llu;
-        x = 1000000000000; // error: doesn't fit in int
-    }
-    
-    {
-        u32 a = 10;
-        s64 b = -40;
-        int x = a + b;
-    }
-    
-    
-    {
-        s32 a = 10;
-        s32 b = -40;
-        uint x = a + b;
-    }
-    
-    {
-        // Warning for int conversion to lower bitwidth
-        s16 x = 10;
-        s8 y = 20;
-        y += x; // error: conversion lower type
-    }
-    
-    {
-        // Unary minus doens't work on unsigned positive number
-        int x = -10u; // error: unary minus on unsigned type
-    }
-    
-    {
-        // float -> int (vice-versa) reinterprets the value
-        f32 x = 10.9f;   // x = 66 66 2E 41 = 10.9
-        s32 y = (int) x; // y = 0A 00 00 00 = 10
-    }
-    
-    {
-        // ...however int -> int doesn't reinterpret the value
-        u32 x = 10u - 20u; // x = FF FF FF F6 = 4294967286
-        s32 y = (s32) x;   // y = FF FF FF F6 = -10
-    }
-    
-    {
-        int x = (u32) 400;
-        bool y = ((uint) -10) > -10;
-    }
-}
-#endif
-
 Type*
 normalize_basic_types(Type* type) {
     if (!type) {
@@ -273,17 +212,17 @@ type_check_value(Type_Context* tcx, Type* type, Value value, Span span, bool rep
 // TODO(Alexander): this is a compile opt technique, this belongs in different file
 Value
 constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
-    assert(is_ast_expr(ast) || 
-           ast->kind == Ast_Value || 
-           ast->kind == Ast_Ident || 
-           ast->kind == Ast_Exported_Data ||
-           ast->kind == Ast_None);
     Value result = {};
     
     switch (ast->kind) {
         // TODO(alexander): do we want values to be expressions?
         case Ast_Value: {
             result = ast->Value;
+        } break;
+        
+        case Ast_Ident: {
+            string_id ident = ast_unwrap_ident(ast);
+            result = map_get(tcx->scope->entries, ident).value;
         } break;
         
         case Ast_Unary_Expr: {
@@ -2667,6 +2606,47 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                 }
             }
         } break;
+        
+        case Ast_If_Directive: {
+            Value value = constant_folding_of_expressions(tcx, stmt->If_Directive.cond);
+            if (is_integer(value)) {
+                if (value_to_bool(value)) {
+                    *stmt = *stmt->If_Directive.then_block;
+                } else {
+                    if (is_valid_ast(stmt->If_Directive.else_block)) {
+                        *stmt = *stmt->If_Directive.else_block;
+                    } else {
+                        *stmt = {};
+                        result = t_void;
+                    }
+                }
+            } else {
+                if (report_error) {
+                    type_error(tcx, string_lit("constant expression doesn't evaluate to integer value"),
+                               stmt->If_Directive.cond->span);
+                }
+            }
+        } break;
+        
+        case Ast_Define_Directive: {
+            if (is_valid_ast(stmt->Define_Directive.arguments)) {
+                unimplemented;
+                
+            } else {
+                Ast* stmt2 = stmt->Define_Directive.stmt;
+                result = type_infer_statement(tcx, stmt2, report_error);
+                
+                if (stmt2->kind == Ast_Expr_Stmt) {
+                    Value comptime_value = constant_folding_of_expressions(tcx, stmt2->Expr_Stmt);
+                    
+                    if (!is_void(comptime_value)) {
+                        string_id ident = ast_unwrap_ident(stmt->Define_Directive.ident);
+                        Type_And_Value tv = { result, comptime_value };
+                        map_put(tcx->scope->entries, ident, tv);
+                    }
+                }
+            }
+        } break;
     }
     
     return result;
@@ -3259,15 +3239,19 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
             
         } break;
         
-        default: assert(0 && stmt->kind);
+        case Ast_If_Directive: {
+            unimplemented;
+        } break;
+        
+        default: assert(0 && stmt->kind && "invalid statement");
     }
     
     return result;
 }
 
 bool
-type_infer_ast(Type_Context* tcx, Interp* interp, Compilation_Unit* cu,
-               bool report_error) {
+type_infer_declaration(Type_Context* tcx, Compilation_Unit* cu,
+                       bool report_error) {
     
     bool result = true;
     Ast* ast = cu->ast;
@@ -3322,7 +3306,7 @@ type_infer_ast(Type_Context* tcx, Interp* interp, Compilation_Unit* cu,
             result = false;
         }
         
-    } else if (is_ast_stmt(ast)) {
+    } else if (is_ast_stmt_or_directive(ast)) {
         Type* type = type_infer_statement(tcx, ast, report_error);
         result = type;
         
@@ -3415,10 +3399,10 @@ check_if_statement_will_return(Ast* stmt) {
     }
     
     return false;
-} 
+}
 
 bool
-type_check_ast(Type_Context* tcx, Compilation_Unit* cu) {
+type_check_declaration(Type_Context* tcx, Compilation_Unit* cu) {
     tcx->return_type = t_void;
     
     Ast* ast = cu->ast;
@@ -3444,11 +3428,12 @@ type_check_ast(Type_Context* tcx, Compilation_Unit* cu) {
     }
     
     if (result) {
-        if (ast->kind != Ast_Decl_Stmt) {
+        
+        if (cu->ast->kind != Ast_Decl_Stmt) {
             //pln("interp statement:%\n", f_ast(ast));
-            interp_statement(tcx->interp, ast);
-            // TODO(Alexander): this code is slightly confusing we interpret this so
-            // we can access the value later (maybe rename the function to something more approporiate)
+            unimplemented;
+            //Interp_Value interp_result = interp_statement(cu->interp, ast);
+            //cu->interp_result = interp_result.value;
         }
     }
     
@@ -3508,8 +3493,12 @@ intrin_name->Function.first_default_arg_index++; \
     push_intrinsic_arg(type_of, T, t_any);
 }
 
-s32
-type_check_ast_file(Type_Context* tcx, Ast_File* ast_file, Interp* interp) {
+
+void
+init_type_context(Type_Context* tcx, Interp* interp, Data_Packer* data_packer, Backend_Type backend) {
+    tcx->interp = interp;
+    tcx->data_packer = data_packer;
+    tcx->target_backend = backend;
     
     // Set the basic types sizes
     if (t_string->size < 0) {
@@ -3544,8 +3533,14 @@ type_check_ast_file(Type_Context* tcx, Ast_File* ast_file, Interp* interp) {
         t_void_ptr->align = alignof(smm);
     }
     
+    DEBUG_setup_intrinsic_types(tcx);
+}
+
+s32
+run_type_checker(Type_Context* tcx, array(Compilation_Unit)* compilation_units) {
+    
     // Declare all the types 
-    for_array(ast_file->units, cu, _a) {
+    for_array(compilation_units, cu, _a) {
         if (is_ast_type(cu->ast)) {
             Type* type = arena_push_struct(&tcx->type_arena, Type);
             cu->ast->type = type;
@@ -3566,21 +3561,18 @@ type_check_ast_file(Type_Context* tcx, Ast_File* ast_file, Interp* interp) {
             } 
         }
     }
-    // After this we don't mess with the global_type_table anymore!
-    
-    DEBUG_setup_intrinsic_types(tcx);
     
     // Push all compilation units to queue
     array(Compilation_Unit*)* queue = 0;
     
-    for_array(ast_file->units, cu, _b) {
+    for_array(compilation_units, cu, _b) {
         if (is_ast_type(cu->ast)) {
             array_push(queue, cu);
         }
     }
     // Push actual declarations last
-    for_array(ast_file->units, cu, _c) {
-        if (is_ast_stmt(cu->ast)) {
+    for_array(compilation_units, cu, _c) {
+        if (is_ast_stmt_or_directive(cu->ast)) {
             array_push(queue, cu);
         }
     }
@@ -3593,11 +3585,7 @@ type_check_ast_file(Type_Context* tcx, Ast_File* ast_file, Interp* interp) {
         for (smm queue_index = 0; queue_index < queue_count; queue_index++) {
             Compilation_Unit* comp_unit = queue[queue_index];
             
-            //if (comp_unit->ident == 1514) {
-            //__debugbreak();
-            //}
-            
-            if (!type_infer_ast(tcx, interp, comp_unit, false)) {
+            if (!type_infer_declaration(tcx, comp_unit, false)) {
                 // Failed, retry later
                 array_push(queue, comp_unit);
             }
@@ -3610,19 +3598,14 @@ type_check_ast_file(Type_Context* tcx, Ast_File* ast_file, Interp* interp) {
     
     // NOTE(Alexander): anything left in the queue we report errors for
     for_array_v(queue, comp_unit, _d) {
-        //if (tcx.error_count > 10) {
-        //pln("Found more than 10 errors, exiting...");
-        //return tcx.error_count;
-        //}
-        
-        type_infer_ast(tcx, interp, comp_unit, true);
+        type_infer_declaration(tcx, comp_unit, true);
     }
     
     if (tcx->error_count == 0) {
         // Run type checking on statements
-        for_array(ast_file->units, cu, _e) {
+        for_array(compilation_units, cu, _e) {
             if (is_ast_stmt(cu->ast)) {
-                type_check_ast(tcx, cu);
+                type_check_declaration(tcx, cu);
             }
         }
     }

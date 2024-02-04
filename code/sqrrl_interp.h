@@ -7,6 +7,11 @@ struct Interp {
 };
 
 void
+register_compilation_units() {
+    
+}
+
+void
 interp_push_source_file(Interp* interp, string filename, Source_File* included_from=0) {
     Source_File* source_file = create_source_file(filename, included_from);
     

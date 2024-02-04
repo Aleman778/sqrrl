@@ -198,40 +198,29 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         return 1;
     }
     
-    // Type infer directives
-    array(Compilation_Unit)* compilation_units = 0;
-    for (int ast_file_index  = 0;
-         ast_file_index < array_count(ast_module.files);
-         ast_file_index++) {
-        Ast_File* ast_file = ast_module.files[ast_file_index];
-        
-        for (int decl_index = 0;
-             decl_index < array_count(ast_file->declarations);
-             decl_index++) {
-            Ast* decl = ast_file->declarations[decl_index];
-            if (is_ast_directive(decl)) {
-                Compilation_Unit cu = {};
-                cu.ast = decl;
-                array_push(compilation_units, cu);
-            }
-        }
-    }
-    pln("Before:");
-    for_array_it(compilation_units, cu) {
-        print_ast(cu->ast);
-    }
+    run_directive_preprocess(tcx, ast_module);
     
     
-    run_type_checker(&tcx, compilation_units);
+    //pln("Before:");
+    //for_array_it(compilation_units, cu) {
+    //print_ast(cu->ast);
+    //}
     
-    pln("After:");
-    for_array_it(compilation_units, cu) {
-        print_ast(cu->ast);
-    }
     
-    array_free(compilation_units);
+    //run_type_checker(&tcx, compilation_units);
+    //array_free(compilation_units);
+    
+    //try_expand_if_directive(tcx, stmt, report_error)
+    
+    //pln("After:");
+    //for_array_it(compilation_units, cu) {
+    //print_ast(cu->ast);
+    //}
+    
+    
     
     // Typecheck the AST
+    array(Compilation_Unit)* compilation_units = 0;
     run_type_checker(&tcx, compilation_units);
     if (tcx.error_count == 0 && !tcx.entry_point) {
         type_error(&tcx, string_lit("`main` function must be defined"), empty_span);

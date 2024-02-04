@@ -2327,6 +2327,52 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
     return result;
 }
 
+bool
+try_expand_if_directive(Type_Context* tcx, Ast* stmt, bool report_error) {
+    Value value = constant_folding_of_expressions(tcx, stmt->If_Directive.cond);
+    if (is_integer(value)) {
+        if (value_to_bool(value)) {
+            *stmt = *stmt->If_Directive.then_block;
+        } else {
+            if (is_valid_ast(stmt->If_Directive.else_block)) {
+                *stmt = *stmt->If_Directive.else_block;
+            } else {
+                *stmt = {};
+            }
+        }
+        return true;
+        
+    } else {
+        if (report_error) {
+            type_error(tcx, string_lit("constant expression doesn't evaluate to integer value"),
+                       stmt->If_Directive.cond->span);
+        }
+        
+        return false;
+    }
+}
+
+Type*
+process_if_directive(Ast* ast) {
+    if (is_valid_ast(ast->Define_Directive.arguments)) {
+        unimplemented;
+        
+    } else {
+        Ast* stmt = ast->Define_Directive.stmt;
+        result = type_infer_statement(tcx, stmt, report_error);
+        
+        if (stmt->kind == Ast_Expr_Stmt) {
+            Value comptime_value = constant_folding_of_expressions(tcx, stmt->Expr_Stmt);
+            
+            if (!is_void(comptime_value)) {
+                string_id ident = ast_unwrap_ident(ast->Define_Directive.ident);
+                Type_And_Value tv = { result, comptime_value };
+                map_put(tcx->scope->entries, ident, tv);
+            }
+        }
+    }
+}
+
 Type*
 type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
     Type* result = 0;
@@ -2608,44 +2654,14 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         } break;
         
         case Ast_If_Directive: {
-            Value value = constant_folding_of_expressions(tcx, stmt->If_Directive.cond);
-            if (is_integer(value)) {
-                if (value_to_bool(value)) {
-                    *stmt = *stmt->If_Directive.then_block;
-                } else {
-                    if (is_valid_ast(stmt->If_Directive.else_block)) {
-                        *stmt = *stmt->If_Directive.else_block;
-                    } else {
-                        *stmt = {};
-                        result = t_void;
-                    }
-                }
-            } else {
-                if (report_error) {
-                    type_error(tcx, string_lit("constant expression doesn't evaluate to integer value"),
-                               stmt->If_Directive.cond->span);
-                }
+            if (try_expand_if_directive(tcx, stmt, report_error) && !is_valid_ast(stmt)) {
+                result = t_void;
             }
         } break;
         
         case Ast_Define_Directive: {
-            if (is_valid_ast(stmt->Define_Directive.arguments)) {
-                unimplemented;
+            register_comptime_expression
                 
-            } else {
-                Ast* stmt2 = stmt->Define_Directive.stmt;
-                result = type_infer_statement(tcx, stmt2, report_error);
-                
-                if (stmt2->kind == Ast_Expr_Stmt) {
-                    Value comptime_value = constant_folding_of_expressions(tcx, stmt2->Expr_Stmt);
-                    
-                    if (!is_void(comptime_value)) {
-                        string_id ident = ast_unwrap_ident(stmt->Define_Directive.ident);
-                        Type_And_Value tv = { result, comptime_value };
-                        map_put(tcx->scope->entries, ident, tv);
-                    }
-                }
-            }
         } break;
     }
     
@@ -3536,6 +3552,82 @@ init_type_context(Type_Context* tcx, Interp* interp, Data_Packer* data_packer, B
     DEBUG_setup_intrinsic_types(tcx);
 }
 
+enum Preprocess_Result {
+    PreprocessOutput_Failed,
+    PreprocessOutput_Ok,
+    PreprocessOutput_Expand_If,
+};
+
+Preprocess_Result
+preprocess_directive(Type_Context* tcx, Compilation_Unit* cu, bool report_error) {
+    Ast* ast = cu->ast;
+    switch (ast->kind) {
+        
+        case Ast_If_Directive: {
+            if (try_expand_if_directive(tcx, ast, report_error)) {
+                
+            }
+        } break;
+        
+        case Ast_Define_Directive: {
+            
+            
+        } break;
+    }
+    
+    return PreprocessOutput_Failed;
+}
+
+void
+run_preprocess_directives(Type_Context* tcx, Ast_Module* ast_module) {
+    // Type infer directives
+    array(Compilation_Unit)* directives = 0;
+    for (int ast_file_index  = 0;
+         ast_file_index < array_count(ast_module.files);
+         ast_file_index++) {
+        Ast_File* ast_file = ast_module.files[ast_file_index];
+        
+        for (int decl_index = 0;
+             decl_index < array_count(ast_file->declarations);
+             decl_index++) {
+            Ast* decl = ast_file->declarations[decl_index];
+            if (is_ast_directive(decl)) {
+                Compilation_Unit cu = {};
+                cu.ast = decl;
+                array_push(compilation_units, cu);
+            }
+        }
+    }
+    
+    array(Compilation_Unit*)* queue = 0;
+    for_array_it (compilation_units, cu) {
+        array_push(queue, cu);
+    }
+    
+    smm last_queue_count = 0;
+    while (last_queue_count != array_count(queue)) {
+        smm queue_count = array_count(queue);
+        //pln("queue_count = %", f_int(queue_count));
+        for (smm queue_index = 0; queue_index < queue_count; queue_index++) {
+            Compilation_Unit* cu = queue[queue_index];
+            
+            Preprocess_Result output = preprocess_directive(tcx, cu, false)
+                if (!) {
+                // Failed, retry later
+                array_push(queue, cu);
+            }
+        }
+        
+        // Remove processed nodes in queue
+        array_remove_n(queue, 0, queue_count);
+        last_queue_count = queue_count;
+        //pln("queue_count = % != %", f_int(queue_count), f_int(array_count(queue)));
+    }
+    
+    
+    
+}
+
 s32
 run_type_checker(Type_Context* tcx, array(Compilation_Unit)* compilation_units) {
     
@@ -3582,6 +3674,7 @@ run_type_checker(Type_Context* tcx, array(Compilation_Unit)* compilation_units) 
     smm last_queue_count = 0;
     while (last_queue_count != array_count(queue)) {
         smm queue_count = array_count(queue);
+        pln("queue_count = %", f_int(queue_count));
         for (smm queue_index = 0; queue_index < queue_count; queue_index++) {
             Compilation_Unit* comp_unit = queue[queue_index];
             
@@ -3594,6 +3687,7 @@ run_type_checker(Type_Context* tcx, array(Compilation_Unit)* compilation_units) 
         // Remove processed nodes in queue
         array_remove_n(queue, 0, queue_count);
         last_queue_count = queue_count;
+        pln("queue_count = % != %", f_int(queue_count), f_int(array_count(queue)));
     }
     
     // NOTE(Alexander): anything left in the queue we report errors for

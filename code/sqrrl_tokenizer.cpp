@@ -395,8 +395,8 @@ advance_token(Tokenizer* tokenizer) {
                 if (tokenizer->error_count > 0) {
                     break;
                 }
-            } while (tokenizer->curr < tokenizer->end &&
-                     !(*tokenizer->curr == '\n' || *tokenizer->curr == '\r'));
+            } while (tokenizer->curr < tokenizer->end && *tokenizer->curr != '\n');
+            advance_utf32_at_end = false;
             token.type = Token_Line_Comment;
             
         } else if (*tokenizer->curr == '*') {

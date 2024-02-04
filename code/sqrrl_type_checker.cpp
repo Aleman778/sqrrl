@@ -3154,9 +3154,6 @@ type_infer_ast(Type_Context* tcx, Interp* interp, Compilation_Unit* cu,
         string_id ident = cu->ident;
         
         Type* type = save_type_declaration_from_ast(tcx, ident, ast, report_error);
-        if (ident == vars_save_cstring("Game_State")) {
-            pln("Game_State = %", f_type(type));//__debugbreak();
-        }
         if (!type) {
             result = false;
         }

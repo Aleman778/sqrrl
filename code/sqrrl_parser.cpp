@@ -878,7 +878,7 @@ parse_directive(Parser* parser) {
                 
                 if (!parser->inside_if_directive) {
                     Source_File* file = get_source_file_by_index(parser->tokenizer->file_index);
-                    interp_push_source_file(parser->tcx->interp, filename, file);
+                    interp_push_source_file(parser->interp, filename, file);
                 }
             } else {
                 parse_error(parser, peek_token(parser),
@@ -1954,23 +1954,25 @@ parse_pointer_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_M
 }
 
 void
-register_top_level_declaration(Type_Context* tcx, Ast_File* ast_file, Ast* decl, Ast* attributes, Ast_Decl_Modifier mods) {
+set_attributes_on_declaration(Ast* decl, Ast* attributes, Ast_Decl_Modifier mods) {
+    
+    
     switch (decl->kind) {
-        case Ast_Block_Stmt: {
+        case Ast_Compound: {
             for_compound(decl->Block_Stmt.stmts, it) {
-                register_top_level_declaration(tcx, ast_file, it, attributes, mods);
+                set_attributes_on_declaration(it, attributes, mods);
             }
         } break;
         
-        case Ast_Compound: {
-            for_compound(decl, it) {
-                register_top_level_declaration(tcx, ast_file, it, attributes, mods);
+        case Ast_Block_Stmt: {
+            for_compound(decl->Block_Stmt.stmts, it) {
+                set_attributes_on_declaration(it, attributes, mods);
             }
         } break;
         
         case Ast_Decl_Stmt: {
-            string_id ident = try_unwrap_ident(decl->Decl_Stmt.ident);
-            if (ident && (decl->Decl_Stmt.stmt || (mods & AstDeclModifier_External))) {
+            if (decl->Decl_Stmt.stmt || (mods & AstDeclModifier_External)) {
+                
                 // Replicate attributes and modifiers to decl/type
                 if (decl->Decl_Stmt.type) {
                     Ast* type_ast = decl->Decl_Stmt.type;
@@ -2009,60 +2011,6 @@ register_top_level_declaration(Type_Context* tcx, Ast_File* ast_file, Ast* decl,
                     }
                 }
             }
-            
-            array_push(ast_file->declarations, decl);
-        } break;
-        
-        case Ast_Assign_Stmt: {
-            array_push(ast_file->declarations, decl);
-        } break;
-        
-#if 0
-        case Ast_Typedef: {
-            if (is_ast_compound(decl->Typedef.ident)) {
-                
-                for_compound(decl->Typedef.ident, part) {
-                    if (part->kind == Ast_Binary_Expr || part->kind == Ast_Index_Expr) {
-                        //string_id ident1 = ast_unwrap_ident(part->Binary_Expr.first);
-                        //string_id ident2 = ast_unwrap_ident(part->Binary_Expr.second);
-                        pln("%", f_ast(part));
-                        
-                    } else {
-                        cu.ident = ast_unwrap_ident(part);;
-                        array_push(module->compilation_units, cu);
-                    }
-                }
-            } else {
-                if (decl->Typedef.ident) {
-                    cu.ident = ast_unwrap_ident(decl->Typedef.ident);
-                    array_push(module->compilation_units, cu);
-                } else {
-                    pln("typedef error: %", f_ast(decl));
-                    //type_error(tcx, "")
-                }
-                
-            }
-        } break;
-#endif
-        
-        case Ast_If_Directive: {
-            //if (!try_expand_if_directive(tcx, ast_file, decl)) {
-            // Failed to expand #if, try again later
-            array_push(ast_file->declarations, decl);
-            //}
-        } break;
-        
-        case Ast_Define_Directive: {
-            array_push(ast_file->declarations, decl);
-        } break;
-        
-        case Ast_Include_Directive: {
-            interp_push_source_file(tcx->interp, decl->Include_Directive.filename, ast_file->source);
-        } break;
-        
-        default: {
-            // TODO(Alexander): add a parse error!
-            unimplemented;
         } break;
     }
 }
@@ -2148,13 +2096,17 @@ parse_top_level_declaration(Parser* parser, Ast_File* ast_file) {
     
     token = peek_token(parser);
     Ast* decl = parse_statement(parser);
-    register_top_level_declaration(parser->tcx, ast_file, decl, attributes, mods);
+    set_attributes_on_declaration(decl, attributes, mods);
+    
+    register_compilation_units_from_ast(parser->interp, decl);
     
     while (next_token_if_matched(parser, Token_Semi, false));
 }
 
 Ast_File*
-parse_file(Parser* parser, Source_File* source_file) {
+parse_file(Parser* parser, Interp* interp, Source_File* source_file) {
+    parser->interp = interp;
+    
     Ast_File* result = arena_push_struct(&parser->ast_arena, Ast_File);
     result->source = source_file;
     

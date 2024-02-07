@@ -2332,13 +2332,10 @@ try_expand_if_directive(Type_Context* tcx, Ast* stmt, bool report_error) {
     Value value = constant_folding_of_expressions(tcx, stmt->If_Directive.cond);
     if (is_integer(value)) {
         if (value_to_bool(value)) {
-            *stmt = *stmt->If_Directive.then_block;
-        } else {
-            if (is_valid_ast(stmt->If_Directive.else_block)) {
-                *stmt = *stmt->If_Directive.else_block;
-            } else {
-                *stmt = {};
-            }
+            register_compilation_units_from_ast(tcx->interp, stmt->If_Directive.then_block);
+            
+        } else if (is_valid_ast(stmt->If_Directive.else_block)) {
+            register_compilation_units_from_ast(tcx->interp, stmt->If_Directive.else_block);
         }
         return true;
         
@@ -2353,7 +2350,9 @@ try_expand_if_directive(Type_Context* tcx, Ast* stmt, bool report_error) {
 }
 
 Type*
-process_if_directive(Ast* ast) {
+process_define_directive(Type_Context* tcx, Ast* ast, bool report_error) {
+    Type* result = 0;
+    
     if (is_valid_ast(ast->Define_Directive.arguments)) {
         unimplemented;
         
@@ -2371,6 +2370,8 @@ process_if_directive(Ast* ast) {
             }
         }
     }
+    
+    return result;
 }
 
 Type*
@@ -2654,14 +2655,13 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         } break;
         
         case Ast_If_Directive: {
-            if (try_expand_if_directive(tcx, stmt, report_error) && !is_valid_ast(stmt)) {
+            if (try_expand_if_directive(tcx, stmt, report_error)) {
                 result = t_void;
             }
         } break;
         
         case Ast_Define_Directive: {
-            register_comptime_expression
-                
+            result = process_define_directive(tcx, stmt, report_error);
         } break;
     }
     
@@ -3266,11 +3266,9 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
 }
 
 bool
-type_infer_declaration(Type_Context* tcx, Compilation_Unit* cu,
-                       bool report_error) {
+type_infer_declaration(Type_Context* tcx, Ast* ast, string_id ident, bool report_error) {
     
     bool result = true;
-    Ast* ast = cu->ast;
     
     tcx->return_type = 0;
     if (ast->kind == Ast_Decl_Stmt) {
@@ -3279,12 +3277,6 @@ type_infer_declaration(Type_Context* tcx, Compilation_Unit* cu,
         
         if (type && type->kind == TypeKind_Function) {
             push_type_scope(tcx);
-            type->Function.unit = cu;
-            if (cu->ident == Sym_main) {
-                cu->is_main = true;
-                tcx->entry_point = type;
-            }
-            //pln("cu: % (%)", f_var(type->Function.ident), f_u64_HEX(cu));
             
             // Store the arguments in local context
             Type_Function* func = &type->Function;
@@ -3295,9 +3287,9 @@ type_infer_declaration(Type_Context* tcx, Compilation_Unit* cu,
                     
                     Type* arg_type = func->arg_types[arg_index];
                     if (arg_type) {
-                        string_id ident = func->arg_idents[arg_index];
+                        string_id arg_ident = func->arg_idents[arg_index];
                         // TODO(Alexander): maybe we need to also store spans in procedure type?
-                        if (!push_local(tcx, ident, arg_type, ast->span, report_error)) {
+                        if (!push_local(tcx, arg_ident, arg_type, ast->span, report_error)) {
                             result = false;
                         }
                     } else {
@@ -3315,8 +3307,6 @@ type_infer_declaration(Type_Context* tcx, Compilation_Unit* cu,
     }
     
     if (is_ast_type(ast)) {
-        string_id ident = cu->ident;
-        
         Type* type = save_type_declaration_from_ast(tcx, ident, ast, report_error);
         if (!type) {
             result = false;
@@ -3427,6 +3417,12 @@ type_check_declaration(Type_Context* tcx, Compilation_Unit* cu) {
         type = ast->Decl_Stmt.type->type;
         if (type && type->kind == TypeKind_Function) {
             tcx->return_type = type->Function.return_type;
+            type->Function.unit = cu;
+            if (cu->ident == Sym_main) {
+                cu->is_main = true;
+                tcx->entry_point = type;
+            }
+            pln("type checking function: `%`... (cu=%)", f_var(type->Function.ident), f_u64_HEX(cu));
         }
     }
     
@@ -3578,61 +3574,12 @@ preprocess_directive(Type_Context* tcx, Compilation_Unit* cu, bool report_error)
     return PreprocessOutput_Failed;
 }
 
-void
-run_preprocess_directives(Type_Context* tcx, Ast_Module* ast_module) {
-    // Type infer directives
-    array(Compilation_Unit)* directives = 0;
-    for (int ast_file_index  = 0;
-         ast_file_index < array_count(ast_module.files);
-         ast_file_index++) {
-        Ast_File* ast_file = ast_module.files[ast_file_index];
-        
-        for (int decl_index = 0;
-             decl_index < array_count(ast_file->declarations);
-             decl_index++) {
-            Ast* decl = ast_file->declarations[decl_index];
-            if (is_ast_directive(decl)) {
-                Compilation_Unit cu = {};
-                cu.ast = decl;
-                array_push(compilation_units, cu);
-            }
-        }
-    }
-    
-    array(Compilation_Unit*)* queue = 0;
-    for_array_it (compilation_units, cu) {
-        array_push(queue, cu);
-    }
-    
-    smm last_queue_count = 0;
-    while (last_queue_count != array_count(queue)) {
-        smm queue_count = array_count(queue);
-        //pln("queue_count = %", f_int(queue_count));
-        for (smm queue_index = 0; queue_index < queue_count; queue_index++) {
-            Compilation_Unit* cu = queue[queue_index];
-            
-            Preprocess_Result output = preprocess_directive(tcx, cu, false)
-                if (!) {
-                // Failed, retry later
-                array_push(queue, cu);
-            }
-        }
-        
-        // Remove processed nodes in queue
-        array_remove_n(queue, 0, queue_count);
-        last_queue_count = queue_count;
-        //pln("queue_count = % != %", f_int(queue_count), f_int(array_count(queue)));
-    }
-    
-    
-    
-}
-
 s32
-run_type_checker(Type_Context* tcx, array(Compilation_Unit)* compilation_units) {
+run_type_checker(Type_Context* tcx, Interp* interp) {
+    tcx->interp = interp;
     
     // Declare all the types 
-    for_array(compilation_units, cu, _a) {
+    for_array_it(interp->compilation_units, cu) {
         if (is_ast_type(cu->ast)) {
             Type* type = arena_push_struct(&tcx->type_arena, Type);
             cu->ast->type = type;
@@ -3654,50 +3601,62 @@ run_type_checker(Type_Context* tcx, array(Compilation_Unit)* compilation_units) 
         }
     }
     
-    // Push all compilation units to queue
-    array(Compilation_Unit*)* queue = 0;
     
-    for_array(compilation_units, cu, _b) {
-        if (is_ast_type(cu->ast)) {
-            array_push(queue, cu);
-        }
-    }
-    // Push actual declarations last
-    for_array(compilation_units, cu, _c) {
-        if (is_ast_stmt_or_directive(cu->ast)) {
-            array_push(queue, cu);
-        }
-    }
     
-    // NOTE(Alexander): exit condition: assumes that when all items in queue failed then we can
-    //                  nolonger process any further and have to report errors and exit.
-    smm last_queue_count = 0;
-    while (last_queue_count != array_count(queue)) {
-        smm queue_count = array_count(queue);
-        pln("queue_count = %", f_int(queue_count));
-        for (smm queue_index = 0; queue_index < queue_count; queue_index++) {
-            Compilation_Unit* comp_unit = queue[queue_index];
+    // Type inference
+    int last_num_succeeded = 0;
+    int num_succeeded = 0;
+    do {
+        num_succeeded = 0;
+        
+        // NOTE(Alexander): prefer resolving types first because it helps resolving bodies of functions
+        for (int cu_index = 0; cu_index < array_count(interp->compilation_units); cu_index++) {
+            Compilation_Unit* cu = &interp->compilation_units[cu_index];
+            if (!is_ast_type(cu->ast)) continue;
             
-            if (!type_infer_declaration(tcx, comp_unit, false)) {
-                // Failed, retry later
-                array_push(queue, comp_unit);
+            if (cu->status == Status_Parsing_Finished ||
+                cu->status == Status_Type_Inference_Failed) {
+                if (type_infer_declaration(tcx, cu->ast, cu->ident, false)) {
+                    interp->compilation_units[cu_index].status = Status_Type_Inference_Finished;
+                    num_succeeded++;
+                }
+            } else {
+                num_succeeded++;
             }
         }
         
-        // Remove processed nodes in queue
-        array_remove_n(queue, 0, queue_count);
-        last_queue_count = queue_count;
-        pln("queue_count = % != %", f_int(queue_count), f_int(array_count(queue)));
-    }
+        for (int cu_index = 0; cu_index < array_count(interp->compilation_units); cu_index++) {
+            Compilation_Unit* cu = &interp->compilation_units[cu_index];
+            if (is_ast_type(cu->ast)) continue;
+            
+            // NOTE(Alexander): copy paste above
+            if (cu->status == Status_Parsing_Finished ||
+                cu->status == Status_Type_Inference_Failed) {
+                if (type_infer_declaration(tcx, cu->ast, cu->ident, false)) {
+                    interp->compilation_units[cu_index].status = Status_Type_Inference_Finished;
+                    num_succeeded++;
+                }
+            } else {
+                num_succeeded++;
+            }
+        }
+        
+        if (num_succeeded == array_count(interp->compilation_units)) {
+            break;
+        }
+    } while (last_num_succeeded != num_succeeded);
     
-    // NOTE(Alexander): anything left in the queue we report errors for
-    for_array_v(queue, comp_unit, _d) {
-        type_infer_declaration(tcx, comp_unit, true);
+    for (int cu_index = 0; cu_index < array_count(interp->compilation_units); cu_index++) {
+        Compilation_Unit* cu = &interp->compilation_units[cu_index];
+        if (cu->status == Status_Parsing_Finished ||
+            cu->status == Status_Type_Inference_Failed) {
+            type_infer_declaration(tcx, cu->ast, cu->ident, true);
+        }
     }
     
     if (tcx->error_count == 0) {
         // Run type checking on statements
-        for_array(compilation_units, cu, _e) {
+        for_array(interp->compilation_units, cu, _e) {
             if (is_ast_stmt(cu->ast)) {
                 type_check_declaration(tcx, cu);
             }

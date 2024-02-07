@@ -311,7 +311,7 @@ type_equals(Type* a, Type* b) {
 struct Ast_File;
 
 bool match_struct_like_args(Type_Context* tcx, Type* formal_type, int first_field, int last_field, Ast* args, bool report_error);
-
+Type* type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error);
 Type* type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool report_error);
 
 bool type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool rhs_is_value, Span span,

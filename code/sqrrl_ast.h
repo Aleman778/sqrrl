@@ -373,16 +373,6 @@ typedef map(string_id, Ast*) Ast_Decl_Table;
 
 struct Bytecode_Function;
 
-struct Compilation_Unit {
-    Ast* ast;
-    Bytecode_Function* bytecode_function;
-    s64 external_address;
-    
-    string_id ident;
-    
-    bool is_main;
-};
-
 struct Ast_File {
     Source_File* source;
     

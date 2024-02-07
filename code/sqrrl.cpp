@@ -189,7 +189,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     for (int i = 0; i < array_count(interp.source_files); i++) {
         Source_File* file = interp.source_files[i];
         pln("Parsing file `%`...", f_string(file->abspath));
-        Ast_File* ast_file = parse_file(&parser, file);
+        Ast_File* ast_file = parse_file(&parser, &interp, file);
         array_push(ast_module.files, ast_file);
     }
     
@@ -198,30 +198,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         return 1;
     }
     
-    run_directive_preprocess(tcx, ast_module);
-    
-    
-    //pln("Before:");
-    //for_array_it(compilation_units, cu) {
-    //print_ast(cu->ast);
-    //}
-    
-    
-    //run_type_checker(&tcx, compilation_units);
-    //array_free(compilation_units);
-    
-    //try_expand_if_directive(tcx, stmt, report_error)
-    
-    //pln("After:");
-    //for_array_it(compilation_units, cu) {
-    //print_ast(cu->ast);
-    //}
-    
-    
-    
     // Typecheck the AST
-    array(Compilation_Unit)* compilation_units = 0;
-    run_type_checker(&tcx, compilation_units);
+    run_type_checker(&tcx, &interp);
     if (tcx.error_count == 0 && !tcx.entry_point) {
         type_error(&tcx, string_lit("`main` function must be defined"), empty_span);
         return 1;
@@ -232,7 +210,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     bool flag_dump_disasm = value_to_bool(interp_get_value(&interp, Sym_DUMP_DISASM));
     
     if (tcx.error_count != 0) {
-        for_array(compilation_units, cu, _) {
+        for_array(interp.compilation_units, cu, _) {
             if (!(cu->ast && cu->ast->kind == Ast_Decl_Stmt)) continue;
             
             if (flag_dump_ast || (cu->ast->type->kind == TypeKind_Function &&
@@ -245,7 +223,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         return 1;
     }
     
-    for_array(compilation_units, cu, _) {
+    for_array(interp.compilation_units, cu, _) {
         if (!(cu->ast && cu->ast->kind == Ast_Decl_Stmt)) continue;
         
         if (flag_dump_ast || (cu->ast->type->kind == TypeKind_Function &&
@@ -313,7 +291,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         }
     }
     
-    for_array(compilation_units, cu, _2) {
+    for_array(interp.compilation_units, cu, _2) {
         if (!cu->bytecode_function && cu->ast->kind == Ast_Decl_Stmt) {
             Type* type = cu->ast->type;
             if (type->kind == TypeKind_Function) {
@@ -344,7 +322,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
     // Build the bytecode
-    for_array(compilation_units, cu, _3) {
+    for_array(interp.compilation_units, cu, _3) {
         if (cu->bytecode_function) {
             bool is_main = cu->is_main;
             emit_function(&bytecode_builder, cu->bytecode_function, cu->ast,
@@ -360,7 +338,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     // Print the bytecode
     String_Builder sb = {};
-    for_array(compilation_units, cu, _4) {
+    for_array(interp.compilation_units, cu, _4) {
         if (flag_dump_bc || (cu->ast && cu->ast->type && 
                              cu->ast->type->kind == TypeKind_Function &&
                              cu->ast->type->Function.dump_bytecode)) {

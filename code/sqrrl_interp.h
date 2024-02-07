@@ -1,4 +1,22 @@
 
+enum Compilation_Unit_Status {
+    Status_Parsing_Finished,
+    
+    Status_Type_Inference_Failed,
+    Status_Type_Inference_Finished,
+};
+
+struct Compilation_Unit {
+    Ast* ast;
+    Bytecode_Function* bytecode_function;
+    s64 external_address;
+    
+    string_id ident;
+    
+    Compilation_Unit_Status status;
+    bool is_main;
+};
+
 struct Interp {
     Scope global_scope;
     
@@ -6,10 +24,12 @@ struct Interp {
     array(Compilation_Unit)* compilation_units;
 };
 
-void
-register_compilation_units() {
-    
+inline void
+push_compilation_unit(Interp* interp, Compilation_Unit cu) {
+    array_push(interp->compilation_units, cu);
 }
+
+void register_compilation_units_from_ast(Interp* interp, Ast* decl);
 
 void
 interp_push_source_file(Interp* interp, string filename, Source_File* included_from=0) {

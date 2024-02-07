@@ -1,8 +1,7 @@
 
 struct Parser {
-    Type_Context* tcx;
+    Interp* interp;
     
-    array(Ast*) ast;
     Memory_Arena ast_arena;
     
     Tokenizer* tokenizer;

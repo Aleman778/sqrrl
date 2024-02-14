@@ -705,7 +705,17 @@ parse_if_directive_block(Parser* parser) {
     
     Ast* result = parse_block_or_single_statement(parser);
     Ast* list_head = 0;
-    while (!peek_token_match(parser, Token_Directive, false)) {
+    while (peek_token(parser).type != Token_EOF) {
+        if (peek_token_match(parser, Token_Directive, false)) {
+            Token token = peek_second_token(parser);
+            if (token.type == Token_Ident) {
+                Var v = vars_save_string(token.source);
+                if (v == Sym_endif || v == Kw_else) {
+                    break;
+                }
+            }
+        }
+        
         if (!list_head) {
             list_head = push_ast_node(parser, &first_token);
             list_head->kind = Ast_Compound;
@@ -2051,6 +2061,7 @@ parse_file(Interp* interp, Ast_Module* module, Source_File* source_file) {
     
     string source = read_entire_source_file(source_file);
     if (!source.data) {
+        result->error_count++;
         return result;
     }
     

@@ -2675,8 +2675,13 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
             u32 file_index = stmt->span.file_index;
             Source_File* included_from = get_source_file_by_index(file_index);
             Source_File* source_file = create_source_file(stmt->Include_Directive.filename, included_from);
-            Ast_File* file =  parse_file(tcx->interp, tcx->module, source_file);
-            add_file_to_module(tcx->interp, tcx->module, file);
+            if (source_file->is_valid) {
+                Ast_File* file =  parse_file(tcx->interp, tcx->module, source_file);
+                add_file_to_module(tcx->interp, tcx->module, file);
+                
+                tcx->error_count += file->error_count;
+                result = t_void;
+            }
         } break;
     }
     

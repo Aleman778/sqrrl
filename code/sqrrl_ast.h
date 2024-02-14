@@ -375,12 +375,12 @@ struct Bytecode_Function;
 
 struct Ast_File {
     Source_File* source;
-    
     array(Ast*)* declarations;
+    
+    s32 error_count;
 };
 
 struct Ast_Module {
-    Memory_Arena ast_arena;
     array(Ast_File*)* files;
 };
 

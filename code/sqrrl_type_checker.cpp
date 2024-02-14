@@ -104,41 +104,25 @@ type_check_value(Type_Context* tcx, Type* type, Value value, Span span, bool rep
             result = type->kind == TypeKind_Basic;
             if (!result) break;
             
-            switch (type->Basic.kind) {
-                case Basic_int:
-                case Basic_s8:
-                case Basic_s16:
-                case Basic_s32:
-                case Basic_s64:
-                case Basic_smm: {
-                    if (value.data.signed_int < type->Basic.limits.min_value ||
-                        value.data.signed_int > type->Basic.limits.max_value) {
-                        
-                        type_warning(tcx, string_print("expected type `%` cannot fit in value `%`", 
-                                                       f_type(type), f_value(&value)), span);
-                    }
-                } break;
-                
-                
-                case Basic_uint:
-                case Basic_u8:
-                case Basic_u16:
-                case Basic_u32:
-                case Basic_u64:
-                case Basic_umm: {
-                    if (value.data.signed_int < 0) {
-                        type_warning(tcx, string_print("expected type `%` signed/ unsigned mismatch with `%`", 
-                                                       f_type(type), f_value(&value)), span);
-                        
-                    } else if (value.data.unsigned_int > type->Basic.limits.max_unsigned_value) {
-                        
-                        type_warning(tcx, string_print("expected type `%` cannot fit in value `%`", 
-                                                       f_type(type), f_value(&value)), span);
-                    }
+            if (type->Basic.flags & BasicFlag_Unsigned) {
+                if (value.data.signed_int < 0) {
+                    type_warning(tcx, string_print("expected type `%` signed/ unsigned mismatch with `%`", 
+                                                   f_type(type), f_value(&value)), span);
                     
-                } break;
+                } else if (value.data.unsigned_int > type->Basic.limits.max_unsigned_value) {
+                    
+                    type_warning(tcx, string_print("expected type `%` cannot fit in value `%`", 
+                                                   f_type(type), f_value(&value)), span);
+                }
+                
+            } else {
+                if (value.data.signed_int < type->Basic.limits.min_value ||
+                    value.data.signed_int > type->Basic.limits.max_value) {
+                    
+                    type_warning(tcx, string_print("expected type `%` cannot fit in value `%`", 
+                                                   f_type(type), f_value(&value)), span);
+                }
             }
-            
         } break;
         
         case Value_unsigned_int: {
@@ -150,33 +134,17 @@ type_check_value(Type_Context* tcx, Type* type, Value value, Span span, bool rep
             result = type->kind == TypeKind_Basic;
             if (!result) break;
             
-            switch (type->Basic.kind) {
-                case Basic_uint:
-                case Basic_u8:
-                case Basic_u16:
-                case Basic_u32:
-                case Basic_u64:
-                case Basic_umm: {
-                    if (value.data.unsigned_int > type->Basic.limits.max_unsigned_value) {
-                        type_warning(tcx, string_print("expected type `%` cannot fit in value `%`", 
-                                                       f_type(type), f_value(&value)), span);
-                    }
-                    
-                } break;
-                
-                case Basic_int:
-                case Basic_s8:
-                case Basic_s16:
-                case Basic_s32:
-                case Basic_s64:
-                case Basic_smm: {
-                    if (value.data.unsigned_int > (u64) type->Basic.limits.max_value) {
-                        type_warning(tcx, string_print("expected type `%` cannot fit in value `%`", 
-                                                       f_type(type), f_value(&value)), span);
-                    }
-                } break;
+            if (type->Basic.flags & BasicFlag_Unsigned) {
+                if (value.data.unsigned_int > type->Basic.limits.max_unsigned_value) {
+                    type_warning(tcx, string_print("expected type `%` cannot fit in value `%`", 
+                                                   f_type(type), f_value(&value)), span);
+                }
+            } else {
+                if (value.data.unsigned_int > (u64) type->Basic.limits.max_value) {
+                    type_warning(tcx, string_print("expected type `%` cannot fit in value `%`", 
+                                                   f_type(type), f_value(&value)), span);
+                }
             }
-            
         } break;
         
         case Value_floating: {
@@ -222,7 +190,10 @@ constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
         
         case Ast_Ident: {
             string_id ident = ast_unwrap_ident(ast);
-            result = map_get(tcx->scope->entries, ident).value;
+            Entity entity = resolve_entity_from_identifier(tcx, ident, ast->span, false);
+            if (entity.kind == EntityKind_Constant) {
+                result = entity.value;
+            }
         } break;
         
         case Ast_Unary_Expr: {
@@ -371,8 +342,8 @@ constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
             if (ast->Field_Expr.var) {
                 string_id var_ident = try_unwrap_ident(ast->Field_Expr.var);
                 if (var_ident > 0) {
-                    Type* type = load_type_declaration(tcx, var_ident, 
-                                                       ast->Field_Expr.var->span, false);
+                    Type* type = resolve_typedef_from_identifier(tcx, var_ident, 
+                                                                 ast->Field_Expr.var->span, false);
                     
                     if (type && type->kind == TypeKind_Enum) {
                         string_id ident = try_unwrap_ident(ast->Field_Expr.field);
@@ -596,37 +567,37 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         
         case Ast_Ident: {
             string_id ident = ast_unwrap_ident(expr);
-            
-            Type* type = map_get(tcx->locals, ident);
-            
-            if (type) {
-                result = type;
+            Entity entity = resolve_entity_from_identifier(tcx, ident, expr->span, report_error);
+            if (entity.kind == EntityKind_Typedef) {
+                result = t_type;
+                expr->kind = Ast_Exported_Data;
+                expr->Exported_Data = export_type_info(tcx->data_packer, entity.type);
+                
+            } else if (entity.kind == EntityKind_Macro) {
+                Scope* prev_scope = tcx->scope;
+                Scope macro_scope = {};
+                macro_scope.parent = &tcx->interp->global_scope;
+                tcx->scope = &macro_scope;
+                
+                Ast* macro = entity.ast;
+                if (macro->kind == Ast_Expr_Stmt) {
+                    result = type_infer_expression(tcx, macro->Expr_Stmt, 0, report_error);
+                    if (result) {
+                        pln("expand: %", f_ast(macro->Expr_Stmt));
+                        *expr = *macro->Expr_Stmt;
+                    }
+                    
+                } else if (report_error) {
+                    type_error(tcx, string_lit("cannot expand statement macro inside an expression"), expr->span);
+                }
+                
+                tcx->scope = prev_scope;
+                map_free(macro_scope.entities);
                 
             } else {
-                type = map_get(tcx->globals, ident);
-                
-                if (type) {
-                    result = type;
-                    
-                } else {
-                    type = load_type_declaration(tcx, ident, expr->span, false);
-                    
-                    if (type) {
-                        result = t_type;
-                        expr->kind = Ast_Exported_Data;
-                        expr->Exported_Data = export_type_info(tcx->data_packer, type);
-                        
-                    } else {
-                        if (report_error) {
-                            // NOTE(Alexander): copypasta
-                            type_error(tcx, 
-                                       string_print("`%` is an undeclared identifier", 
-                                                    f_string(vars_load_string(expr->Ident))),
-                                       expr->span);
-                        }
-                    }
-                }
+                result = entity.type;
             }
+            
             expr->type = result;
         } break;
         
@@ -1457,7 +1428,146 @@ push_type_to_struct_like(Type_Struct_Like* dest, Type* type, string_id ident, in
 }
 
 Type*
-load_type_declaration(Type_Context* tcx, string_id ident, Span span, bool report_error) {
+push_function_overload(Type_Context* tcx, Entity* entity, Type* new_type, Span span, bool report_error) {
+    for_array_v(entity->overloads, overloaded_fn, _) {
+        if (match_function_args(tcx, overloaded_fn, 
+                                new_type->Function.arg_types,
+                                0, report_error, true).accepted) {
+            
+            // TODO(Alexander): we might not have stored the unit yet so this error isn't going to do anything
+            if (overloaded_fn->Function.unit) {
+                //if (type->Function.unit) {
+                if (report_error) {
+                    type_error(tcx,
+                               string_print("cannot redeclare function `%` with the same arguments", 
+                                            f_var(new_type->Function.ident)), span);
+                }
+                return 0;
+            } else {
+                // TODO(Alexander): we need to better keep track of where default arguments are stored.
+                overloaded_fn->Function.unit = new_type->Function.unit;
+            }
+            
+            if (!new_type->Function.unit) {
+                return overloaded_fn;
+            }
+        }
+    }
+    
+    array_push(entity->overloads, new_type);
+    return new_type;
+}
+
+bool
+register_entity(Type_Context* tcx, string_id ident, Entity entity, Span span, bool report_error) {
+    Entity existing = map_get(tcx->scope->entities, ident);
+    if (existing.kind == EntityKind_None) {
+        map_put(tcx->scope->entities, ident, entity);
+        return true;
+        
+    } else if (existing.kind == EntityKind_Macro && entity.kind == EntityKind_Macro) {
+        pln("macro = %: %", f_var(ident), f_ast(entity.ast));
+        return true;
+        //unimplemented;
+        //push_function_overload(tcx, &existing, entity.type, span, report_error);
+        
+        
+    } else if (existing.kind == EntityKind_Typedef  && entity.kind == EntityKind_Typedef) {
+        Type* new_type = entity.type;
+        Type* old_type = existing.type;
+        
+        if (new_type != old_type) {
+            if (new_type->kind == TypeKind_Struct &&
+                old_type->kind == TypeKind_Struct) {
+                // TODO(Alexander): hack to get forward declares working
+                if (array_count(new_type->Struct_Like.types) == 0) {
+                    // do nothing
+                } else if (array_count(old_type->Struct_Like.types) == 0) {
+                    memcpy(old_type, new_type, sizeof(Type));
+                } else {
+                    type_error(tcx,
+                               string_print("cannot redeclare previous declaration `%`",
+                                            f_var(ident)), span);
+                }
+                new_type = old_type;
+                entity.type = new_type;
+                map_put(tcx->scope->entities, ident, entity);
+                
+            } else if (new_type->kind == TypeKind_Union &&
+                       old_type->kind == TypeKind_Union) {
+                // TODO(Alexander): hack to get forward declares working
+                if (array_count(new_type->Struct_Like.types) == 0) {
+                    // do nothing
+                } else if (array_count(old_type->Struct_Like.types) == 0) {
+                    memcpy(old_type, new_type, sizeof(Type));
+                } else {
+                    type_error(tcx,
+                               string_print("cannot redeclare previous declaration `%`",
+                                            f_string(vars_load_string(ident))),
+                               span);
+                }
+                new_type = old_type;
+                
+            } else {
+                if (old_type->kind && !type_equals(old_type, new_type)) {
+                    type_error(tcx,
+                               string_print("cannot redeclare `%` with different type, previous type was `%`",
+                                            f_var(ident), f_type(old_type)), 
+                               span);
+                }
+            }
+        }
+        
+    } else if (existing.kind == EntityKind_Function && entity.kind == EntityKind_Function) {
+        
+        Type* new_type = entity.type;
+        Type* old_type = existing.type;
+        if (new_type != old_type) {
+            Entity new_entity = {};
+            new_entity.kind = EntityKind_Function_Overloads;
+            push_function_overload(tcx, &new_entity, existing.type, empty_span, report_error);
+            push_function_overload(tcx, &new_entity, entity.type, span, report_error);
+            map_put(tcx->scope->entities, ident, new_entity);
+        }
+        
+    } else if (existing.kind == EntityKind_Function_Overloads && entity.kind == EntityKind_Function) {
+        push_function_overload(tcx, &existing, entity.type, span, report_error);
+        
+    } else if (report_error) {
+        
+        type_error(tcx, string_print("cannot redeclare `%`", f_var(ident)), span);
+    }
+    
+    return false;
+}
+
+
+Entity
+resolve_entity_from_identifier(Type_Context* tcx, string_id ident, Span span, bool report_error) {
+    Scope* scope = tcx->scope;
+    while (scope) {
+        Entity entity = map_get(scope->entities, ident);
+        
+        if (entity.kind != EntityKind_None) {
+            return entity;
+        }
+        
+        scope = scope->parent;
+    }
+    
+    if (report_error) {
+        // NOTE(Alexander): copypasta, where?
+        type_error(tcx, 
+                   string_print("`%` is an undeclared identifier", 
+                                f_string(vars_load_string(ident))),
+                   span);
+    }
+    
+    return {};
+}
+
+Type*
+resolve_typedef_from_identifier(Type_Context* tcx, string_id ident, Span span, bool report_error) {
     Type* result = 0;
     
     if (is_builtin_type_keyword(ident)) {
@@ -1465,8 +1575,6 @@ load_type_declaration(Type_Context* tcx, string_id ident, Span span, bool report
             result = t_void;
         } else if (ident == Kw_Type) {
             result = t_type;
-        } else if (ident == Kw_auto) {
-            unimplemented;
         } else {
             int index = ident - Kw_bool + 1;
             assert(index >= 0 && index < fixed_array_count(basic_type_definitions));
@@ -1474,25 +1582,14 @@ load_type_declaration(Type_Context* tcx, string_id ident, Span span, bool report
             result = &basic_type_definitions[index];
             result = normalize_basic_types(result);
         }
+        
     } else {
-        result = map_get(tcx->local_type_table, ident);
-        if (!result) { //  || !result->is_valid
-            result = map_get(tcx->global_type_table, ident);
-            if (!result) { // || !result->is_valid
-                if (report_error) {
-                    // NOTE(Alexander): copypasta, where?
-                    type_error(tcx, 
-                               string_print("`%` is an undeclared identifier", 
-                                            f_string(vars_load_string(ident))),
-                               span);
-                }
-                return 0;
-            }
-        }
+        result = resolve_entity_from_identifier(tcx, ident, span, report_error).type;
     }
     
     return result;
 }
+
 
 Type*
 save_operator_overload(Type_Context* tcx, Type* type, Operator op, Span span, bool report_error) {
@@ -1539,107 +1636,6 @@ save_operator_overload(Type_Context* tcx, Type* type, Operator op, Span span, bo
         type_error(tcx,
                    string_print("expected `1` or `2` arguments for operator overload found `%`", 
                                 f_int(arg_count)), span);
-    }
-    
-    return type;
-}
-
-Type*
-save_type_declaration(Type_Context* tcx, string_id ident, Type* type, Span span, bool report_error) {
-    
-    Type* old_type = map_get(tcx->global_type_table, ident);
-    if (old_type && type != old_type) { //  && old_type->is_valid && 
-        
-        if (type->kind == TypeKind_Function &&
-            old_type->kind == TypeKind_Function) {
-            
-            // TODO(Alexander): func overload
-            Overloaded_Function_List* overload = &map_get(tcx->overloaded_functions, ident);
-            if (!overload || !overload->is_valid) {
-                Overloaded_Function_List new_overload = {};
-                new_overload.is_valid = true;
-                map_put(tcx->overloaded_functions, ident, new_overload);
-                overload = &map_get(tcx->overloaded_functions, ident);
-                array_push(overload->functions, old_type);
-            }
-            assert(overload);
-            
-            
-            //if (ident == vars_save_cstring("add")) {
-            //pln("new overload, curr count = %", f_int(array_count(overload->functions)));
-            //}
-            
-            //if (ident == vars_save_cstring("abs")) {
-            //__debugbreak();
-            //}
-            
-            for_array_v(overload->functions, overloaded_fn, overload_index) {
-                if (match_function_args(tcx, overloaded_fn, 
-                                        type->Function.arg_types,
-                                        0, report_error, true).accepted) {
-                    
-                    // TODO(Alexander): we might not have stored the unit yet so this error isn't going to do anything
-                    if (overloaded_fn->Function.unit) {
-                        //if (type->Function.unit) {
-                        if (report_error) {
-                            type_error(tcx,
-                                       string_print("cannot redeclare function `%` with the same arguments", 
-                                                    f_var(type->Function.ident)), span);
-                        }
-                        return 0;
-                    } else {
-                        // TODO(Alexander): we need to better keep track of where default arguments are stored.
-                        overloaded_fn->Function.unit = type->Function.unit;
-                    }
-                    
-                    if (!type->Function.unit) {
-                        return overloaded_fn;
-                    }
-                }
-            }
-            
-            array_push(overload->functions, type);
-            //pln("Added overload `%`", f_type(type));
-            
-        } else if (type->kind == TypeKind_Struct &&
-                   old_type->kind == TypeKind_Struct) {
-            
-            // TODO(Alexander): hack to get forward declares working
-            if (array_count(type->Struct_Like.types) == 0) {
-                // do nothing
-            } else if (array_count(old_type->Struct_Like.types) == 0) {
-                memcpy(old_type, type, sizeof(Type));
-            } else {
-                type_error(tcx,
-                           string_print("cannot redeclare previous declaration `%`",
-                                        f_var(ident)), span);
-            }
-            
-            type = old_type;
-        } else if (type->kind == TypeKind_Union &&
-                   old_type->kind == TypeKind_Union) {
-            
-            // TODO(Alexander): hack to get forward declares working
-            if (array_count(type->Struct_Like.types) == 0) {
-                // do nothing
-            } else if (array_count(old_type->Struct_Like.types) == 0) {
-                memcpy(old_type, type, sizeof(Type));
-            } else {
-                type_error(tcx,
-                           string_print("cannot redeclare previous declaration `%`",
-                                        f_string(vars_load_string(ident))),
-                           span);
-            }
-            
-            type = old_type;
-        } else {
-            if (old_type->kind && !type_equals(old_type, type)) {
-                type_error(tcx,
-                           string_print("cannot redeclare `%` with different type, previous type was `%`",
-                                        f_var(ident), f_type(old_type)), 
-                           span);
-            }
-        }
     }
     
     return type;
@@ -1776,7 +1772,15 @@ save_type_declaration_from_ast(Type_Context* tcx, string_id ident, Ast* ast, boo
                 //pln("%: %", f_type(type), f_ast(ast));
             }
             
-            type = save_type_declaration(tcx, ident, type, ast->span, report_error);
+            if (type->kind == TypeKind_Function) {
+                if (!register_entity(tcx, ident, create_function(type), ast->span, report_error)) {
+                    type = 0;
+                }
+            } else {
+                if (!register_entity(tcx, ident, create_typedef(type), ast->span, report_error)) {
+                    type = 0;
+                }
+            }
         }
         
         if (type) {
@@ -1796,7 +1800,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
     // Special case for named types, they don't need to be allocated
     if (ast->kind == Ast_Named_Type) {
         string_id ident = ast->Named_Type->Ident;
-        result.type = load_type_declaration(tcx, ident, ast->span, report_error);
+        result.type = resolve_typedef_from_identifier(tcx, ident, ast->span, report_error);
         ast->type = result.type;
         return result;
     }
@@ -1916,7 +1920,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 Type* type = 0;
                 if (ast_argument_type->kind == Ast_Ellipsis) {
                     result.type->Function.is_variadic = true;
-                    type = load_type_declaration(tcx, Sym_Var_Args, ast_argument_type->span, false);
+                    type = resolve_typedef_from_identifier(tcx, Sym_Var_Args, ast_argument_type->span, false);
                     if (!type) {
                         type = t_type;
                     }
@@ -2110,7 +2114,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     library_id = dynamic_library_id;
                     library_function_id = result.type->Function.ident;
                     
-                    Type* lib_type = load_type_declaration(tcx, Sym_Dynamic_Library, ast->span, false);
+                    Type* lib_type = resolve_typedef_from_identifier(tcx, Sym_Dynamic_Library, ast->span, false);
                     if (!lib_type) {
                         if (report_error) {
                             type_error(tcx, string_print("Missing implementation declaration of `Dynamic_Library`"), ast->span);
@@ -2120,12 +2124,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                         return result;
                     }
                     
-                    Type* lib_var = map_get(tcx->globals, library_id);
-                    if (lib_var) {
-                        verify(type_equals(lib_type, lib_var));
-                    } else {
-                        map_put(tcx->globals, library_id, lib_type);
-                    }
+                    register_entity(tcx, library_id, create_variable(lib_type), empty_span, false);
                 }
                 
                 if (library_id && library_function_id) {
@@ -2182,7 +2181,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     result.type->align = (s32) struct_like.align;
                     
                     // TODO: maybe do this when saving the type!!!
-                    //Type* type_decl = load_type_declaration(tcx, ident, ast->span, false);
+                    //Type* type_decl = resolve_typedef_from_identifier(tcx, ident, ast->span, false);
                     //if (type_decl) {
                     //*type_decl = *result.type;
                     //}
@@ -2190,7 +2189,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 } else if (ident) {
                     
                     // Forward declare
-                    result.type = load_type_declaration(tcx, ident, ast->span, report_error);
+                    result.type = resolve_typedef_from_identifier(tcx, ident, ast->span, report_error);
                 }
             } else {
                 result.type = 0;
@@ -2329,13 +2328,16 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
 
 bool
 try_expand_if_directive(Type_Context* tcx, Ast* stmt, bool report_error) {
+    if (!type_infer_expression(tcx, stmt->If_Directive.cond, t_s64, report_error)) {
+        return false;
+    }
     Value value = constant_folding_of_expressions(tcx, stmt->If_Directive.cond);
     if (is_integer(value)) {
         if (value_to_bool(value)) {
-            register_compilation_units_from_ast(tcx->interp, stmt->If_Directive.then_block);
+            register_compilation_units_from_ast_decl(tcx->interp, tcx->module, tcx->file, stmt->If_Directive.then_block);
             
         } else if (is_valid_ast(stmt->If_Directive.else_block)) {
-            register_compilation_units_from_ast(tcx->interp, stmt->If_Directive.else_block);
+            register_compilation_units_from_ast_decl(tcx->interp, tcx->module, tcx->file, stmt->If_Directive.else_block);
         }
         return true;
         
@@ -2352,6 +2354,7 @@ try_expand_if_directive(Type_Context* tcx, Ast* stmt, bool report_error) {
 Type*
 process_define_directive(Type_Context* tcx, Ast* ast, bool report_error) {
     Type* result = 0;
+    Value comptime_value = {};
     
     if (is_valid_ast(ast->Define_Directive.arguments)) {
         unimplemented;
@@ -2361,13 +2364,36 @@ process_define_directive(Type_Context* tcx, Ast* ast, bool report_error) {
         result = type_infer_statement(tcx, stmt, report_error);
         
         if (stmt->kind == Ast_Expr_Stmt) {
-            Value comptime_value = constant_folding_of_expressions(tcx, stmt->Expr_Stmt);
-            
-            if (!is_void(comptime_value)) {
-                string_id ident = ast_unwrap_ident(ast->Define_Directive.ident);
-                Type_And_Value tv = { result, comptime_value };
-                map_put(tcx->scope->entries, ident, tv);
-            }
+            comptime_value = constant_folding_of_expressions(tcx, stmt->Expr_Stmt);
+        }
+    }
+    
+    Entity entity;
+    if (is_void(comptime_value)) {
+        entity = create_macro(ast->Define_Directive.stmt);
+        result = t_code;
+    } else {
+        entity = create_constant_value(result, comptime_value);
+    }
+    
+    string_id ident = ast_unwrap_ident(ast->Define_Directive.ident);
+    if (!register_entity(tcx, ident, entity, ast->span, report_error)) {
+        result = 0;
+    }
+    
+    return result;
+}
+
+Type*
+type_infer_block_in_scope(Type_Context* tcx, Ast* stmt, bool report_error) {
+    assert(stmt->kind == Ast_Block_Stmt);
+    
+    Type* result = 0;
+    Ast* stmts = stmt->Block_Stmt.stmts;
+    for_compound(stmts, it) {
+        result = type_infer_statement(tcx, it, report_error);
+        if (!result) {
+            break;
         }
     }
     
@@ -2416,46 +2442,27 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                 stmt->Assign_Stmt.expr->type = result;
             }
             
-            stmt->Assign_Stmt.ident->type = result;
             
-            Ast* ast_ident = stmt->Assign_Stmt.ident;
-            while (ast_ident) {
-                string_id ident = 0;
-                if (ast_ident->kind == Ast_Compound) {
-                    if (ast_ident->Compound.node && ast_ident->Compound.node->kind == Ast_Ident) {
-                        ident = ast_unwrap_ident(ast_ident->Compound.node);
-                        ast_ident = ast_ident->Compound.next;
-                    } else {
-                        break;
+            if (result) {
+                Entity entity = create_variable(result);
+                
+                string_id ident = try_unwrap_ident(stmt->Assign_Stmt.ident);
+                if (ident) {
+                    if (!register_entity(tcx, ident, entity, stmt->span, report_error)) {
+                        result = 0;
                     }
-                } else if (ast_ident->kind == Ast_Ident) {
-                    ident = ast_unwrap_ident(ast_ident);
-                    ast_ident = 0;
+                    
                 } else {
-                    break;
+                    for_compound(stmt->Assign_Stmt.ident, ast_ident) {
+                        ident = try_unwrap_ident(stmt->Assign_Stmt.ident);
+                        if (!register_entity(tcx, ident, entity, stmt->span, report_error)) {
+                            result = 0;
+                        }
+                    }
                 }
                 
-                if (tcx->block_depth > 0) {
-                    if (!push_local(tcx, ident, result, stmt->span, report_error)) {
-                        result = 0;
-                    }
-                } else {
-                    
-                    if (map_get(tcx->globals, ident) && report_error) {
-                        result = 0;
-                        if (report_error) {
-                            type_error(tcx,
-                                       string_print("cannot redeclare previous declaration `%`",
-                                                    f_string(vars_load_string(ident))),
-                                       stmt->span);
-                        }
-                    } else {
-                        map_put(tcx->globals, ident, result);
-                    }
-                }
+                stmt->type = result;
             }
-            
-            stmt->type = result;
             
         } break;
         
@@ -2467,18 +2474,10 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         case Ast_Block_Stmt: {
             result = t_void;
             
-            push_type_scope(tcx);
-            
-            // TODO(Alexander): create a new scope
-            Ast* stmts = stmt->Block_Stmt.stmts;
-            for_compound(stmts, it) {
-                result = type_infer_statement(tcx, it, report_error);
-                if (!result) {
-                    break;
-                }
-            }
-            
-            pop_type_scope(tcx);
+            Scope scope = {};
+            begin_block_scope(tcx, &scope);
+            result = type_infer_block_in_scope(tcx, stmt, report_error);
+            end_block_scope(tcx, &scope);
         } break;
         
         case Ast_Decl_Stmt: {
@@ -2493,28 +2492,26 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                 }
             }
             
+            unimplemented;
+            
+#if 0
             if (!stmt->Decl_Stmt.stmt || stmt->Decl_Stmt.stmt->kind == Ast_None) {
                 stmt->type = decl_type;
                 stmt->Decl_Stmt.type->type = decl_type;
                 result = decl_type;
-                map_put(tcx->local_type_table, ident, result);
+                // TODO(Alexander): what is this doing here?
+                //map_put(tcx->local_type_table, ident, result);
+                
             } else {
                 Type* found_type = type_infer_statement(tcx, stmt->Decl_Stmt.stmt, report_error);
                 
                 if (found_type) {
-                    if (decl_type->kind == TypeKind_Function) {
-                        if (!decl_type->Function.unit) {
-                            pln("TODO: this node has no compilation unit attached!!!%", f_ast(stmt));
-                            // TODO(Alexander): we need to resolve this
-                            //unimplemented;
-                        }
-                    }
-                    
                     result = decl_type;
                     stmt->type = result;
-                    map_put(tcx->locals, ident, result);
+                    //map_put(tcx->locals, ident, result);
                 }
             }
+#endif
         } break;
         
         case Ast_If_Stmt: {
@@ -2539,19 +2536,28 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         } break;
         
         case Ast_For_Stmt: {
-            push_type_scope(tcx);
+            Scope scope = {};
+            begin_block_scope(tcx, &scope);
             
             Type* init = type_infer_statement(tcx, stmt->For_Stmt.init, report_error);
             Type* cond = type_infer_expression(tcx, stmt->For_Stmt.cond, t_bool, report_error);
             constant_folding_of_expressions(tcx, stmt->For_Stmt.cond);
             Type* update = type_infer_expression(tcx, stmt->For_Stmt.update, 0, report_error);
-            Type* block = type_infer_statement(tcx, stmt->For_Stmt.block, report_error);
+            
+            
+            
+            Type* block;
+            if (stmt->For_Stmt.block->kind == Ast_Block_Stmt) {
+                block = type_infer_block_in_scope(tcx, stmt->For_Stmt.block, report_error);
+            } else {
+                block = type_infer_statement(tcx, stmt->For_Stmt.block, report_error);
+            }
             
             if (init && cond && update && block) {
                 result = init;
             }
             
-            pop_type_scope(tcx);
+            end_block_scope(tcx, &scope);
         } break;
         
         case Ast_While_Stmt: {
@@ -2662,6 +2668,15 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         
         case Ast_Define_Directive: {
             result = process_define_directive(tcx, stmt, report_error);
+        } break;
+        
+        case Ast_Include_Directive: {
+            // TODO(Alexander): perhaps not super thread safe, refactor later when we do threading
+            u32 file_index = stmt->span.file_index;
+            Source_File* included_from = get_source_file_by_index(file_index);
+            Source_File* source_file = create_source_file(stmt->Include_Directive.filename, included_from);
+            Ast_File* file =  parse_file(tcx->interp, tcx->module, source_file);
+            add_file_to_module(tcx->interp, tcx->module, file);
         } break;
     }
     
@@ -3271,40 +3286,7 @@ type_infer_declaration(Type_Context* tcx, Ast* ast, string_id ident, bool report
     bool result = true;
     
     tcx->return_type = 0;
-    if (ast->kind == Ast_Decl_Stmt) {
-        Type* type = ast->Decl_Stmt.type->type;
-        ast->type = type;
-        
-        if (type && type->kind == TypeKind_Function) {
-            push_type_scope(tcx);
-            
-            // Store the arguments in local context
-            Type_Function* func = &type->Function;
-            if (func->arg_idents) {
-                for (int arg_index = 0; 
-                     arg_index < array_count(func->arg_idents);
-                     arg_index++) {
-                    
-                    Type* arg_type = func->arg_types[arg_index];
-                    if (arg_type) {
-                        string_id arg_ident = func->arg_idents[arg_index];
-                        // TODO(Alexander): maybe we need to also store spans in procedure type?
-                        if (!push_local(tcx, arg_ident, arg_type, ast->span, report_error)) {
-                            result = false;
-                        }
-                    } else {
-                        assert(0);
-                    }
-                }
-            }
-            
-            tcx->return_type = type->Function.return_type;
-        }
-    }
-    
-    if (!result) {
-        return result;
-    }
+    tcx->block_depth = 0;
     
     if (is_ast_type(ast)) {
         Type* type = save_type_declaration_from_ast(tcx, ident, ast, report_error);
@@ -3312,22 +3294,53 @@ type_infer_declaration(Type_Context* tcx, Ast* ast, string_id ident, bool report
             result = false;
         }
         
+    } else if (ast->kind == Ast_Decl_Stmt) {
+        Type* type = ast->Decl_Stmt.type->type;
+        ast->type = type;
+        
+        if (ast->Decl_Stmt.type->kind == Ast_Function_Type) {
+            if (type && type->kind == TypeKind_Function) {
+                Scope scope = {};
+                begin_block_scope(tcx, &scope);
+                
+                // Store the arguments the main block scope
+                Type_Function* func = &type->Function;
+                if (func->arg_idents) {
+                    for (int arg_index = 0; 
+                         arg_index < array_count(func->arg_idents);
+                         arg_index++) {
+                        
+                        Type* arg_type = func->arg_types[arg_index];
+                        if (arg_type) {
+                            string_id arg_ident = func->arg_idents[arg_index];
+                            // TODO(Alexander): maybe we need to also store spans in procedure type?
+                            
+                            if (!register_entity(tcx, arg_ident, create_variable(arg_type), ast->span, report_error)) {
+                                result = false;
+                            }
+                        } else {
+                            assert(0);
+                        }
+                    }
+                }
+                tcx->return_type = type->Function.return_type;
+                result = result && type_infer_block_in_scope(tcx, ast->Decl_Stmt.stmt, report_error);
+                end_block_scope(tcx, &scope);
+                
+            } else {
+                result = false;
+            }
+            
+        } else {
+            result = type_infer_statement(tcx, ast, report_error);
+        }
+        
     } else if (is_ast_stmt_or_directive(ast)) {
-        Type* type = type_infer_statement(tcx, ast, report_error);
-        result = type;
+        result = type_infer_statement(tcx, ast, report_error);
         
     } else {
         assert(0 && "illegal type: expected X_Stmt or any X_Type node");
     }
-    
-    while (tcx->active_scope) {
-        pop_type_scope(tcx);
-    }
-    
-    map_free(tcx->local_type_table);
-    map_free(tcx->locals);
-    
-    tcx->block_depth = 0;
     
     return result;
 }
@@ -3422,7 +3435,7 @@ type_check_declaration(Type_Context* tcx, Compilation_Unit* cu) {
                 cu->is_main = true;
                 tcx->entry_point = type;
             }
-            pln("type checking function: `%`... (cu=%)", f_var(type->Function.ident), f_u64_HEX(cu));
+            //pln("type checking function: `%`... (cu=%)", f_var(type->Function.ident), f_u64_HEX(cu));
         }
     }
     
@@ -3467,10 +3480,8 @@ type->Function.unit = 0; \
 type->Function.intrinsic = intrinsic_fp; \
 type->Function.is_intrinsic = true; \
 type->Function.return_type = normalize_basic_types(_return_type); \
-map_put(tcx->global_type_table, ident, type); \
-map_put(tcx->globals, ident, type); \
     \
-save_type_declaration(tcx, ident, type, empty_span, false); \
+register_entity(tcx, ident, create_function(type), empty_span, false); \
 }
 #define push_intrinsic(name, is_variadic, interp_intrinsic_fp, intrinsic_fp, _return_type) \
 _push_intrinsic(intrin_##name, name, is_variadic, interp_intrinsic_fp, intrinsic_fp, _return_type) 
@@ -3548,36 +3559,11 @@ init_type_context(Type_Context* tcx, Interp* interp, Data_Packer* data_packer, B
     DEBUG_setup_intrinsic_types(tcx);
 }
 
-enum Preprocess_Result {
-    PreprocessOutput_Failed,
-    PreprocessOutput_Ok,
-    PreprocessOutput_Expand_If,
-};
-
-Preprocess_Result
-preprocess_directive(Type_Context* tcx, Compilation_Unit* cu, bool report_error) {
-    Ast* ast = cu->ast;
-    switch (ast->kind) {
-        
-        case Ast_If_Directive: {
-            if (try_expand_if_directive(tcx, ast, report_error)) {
-                
-            }
-        } break;
-        
-        case Ast_Define_Directive: {
-            
-            
-        } break;
-    }
-    
-    return PreprocessOutput_Failed;
-}
-
 s32
 run_type_checker(Type_Context* tcx, Interp* interp) {
     tcx->interp = interp;
     
+#if 0
     // Declare all the types 
     for_array_it(interp->compilation_units, cu) {
         if (is_ast_type(cu->ast)) {
@@ -3587,26 +3573,29 @@ run_type_checker(Type_Context* tcx, Interp* interp) {
             // HACK: make sure we declare structs/ unions so they can be overridden.
             if (cu->ast->kind == Ast_Struct_Type) {
                 type->kind = TypeKind_Struct;
+                register_entity(tcx, ident, create_typedef(type), span);
             } else if (cu->ast->kind == Ast_Union_Type) {
                 type->kind = TypeKind_Union;
             }
             
-            if (!map_key_exists(tcx->global_type_table, cu->ident)) {
-                // TODO(Alexander): distinguish between types and types of variables
-                // E.g. in `int main(...)`, main is not a type it's a global variable
-                // but `typedef u32 string_id;` in this case string_id is a type.
-                map_put(tcx->global_type_table, cu->ident, type);
-                map_put(tcx->globals, cu->ident, type);
-            } 
+            
+            //if (!map_key_exists(tcx->global_type_table, cu->ident)) {
+            // TODO(Alexander): distinguish between types and types of variables
+            // E.g. in `int main(...)`, main is not a type it's a global variable
+            // but `typedef u32 string_id;` in this case string_id is a type.
+            //map_put(tcx->global_type_table, cu->ident, type);
+            //map_put(tcx->globals, cu->ident, type);
+            //} 
         }
     }
-    
+#endif
     
     
     // Type inference
     int last_num_succeeded = 0;
     int num_succeeded = 0;
     do {
+        last_num_succeeded = num_succeeded;
         num_succeeded = 0;
         
         // NOTE(Alexander): prefer resolving types first because it helps resolving bodies of functions
@@ -3614,10 +3603,12 @@ run_type_checker(Type_Context* tcx, Interp* interp) {
             Compilation_Unit* cu = &interp->compilation_units[cu_index];
             if (!is_ast_type(cu->ast)) continue;
             
-            if (cu->status == Status_Parsing_Finished ||
-                cu->status == Status_Type_Inference_Failed) {
+            if (cu->status == CUnitStatus_Parsing_Finished ||
+                cu->status == CUnitStatus_Type_Inference_Failed) {
+                tcx->module = cu->module;
+                tcx->file = cu->file;
                 if (type_infer_declaration(tcx, cu->ast, cu->ident, false)) {
-                    interp->compilation_units[cu_index].status = Status_Type_Inference_Finished;
+                    interp->compilation_units[cu_index].status = CUnitStatus_Type_Inference_Finished;
                     num_succeeded++;
                 }
             } else {
@@ -3630,10 +3621,12 @@ run_type_checker(Type_Context* tcx, Interp* interp) {
             if (is_ast_type(cu->ast)) continue;
             
             // NOTE(Alexander): copy paste above
-            if (cu->status == Status_Parsing_Finished ||
-                cu->status == Status_Type_Inference_Failed) {
+            if (cu->status == CUnitStatus_Parsing_Finished ||
+                cu->status == CUnitStatus_Type_Inference_Failed) {
+                tcx->module = cu->module;
+                tcx->file = cu->file;
                 if (type_infer_declaration(tcx, cu->ast, cu->ident, false)) {
-                    interp->compilation_units[cu_index].status = Status_Type_Inference_Finished;
+                    interp->compilation_units[cu_index].status = CUnitStatus_Type_Inference_Finished;
                     num_succeeded++;
                 }
             } else {
@@ -3648,8 +3641,10 @@ run_type_checker(Type_Context* tcx, Interp* interp) {
     
     for (int cu_index = 0; cu_index < array_count(interp->compilation_units); cu_index++) {
         Compilation_Unit* cu = &interp->compilation_units[cu_index];
-        if (cu->status == Status_Parsing_Finished ||
-            cu->status == Status_Type_Inference_Failed) {
+        if (cu->status == CUnitStatus_Parsing_Finished ||
+            cu->status == CUnitStatus_Type_Inference_Failed) {
+            tcx->module = cu->module;
+            tcx->file = cu->file;
             type_infer_declaration(tcx, cu->ast, cu->ident, true);
         }
     }

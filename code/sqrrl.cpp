@@ -13,7 +13,6 @@
 #include "sqrrl_tokenizer.cpp"
 #include "sqrrl_parser.cpp"
 #include "sqrrl_type_checker.cpp"
-#include "sqrrl_interp.cpp"
 #include "sqrrl_bytecode_builder.cpp"
 #include "sqrrl_x64_instructions.cpp"
 #include "sqrrl_x64_converter.cpp"
@@ -131,20 +130,21 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     Interp interp = {};
     
     Type_Context tcx = {};
-    init_type_context(&tcx, &interp, &data_packer, compiler.backend);
     tcx.scope = &interp.global_scope;
+    init_type_context(&tcx, &interp, &data_packer, compiler.backend);
     
     {
         // TODO(Alexander): make it possible to override these values
+        // TODO(Alexander): select correct OS
         interp_put_global(&interp, 
                           vars_save_cstring("OS_WINDOWS"),
                           t_s64,
-                          create_signed_int_value(OS_WINDOWS));
+                          create_signed_int_value(compiler.backend == Backend_X64));
         
         interp_put_global(&interp, 
                           vars_save_cstring("OS_LINUX"),
                           t_s64,
-                          create_signed_int_value(OS_LINUX));
+                          create_signed_int_value(0));
         
         interp_put_global(&interp,
                           vars_save_cstring("OS_WEB"),
@@ -162,9 +162,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                           create_signed_int_value(compiler.backend == Backend_WASM));
     }
     
-    interp_push_source_file(&interp, compiler.filename);
+    Ast_Module ast_module = {};
+    Source_File* file = create_source_file(compiler.filename);
+    interp_add_source_file(&interp, &ast_module, file);
     if (!compiler.output_filename.data) {
-        Source_File* file = interp.source_files[0];
         string name_part = string_view(file->abspath.data + file->filedir.count, 
                                        file->abspath.data + file->abspath.count - file->extension.count - 1);
         // TODO(Alexander): hardcoded .exe
@@ -184,18 +185,20 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
     // Parse source files in our module
-    Ast_Module ast_module = {};
-    Parser parser = {};
-    for (int i = 0; i < array_count(interp.source_files); i++) {
-        Source_File* file = interp.source_files[i];
-        pln("Parsing file `%`...", f_string(file->abspath));
-        Ast_File* ast_file = parse_file(&parser, &interp, file);
-        array_push(ast_module.files, ast_file);
-    }
-    
-    if (parser.error_count > 0) {
-        pln("\nErrors found during parsing, exiting...\n");
-        return 1;
+    {
+        int error_count = 0;
+        for (int i = 0; i < array_count(interp.included_files); i++) {
+            Included_File it = interp.included_files[i];
+            pln("Parsing file `%`...", f_string(it.file->abspath));
+            Ast_File* ast_file = parse_file(&interp, it.module, it.file);
+            add_file_to_module(&interp, it.module, ast_file);
+            error_count += ast_file->error_count;
+        }
+        
+        if (error_count > 0) {
+            pln("\nErrors found during parsing, exiting...\n");
+            return 1;
+        }
     }
     
     // Typecheck the AST

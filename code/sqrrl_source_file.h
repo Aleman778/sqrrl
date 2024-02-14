@@ -7,6 +7,7 @@ struct Source_File {
     
     string source;
     
+    Ast_File* ast_file;
     array(smm)* lines;
     
     u32 index;

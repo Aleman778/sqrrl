@@ -459,77 +459,10 @@ parse_atom(Parser* parser, bool report_error, u8 min_prec) {
         } break;
         
         case Token_Open_Paren: {
-            // TODO(Alexander): refactor this, I think we might have to either resolve
-            // the ambiguity at type inference stage or use `cast(int) x` syntax
-            
-            //__debugbreak();
-            // TODO(Alexander): this is a hack, parenthesized and cast expressions are sightly ambiguous 
             next_token(parser);
-            Tokenizer_State begin_tokenizer = save_tokenizer(parser->tokenizer);
-            
-            Token first_token = peek_token(parser);
-            result = push_ast_node(parser, &token);
-            Ast* inner = parse_type(parser, false);
-            if (inner && is_ast_type(inner)) {
-                if (!peek_token_match(parser, Token_Close_Paren, false)) {
-                    if (inner) {
-                        arena_rewind(&parser->ast_arena);
-                    }
-                    inner = 0;
-                }
-            }
-            
-            if (!inner || is_ast_none(inner)) {
-                restore_tokenizer(&begin_tokenizer);
-                parser->num_peeked_tokens = 0;
-                if (inner) {
-                    arena_rewind(&parser->ast_arena);
-                }
-                
-                inner = parse_expression(parser);
-                Token peek = peek_token(parser);
-                switch (peek.type) {
-                    case Token_Close_Paren: {
-                        result->kind = Ast_Paren_Expr;
-                        result->Paren_Expr.expr = inner;
-                    } break;
-                    
-                    case Token_Comma: {
-                        result = parse_compound(parser, 
-                                                Token_Comma, Token_Close_Paren, Token_Comma, 
-                                                &parse_actual_argument);
-                    } break;
-                    
-                    default: {
-                        if (report_error) {
-                            parse_error(parser, peek, string_print("expected `)` or `,` found `%` ", f_token(peek.type)));
-                        }
-                    } break;
-                }
-            }
-            
+            result = push_ast_node(parser);
+            result->Paren_Expr.expr = parse_expression(parser);
             next_token_if_matched(parser, Token_Close_Paren);
-            
-            if (is_ast_type(inner)) {
-                Ast* expr = parse_expression(parser, false, 20);
-                if (is_valid_ast(expr)) {
-                    result->kind = Ast_Cast_Expr;
-                    result->Cast_Expr.type = inner;
-                    result->Cast_Expr.expr = expr;
-                } else {
-                    if (inner->kind == Ast_Named_Type && !is_builtin_type_keyword(try_unwrap_ident(inner->Named_Type))) {
-                        // NOTE(Alexander): not an actualy type cast instead just (identifier)
-                        result->kind = Ast_Paren_Expr;
-                        result->Paren_Expr.expr = inner->Named_Type;
-                    } else {
-                        //unimplemented;
-                        // TODO(Alexander): improve error message
-                        parse_error(parser, first_token, 
-                                    string_print("Failed to parse type cast, please try `cast(%)` instead", 
-                                                 f_string(first_token.source)));
-                    }
-                }
-            }
         } break;
         
         case Token_Open_Brace: {
@@ -736,7 +669,6 @@ parse_assign_statement(Parser* parser, Ast* type, Ast* ident=0) {
     result->Assign_Stmt.type = type;
     result->Assign_Stmt.ident = ident ? ident : parse_identifier(parser);
     
-#if 0
     if (peek_token_match(parser, Token_Comma, false)) {
         Ast* ident_list_cont = parse_prefixed_compound(parser, Token_Comma, 
                                                        &parse_actual_identifier);
@@ -746,7 +678,6 @@ parse_assign_statement(Parser* parser, Ast* type, Ast* ident=0) {
         ident_list_head->Compound.next = ident_list_cont;
         result->Assign_Stmt.ident = ident_list_head;
     }
-#endif
     
     if (next_token_if_matched(parser, Token_Assign, false)) {
         result->Assign_Stmt.expr = parse_expression(parser);
@@ -877,8 +808,9 @@ parse_directive(Parser* parser) {
                 result->Include_Directive.filename = filename;
                 
                 if (!parser->inside_if_directive) {
-                    Source_File* file = get_source_file_by_index(parser->tokenizer->file_index);
-                    interp_push_source_file(parser->interp, filename, file);
+                    Source_File* included_from = get_source_file_by_index(parser->tokenizer->file_index);
+                    Source_File* file = create_source_file(filename, included_from);
+                    interp_add_source_file(parser->interp, parser->module, file);
                 }
             } else {
                 parse_error(parser, peek_token(parser),
@@ -2097,17 +2029,24 @@ parse_top_level_declaration(Parser* parser, Ast_File* ast_file) {
     token = peek_token(parser);
     Ast* decl = parse_statement(parser);
     set_attributes_on_declaration(decl, attributes, mods);
-    
-    register_compilation_units_from_ast(parser->interp, decl);
+    array_push(ast_file->declarations, decl);
     
     while (next_token_if_matched(parser, Token_Semi, false));
 }
 
 Ast_File*
-parse_file(Parser* parser, Interp* interp, Source_File* source_file) {
-    parser->interp = interp;
+parse_file(Interp* interp, Ast_Module* module, Source_File* source_file) {
+    if (source_file->ast_file) {
+        return source_file->ast_file;
+    }
     
-    Ast_File* result = arena_push_struct(&parser->ast_arena, Ast_File);
+    Parser parser = {};
+    parser.interp = interp;
+    parser.module = module;
+    parser.ast_arena = &interp->ast_arena;
+    
+    Ast_File* result = arena_push_struct(parser.ast_arena, Ast_File);
+    source_file->ast_file = result;
     result->source = source_file;
     
     string source = read_entire_source_file(source_file);
@@ -2117,15 +2056,16 @@ parse_file(Parser* parser, Interp* interp, Source_File* source_file) {
     
     Tokenizer tokenizer = {};
     tokenizer_set_source(&tokenizer, source, source_file->abspath, source_file->index);
-    parser->tokenizer = &tokenizer;
+    parser.tokenizer = &tokenizer;
     
-    Token token = peek_token(parser);
+    Token token = peek_token(&parser);
     while (is_token_valid(token)) {
-        parse_top_level_declaration(parser, result);
+        parse_top_level_declaration(&parser, result);
         
-        token = peek_token(parser);
+        token = peek_token(&parser);
     }
     
+    result->error_count = parser.error_count;
     return result;
 }
 

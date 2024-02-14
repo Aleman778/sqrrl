@@ -74,6 +74,7 @@ enum Type_Kind {
     TypeKind_Void,
     TypeKind_Any,
     TypeKind_Type,
+    TypeKind_Code,
     TypeKind_Basic,
     TypeKind_Array,
     TypeKind_Struct,
@@ -228,6 +229,7 @@ Type unresolved_type_definition = { TypeKind_Unresolved };
 Type void_type_definition = { TypeKind_Void };
 Type any_type_definition = { TypeKind_Any };
 Type type_definition = { TypeKind_Type };
+Type code_type_definition = { TypeKind_Code };
 
 
 internal Type 
@@ -241,6 +243,7 @@ Type void_ptr_type_definition = create_void_ptr_type_definition();
 
 global Type* t_unresolve = &unresolved_type_definition;
 global Type* t_void = &void_type_definition;
+global Type* t_code = &code_type_definition;
 global Type* t_void_ptr = &void_ptr_type_definition;
 global Type* t_any = &any_type_definition;
 global Type* t_type = &type_definition;

@@ -1,8 +1,4 @@
 
-struct Type_Scope {
-    array(string_id)* locals;
-};
-
 struct Operator_Overload {
     Operator op;
     Type* rhs;
@@ -52,20 +48,37 @@ struct Library_Import_Table {
     map(string_id, Library_Imports)* libs;
 };
 
-struct Type_And_Value {
+enum Entity_Kind {
+    EntityKind_None,
+    
+    EntityKind_Constant,
+    EntityKind_Variable,
+    EntityKind_Macro,
+    EntityKind_Function,
+    EntityKind_Function_Overloads,
+    EntityKind_Typedef,
+};
+
+struct Entity {
+    Entity_Kind kind;
+    Ast* ast;
     Type* type;
     Value value;
+    
+    array(Type*)* overloads;
 };
 
 struct Scope {
     Scope* parent;
     
-    map(string_id, Type_And_Value)* entries;
+    map(string_id, Entity)* entities;
 };
 
 struct Type_Context {
     Interp* interp;
     
+    Ast_Module* module;
+    Ast_File* file;
     Scope* scope;
     
     Memory_Arena type_arena;
@@ -74,21 +87,12 @@ struct Type_Context {
     
     Type* entry_point;
     
-    map(string_id, Type*)* locals;
-    map(string_id, Type*)* globals;
-    
-    map(string_id, Type*)* local_type_table;
-    map(string_id, Type*)* global_type_table;
-    
     map(Type*, Type*)* type_to_pointer;
     
     map(Type*, Overloaded_Operator_List)* overloaded_operators;
     map(string_id, Overloaded_Function_List)* overloaded_functions;
     
     Library_Import_Table import_table;
-    
-    array(Type_Scope)* scopes;
-    Type_Scope* active_scope;
     
     Backend_Type target_backend;
     
@@ -158,6 +162,7 @@ type_wrap_pointer(Type_Context* tcx, Type* type) {
     return result;
 }
 
+#if 0
 bool
 push_local(Type_Context* tcx, string_id ident, Type* type, Span span, bool report_error) {
     assert(tcx->block_depth > 0);
@@ -177,33 +182,19 @@ push_local(Type_Context* tcx, string_id ident, Type* type, Span span, bool repor
         return true;
     }
 }
+#endif
 
-void
-push_type_scope(Type_Context* tcx) {
+inline void
+begin_block_scope(Type_Context* tcx, Scope* scope) {
+    scope->parent = tcx->scope;
+    tcx->scope = scope;
     tcx->block_depth++;
-    
-    Type_Scope scope = {};
-    array_push(tcx->scopes, scope);
-    tcx->active_scope = &array_last(tcx->scopes);
 }
 
-void
-pop_type_scope(Type_Context* tcx) {
-    assert(tcx->active_scope);
-    for_array(tcx->active_scope->locals, ident, _) {
-        if (!map_remove(tcx->locals, *ident)) {
-            assert(0 && "compiler bug; local variable couldn't be freed");
-        }
-    }
-    array_free(tcx->active_scope->locals);
-    array_pop(tcx->scopes);
-    
-    if (array_count(tcx->scopes) > 0) {
-        tcx->active_scope = &array_last(tcx->scopes);
-    } else {
-        tcx->active_scope = 0;
-    }
-    
+inline void
+end_block_scope(Type_Context* tcx, Scope* scope) {
+    map_free(scope->entities);
+    tcx->scope = scope->parent;
     tcx->block_depth--;
 }
 
@@ -325,8 +316,7 @@ struct Create_Type_From_Ast_Result {
 
 Create_Type_From_Ast_Result create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error);
 
-Type* load_type_declaration(Type_Context* tcx, string_id ident, Span span, bool report_error);
+Entity resolve_entity_from_identifier(Type_Context* tcx, string_id ident, Span span, bool report_error);
+Type* resolve_typedef_from_identifier(Type_Context* tcx, string_id ident, Span span, bool report_error);
 
 Type* save_operator_overload(Type_Context* tcx, Type* type, Operator op, Span span, bool report_error);
-Type* save_type_declaration(Type_Context* tcx, string_id ident, Type* type, Span span, bool report_error);
-Type* save_type_declaration_from_ast(Type_Context* tcx, string_id ident, Ast* ast, bool report_error);

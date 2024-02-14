@@ -721,7 +721,7 @@ for (auto it = map; it < map + map_count(map); it++)
 #ifndef DEFAULT_ALIGNMENT
 #define DEFAULT_ALIGNMENT (2*alignof(smm))
 #endif
-#define ARENA_DEFAULT_BLOCK_SIZE kilobytes(16)
+#define ARENA_DEFAULT_BLOCK_SIZE kilobytes(4)
 
 // NOTE(Alexander): align has to be a power of two.
 inline umm
@@ -917,13 +917,6 @@ arena_string_copy(Memory_Arena* arena, string str) {
     result.data = (u8*) arena_push_size(arena, str.count, 1);
     copy_memory(result.data, str.data, str.count);
     return result;
-}
-
-
-inline void
-arena_rewind(Memory_Arena* arena) {
-    if (!arena->current_block) return;
-    arena->current_block->used = arena->prev_used;
 }
 
 inline void

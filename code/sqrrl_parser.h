@@ -1,8 +1,9 @@
 
 struct Parser {
     Interp* interp;
+    Ast_Module* module;
     
-    Memory_Arena ast_arena;
+    Memory_Arena* ast_arena;
     
     Tokenizer* tokenizer;
     Token current_token;
@@ -20,7 +21,7 @@ struct Parser {
 
 inline Ast*
 push_ast_node(Parser* parser, Token* token=0) {
-    Ast* result = arena_push_struct(&parser->ast_arena, Ast);
+    Ast* result = arena_push_struct(parser->ast_arena, Ast);
     token = token ? token : &parser->current_token;
     if (token) {
         result->token = *token;
@@ -131,4 +132,4 @@ Ast* parse_compound(Parser* parser,
 Ast* parse_prefixed_compound(Parser* parser, Token_Type prefix,
                              Ast* (*element_parser)(Parser* parser));
 
-Ast_File parse_file(Parser* parser);
+Ast_File* parse_file(Interp* interp, Ast_Module* module, Source_File* source_file);

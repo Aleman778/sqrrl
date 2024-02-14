@@ -57,7 +57,6 @@ VAR(f64)      \
 VAR(string)   \
 VAR(cstring)  \
 VAR(void)     \
-VAR(auto)     \
 VAR(Type)     \
 VAR_GROUP(builtin_types_end)
 

@@ -7,7 +7,8 @@ IF NOT EXIST build mkdir build
 pushd build
 
 rem Compilation target file (windows is only support for MSVC)
-set main_file=../code/platform_windows.cpp
+rem set main_file=../code/platform_windows.cpp
+set main_file=../code/lexer.cpp
 
 rem Common Compiler Flags
 set compiler_flags=-nologo -Gm- -GR- -Zo -EHa -Oi -FC -Zi -GS- -Gs9999999

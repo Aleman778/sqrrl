@@ -122,6 +122,7 @@ print(const char* format...) {
                     printf("%s", va_arg(args, char*));
                 } break;
                 
+#if 0
                 case FormatType_ast: {
                     print_ast(va_arg(args, Ast*));
                 } break;
@@ -137,6 +138,7 @@ print(const char* format...) {
                 case FormatType_value: {
                     print_value(va_arg(args, Value*));
                 } break;
+#endif
                 
                 default: {
                     assert(0 && "unimplemented format type");
@@ -237,6 +239,7 @@ format_sprintf(char* dst, umm dst_size, Format_Type type, va_list args) {
             result.count = snprintf(dst, dst_size, "%.*s", (int) str.count, (char*) str.data);
         } break;
         
+#if 0
         case FormatType_bytecode_type: {
             String_Builder sb = {};
             string_builder_alloc(&sb, 3);
@@ -247,6 +250,7 @@ format_sprintf(char* dst, umm dst_size, Format_Type type, va_list args) {
             result.count = snprintf(dst, dst_size, "%.*s", (int) str.count, (char*) str.data);
             string_builder_free(&sb);
         } break;
+#endif
         
         case FormatType_memory_string: {
             Memory_String str = va_arg(args, Memory_String);
@@ -272,6 +276,7 @@ internal va_list
 string_builder_push_data_format(String_Builder* sb, Format_Type type, va_list args) {
     va_list result = args;
     
+#if 0
     switch (type) {
         case FormatType_ast: {
             string_builder_push(sb, va_arg(result, Ast*), 0);
@@ -290,6 +295,8 @@ string_builder_push_data_format(String_Builder* sb, Format_Type type, va_list ar
         } break;
         
         default: {
+            
+#endif
             for (;;) {
                 umm size_remaining = sb->size - sb->curr_used;
                 Format_Sprintf_Result fmt = format_sprintf((char*) sb->data + sb->curr_used, size_remaining, type, args);
@@ -301,8 +308,11 @@ string_builder_push_data_format(String_Builder* sb, Format_Type type, va_list ar
                 
                 string_builder_ensure_capacity(sb, fmt.count + 1);
             }
+            
+#if 0
         } break;
     }
+#endif
     
     return result;
 }

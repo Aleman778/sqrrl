@@ -1,10 +1,15 @@
 #include "lexer.h"
 
+#include "sqrrl_basic.cpp"
+
+#include "parser.cpp"
+
 inline void
-lexer_init_source(Lexer* lexer, String source, u32 file_index) {
+lexer_init_source(Lexer* lexer, Memory_Arena* ast_arena, String source, u32 file_index) {
     lexer->begin = source.data;
     lexer->end = source.data + source.count;
     lexer->curr = lexer->begin;
+    lexer->ast_arena = ast_arena;
     lexer->loc.file_index = file_index;
     lexer->loc.line_number = 0;
     lexer->loc.column_number = 0;
@@ -60,12 +65,24 @@ lexer_next_char(Lexer* lexer) {
 }
 
 internal inline Token_Kind
-lex_identifier(Lexer* lexer, String* result) {
-    result->data = lexer->curr - 1;
+lex_identifier(Lexer* lexer, string_id* out_ident) {
+    String source;
+    source.data = lexer->curr - 1;
     while (lexer->curr < lexer->end && is_ident_continue(*lexer->curr)) {
         lexer_next_char(lexer);
     }
-    result->count = lexer->curr - result->data;
+    source.count = lexer->curr - source.data;
+    string_id ident = vars_save_string(source);
+    *out_ident = ident;
+    
+    if (is_builtin_keyword(ident)) {
+        return (Token_Kind) (Token_Asm + (ident - Kw_asm));
+    }
+    
+    if (is_builtin_type_keyword(ident)) {
+        return (Token_Kind) (Token_Void + (ident - Kw_void));
+    }
+    
     return Token_Ident;
 }
 
@@ -139,9 +156,9 @@ lex_number(Lexer* lexer, Token* token, u8 ch) {
         has_integral_digits = true;
     }
     
-    pln("lex_number %", f_u64(integral_part));
+    // TODO(Alexander): add support for float literals
     token->u64_value = integral_part;
-    return Token_Integer;
+    return Token_Int_Literal;
 }
 
 Token_Kind
@@ -149,11 +166,18 @@ lex_finish(Lexer* lexer) {
     lexer->curr = lexer->end;
     lexer->curr_token = {};
     lexer->curr_token.kind = Token_EOF;
+    lexer->unlex_token.kind = Token_EOF;
     return lexer->curr_token.kind;
 }
 
 Token_Kind
 lex(Lexer* lexer) {
+    if (lexer->unlex_token.kind != Token_EOF) {
+        lexer->curr_token = lexer->unlex_token;
+        lexer->unlex_token = {};
+        return lexer->curr_token.kind;
+    }
+    
     if (lexer->curr >= lexer->end) {
         return lex_finish(lexer);
     }
@@ -172,9 +196,6 @@ lex(Lexer* lexer) {
     } else if (ch == '=' && *lexer->curr == '=') {
         lexer_next_char(lexer);
         result.kind = Token_Equals;
-        
-    } else {
-        
     }
     
     lexer->curr_token = result;
@@ -182,22 +203,39 @@ lex(Lexer* lexer) {
 }
 
 void
-unlex(Lexer* lexer, Token token) {
-    unimplemented;
+unlex(Lexer* lexer) {
+    lexer->unlex_token = lexer->curr_token;
+}
+
+bool
+lex_if_matched(Lexer* lexer, Token_Kind kind) {
+    if (lex(lexer) == kind) {
+        return true;
+    }
+    
+    unlex(lexer);
+    return false;
 }
 
 void DEBUG_log_backtrace() {}
 
 int
 main() {
-    String source = string_lit("int foo = 0xFF;");
-    Lexer lexer = {};
-    lexer_init_source(&lexer, source, 0);
     
-    while (lexer.curr_token.kind != Token_EOF) {
-        lex(&lexer);
-        pln("\"%\"", f_string(token_to_string(lexer.curr_token)));
-    }
+    vars_initialize_keywords_and_symbols();
+    
+    
+    String source = string_lit("int foo = 0xFF;");
+    
+    Memory_Arena ast_arena = {};
+    Lexer lexer = {};
+    lexer_init_source(&lexer, &ast_arena, source, 0);
+    
+    //while (lex(&lexer) != Token_EOF) {
+    //pln("\"%\" (%)", f_string(token_to_string(lexer.curr_token)), f_int(lexer.curr_token.kind));
+    //}
+    
+    Ast_Expression* expr = parse_statement(&lexer);
     
     return 0;
 }

@@ -19,7 +19,7 @@ struct Source_File {
 global Memory_Arena source_file_arena = {};
 global string working_directory = {};
 global array(Source_File*)* loaded_source_files = 0;
-global map(string_id, u32)* file_index_table = 0;
+global map(Identifier, u32)* file_index_table = 0;
 
 internal Source_File* push_source_file(string filename, Canonicalized_Path canonicalized_path);
 
@@ -34,12 +34,12 @@ get_source_file_by_index(u32 index) {
 }
 
 inline int 
-get_source_file_index_by_ident(string_id ident) {
+get_source_file_index_by_ident(Identifier ident) {
     return map_get(file_index_table, ident);
 }
 
 inline Source_File*
-get_source_file_by_ident(string_id ident) {
+get_source_file_by_ident(Identifier ident) {
     u32 index = get_source_file_index_by_ident(ident);
     return get_source_file_by_index(index);
 }
@@ -49,7 +49,7 @@ inline Source_File*
 get_source_file_by_path(cstring filepath) {
     //string_to_lower_ascii_no_copy(&filepath);
     
-    string_id ident = vars_save_cstring(filepath);
+    Identifier ident = vars_save_cstring(filepath);
     return get_source_file_by_ident(ident);
 }
 
@@ -130,7 +130,7 @@ internal Source_File*
 push_source_file(string filename, Canonicalized_Path canonicalized_path) {
     if (map_count(file_index_table) == 0) {
         // Put dummy file as index 0
-        string_id ident = Kw_invalid;
+        Identifier ident = Kw_invalid;
         map_put(file_index_table, ident, 0);
         
         Source_File* dummy = arena_push_struct(&source_file_arena, Source_File);
@@ -161,7 +161,7 @@ push_source_file(string filename, Canonicalized_Path canonicalized_path) {
     result->is_valid = true;
     
     array_push(loaded_source_files, result);
-    string_id ident = vars_save_cstring(canonicalized_path.fullpath);
+    Identifier ident = vars_save_cstring(canonicalized_path.fullpath);
     map_put(file_index_table, ident, result->index);
     
     return result;

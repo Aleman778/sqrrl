@@ -7,19 +7,26 @@
 
 #include "sqrrl_basic.cpp"
 
-#include "sqrrl_value.cpp"
-#include "sqrrl_types.cpp"
+#include "lexer.cpp"
+#include "parser.cpp"
+
+
+
+//#include "sqrrl_value.cpp"
+//#include "sqrrl_types.cpp"
+
+
 //#include "sqrrl_test.cpp"
-#include "sqrrl_tokenizer.cpp"
-#include "sqrrl_parser.cpp"
-#include "sqrrl_type_checker.cpp"
-#include "sqrrl_bytecode_builder.cpp"
-#include "sqrrl_x64_instructions.cpp"
-#include "sqrrl_x64_converter.cpp"
-#include "sqrrl_pe_converter.cpp"
-#include "sqrrl_pdb_converter.cpp"
-#include "sqrrl_wasm_instructions.cpp"
-#include "sqrrl_wasm_converter.cpp"
+//#include "sqrrl_tokenizer.cpp"
+//#include "sqrrl_parser.cpp"
+//#include "sqrrl_type_checker.cpp"
+//#include "sqrrl_bytecode_builder.cpp"
+//#include "sqrrl_x64_instructions.cpp"
+//#include "sqrrl_x64_converter.cpp"
+//#include "sqrrl_pe_converter.cpp"
+//#include "sqrrl_pdb_converter.cpp"
+//#include "sqrrl_wasm_instructions.cpp"
+//#include "sqrrl_wasm_converter.cpp"
 
 typedef int asm_main(void);
 typedef f32 asm_f32_main(void);
@@ -111,6 +118,30 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         //is_debugger_present);
     }
     
+    vars_initialize_keywords_and_symbols();
+    
+    Source_File* file = create_source_file(compiler.filename);
+    if (!compiler.output_filename.data) {
+        string name_part = string_view(file->abspath.data + file->filedir.count, 
+                                       file->abspath.data + file->abspath.count - file->extension.count - 1);
+        // TODO(Alexander): hardcoded .exe
+        compiler.output_filename = string_concat(name_part, ".exe");
+    }
+    
+    // Parsing
+    string source = read_entire_source_file(file);
+    Memory_Arena ast_arena = {};
+    Lexer lexer = {};
+    
+    lexer_init_source(&lexer, &ast_arena, source, 0);
+    while (lex(&lexer) != Token_EOF) {
+        pln("\"%\" (%)", f_string(token_to_string(lexer.curr_token)), f_int(lexer.curr_token.kind));
+    }
+    //Ast_Expression* expr = parse_statement(&lexer);
+    
+    
+    
+#if 0
     // TODO(Alexander): this is hardcoded for now
     t_string->size = sizeof(string);
     t_string->align = alignof(string);
@@ -120,8 +151,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     t_type->align = alignof(smm);
     t_void_ptr->size = sizeof(smm);
     t_void_ptr->align = alignof(smm);
-    
-    vars_initialize_keywords_and_symbols();
     
     Data_Packer data_packer = {};
     data_packer.rdata_arena.flags |= ArenaPushFlag_Align_From_Zero;
@@ -465,6 +494,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             system("wasm2wat simple.wasm");
         } break;
     }
+#endif
     
     return 0;
 }

@@ -1,12 +1,3 @@
-// TODO(alexander): this will in the future be replaced with our own implementation
-#define STB_DS_IMPLEMENTATION
-#include "stb_ds.h" // TODO(alexander): implement this on our own!
-
-#include "sqrrl_basic.h"
-#include "sqrrl_identifier.h"
-
-
-typedef string String; // TODO: We should just rename string -> String makes more sense!
 
 enum Token_Kind {
     Token_EOF = 0,
@@ -116,9 +107,10 @@ struct Location {
 struct Token {
     Token_Kind kind;
     Location loc;
+    string source;
     
     union {
-        string_id ident;
+        Identifier ident;
         u64 u64_value;
         f64 f64_value;
     };
@@ -128,21 +120,8 @@ string
 token_to_string(Token token) {
     if (token.kind == Token_EOF) {
         return string_lit("end of file");
-        
-    } else if (token.kind == Token_Ident) {
-        return vars_load_string(token.ident);
-        
-    } else if (token.kind == Token_Int_Literal) {
-        return string_print("%", f_u64(token.u64_value));
-        
-    } else if (token.kind == Token_Float_Literal) {
-        return string_print("%", f_float(token.f64_value));
-        
     } else {
-        // TODO(Alexander): might be smarter way to do this
-        String s = string_alloc(1);
-        s.data[0] = (u8) token.kind;
-        return s;
+        return token.source;
     }
 }
 
@@ -161,16 +140,3 @@ struct Lexer {
 Token_Kind lex(Lexer* parser);
 void unlex(Lexer* parser);
 bool lex_if_matched(Lexer* lexer, Token_Kind kind);
-
-#include "parser.h"
-
-#if 0
-
-{
-    int(int, int)* adder; Ast_Pointer(Ast_Call_Expr) Ast_Ident; (Call_Expr -> Type_Procedure);
-    Array(int)* ints; Ast_Pointer(Ast_Call_Expr) Ast_Ident; (Call_Expr -> Type_Struct);
-    String str;
-    fun(); Ast_Call_Expr
-}
-
-#endif

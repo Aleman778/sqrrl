@@ -1,11 +1,6 @@
-#include "lexer.h"
-
-#include "sqrrl_basic.cpp"
-
-#include "parser.cpp"
 
 inline void
-lexer_init_source(Lexer* lexer, Memory_Arena* ast_arena, String source, u32 file_index) {
+lexer_init_source(Lexer* lexer, Memory_Arena* ast_arena, string source, u32 file_index) {
     lexer->begin = source.data;
     lexer->end = source.data + source.count;
     lexer->curr = lexer->begin;
@@ -61,18 +56,23 @@ lexer_next_char(Lexer* lexer) {
             lexer->loc.column_number = 0;
         }
     } while (lexer->curr < lexer->end && is_whitespace(ch));
+    
+    if (lexer->curr >= lexer->end) {
+        return 0;
+    }
+    
     return ch;
 }
 
 internal inline Token_Kind
-lex_identifier(Lexer* lexer, string_id* out_ident) {
-    String source;
+lex_identifier(Lexer* lexer, Identifier* out_ident) {
+    string source;
     source.data = lexer->curr - 1;
     while (lexer->curr < lexer->end && is_ident_continue(*lexer->curr)) {
         lexer_next_char(lexer);
     }
     source.count = lexer->curr - source.data;
-    string_id ident = vars_save_string(source);
+    Identifier ident = vars_save_string(source);
     *out_ident = ident;
     
     if (is_builtin_keyword(ident)) {
@@ -161,6 +161,33 @@ lex_number(Lexer* lexer, Token* token, u8 ch) {
     return Token_Int_Literal;
 }
 
+void
+lex_comment(Lexer* lexer) {
+    if (*lexer->curr == '/') {
+        lexer_next_char(lexer);
+        do {
+            lexer_next_char(lexer);
+        } while (lexer->curr < lexer->end && *lexer->curr != '\n');
+        
+    } else if (*lexer->curr == '*') {
+        lexer_next_char(lexer);
+        lexer_next_char(lexer);
+        
+        int depth = 1;
+        while (lexer->curr < lexer->end) {
+            u8 ch = lexer_next_char(lexer);
+            if (ch == '/' && *lexer->curr == '*') {
+                lexer_next_char(lexer);
+                depth++;
+            } else if (ch == '*' && *lexer->curr == '/') {
+                lexer_next_char(lexer);
+                depth--;
+            }
+            if (depth == 0) break;
+        }
+    }
+}
+
 Token_Kind
 lex_finish(Lexer* lexer) {
     lexer->curr = lexer->end;
@@ -178,15 +205,16 @@ lex(Lexer* lexer) {
         return lexer->curr_token.kind;
     }
     
-    if (lexer->curr >= lexer->end) {
-        return lex_finish(lexer);
+    u8 ch = lexer_next_char(lexer);
+    while (ch == '/') {
+        lex_comment(lexer);
+        ch = lexer_next_char(lexer);
     }
     
-    u8 ch = lexer_next_char(lexer);
     Token result = {};
     result.loc = lexer->loc;
+    result.source.data = lexer->curr - 1;
     result.kind = token_lit(ch);
-    
     if (is_ident_start(ch)) {
         result.kind = lex_identifier(lexer, &result.ident);
         
@@ -196,8 +224,12 @@ lex(Lexer* lexer) {
     } else if (ch == '=' && *lexer->curr == '=') {
         lexer_next_char(lexer);
         result.kind = Token_Equals;
+        
+    } else if (ch == '\0') {
+        return lex_finish(lexer);
     }
     
+    result.source.count = lexer->curr - result.source.data;
     lexer->curr_token = result;
     return result.kind;
 }
@@ -215,27 +247,4 @@ lex_if_matched(Lexer* lexer, Token_Kind kind) {
     
     unlex(lexer);
     return false;
-}
-
-void DEBUG_log_backtrace() {}
-
-int
-main() {
-    
-    vars_initialize_keywords_and_symbols();
-    
-    
-    String source = string_lit("int foo = 0xFF;");
-    
-    Memory_Arena ast_arena = {};
-    Lexer lexer = {};
-    lexer_init_source(&lexer, &ast_arena, source, 0);
-    
-    //while (lex(&lexer) != Token_EOF) {
-    //pln("\"%\" (%)", f_string(token_to_string(lexer.curr_token)), f_int(lexer.curr_token.kind));
-    //}
-    
-    Ast_Expression* expr = parse_statement(&lexer);
-    
-    return 0;
 }

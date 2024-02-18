@@ -69,6 +69,31 @@ struct Ast_Expression {
     };
 };
 
+
+struct Ast_Proc_Declaration {
+    Ast_Type* type;
+    
+};
+
+struct Ast_Type_Declaration {
+    Ast_Type* type;
+    Identifier ident;
+};
+
+enum Ast_Declaration_Kind {
+    Decl_Procedure,
+    Decl_Type,
+};
+
+struct Ast_Declaration {
+    Ast_Declaration_Kind kind;
+    
+    union {
+        Ast_Proc_Declaration proc;
+        Ast_Type_Declaration type;
+    };
+};
+
 inline Ast_Expression*
 push_ast_expression(Lexer* lexer, Ast_Expression_Kind kind) {
     Ast_Expression* result = arena_push_struct(lexer->ast_arena, Ast_Expression);

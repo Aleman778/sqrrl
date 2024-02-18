@@ -25,8 +25,26 @@ parse_type(Lexer* lexer) {
     Ast_Type* result = 0;
     
     switch (lex(lexer)) {
-        case Token_Int: {
-            string_id ident = lexer->curr_token.ident;
+        case Token_Void:
+        case Token_Bool:
+        case Token_S8:
+        case Token_S16:
+        case Token_S32:
+        case Token_S64:
+        case Token_Smm:
+        case Token_Int:
+        case Token_U8:
+        case Token_U16:
+        case Token_U32:
+        case Token_U64:
+        case Token_Umm:
+        case Token_Uint:
+        case Token_F32:
+        case Token_F64:
+        case Token_String:
+        case Token_Cstring:
+        case Token_Typeid: {
+            Identifier ident = lexer->curr_token.ident;
             if (is_builtin_type_keyword(ident)) {
                 result = push_ast_type(lexer, (Ast_Type_Kind) (ident - builtin_types_begin));
             }
@@ -94,7 +112,7 @@ parse_statement(Lexer* lexer) {
                 result = push_ast_expression(lexer, Expr_Assign);
                 result->assign.type = type;
                 
-                string_id ident = lexer->curr_token.ident;
+                Identifier ident = lexer->curr_token.ident;
                 lex_if_matched(lexer, Token_Assign);
                 
                 result->assign.expr = parse_expression(lexer);
@@ -104,6 +122,35 @@ parse_statement(Lexer* lexer) {
             } else {
                 unimplemented;
             }
+        } break;
+    }
+    
+    return result;
+}
+
+Ast_Declaration*
+parse_declaration(Lexer* lexer) {
+    Ast_Declaration* result = 0;
+    Ast_Type* type = parse_type(lexer);
+    
+    switch (lex(lexer)) {
+        case Token_Ident: {
+            if (lex_if_matched(lexer, Token_Open_Paren)) {
+                parse_argument_list();
+                
+            } else if (lex_if_matched(lexer, Token_Assign)) {
+                
+            } else {
+                unimplemented;
+            }
+        } break;
+        
+        case Token_Extern: {
+            unimplemented; // extern block
+        } break;
+        
+        default: {
+            unlex(lexer);
         } break;
     }
     

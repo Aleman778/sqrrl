@@ -128,10 +128,10 @@ VAR(dump_ast) \
 VAR(Var_Args) \
 VAR(Dynamic_Library) \
 
-typedef u32 string_id;
+typedef u32 Identifier;
 
 struct String_Interner {
-    string_map(string_id)* str_to_id = 0;
+    string_map(Identifier)* str_to_id = 0;
     array(string)* id_to_str = 0;
     u32 id_counter = 0;
 };
@@ -139,9 +139,9 @@ struct String_Interner {
 global String_Interner global_vars;
 
 
-string_id
+Identifier
 save_cstring(String_Interner* interner, cstring s) {
-    string_id id = string_map_get(interner->str_to_id, s);
+    Identifier id = string_map_get(interner->str_to_id, s);
     if (!id) {
         id = interner->id_counter++;
         string_map_put(interner->str_to_id, s, id);
@@ -150,24 +150,24 @@ save_cstring(String_Interner* interner, cstring s) {
     return id;
 }
 
-inline string_id
+inline Identifier
 vars_save_cstring(cstring s) {
     return save_cstring(&global_vars, s);
 }
 
-inline string_id
+inline Identifier
 save_string(String_Interner* interner, string s) {
     cstring cs = string_to_cstring(s);
     return save_cstring(interner, cs);
 }
 
-inline string_id
+inline Identifier
 vars_save_string(string s) {
     return save_string(&global_vars, s);
 }
 
 string
-load_string(String_Interner* interner, string_id id) {
+load_string(String_Interner* interner, Identifier id) {
     string result = {};
     if (id < array_count(interner->id_to_str)) {
         result = interner->id_to_str[id];
@@ -176,7 +176,7 @@ load_string(String_Interner* interner, string_id id) {
 }
 
 inline string
-vars_load_string(string_id id) {
+vars_load_string(Identifier id) {
     return load_string(&global_vars, id);
 }
 
@@ -194,7 +194,7 @@ initialize_keywords_and_symbols(String_Interner* interner) {
 #undef VAR
 }
 
-typedef string_id Var;
+typedef Identifier Var;
 enum {
 #define VAR_GROUP(symbol) symbol,
 #define VAR(symbol) Kw_##symbol,
@@ -214,21 +214,21 @@ vars_initialize_keywords_and_symbols() {
 }
 
 inline bool
-is_builtin_keyword(string_id id) {
+is_builtin_keyword(Identifier id) {
     return id > builtin_keywords_begin && id <= builtin_keywords_end;
 }
 
 inline bool
-is_builtin_type_keyword(string_id id) {
+is_builtin_type_keyword(Identifier id) {
     return id > builtin_types_begin && id <= builtin_types_end;
 }
 
 inline bool
-is_not_builtin_keyword(string_id id) {
+is_not_builtin_keyword(Identifier id) {
     return id > builtin_keywords_end;
 }
 
 inline void
-string_builder_push(String_Builder* sb, string_id ident) {
+string_builder_push(String_Builder* sb, Identifier ident) {
     string_builder_push(sb, vars_load_string(ident));
 }

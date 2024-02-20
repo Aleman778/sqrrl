@@ -1,5 +1,18 @@
 
-enum Ast_Type_Kind {
+struct Ast_Type;
+
+struct Ast_Proc_Argument {
+    Ast_Type* type;
+    Identifier ident;
+    Ast_Proc_Argument* next;
+};
+
+struct Ast_Proc_Type {
+    Ast_Proc_Argument* args;
+    Ast_Type* return_type;
+};
+
+enum Type_Kind {
     Type_None,
     
     // primitive types (order must match DEF_TYPE_KEYWORDS)
@@ -27,6 +40,7 @@ enum Ast_Type_Kind {
     
     // other types
     Type_Alias,
+    Type_Proc,
 };
 
 enum Type_Flags {
@@ -34,9 +48,13 @@ enum Type_Flags {
 };
 
 struct Ast_Type {
-    Ast_Type_Kind kind;
+    Type_Kind kind;
     u32 flags;
+    union {
+        Ast_Proc_Type proc;
+    };
 };
+
 
 struct Ast_Expression;
 
@@ -46,7 +64,7 @@ struct Ast_Expression_Assign {
 };
 
 struct Ast_Expression_Literal {
-    Ast_Type_Kind type;
+    Type_Kind type;
     union {
         u64 u64_value;
         f32 f32_value;
@@ -69,10 +87,10 @@ struct Ast_Expression {
     };
 };
 
-
 struct Ast_Proc_Declaration {
-    Ast_Type* type;
-    
+    Ast_Expression* block;
+    Ast_Proc_Type signature;
+    Identifier ident;
 };
 
 struct Ast_Type_Declaration {
@@ -94,6 +112,13 @@ struct Ast_Declaration {
     };
 };
 
+inline Ast_Type*
+push_ast_type(Lexer* lexer, Type_Kind kind) {
+    Ast_Type* result = arena_push_struct(lexer->ast_arena, Ast_Type);
+    result->kind = kind;
+    return result;
+}
+
 inline Ast_Expression*
 push_ast_expression(Lexer* lexer, Ast_Expression_Kind kind) {
     Ast_Expression* result = arena_push_struct(lexer->ast_arena, Ast_Expression);
@@ -101,9 +126,9 @@ push_ast_expression(Lexer* lexer, Ast_Expression_Kind kind) {
     return result;
 }
 
-inline Ast_Type*
-push_ast_type(Lexer* lexer, Ast_Type_Kind kind) {
-    Ast_Type* result = arena_push_struct(lexer->ast_arena, Ast_Type);
+inline Ast_Declaration*
+push_ast_declaration(Lexer* lexer, Ast_Declaration_Kind kind) {
+    Ast_Declaration* result = arena_push_struct(lexer->ast_arena, Ast_Declaration);
     result->kind = kind;
     return result;
 }

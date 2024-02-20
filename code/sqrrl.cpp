@@ -134,10 +134,10 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     Lexer lexer = {};
     
     lexer_init_source(&lexer, &ast_arena, source, 0);
-    while (lex(&lexer) != Token_EOF) {
-        pln("\"%\" (%)", f_string(token_to_string(lexer.curr_token)), f_int(lexer.curr_token.kind));
-    }
-    //Ast_Expression* expr = parse_statement(&lexer);
+    //while (lex(&lexer) != Token_EOF) {
+    //pln("\"%\" (%)", f_string(token_to_string(lexer.curr_token)), f_int(lexer.curr_token.kind));
+    //}
+    Ast_Declaration* decl = parse_declaration(&lexer);
     
     
     

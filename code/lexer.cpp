@@ -240,7 +240,7 @@ unlex(Lexer* lexer) {
 }
 
 bool
-lex_if_matched(Lexer* lexer, Token_Kind kind) {
+lex_if_matched(Lexer* lexer, u8 kind) {
     if (lex(lexer) == kind) {
         return true;
     }

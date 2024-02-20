@@ -139,4 +139,4 @@ struct Lexer {
 
 Token_Kind lex(Lexer* parser);
 void unlex(Lexer* parser);
-bool lex_if_matched(Lexer* lexer, Token_Kind kind);
+bool lex_if_matched(Lexer* lexer, u8 kind);

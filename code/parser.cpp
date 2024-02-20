@@ -46,7 +46,7 @@ parse_type(Lexer* lexer) {
         case Token_Typeid: {
             Identifier ident = lexer->curr_token.ident;
             if (is_builtin_type_keyword(ident)) {
-                result = push_ast_type(lexer, (Ast_Type_Kind) (ident - builtin_types_begin));
+                result = push_ast_type(lexer, (Type_Kind) (ident - builtin_types_begin));
             }
         } break;
         
@@ -61,6 +61,14 @@ parse_type(Lexer* lexer) {
     }
     
     return result;
+}
+
+Ast_Expression*
+parse_block_statement(Lexer* lexer) {
+    assert(lexer->curr_token.kind == '{');
+    
+    
+    return 0;
 }
 
 Ast_Expression*
@@ -128,6 +136,29 @@ parse_statement(Lexer* lexer) {
     return result;
 }
 
+Ast_Proc_Argument*
+parse_argument_list(Lexer* lexer) {
+    Ast_Proc_Argument* result = 0;
+    Ast_Proc_Argument* prev_arg = 0;
+    while (lex(lexer) != ')') {
+        unlex(lexer);
+        Ast_Proc_Argument* arg = arena_push_struct(lexer->ast_arena, Ast_Proc_Argument);
+        arg->type = parse_type(lexer);
+        lex(lexer);
+        arg->ident = lexer->curr_token.ident;
+        
+        if (!prev_arg) {
+            prev_arg->next = arg;
+        }
+        if (!result) {
+            result = arg;
+        }
+        prev_arg = arg;
+    }
+    
+    return result;
+}
+
 Ast_Declaration*
 parse_declaration(Lexer* lexer) {
     Ast_Declaration* result = 0;
@@ -135,10 +166,18 @@ parse_declaration(Lexer* lexer) {
     
     switch (lex(lexer)) {
         case Token_Ident: {
-            if (lex_if_matched(lexer, Token_Open_Paren)) {
-                parse_argument_list();
+            Identifier ident = lexer->curr_token.ident;
+            
+            if (lex_if_matched(lexer, '(')) {
+                Ast_Declaration* decl = push_ast_declaration(lexer, Decl_Procedure);
+                decl->proc.ident = ident;
+                decl->proc.signature.return_type = type;
+                decl->proc.signature.args = parse_argument_list(lexer);
+                if (lex_if_matched(lexer, '{')) {
+                    decl->proc.block = parse_block_statement(lexer);
+                }
                 
-            } else if (lex_if_matched(lexer, Token_Assign)) {
+            } else if (lex_if_matched(lexer, '=')) {
                 
             } else {
                 unimplemented;
@@ -153,6 +192,8 @@ parse_declaration(Lexer* lexer) {
             unlex(lexer);
         } break;
     }
+    
+    while (lex_if_matched(lexer, ';')); // optionally end with semicolon
     
     return result;
 }

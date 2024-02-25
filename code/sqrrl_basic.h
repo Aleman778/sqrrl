@@ -450,7 +450,9 @@ enum Format_Type { // TODO(Alexander): add more types
 #define f_smm(x) FormatType_smm, (smm) (x)
 #define f_umm(x) FormatType_umm, (umm) (x)
 #define f_float(x) FormatType_f64, (double) (x)
+// f_var is deprecated
 #define f_var(x) FormatType_string, (string) vars_load_string(x)
+#define f_ident(x) FormatType_string, (string) vars_load_string(x)
 #define f_string(x) FormatType_string, (string) (x)
 #define f_mstring(x) FormatType_memory_string, (Memory_String) (x)
 #define f_cstring(x) FormatType_cstring, (cstring) (x)

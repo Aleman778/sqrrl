@@ -34,6 +34,7 @@ enum Token_Kind {
     Token_Asm = 128,
     Token_Break,
     Token_Case,
+    Token_Cast,
     Token_Continue,
     Token_Const,
     Token_Volatile,
@@ -124,6 +125,7 @@ token_to_string(Token token) {
         return token.source;
     }
 }
+#define f_token(x) FormatType_string, token_to_string(x)
 
 struct Lexer {
     u8* curr;
@@ -135,8 +137,13 @@ struct Lexer {
     Location loc;
     Token curr_token;
     Token unlex_token;
+    
+    int error_count;
 };
 
-Token_Kind lex(Lexer* parser);
-void unlex(Lexer* parser);
+void syntax_error(Lexer* lexer, string message, Token* error_token=0);
+Token_Kind lex(Lexer* lexer);
+Token_Kind lex_finish(Lexer* lexer);
+void unlex(Lexer* lexer);
+bool lex_expect(Lexer* lexer, u8 kind);
 bool lex_if_matched(Lexer* lexer, u8 kind);

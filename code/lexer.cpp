@@ -197,6 +197,23 @@ lex_finish(Lexer* lexer) {
     return lexer->curr_token.kind;
 }
 
+void
+syntax_error(Lexer* lexer, string message, Token* error_token) {
+    Token token = error_token ? *error_token : lexer->curr_token;
+    Location loc = token.loc;
+    
+    if (lexer->error_count == 0) {
+        Source_File* file = get_source_file_by_index(loc.file_index);
+        pln("%:%:%: error: %", f_string(file->abspath), f_int(loc.line_number + 1), f_int(loc.column_number + 1), f_string(message));
+        
+        DEBUG_log_backtrace();
+        
+    }
+    
+    lexer->error_count++;
+    lex_finish(lexer);
+}
+
 Token_Kind
 lex(Lexer* lexer) {
     if (lexer->unlex_token.kind != Token_EOF) {
@@ -213,6 +230,7 @@ lex(Lexer* lexer) {
     
     Token result = {};
     result.loc = lexer->loc;
+    result.loc.column_number--;
     result.source.data = lexer->curr - 1;
     result.kind = token_lit(ch);
     if (is_ident_start(ch)) {
@@ -239,6 +257,16 @@ unlex(Lexer* lexer) {
     lexer->unlex_token = lexer->curr_token;
 }
 
+bool
+lex_expect(Lexer* lexer, u8 kind) {
+    if (lex(lexer) != kind) {
+        unlex(lexer);
+        syntax_error(lexer, string_print("expected `%`, found `%`", f_char(kind), f_string(token_to_string(lexer->curr_token))));
+        return false;
+    }
+    
+    return true;
+}
 bool
 lex_if_matched(Lexer* lexer, u8 kind) {
     if (lex(lexer) == kind) {

@@ -133,12 +133,23 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     Memory_Arena ast_arena = {};
     Lexer lexer = {};
     
-    lexer_init_source(&lexer, &ast_arena, source, 0);
+    lexer_init_source(&lexer, &ast_arena, source, file->index);
     //while (lex(&lexer) != Token_EOF) {
     //pln("\"%\" (%)", f_string(token_to_string(lexer.curr_token)), f_int(lexer.curr_token.kind));
     //}
     Ast_Declaration* decl = parse_declaration(&lexer);
     
+    if (!decl)  {
+        pln("Failed to parse");
+        return 1;
+    }
+    
+    String_Builder sb = {};
+    print_ast_declaration(&sb, decl);
+    
+    string s = string_builder_to_string_nocopy(&sb);
+    pln("%", f_string(s));
+    string_builder_free(&sb);
     
     
 #if 0

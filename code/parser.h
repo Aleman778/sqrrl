@@ -1,4 +1,22 @@
 
+// Expressions (statements are stored as expressions)
+enum Ast_Expression_Kind {
+    Expr_Type,
+    Expr_Literal,
+    Expr_Assign,
+    Expr_Binary,
+    Expr_Block,
+    Expr_Call,
+    Expr_Field,
+    Expr_Ident,
+    Expr_Index,
+    Expr_Return,
+};
+
+struct Ast_Expression {
+    Ast_Expression_Kind kind;
+};
+
 enum Ast_Type_Kind {
     Type_None,
     
@@ -28,6 +46,7 @@ enum Ast_Type_Kind {
     Type_Basic,
     Type_Alias,
     Type_Proc,
+    Type_Maybe_Proc,
     Type_Aggregate,
 };
 
@@ -35,7 +54,7 @@ enum Type_Flags {
     TypeFlag_Const
 };
 
-struct Ast_Type {
+struct Ast_Type : Ast_Expression {
     Ast_Type_Kind kind;
     u32 flags;
 };
@@ -63,31 +82,13 @@ struct Ast_Aggregate_Type : Ast_Type {
 };
 
 
-// Expressions (statements are stored as expressions)
-enum Ast_Expression_Kind {
-    // Expressions
-    Expr_Literal,
-    Expr_Assign,
-    Expr_Binary,
-    Expr_Block,
-    Expr_Call,
-    Expr_Field,
-    Expr_Ident,
-    Expr_Index,
-    Expr_Return,
-};
-
-struct Ast_Expression {
-    Ast_Expression_Kind kind;
-};
-
 struct Ast_Expression_List {
     Ast_Expression* expr;
     Ast_Expression_List* next;
 };
 
 struct Ast_Assign_Expression : Ast_Expression {
-    Ast_Type* type;
+    Ast_Expression* type;
     Ast_Expression* expr;
     Identifier ident;
 };
@@ -133,6 +134,10 @@ struct Ast_Call_Expression : Ast_Expression {
     Ast_Call_Argument* args;
 };
 
+struct Ast_Type_Expression : Ast_Expression {
+    Ast_Type* type;
+};
+
 struct Ast_Field_Expression : Ast_Expression {
     Ast_Expression* expr;
     Identifier ident;
@@ -176,6 +181,12 @@ struct Ast_Declaration {
     };
 };
 
+// Decide at typing phase if this is a type or expression
+struct Ast_Maybe_Proc_Type : Ast_Type {
+    Ast_Type* return_type;
+    Ast_Call_Argument* args;
+};
+
 #define push_ast_basic_type(lexer, kind) \
 push_ast_type_node(lexer, sizeof(Ast_Type), alignof(Ast_Type), kind)
 
@@ -207,7 +218,12 @@ push_ast_declaration(Lexer* lexer, Ast_Declaration_Kind kind) {
     return result;
 }
 
+Ast_Type* parse_type(Lexer* lexer);
+Ast_Call_Argument* parse_call_argument_list(Lexer* lexer);
 Ast_Expression* parse_expression(Lexer* lexer, int min_prec=0);
+Ast_Expression* parse_statement(Lexer* lexer);
+Ast_Type* parse_aggregate_type(Lexer* lexer, Ast_Type* base_type);
+
 
 //struct Ast_Proc_Argument {
 //Ast_Type* type;
@@ -235,6 +251,10 @@ print_ast_type_kind(String_Builder* sb, Ast_Type_Kind kind) {
         
         case Type_Int: {
             string_builder_push(sb, "int");
+        } break;
+        
+        default: {
+            string_builder_push(sb, "unknown");
         } break;
     }
     
@@ -272,6 +292,11 @@ print_ast_expression(String_Builder* sb, Ast_Expression* expr, int indent, bool 
     }
     
     switch (expr->kind) {
+        case Expr_Type: {
+            string_builder_push_format(sb, "Expr_Type: ");
+            print_ast_type(sb, (Ast_Type*) expr);
+        } break;
+        
         case Expr_Literal: {
             auto literal = (Ast_Literal_Expression*) expr;
             string_builder_push_format(sb, "Expr_Literal:");
@@ -290,7 +315,7 @@ print_ast_expression(String_Builder* sb, Ast_Expression* expr, int indent, bool 
             
             string_builder_push_newline(sb, indent + 2);
             string_builder_push(sb, "type: ");
-            print_ast_type(sb, assign->type);
+            print_ast_expression(sb, assign->type, indent + 4);
             
             string_builder_push_newline(sb, indent + 2);
             string_builder_push_format(sb, "ident: %", f_ident(assign->ident));
@@ -327,6 +352,10 @@ print_ast_expression(String_Builder* sb, Ast_Expression* expr, int indent, bool 
             string_builder_push_newline(sb, indent + 2);
             string_builder_push(sb, "expr: ");
             print_ast_expression(sb, ret->expr, indent + 4);
+        } break;
+        
+        default: {
+            string_builder_push_format(sb, "Expr_Unknown (%)", f_int(expr->kind));
         } break;
     }
 }
@@ -397,7 +426,7 @@ print_ast_declaration(String_Builder* sb, Ast_Declaration* decl) {
         } break;
         
         case Decl_Type: {
-            
+            string_builder_push(sb, "Decl_Type ");
         } break;
     }
 }

@@ -64,6 +64,8 @@ struct Ast_Basic_Type : Ast_Type {
 
 struct Ast_Alias_Type : Ast_Type {
     Identifier ident;
+    
+    Ast_Type* resolved;
 };
 
 struct Ast_Proc_Argument {
@@ -242,6 +244,21 @@ string_builder_push_newline(String_Builder* sb, int num_spaces) {
     for (int i = 0; i < num_spaces; i++) string_builder_push_char(sb, ' ');
 }
 
+inline void print_ast_expression(String_Builder* sb, Ast_Expression* expr, int indent=0, bool newline=true);
+
+inline void
+print_call_arguments(String_Builder* sb, Ast_Call_Argument* arg, int indent) {
+    if (!arg) {
+        string_builder_push(sb, " null");
+    }
+    while (arg) {
+        string_builder_push_newline(sb, indent);
+        string_builder_push(sb, "- ");
+        print_ast_expression(sb, arg->expr, indent + 2, false);
+        arg = arg->next;
+    }
+}
+
 void
 print_ast_type_kind(String_Builder* sb, Ast_Type_Kind kind) {
     switch (kind) {
@@ -261,22 +278,26 @@ print_ast_type_kind(String_Builder* sb, Ast_Type_Kind kind) {
 }
 
 inline void
-print_ast_type(String_Builder* sb, Ast_Type* type) {
-    print_ast_type_kind(sb, type->kind);
-}
-
-inline void print_ast_expression(String_Builder* sb, Ast_Expression* expr, int indent=0, bool newline=true);
-
-inline void
-print_call_arguments(String_Builder* sb, Ast_Call_Argument* arg, int indent) {
-    if (!arg) {
-        string_builder_push(sb, " null");
-    }
-    while (arg) {
-        string_builder_push_newline(sb, indent);
-        string_builder_push(sb, "- ");
-        print_ast_expression(sb, arg->expr, indent + 2, false);
-        arg = arg->next;
+print_ast_type(String_Builder* sb, Ast_Type* type, int indent=0) {
+    switch (type->kind) {
+        case Type_Maybe_Proc: {
+            auto proc = (Ast_Maybe_Proc_Type*) type;
+            string_builder_push_newline(sb, indent);
+            string_builder_push(sb, "Type_Maybe_Proc:");
+            
+            string_builder_push_newline(sb, indent + 2);
+            string_builder_push_format(sb, "proc: ");
+            print_ast_type(sb, proc->return_type, indent + 4);
+            
+            
+            string_builder_push_newline(sb, indent + 2);
+            string_builder_push_format(sb, "args: ");
+            print_call_arguments(sb, proc->args, indent + 4);
+        } break;
+        
+        default: {
+            print_ast_type_kind(sb, type->kind);
+        } break;
     }
 }
 
@@ -294,7 +315,7 @@ print_ast_expression(String_Builder* sb, Ast_Expression* expr, int indent, bool 
     switch (expr->kind) {
         case Expr_Type: {
             string_builder_push_format(sb, "Expr_Type: ");
-            print_ast_type(sb, (Ast_Type*) expr);
+            print_ast_type(sb, (Ast_Type*) expr, indent + 2);
         } break;
         
         case Expr_Literal: {
@@ -361,15 +382,15 @@ print_ast_expression(String_Builder* sb, Ast_Expression* expr, int indent, bool 
 }
 
 inline void
-print_ast_proc_signature(String_Builder* sb, Ast_Proc_Type* proc, int indent=0) {
+print_ast_proc_signature(String_Builder* sb, Ast_Proc_Type* sig, int indent=0) {
     string_builder_push_newline(sb, indent);
     string_builder_push(sb, "return_type: ");
-    print_ast_type(sb, proc->return_type);
+    print_ast_type(sb, sig->return_type);
     
     string_builder_push_newline(sb, indent);
     string_builder_push(sb, "args:");
     
-    Ast_Proc_Argument* arg = proc->args;
+    Ast_Proc_Argument* arg = sig->args;
     if (!arg) {
         string_builder_push(sb, " null");
     }
@@ -381,10 +402,10 @@ print_ast_proc_signature(String_Builder* sb, Ast_Proc_Type* proc, int indent=0) 
     }
     
 #if 0
-    print_ast_type(sb, proc->return_type);
+    print_ast_type(sb, sig->return_type);
     string_builder_push_format(sb, " %(", f_ident(ident));
     
-    Ast_Proc_Argument* arg = proc->args;
+    Ast_Proc_Argument* arg = sig->args;
     while (arg) {
         print_ast_type(sb, arg->type);
         arg = arg->next;

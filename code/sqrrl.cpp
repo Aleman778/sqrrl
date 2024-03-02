@@ -144,17 +144,16 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         pln("Failed to parse");
         return 1;
     }
-    
     String_Builder sb = {};
     print_ast_declaration(&sb, decl);
-    
-    Type_Context tcx = {};
-    auto type = (Ast_Proc_Declaration*) decl;
-    check_procedure_signature(&tcx, &type->signature);
-    
     string s = string_builder_to_string_nocopy(&sb);
     pln("%", f_string(s));
     string_builder_free(&sb);
+    
+    Type_Context tcx = {};
+    infer_declaration(&tcx, decl);
+    
+    
     
     
 #if 0

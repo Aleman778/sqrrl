@@ -57,6 +57,8 @@ enum Compiler_Task {
 #include "parser.h"
 //#include "sqrrl_parser.h"
 
+#include "typer.h"
+
 //#include "sqrrl_interp.h"
 //#include "sqrrl_bytecode_builder.h"
 //#include "sqrrl_pe_converter.h"

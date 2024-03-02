@@ -232,3 +232,5 @@ inline void
 string_builder_push(String_Builder* sb, Identifier ident) {
     string_builder_push(sb, vars_load_string(ident));
 }
+
+typedef Identifier string_id;

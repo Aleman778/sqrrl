@@ -363,7 +363,7 @@ struct Ast {
 #undef AST
         Ast* children[5];
     };
-    Type* type;
+    //Type* type;
     Value_Data val;
     Token token;
     Span span;

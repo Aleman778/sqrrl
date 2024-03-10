@@ -526,6 +526,12 @@ string_builder_push_char(String_Builder* sb, u8 c) {
 }
 
 inline void
+string_builder_push_newline(String_Builder* sb, int num_spaces) {
+    string_builder_push_char(sb, '\n');
+    for (int i = 0; i < num_spaces; i++) string_builder_push_char(sb, ' ');
+}
+
+inline void
 string_builder_push_u8_hex(String_Builder* sb, u8 c) {
     if (c > 0xF) {
         string_builder_ensure_capacity(sb, 2);

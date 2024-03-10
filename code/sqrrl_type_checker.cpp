@@ -3564,6 +3564,7 @@ init_type_context(Type_Context* tcx, Interp* interp, Data_Packer* data_packer, B
     DEBUG_setup_intrinsic_types(tcx);
 }
 
+
 s32
 run_type_checker(Type_Context* tcx, Interp* interp) {
     tcx->interp = interp;

@@ -24,16 +24,13 @@ parse_type(Lexer* lexer) {
         case Token_Cstring:
         case Token_Typeid: {
             Identifier ident = lexer->curr_token.ident;
-            if (is_builtin_type_keyword(ident)) {
-                result = push_ast_basic_type(lexer, (Ast_Type_Kind) (ident - builtin_types_begin));
-            }
+            result = &ast_basic_types[ident - builtin_types_begin];
         } break;
         
         case Token_Ident: {
             Identifier ident = lexer->curr_token.ident;
-            Ast_Alias_Type* alias = push_ast_type(lexer, Alias);
-            alias->ident = ident;
-            result = alias;
+            result = push_ast_node(lexer, Ast_Type);
+            result->alias = ident;
         } break;
         
         case Token_Struct: {
@@ -72,7 +69,7 @@ parse_aggregate_type(Lexer* lexer, Ast_Type* base_type) {
         } break;
         
         case '(': {
-            Ast_Maybe_Proc_Type* proc = push_ast_type(lexer, Maybe_Proc);
+            Ast_Procedure_Type* proc = push_ast_node(lexer, Ast_Procedure_Type);
             proc->return_type = base_type;
             proc->args = parse_call_argument_list(lexer);
             result = proc;
@@ -86,27 +83,19 @@ parse_aggregate_type(Lexer* lexer, Ast_Type* base_type) {
     return result;
 }
 
-Ast_Call_Argument*
+Ast_Argument_List*
 parse_call_argument_list(Lexer* lexer) {
-    Ast_Call_Argument* result = 0;
-    Ast_Call_Argument* prev_arg = 0;
+    Ast_Argument_List* result = 0;
     while (lex(lexer) != Token_EOF) {
         unlex(lexer);
         
-        Ast_Call_Argument* arg = arena_push_struct(lexer->ast_arena, Ast_Call_Argument);
-        arg->expr = parse_expression(lexer);
-        if (!arg->expr) {
+        Ast_Argument arg = {};
+        arg.initializer = parse_expression(lexer);
+        if (!arg.initializer) {
             syntax_error(lexer, string_print("expected expression, found `%`", f_token(lexer->curr_token)));
             return 0;
         }
-        
-        if (prev_arg) {
-            prev_arg->next = arg;
-        }
-        if (!result) {
-            result = arg;
-        }
-        prev_arg = arg;
+        array_push(result, arg);
         
         if (!lex_if_matched(lexer, ',')) {
             lex_expect(lexer, ')');
@@ -123,44 +112,42 @@ parse_leaf_expression(Lexer* lexer) {
     
     switch (lex(lexer)) {
         case Token_Int_Literal: {
-            Ast_Literal_Expression* literal = push_ast_expression(lexer, Literal);
-            literal->type = Type_Int;
+            Ast_Literal* literal = push_ast_node(lexer, Ast_Literal);
+            literal->type = TYPE_INT;
             literal->u64_value = lexer->curr_token.u64_value;
             result = literal;
         } break;
         
         case Token_Float_Literal: {
-            Ast_Literal_Expression* literal = push_ast_expression(lexer, Literal);
-            literal->type = Type_Float;
+            Ast_Literal* literal = push_ast_node(lexer, Ast_Literal);
+            literal->type = TYPE_FLOAT;
             literal->f64_value = lexer->curr_token.f64_value;
             result = literal;
         } break;
         
         case Token_Ident: {
-            Ast_Ident_Expression* ident = push_ast_expression(lexer, Ident);
-            ident->ident = lexer->curr_token.ident;
-            result = ident;
+            Ast_Identifier* identifier = push_ast_node(lexer, Ast_Identifier);
+            identifier->identifier = lexer->curr_token.ident;
+            result = identifier;
         } break;
         
         default: {
             unlex(lexer);
-            Ast_Type* type = parse_type(lexer);
-            result = type;
+            result = parse_type(lexer);
         } break;
     }
     
     return result;
 }
 
-bool
-is_binary_operator(Token token) {
+int
+parse_binary_operator(Token token) {
     switch (token.kind) {
-        case '+':
-        case '-':
-        case '/':
-        case '*': return true;
-        
-        default: return false;
+        case '+': return OP_ADD;
+        case '-': return OP_SUB;
+        case '*': return OP_MUL;
+        case '/': return OP_DIV;
+        default: return 0;
     }
 }
 
@@ -178,7 +165,8 @@ parse_binary_expression(Lexer* lexer, Ast_Expression* left, int min_prec) {
     lex(lexer);
     
     Token token = lexer->curr_token;
-    if (!is_binary_operator(token)) {
+    int operator_type = parse_binary_operator(token);
+    if (!operator_type) {
         unlex(lexer);
         return left;
     }
@@ -189,10 +177,11 @@ parse_binary_expression(Lexer* lexer, Ast_Expression* left, int min_prec) {
         return left;
     }
     
-    Ast_Binary_Expression* binary = push_ast_expression(lexer, Binary);
+    Ast_Binary* binary = push_ast_node(lexer, Ast_Binary);
     binary->left = left;
     binary->right = parse_expression(lexer, next_prec);
     binary->token = token;
+    binary->operator_type = operator_type;
     return binary;
 }
 
@@ -203,24 +192,27 @@ parse_expression(Lexer* lexer, int min_prec) {
     for (;;) {
         Token_Kind kind = lex(lexer);
         if (kind == '(') {
-            Ast_Call_Expression* call = push_ast_expression(lexer, Call);
+            Ast_Call* call = push_ast_node(lexer, Ast_Call);
             call->proc = left;
             call->args = parse_call_argument_list(lexer);
             left = call;
             
         } else if (kind == '.') {
             lex_expect(lexer, Token_Ident);
-            Ast_Field_Expression* field = push_ast_expression(lexer, Field);
-            field->expr = left;
-            field->ident = lexer->curr_token.ident;
-            left = field;
+            Ast_Binary* binary = push_ast_node(lexer, Ast_Binary);
+            binary->left = left;
+            binary->access_identifier = lexer->curr_token.ident;
+            binary->operator_type = OP_SCOPE_ACCESS;
+            left = binary;
             
         } else if (kind == '[') {
-            Ast_Index_Expression* index = push_ast_expression(lexer, Index);
-            index->expr = left;
-            index->index = parse_expression(lexer);
+            Ast_Binary* binary = push_ast_node(lexer, Ast_Binary);
+            binary->left = left;
+            binary->token = lexer->curr_token;
+            binary->right = parse_expression(lexer);
+            binary->operator_type = OP_SUBSCRIPT;
             lex_expect(lexer, ']');
-            left = index;
+            left = binary;
             
         } else {
             unlex(lexer);
@@ -239,31 +231,21 @@ parse_expression(Lexer* lexer, int min_prec) {
     return left;
 }
 
-Ast_Expression_List*
-parse_block_statement(Lexer* lexer) {
+Ast_Block*
+parse_block(Lexer* lexer) {
     assert(lexer->curr_token.kind == '{');
     
-    Ast_Expression_List* result = 0;
-    Ast_Expression_List* curr = 0;
+    Ast_Block* result = push_ast_node(lexer, Ast_Block);
+    
     while (lex(lexer) != '}') {
         if (lexer->curr_token.kind == Token_EOF) break;
-        
         unlex(lexer);
         
-        Ast_Expression_List* next = arena_push_struct(lexer->ast_arena, Ast_Expression_List);
-        next->expr = parse_statement(lexer);
-        if (!next->expr) {
+        Ast_Expression* expr = parse_statement(lexer);
+        if (!expr) {
             break;
         }
-        
-        if (curr) {
-            curr->next = next;
-        }
-        curr = next;
-        
-        if (!result) {
-            result = next;
-        }
+        array_push(result->statements, expr);
     }
     
     return result;
@@ -303,7 +285,7 @@ parse_statement(Lexer* lexer) {
         } break;
         
         case Token_Return: {
-            Ast_Return_Expression* ret = push_ast_expression(lexer, Return);
+            Ast_Return* ret = push_ast_node(lexer, Ast_Return);
             ret->expr = parse_expression(lexer);
             result = ret;
             lex_expect(lexer, ';');
@@ -320,25 +302,9 @@ parse_statement(Lexer* lexer) {
         default: {
             unlex(lexer);
             
-            result = parse_expression(lexer);
-            if (result) {
-                if (lex_if_matched(lexer, Token_Ident)) {
-                    Ast_Assign_Expression* assign = push_ast_expression(lexer, Assign);
-                    assign->type = result;
-                    assign->ident = lexer->curr_token.ident;
-                    
-                    Identifier ident = lexer->curr_token.ident;
-                    if (lex_if_matched(lexer, Token_Assign)) {
-                        assign->expr = parse_expression(lexer);
-                        if (!assign->expr) {
-                            syntax_error(lexer, string_lit("expected expression after `=`"));
-                            return 0;
-                        }
-                    }
-                    result = assign;
-                }
-                
-                lex_expect(lexer, ';');
+            result = parse_declaration(lexer);
+            if (!result) {
+                result = parse_expression(lexer);
             }
             
             if (!result) {
@@ -350,21 +316,20 @@ parse_statement(Lexer* lexer) {
     return result;
 }
 
-Ast_Proc_Argument*
-parse_argument_list(Lexer* lexer, bool expect_ident=true) {
-    Ast_Proc_Argument* result = 0;
-    Ast_Proc_Argument* prev_arg = 0;
+Ast_Argument_List*
+parse_type_argument_list(Lexer* lexer, bool expect_ident=true) {
+    Ast_Argument_List* result = 0;
     while (lex(lexer) != ')') {
         if (lexer->curr_token.kind == Token_EOF) break;
         unlex(lexer);
-        if (prev_arg) {
+        if (result) {
             lex_expect(lexer, ',');
         }
         
-        Ast_Proc_Argument* arg = arena_push_struct(lexer->ast_arena, Ast_Proc_Argument);
-        arg->type = parse_type(lexer);
+        Ast_Argument arg = {};
+        arg.type = parse_type(lexer);
         
-        if (!arg->type) {
+        if (!arg.type) {
             syntax_error(lexer, string_lit("missing type specifier"));
             break;
         }
@@ -376,15 +341,9 @@ parse_argument_list(Lexer* lexer, bool expect_ident=true) {
         } else {
             lex_if_matched(lexer, Token_Ident);
         }
-        arg->ident = lexer->curr_token.ident;
+        arg.identifier = lexer->curr_token.ident;
         
-        if (prev_arg) {
-            prev_arg->next = arg;
-        }
-        if (!result) {
-            result = arg;
-        }
-        prev_arg = arg;
+        array_push(result, arg);
     }
     
     return result;
@@ -392,28 +351,39 @@ parse_argument_list(Lexer* lexer, bool expect_ident=true) {
 
 Ast_Declaration*
 parse_declaration(Lexer* lexer) {
-    // TODO: seems dumb
-    lex(lexer); unlex(lexer);
-    Token first_token = lexer->curr_token;
-    
     Ast_Declaration* result = 0;
     Ast_Type* type = parse_type(lexer);
     
     switch (lex(lexer)) {
         case Token_Ident: {
-            Identifier ident = lexer->curr_token.ident;
+            assert(type && "syntax error? Expects type before named declaration");
+            Identifier identifier = lexer->curr_token.ident;
             
             if (lex_if_matched(lexer, '(')) {
-                Ast_Declaration* decl = push_ast_declaration(lexer, Decl_Procedure);
-                decl->proc.ident = ident;
-                decl->proc.signature.return_type = type;
-                decl->proc.signature.args = parse_argument_list(lexer);
+                result = push_ast_node(lexer, Ast_Declaration);
+                result->identifier = identifier;
+                
+                Ast_Procedure_Type* sig = push_ast_node(lexer, Ast_Procedure_Type);
+                sig->return_type = type;
+                sig->args = parse_type_argument_list(lexer);
+                result->type = sig;
+                
                 if (lex_if_matched(lexer, '{')) {
-                    decl->proc.block = parse_block_statement(lexer);
+                    result->initializer = parse_block(lexer);
                 }
-                result = decl;
                 
             } else if (lex_if_matched(lexer, '=')) {
+                result = push_ast_node(lexer, Ast_Declaration);
+                result->identifier = identifier;
+                result->type = type;
+                
+                result->initializer = parse_expression(lexer);
+                if (!result->initializer) {
+                    syntax_error(lexer, string_lit("expected expression after `=`"));
+                    return 0;
+                }
+                
+                lex_expect(lexer, ';');
                 
             } else {
                 unimplemented;
@@ -425,7 +395,8 @@ parse_declaration(Lexer* lexer) {
         } break;
         
         default: {
-            syntax_error(lexer, string_lit("expected declaration"), &first_token);
+            unlex(lexer);
+            syntax_error(lexer, string_lit("expected declaration"));
         } break;
     }
     

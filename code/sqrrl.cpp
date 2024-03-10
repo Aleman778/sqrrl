@@ -8,6 +8,7 @@
 #include "sqrrl_basic.cpp"
 
 #include "lexer.cpp"
+#include "ast.cpp"
 #include "parser.cpp"
 #include "typer.cpp"
 
@@ -135,15 +136,13 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     Lexer lexer = {};
     
     lexer_init_source(&lexer, &ast_arena, source, file->index);
-    //while (lex(&lexer) != Token_EOF) {
-    //pln("\"%\" (%)", f_string(token_to_string(lexer.curr_token)), f_int(lexer.curr_token.kind));
-    //}
     Ast_Declaration* decl = parse_declaration(&lexer);
     
     if (!decl)  {
         pln("Failed to parse");
         return 1;
     }
+    
     String_Builder sb = {};
     print_ast_declaration(&sb, decl);
     string s = string_builder_to_string_nocopy(&sb);
@@ -152,7 +151,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     Type_Context tcx = {};
     infer_declaration(&tcx, decl);
-    
     
     
     

@@ -54,9 +54,8 @@ enum Compiler_Task {
 //#include "sqrrl_ast.h"
 //#include "sqrrl_type_checker.h"
 
+#include "ast.h"
 #include "parser.h"
-//#include "sqrrl_parser.h"
-
 #include "typer.h"
 
 //#include "sqrrl_interp.h"

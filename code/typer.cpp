@@ -1,49 +1,21 @@
 
-#if 0
-void
-register_variable(Type_Context* tcx, Identifier ident, Ast_Type* type) {
-    // TODO(Alexander): check collisions
-    Object obj = {};
-    obj.kind = Object_Variable;
-    obj.variable = type;
-    map_put(tcx->scope->objects, ident, obj);
-}
-
-inline Object
-resolve_object(Type_Context* tcx, Identifier ident, Object_Kind kind) {
-    Object obj = map_get(tcx->scope->objects, ident);
-    if (obj.kind != kind) {
-        // TODO: search deeper!
-        unimplemented;
-    }
-    
-    return obj;
-}
-
 Ast_Type*
-resolve_type_definition(Type_Context* tcx, Identifier ident) {
-    if (is_builtin_type_keyword(ident)) {
-        return &ast_basic_types[ident - builtin_types_begin];
-    } else {
-        Object obj = resolve_object(tcx, ident, Object_Type_Definition);
-        if (obj.kind == Object_Type_Definition) {
-            return obj.type->type;
-        }
+resolve_type_definition(Type_Context* tcx, Ast_Block* block, Identifier ident) {
+    assert(is_builtin_type_keyword(ident));
+    Ast_Type* result = 0;
+    
+    Ast_Scope_Member* member = map_get(block->members, ident);
+    if (member) {
+        result = member->type_def;
     }
     
-    return 0;
+    if (!result && block->parent) {
+        result = resolve_type_definition(tcx, block->parent, ident);
+    }
+    
+    return result;
 }
 
-Ast_Type*
-resolve_variable_type(Type_Context* tcx, Identifier ident) {
-    Object obj = resolve_object(tcx, ident, Object_Variable);
-    if (obj.kind == Object_Variable) {
-        return obj.variable;
-    }
-    
-    return 0;
-}
-#endif
 
 Ast_Type*
 infer_type(Type_Context* tcx, Ast_Type* type) {
@@ -53,12 +25,11 @@ infer_type(Type_Context* tcx, Ast_Type* type) {
     
     Ast_Type* result = 0;
     switch (type->kind) {
-        case TYPE_ALIAS: {
-            unimplemented;
-            //result = resolve_type_definition(tcx, type->alias);
+        case AST_ALIAS_TYPE: {
+            result = resolve_type_definition(tcx, tcx->block, type->alias);
         } break;
         
-        case TYPE_PROCEDURE: {
+        case AST_PROCEDURE_TYPE: {
             if (infer_procedure_signature(tcx, (Ast_Procedure_Type*) type)) {
                 result = type;
             }
@@ -80,7 +51,18 @@ infer_procedure_signature(Type_Context* tcx, Ast_Procedure_Type* signature) {
     bool result = true;
     result = result && infer_type(tcx, signature->return_type);
     for_array_it(signature->args, arg) {
-        result = result && infer_type(tcx, arg->type);
+        
+        Ast_Type* type = arg->type;
+        if (!type) {
+            type = (Ast_Type*) arg->initializer;
+        }
+        
+        if (!type) {
+            result = false;
+            break;
+        }
+        
+        result = result && infer_type(tcx, type);
     }
     return result;
 }
@@ -90,7 +72,9 @@ infer_expression(Type_Context* tcx, Ast_Expression* expr) {
     Ast_Type* result = 0;
     
     switch (expr->kind) {
-        case AST_TYPE: {
+        case AST_TYPE:
+        case AST_ALIAS_TYPE: 
+        case AST_PROCEDURE_TYPE: {
             result = infer_type(tcx, (Ast_Type*) expr);
         } break;
         
@@ -174,33 +158,58 @@ infer_binary_expression(Type_Context* tcx, Ast_Binary* binary) {
 
 bool
 infer_block(Type_Context* tcx, Ast_Block* block) {
+    block->parent = tcx->block;
+    tcx->block = block;
+    
+    bool result = true;
     for_array_v(block->statements, expr, _) {
         if (!infer_expression(tcx, expr)) {
-            return false;
+            result = false;
+            break;
         }
     }
-    return true;
+    
+    tcx->block = block->parent;
+    return result;
+}
+
+bool
+infer_function_declaration(Type_Context* tcx, Ast_Procedure_Type* sig, Ast_Block* block) {
+    // Push arguments to scope
+    for_array_it(sig->args, arg) {
+        //register_variable(tcx, arg->ident, arg->type);
+    }
+    if (infer_block(tcx, block)) {
+        return true;
+    }
+    
+    return false;
 }
 
 bool
 infer_declaration(Type_Context* tcx, Ast_Declaration* decl) { 
-    
     Ast_Type* type = infer_expression(tcx, decl->type);
     assert(type); // TODO: probably return?
     
     // TODO(Alexander): register type in type table
     
-    if (type->kind == TYPE_PROCEDURE && decl->initializer->kind == AST_BLOCK) {
-        auto sig = (Ast_Procedure_Type*) type;
+    switch (type->kind) {
+        case AST_PROCEDURE_TYPE: {
+            if (decl->initializer) {
+                if (decl->initializer->kind == AST_BLOCK) {
+                    infer_function_declaration(tcx,
+                                               (Ast_Procedure_Type*) type,
+                                               (Ast_Block*) decl->initializer);
+                } else {
+                    
+                }
+            } else {
+                
+            }
+        } break;
+    }
+    if (type->kind == AST_PROCEDURE_TYPE && decl->initializer->kind == AST_BLOCK) {
         
-        // Push arguments to scope
-        for_array_it(sig->args, arg) {
-            unimplemented;
-            //register_variable(tcx, arg->ident, arg->type);
-        }
-        if (infer_block(tcx, (Ast_Block*) decl->initializer)) {
-            return true;
-        }
         
     } else {
         if (decl->initializer) {

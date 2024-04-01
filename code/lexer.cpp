@@ -207,7 +207,7 @@ syntax_error(Lexer* lexer, string message, Token* error_token) {
         pln("%:%:%: error: %", f_string(file->abspath), f_int(loc.line_number + 1), f_int(loc.column_number + 1), f_string(message));
         
         DEBUG_log_backtrace();
-        
+        assert(0);
     }
     
     lexer->error_count++;

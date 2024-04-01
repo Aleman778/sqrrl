@@ -1,8 +1,17 @@
 
+struct Ast_Type;
+struct Ast_Declaration;
+
+
 enum Ast_Kind {    
     AST_TYPE,
+    AST_ALIAS_TYPE,
+    AST_STRUCT_TYPE,
+    AST_PROCEDURE_TYPE,
+    
     AST_IDENTIFIER,
     AST_LITERAL,
+    AST_STRUCT_LITERAL,
     AST_UNARY,
     AST_BINARY,
     AST_CAST,
@@ -19,13 +28,11 @@ struct Ast {
     Ast_Kind kind;
 };
 
-struct Ast_Type;
-
 struct Ast_Expression : Ast {
     Ast_Type* inferred_type;
 };
 
-enum Ast_Type_Kind {
+enum Type_Storage {
     TYPE_NONE,
     
     // Basic types (order must match DEF_TYPE_KEYWORDS)
@@ -50,11 +57,7 @@ enum Ast_Type_Kind {
     TYPE_TYPEID,
     
     TYPE_FLOAT,
-    
-    TYPE_ALIAS,
-    TYPE_POINTER,
-    TYPE_PROCEDURE,
-    TYPE_LIKE_PROCEDURE
+    TYPE_POINTER
 };
 
 enum {
@@ -66,13 +69,23 @@ enum {
 
 struct Ast_Type : Ast_Expression {
 #define AST_KIND_Ast_Type AST_TYPE
-    
-    Ast_Type_Kind kind;
-    u32 flags;
+    Type_Storage storage;
     Identifier alias;
+    u32 flags;
     
     s32 size;
     s32 align;
+};
+
+struct Ast_Alias_Type : Ast_Type {
+#define AST_KIND_Ast_Alias_Type AST_ALIAS_TYPE
+};
+
+struct Ast_Struct_Type : Ast_Type {
+#define AST_KIND_Ast_Struct_Type AST_STRUCT_TYPE
+    
+    Token token;
+    array(Ast_Declaration*)* declarations;
 };
 
 struct Ast_Argument {
@@ -84,16 +97,16 @@ struct Ast_Argument {
 typedef Ast_Argument Ast_Argument_List;
 
 struct Ast_Procedure_Type : Ast_Type {
-#define AST_KIND_Ast_Procedure_Type AST_TYPE
+#define AST_KIND_Ast_Procedure_Type AST_PROCEDURE_TYPE
     
     Ast_Type* return_type;
     Ast_Argument_List* args;
 };
 
 inline Ast_Type
-create_basic_type(Ast_Type_Kind kind, u32 flags, int size) {
+create_basic_type(Type_Storage storage, u32 flags, int size) {
     Ast_Type result = {};
-    result.kind = kind;
+    result.storage = storage;
     result.flags = flags;
     result.size = size;
     result.align = size;
@@ -133,15 +146,28 @@ struct Ast_Identifier : Ast_Expression {
     Identifier identifier;
 };
 
+inline Identifier
+ast_unwrap_ident(Ast* ast) {
+    assert(ast->kind == AST_IDENTIFIER);
+    return ((Ast_Identifier*) ast)->identifier;
+}
+
 struct Ast_Literal : Ast_Expression {
 #define AST_KIND_Ast_Literal AST_LITERAL
     
-    Ast_Type_Kind type;
+    Type_Storage type;
     union {
         u64 u64_value;
         f32 f32_value;
         f64 f64_value;
     };
+};
+
+struct Ast_Struct_Literal : Ast_Expression {
+#define AST_KIND_Ast_Struct_Literal AST_STRUCT_LITERAL
+    
+    Identifier identifier;
+    array(Ast_Declaration*)* initializers;
 };
 
 enum {
@@ -172,10 +198,18 @@ struct Ast_Binary : Ast_Expression {
     int operator_type;
 };
 
+struct Ast_Scope_Member {
+    Ast_Declaration* declaration;
+    Ast_Type* type_def;
+};
+
 struct Ast_Block : Ast_Expression {
 #define AST_KIND_Ast_Block AST_BLOCK
+    Ast_Block* parent;
     
     array(Ast_Expression*)* statements;
+    
+    map(Identifier, Ast_Scope_Member*)* members;
 };
 
 struct Ast_Cast : Ast_Expression {
@@ -184,7 +218,6 @@ struct Ast_Cast : Ast_Expression {
     Ast_Type* type;
     Ast_Expression* expr;
 };
-
 struct Ast_Call : Ast_Expression {
 #define AST_KIND_Ast_Call AST_CALL
     

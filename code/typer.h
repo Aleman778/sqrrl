@@ -1,6 +1,8 @@
 
 struct Type_Context {
     Memory_Arena* arena;
+    
+    Ast_Block* block;
 };
 
 bool infer_procedure_signature(Type_Context* tcx, Ast_Procedure_Type* signature);

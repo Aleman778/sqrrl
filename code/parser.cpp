@@ -35,16 +35,7 @@ parse_type(Lexer* lexer) {
         
         case Token_Struct:
         case Token_Union: {
-            Ast_Struct_Type* type = push_ast_node(lexer, Ast_Struct_Type);
-            type->token = lexer->curr_token;
-            if (lex_if_matched(lexer, Token_Ident)) {
-                type->alias = lexer->curr_token.ident;
-            }
-            
-            if (lex_if_matched(lexer, '{')) {
-                parse_struct_declaration(lexer, type);
-            }
-            result = type;
+            result = push_ast_node(lexer, Ast_Struct_Type);
         } break;
         
         case Token_Enum: {
@@ -139,7 +130,7 @@ parse_leaf_expression(Lexer* lexer) {
         
         case '{': {
             Ast_Struct_Literal* literal = push_ast_node(lexer, Ast_Struct_Literal);
-            parse_struct_initializer_list(lexer, literal);
+            literal->block = parse_struct_initializer_list(lexer);
             result = literal;
         } break;
         
@@ -229,7 +220,7 @@ parse_expression(Lexer* lexer, int min_prec) {
         } else if (kind == '{' && left && left->kind == AST_IDENTIFIER) {
             Ast_Struct_Literal* literal = push_ast_node(lexer, Ast_Struct_Literal);
             literal->identifier = ast_unwrap_ident(left);
-            parse_struct_initializer_list(lexer, literal);
+            literal->block = parse_struct_initializer_list(lexer);
             left = literal;
             
         } else {
@@ -269,9 +260,11 @@ parse_block(Lexer* lexer) {
     return result;
 }
 
-void
-parse_struct_declaration(Lexer* lexer, Ast_Struct_Type* struct_type) {
+Ast_Block*
+parse_struct_declaration(Lexer* lexer) {
     assert(lexer->curr_token.kind == '{');
+    
+    Ast_Block* result = push_ast_node(lexer, Ast_Block);
     
     while (lex(lexer) != '}') {
         if (lexer->curr_token.kind == Token_EOF) break;
@@ -287,18 +280,22 @@ parse_struct_declaration(Lexer* lexer, Ast_Struct_Type* struct_type) {
             decl->initializer = parse_expression(lexer);
             if (!decl->initializer) {
                 syntax_error(lexer, string_lit("expected expression after `=`"));
-                return;
+                break;
             }
         }
         
         lex_expect(lexer, ';');
-        array_push(struct_type->declarations, decl);
+        array_push(result->statements, decl);
     }
+    
+    return result;
 }
 
-void
-parse_struct_initializer_list(Lexer* lexer, Ast_Struct_Literal* literal) {
+Ast_Block*
+parse_struct_initializer_list(Lexer* lexer) {
     assert(lexer->curr_token.kind == '{');
+    
+    Ast_Block* result = push_ast_node(lexer, Ast_Block);
     
     while (lex(lexer) != '}') {
         if (lexer->curr_token.kind == Token_EOF) break;
@@ -331,13 +328,15 @@ parse_struct_initializer_list(Lexer* lexer, Ast_Struct_Literal* literal) {
             break;
         }
         
-        array_push(literal->initializers, decl);
+        array_push(result->statements, decl);
         
         if (!lex_if_matched(lexer, ',')) {
             lex_expect(lexer, '}');
             break;
         }
     }
+    
+    return result;
 }
 
 Ast_Expression*
@@ -448,7 +447,19 @@ parse_declaration(Lexer* lexer) {
             assert(type && "syntax error? Expects type before named declaration");
             Identifier identifier = lexer->curr_token.ident;
             
-            if (lex_if_matched(lexer, '(')) {
+            if (lex_if_matched(lexer, '{')) {
+                result = push_ast_node(lexer, Ast_Declaration);
+                result->identifier = identifier;
+                result->type = type;
+                
+                if (type->kind == AST_STRUCT_TYPE) {
+                    result->initializer = parse_struct_declaration(lexer);
+                } else {
+                    syntax_error_expected(lexer, '=');
+                }
+                
+                
+            } else if (lex_if_matched(lexer, '(')) {
                 result = push_ast_node(lexer, Ast_Declaration);
                 result->identifier = identifier;
                 
@@ -506,4 +517,23 @@ parse_declaration(Lexer* lexer) {
     while (lex_if_matched(lexer, ';')); // optionally end with semicolon
     
     return result;
+}
+
+Ast_File*
+parse_file(Lexer* lexer) {
+    Ast_File* result = arena_push_struct(lexer->ast_arena, Ast_File);
+    
+    while (lex(lexer) != Token_EOF) {
+        unlex(lexer);
+        
+        Ast_Declaration* decl =  parse_declaration(lexer);
+        if (!decl) {
+            lex_finish(lexer);
+            break;
+        }
+        
+        array_push(result->block.statements, decl);
+    }
+    
+    return result; 
 }

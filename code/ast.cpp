@@ -30,7 +30,6 @@ print_ast_type_storage(String_Builder* sb, Type_Storage kind) {
         case TYPE_UMM:
         case TYPE_UINT:
         case TYPE_F32:
-        case TYPE_F64:
         case TYPE_STRING:
         case TYPE_CSTRING:
         case TYPE_TYPEID:
@@ -46,13 +45,30 @@ print_ast_type_storage(String_Builder* sb, Type_Storage kind) {
 }
 
 void
+print_ast_block(String_Builder* sb, Ast_Block* block, int indent) {
+    string_builder_push_newline(sb, indent);
+    string_builder_push_format(sb, "Ast_Block:");
+    
+    string_builder_push_newline(sb, indent + 2);
+    string_builder_push(sb, "statements: ");
+    if (!array_count(block->statements)) {
+        string_builder_push(sb, "null");
+    }
+    for_array_v(block->statements, it, _) {
+        string_builder_push_newline(sb, indent + 2);
+        string_builder_push(sb, "- ");
+        print_ast_expression(sb, (Ast_Expression*) it, indent + 4, false);
+    }
+}
+
+void
 print_ast_expression(String_Builder* sb, Ast_Expression* expr, int indent, bool newline) {
     if (!expr) {
         string_builder_push(sb, "null");
         return;
     }
     
-    if (newline && expr->kind != AST_TYPE) {
+    if (newline && expr->kind != AST_TYPE && expr->kind != AST_BLOCK) {
         string_builder_push_newline(sb, indent);
     }
     
@@ -75,14 +91,6 @@ print_ast_expression(String_Builder* sb, Ast_Expression* expr, int indent, bool 
             
             string_builder_push_newline(sb, indent + 2);
             string_builder_push_format(sb, "alias: %", f_ident(type->alias));
-            
-            string_builder_push_newline(sb, indent + 2);
-            string_builder_push_format(sb, "declarations:");
-            for_array_v(type->declarations, it, _) {
-                string_builder_push_newline(sb, indent + 4);
-                string_builder_push_format(sb, "- ");
-                print_ast_declaration(sb, it, indent + 6);
-            }
         } break;
         
         case AST_PROCEDURE_TYPE: {
@@ -118,31 +126,12 @@ print_ast_expression(String_Builder* sb, Ast_Expression* expr, int indent, bool 
             string_builder_push_format(sb, "identifier: %", f_ident(literal->identifier));
             
             string_builder_push_newline(sb, indent + 2);
-            string_builder_push_format(sb, "initializers: ");
-            if (!array_count(literal->initializers)) {
-                string_builder_push(sb, "null");
-            }
-            for_array_v(literal->initializers, it, _) {
-                string_builder_push_newline(sb, indent + 4);
-                string_builder_push(sb, "- ");
-                print_ast_declaration(sb, it, indent + 6);
-            }
+            string_builder_push(sb, "block: ");
+            print_ast_block(sb, literal->block, indent + 4);
         } break;
         
         case AST_BLOCK: {
-            auto block = (Ast_Block*) expr;
-            string_builder_push_format(sb, "Ast_Block:");
-            
-            string_builder_push_newline(sb, indent + 2);
-            string_builder_push(sb, "statements: ");
-            if (!array_count(block->statements)) {
-                string_builder_push(sb, "null");
-            }
-            for_array_v(block->statements, it, _) {
-                string_builder_push_newline(sb, indent + 2);
-                string_builder_push(sb, "- ");
-                print_ast_expression(sb, it, indent + 4, false);
-            }
+            print_ast_block(sb, (Ast_Block*) expr, indent);
         } break;
         
         case AST_DECLARATION: {
@@ -197,7 +186,7 @@ print_ast_expression(String_Builder* sb, Ast_Expression* expr, int indent, bool 
         } break;
     }
     
-    if (expr->kind != AST_TYPE) {
+    if (expr->inferred_type != expr && expr->kind != AST_TYPE) {
         string_builder_push_newline(sb, indent + 2);
         string_builder_push(sb, "inferred_type: ");
         print_ast_expression(sb, expr->inferred_type, indent + 4);
@@ -237,4 +226,13 @@ print_ast_declaration(String_Builder* sb, Ast_Declaration* decl, int indent) {
     string_builder_push_newline(sb, indent + 2);
     string_builder_push(sb, "initializer: ");
     print_ast_expression(sb, decl->initializer, indent + 4);
+}
+
+void
+print_ast_file(String_Builder* sb, Ast_File* file, int indent) {
+    string_builder_push(sb, "Ast_File:");
+    
+    string_builder_push_newline(sb, indent + 2);
+    string_builder_push(sb, "block: ");
+    print_ast_block(sb, &file->block, indent + 4);
 }

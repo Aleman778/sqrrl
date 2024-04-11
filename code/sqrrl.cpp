@@ -136,21 +136,25 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     Lexer lexer = {};
     
     lexer_init_source(&lexer, &ast_arena, source, file->index);
-    Ast_Declaration* decl = parse_declaration(&lexer);
+    Ast_File* ast_file = parse_file(&lexer);
     
-    if (!decl)  {
+    if (!file)  {
         pln("Failed to parse");
         return 1;
     }
     
+    Type_Context tcx = {};
+    begin_block(&tcx, &ast_file->block);
+    for_array_v(ast_file->block.statements, it, _2323) {
+        infer_declaration(&tcx, (Ast_Declaration*) it);
+    }
+    end_block(&tcx);
+    
     String_Builder sb = {};
-    print_ast_declaration(&sb, decl);
+    print_ast_file(&sb, ast_file);
     string s = string_builder_to_string_nocopy(&sb);
     pln("%", f_string(s));
     string_builder_free(&sb);
-    
-    Type_Context tcx = {};
-    infer_declaration(&tcx, decl);
     
     
     

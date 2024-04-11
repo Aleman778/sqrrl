@@ -1,5 +1,6 @@
 
 struct Ast_Type;
+struct Ast_Block;
 struct Ast_Declaration;
 
 
@@ -83,9 +84,6 @@ struct Ast_Alias_Type : Ast_Type {
 
 struct Ast_Struct_Type : Ast_Type {
 #define AST_KIND_Ast_Struct_Type AST_STRUCT_TYPE
-    
-    Token token;
-    array(Ast_Declaration*)* declarations;
 };
 
 struct Ast_Argument {
@@ -167,7 +165,7 @@ struct Ast_Struct_Literal : Ast_Expression {
 #define AST_KIND_Ast_Struct_Literal AST_STRUCT_LITERAL
     
     Identifier identifier;
-    array(Ast_Declaration*)* initializers;
+    Ast_Block* block;
 };
 
 enum {
@@ -191,6 +189,7 @@ struct Ast_Unary : Ast_Expression {
 
 struct Ast_Binary : Ast_Expression {
 #define AST_KIND_Ast_Binary AST_BINARY
+    
     Ast_Expression* left;
     Ast_Expression* right;
     Identifier access_identifier;
@@ -205,10 +204,9 @@ struct Ast_Scope_Member {
 
 struct Ast_Block : Ast_Expression {
 #define AST_KIND_Ast_Block AST_BLOCK
+    
     Ast_Block* parent;
-    
-    array(Ast_Expression*)* statements;
-    
+    array(Ast*)* statements;
     map(Identifier, Ast_Scope_Member*)* members;
 };
 
@@ -239,6 +237,11 @@ struct Ast_Declaration : Ast_Expression {
     Identifier identifier;
 };
 
+struct Ast_File {
+    
+    Ast_Block block;
+};
+
 #define push_ast_node(lexer, T) (T*) \
 _push_ast_node(lexer, sizeof(T), alignof(T), AST_KIND_##T)
 
@@ -252,3 +255,5 @@ _push_ast_node(Lexer* lexer, umm size, umm align, Ast_Kind kind) {
 void print_ast_expression(String_Builder* sb, Ast_Expression* expr, int indent=0, bool newline=true);
 
 void print_ast_declaration(String_Builder* sb, Ast_Declaration* decl, int indent=0);
+
+void print_ast_file(String_Builder* sb, Ast_File* file, int indent=0);

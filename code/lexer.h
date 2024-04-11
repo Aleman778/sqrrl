@@ -142,8 +142,15 @@ struct Lexer {
 };
 
 void syntax_error(Lexer* lexer, string message, Token* error_token=0);
+
+void syntax_error_expected(Lexer* lexer, u8 expected, Token* error_token=0);
+
 Token_Kind lex(Lexer* lexer);
+
 Token_Kind lex_finish(Lexer* lexer);
+
 void unlex(Lexer* lexer);
+
 bool lex_expect(Lexer* lexer, u8 kind);
+
 bool lex_if_matched(Lexer* lexer, u8 kind);

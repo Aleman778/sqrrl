@@ -1,19 +1,23 @@
 
 Ast_Type*
 resolve_type_definition(Type_Context* tcx, Ast_Block* block, Identifier ident) {
-    assert(is_builtin_type_keyword(ident));
-    Ast_Type* result = 0;
-    
-    Ast_Scope_Member* member = map_get(block->members, ident);
-    if (member) {
-        result = member->type_def;
+    if (is_builtin_type_keyword(ident)) {
+        return &ast_basic_types[ident - builtin_types_begin];
+        
+    } else {
+        Ast_Type* result = 0;
+        
+        Ast_Scope_Member* member = map_get(block->members, ident);
+        if (member) {
+            result = member->type_def;
+        }
+        
+        if (!result && block->parent) {
+            result = resolve_type_definition(tcx, block->parent, ident);
+        }
+        
+        return result;
     }
-    
-    if (!result && block->parent) {
-        result = resolve_type_definition(tcx, block->parent, ident);
-    }
-    
-    return result;
 }
 
 
@@ -74,7 +78,8 @@ infer_expression(Type_Context* tcx, Ast_Expression* expr) {
     switch (expr->kind) {
         case AST_TYPE:
         case AST_ALIAS_TYPE: 
-        case AST_PROCEDURE_TYPE: {
+        case AST_PROCEDURE_TYPE:
+        case AST_STRUCT_TYPE: {
             result = infer_type(tcx, (Ast_Type*) expr);
         } break;
         
@@ -90,7 +95,9 @@ infer_expression(Type_Context* tcx, Ast_Expression* expr) {
         } break;
         
         case AST_DECLARATION: {
-            infer_declaration(tcx, (Ast_Declaration*) expr);
+            if (infer_declaration(tcx, (Ast_Declaration*) expr)) {
+                result = &ast_basic_types[1];
+            }
         } break;
         
         case AST_UNARY: {
@@ -99,6 +106,19 @@ infer_expression(Type_Context* tcx, Ast_Expression* expr) {
         
         case AST_BINARY: {
             result = infer_binary_expression(tcx, (Ast_Binary*) expr);
+        } break;
+        
+        case AST_BLOCK: {
+            auto block = (Ast_Block*) expr;
+            result = &ast_basic_types[1];
+            begin_block(tcx, block);
+            for_array_v(block->statements, it, _) {
+                if (!infer_expression(tcx, (Ast_Expression*) it)) {
+                    result = 0;
+                    break;
+                }
+            }
+            end_block(tcx);
         } break;
         
         case AST_RETURN: {
@@ -157,72 +177,64 @@ infer_binary_expression(Type_Context* tcx, Ast_Binary* binary) {
 }
 
 bool
-infer_block(Type_Context* tcx, Ast_Block* block) {
-    block->parent = tcx->block;
-    tcx->block = block;
-    
-    bool result = true;
-    for_array_v(block->statements, expr, _) {
-        if (!infer_expression(tcx, expr)) {
-            result = false;
-            break;
-        }
-    }
-    
-    tcx->block = block->parent;
-    return result;
-}
-
-bool
 infer_function_declaration(Type_Context* tcx, Ast_Procedure_Type* sig, Ast_Block* block) {
-    // Push arguments to scope
+    bool success = true;
+    
+    begin_block(tcx, block);
+    
+    // Push arguments to block
     for_array_it(sig->args, arg) {
         //register_variable(tcx, arg->ident, arg->type);
     }
-    if (infer_block(tcx, block)) {
-        return true;
+    
+    if (success) {
+        for_array_v(block->statements, it, _) {
+            if (!infer_expression(tcx, (Ast_Expression*) it)) {
+                success = false;
+                break;
+            }
+        }
     }
     
-    return false;
+    end_block(tcx);
+    return success;
 }
 
 bool
 infer_declaration(Type_Context* tcx, Ast_Declaration* decl) { 
     Ast_Type* type = infer_expression(tcx, decl->type);
-    assert(type); // TODO: probably return?
+    //assert(type); // TODO: probably return?
+    
+    
+    if (!type) return false;
     
     // TODO(Alexander): register type in type table
     
     switch (type->kind) {
         case AST_PROCEDURE_TYPE: {
-            if (decl->initializer) {
-                if (decl->initializer->kind == AST_BLOCK) {
-                    infer_function_declaration(tcx,
-                                               (Ast_Procedure_Type*) type,
-                                               (Ast_Block*) decl->initializer);
-                } else {
-                    
-                }
+            if (decl->initializer && decl->initializer->kind == AST_BLOCK) {
+                infer_function_declaration(tcx,
+                                           (Ast_Procedure_Type*) type,
+                                           (Ast_Block*) decl->initializer);
             } else {
                 
             }
         } break;
-    }
-    if (type->kind == AST_PROCEDURE_TYPE && decl->initializer->kind == AST_BLOCK) {
         
-        
-    } else {
-        if (decl->initializer) {
-            Ast_Type* actual_type = infer_expression(tcx, decl->initializer);
-            if (type && actual_type) {
-                return true;
-            } else {
-                // report error!
-                unimplemented;
+        case AST_STRUCT_TYPE: {
+            if (decl->initializer && decl->initializer->kind == AST_BLOCK) {
+                
             }
-        } else {
+        } break;
+    }
+    
+    if (decl->initializer) {
+        Ast_Type* actual_type = infer_expression(tcx, decl->initializer);
+        if (type && actual_type) {
             return true;
         }
+    } else {
+        return true;
     }
     
     return false;

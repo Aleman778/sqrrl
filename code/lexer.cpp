@@ -214,6 +214,13 @@ syntax_error(Lexer* lexer, string message, Token* error_token) {
     lex_finish(lexer);
 }
 
+void
+syntax_error_expected(Lexer* lexer, u8 expected, Token* error_token) {
+    Token token = error_token ? *error_token : lexer->curr_token;
+    syntax_error(lexer, string_print("expected `%`, found `%`", f_char(expected),
+                                     f_string(token_to_string(token))));
+}
+
 Token_Kind
 lex(Lexer* lexer) {
     if (lexer->unlex_token.kind != Token_EOF) {
@@ -261,7 +268,7 @@ bool
 lex_expect(Lexer* lexer, u8 kind) {
     if (lex(lexer) != kind) {
         unlex(lexer);
-        syntax_error(lexer, string_print("expected `%`, found `%`", f_char(kind), f_string(token_to_string(lexer->curr_token))));
+        syntax_error_expected(lexer, kind);
         return false;
     }
     

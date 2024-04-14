@@ -8,7 +8,6 @@ VAR(break)    \
 VAR(case)     \
 VAR(cast)     \
 VAR(continue) \
-VAR(const)    \
 VAR(volatile) \
 VAR(defer)    \
 VAR(do)       \
@@ -78,6 +77,7 @@ VAR(import)   \
 VAR(__assert) \
 VAR(ifdef)    \
 VAR(ifndef)   \
+VAR(expand)   \
 VAR(pragma)   \
 VAR(once)     \
 VAR(line)     \

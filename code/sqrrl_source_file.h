@@ -56,7 +56,7 @@ get_source_file_by_path(cstring filepath) {
 
 
 inline Source_File*
-create_source_file(string filename, Source_File* included_from=0) {
+create_source_file(string filename, bool is_system_file, Source_File* included_from=0) {
     cstring curr_file_path = 0;
     if (included_from) {
         curr_file_path = string_to_cstring(included_from->filedir);
@@ -65,7 +65,12 @@ create_source_file(string filename, Source_File* included_from=0) {
     // TODO(Alexander): add temporary allocator for better performance
     cstring cfilename = string_to_cstring(filename);
     cstring cworking_dir = string_to_cstring(working_directory);
-    Canonicalized_Path canonicalized_path = DEBUG_get_canonicalized_path(cfilename, cworking_dir, curr_file_path);
+    Canonicalized_Path canonicalized_path;
+    if (is_system_file) {
+        canonicalized_path = DEBUG_get_system_canonicalized_path(cfilename);
+    } else {
+        canonicalized_path = DEBUG_get_canonicalized_path(cfilename, cworking_dir, curr_file_path);
+    }
     cstring_free(cfilename);
     cstring_free(cworking_dir);
     if (curr_file_path) {

@@ -489,28 +489,6 @@ read_string_from_system_registry(HKEY key, cstring value_name) {
     return result;
 }
 
-cstring
-find_windows_kits_include_dir() {
-    cstring result = 0;
-    
-    HKEY main_key;
-    auto status = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots",
-                                0, KEY_QUERY_VALUE | KEY_WOW64_32KEY | KEY_ENUMERATE_SUB_KEYS, &main_key);
-    if (status == ERROR_SUCCESS) {
-        cstring windows10_root = read_string_from_system_registry(main_key, "KitsRoot10");
-        if (windows10_root != 0) {
-            
-            // TODO(Alexander): more Microsoft craziness, the version number needs to also be found
-            result = cstring_concat(windows10_root, "Include\\10.0.22000.0\\");
-            cstring_free(windows10_root);
-        }
-        
-        RegCloseKey(main_key);
-    }
-    
-    return result;
-}
-
 void
 DEBUG_set_current_directory(cstring path) {
     BOOL result = SetCurrentDirectoryA(path);
@@ -558,17 +536,6 @@ main(int argc, char* argv[]) {
             
             DEBUG_free_canonicalized_path(exe_path);
         }
-    }
-    
-    cstring windows_system_headers_root_dir = find_windows_kits_include_dir();
-    if (windows_system_headers_root_dir != 0) {
-        windows_system_header_shared = cstring_concat(windows_system_headers_root_dir, "shared\\");
-        array_push(windows_system_header_dirs, cstring_concat(windows_system_headers_root_dir, "um\\"));
-        array_push(windows_system_header_dirs, cstring_concat(windows_system_headers_root_dir, "ucrt\\"));
-        array_push(windows_system_header_dirs, windows_system_header_shared);
-        array_push(windows_system_header_dirs, cstring_concat(windows_system_headers_root_dir, "winrt\\"));
-        array_push(windows_system_header_dirs, cstring_concat(windows_system_headers_root_dir, "cppwinrt\\"));
-        cstring_free(windows_system_headers_root_dir);
     }
     
     // TODO(Alexander): we need more microsoft craziness to get all VS paths

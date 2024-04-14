@@ -124,20 +124,35 @@ Ast* expr;                                      \
 })                                              \
 AST_GROUP(Stmt_End,    "statement")             \
 AST_GROUP(Directive_Begin,    "directive")             \
-AST(If_Directive,       "#if", struct {       \
+AST(If_Directive,       "#if", struct {         \
+Ast* cond;                                      \
+Ast* then_block;                                \
+Ast* else_block;                                \
+})                                              \
+AST(Ifdef_Directive,       "#ifdef", struct {         \
+Ast* cond;                                      \
+Ast* then_block;                                \
+Ast* else_block;                                \
+})                                              \
+AST(Ifndef_Directive,       "#ifndef", struct {         \
 Ast* cond;                                      \
 Ast* then_block;                                \
 Ast* else_block;                                \
 })                                              \
 AST(Include_Directive,       "#include", struct {       \
 string filename;                                \
+bool is_system_include;                         \
 })                                              \
-AST(Define_Directive,       "#define", struct {       \
-Ast* ident;                                      \
-Ast* arguments;                                \
+AST(Define_Directive,       "#define", struct { \
+Ast* ident;                                     \
 Ast* stmt;                                \
 })                                              \
-AST_GROUP(Directive_End,    "directive")             \
+AST(Expand_Directive,       "#expand", struct { \
+Ast* ident;                                     \
+Ast* arguments;                                 \
+Ast* block;                                     \
+})                                              \
+AST_GROUP(Directive_End,    "directive")        \
 AST_GROUP(Type_Begin,  "type")                  \
 AST(Named_Type,        "named", Ast*)           \
 AST(Array_Type,        "array", struct {        \
@@ -174,7 +189,6 @@ Ast* attributes;                                \
 Ast* elem_type;                                 \
 Ast* fields;                                    \
 })                                              \
-AST(Const_Type,        "const", Ast*)           \
 AST(Volatile_Type,     "volatile", Ast*)        \
 AST(Local_Persist_Type, "local persist", Ast*) \
 AST(Declspec_Type,     "declspec", struct {     \
@@ -192,7 +206,7 @@ AST_GROUP(Type_End,    "type")
 // compound_iterator(compound, it) {
 //     // `it` can be used as the ast node pointer
 // }
-// TODO(Alexander): this is really ugly and inefficient, try similar to C++ iterators.
+// TODO(Alexander): this is really ugly and inefficient, improve this
 #define for_compound(compound, it) \
 Ast* compound_##it = compound; \
 if (compound_##it) \
@@ -234,7 +248,6 @@ enum {
     AstDeclModifier_Internal       = bit(4),
     AstDeclModifier_External       = bit(5),
     AstDeclModifier_Global         = bit(6),
-    AstDeclModifier_Const          = bit(7),
     AstDeclModifier_Volatile       = bit(8),
     AstDeclModifier_Local_Persist  = bit(9),
     AstDeclModifier_Cconv_cdecl    = bit(10),
@@ -386,6 +399,7 @@ struct Ast_Module {
 
 inline bool
 should_ast_stmt_end_with_semicolon(Ast* node) {
+    // TODO(Alexander): make an array instead
     return !(node->kind == Ast_Block_Stmt ||
              node->kind == Ast_Decl_Stmt ||
              node->kind == Ast_If_Stmt ||
@@ -393,7 +407,11 @@ should_ast_stmt_end_with_semicolon(Ast* node) {
              node->kind == Ast_For_Stmt ||
              node->kind == Ast_While_Stmt ||
              node->kind == Ast_If_Directive ||
-             node->kind == Ast_Include_Directive);
+             node->kind == Ast_Ifdef_Directive ||
+             node->kind == Ast_Ifndef_Directive ||
+             node->kind == Ast_Include_Directive ||
+             node->kind == Ast_Define_Directive ||
+             node->kind == Ast_Expand_Directive);
 }
 
 inline bool
@@ -444,6 +462,11 @@ is_ast_type(Ast* ast) {
 inline bool
 is_ast_compound(Ast* ast) {
     return ast && ast->kind == Ast_Compound;
+}
+
+inline bool
+is_ast_block(Ast* ast) {
+    return ast && ast->kind == Ast_Block_Stmt;
 }
 
 inline string_id

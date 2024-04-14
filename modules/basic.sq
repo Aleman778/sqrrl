@@ -14,9 +14,10 @@
 #define U8_MAX 0xffU
 #define U16_MAX 0xffffU
 #define U32_MAX 0xffffffffU
-#define U64_MAX 0xffffffffffffffffull
+#define U64_MAX 0xffffffffffffffffULL
 #define UMM_MAX U64_MAX // TODO(Alexander): we need to detect and set this correctly later
 #define UINT_MAX U32_MAX
+
 
 // Assert
 #ifndef BASIC_NO_ASSERT_IMPLEMENTATION
@@ -33,12 +34,16 @@ __assert(cstring expression, string file, smm line) {
     //fflush(stdout);
     //fflush(stderr);
     
-    *(int *)0 = 0; // NOTE(Alexander): purposefully trap the program
+    *cast(int *)0 = 0; // NOTE(Alexander): purposefully trap the program
     return true;
 }
-#define assert(expression, ...) (void)((expression) || __assert(#expression " - " __VA_ARGS__, __FILE__, __LINE__))
+
+#expand assert(Code expression, ...) {
+expression || __assert(__VA_ARGS__, __FILE__, __LINE__);
+}
+
 #else
-#define assert(expression, ...)
+#expand assert(Code expression, ...) { }
 #endif
 
 #endif
@@ -252,7 +257,7 @@ cstring_count(cstring str) {
     if (!str) return 0;
     
     umm count = 0;
-    u8* curr = (u8*) str;
+    u8* curr = cast(u8*) str;
     while (*curr) {
         count++;
         curr++;
@@ -262,7 +267,7 @@ cstring_count(cstring str) {
 
 inline cstring
 string_to_cstring(string str, u8* dest=0) {
-    u8* result = dest ? dest : (u8*) malloc(str.count + 1);
+    u8* result = dest ? dest : cast(u8*) malloc(str.count + 1);
     memcpy(result, str.data, str.count);
     result[str.count] = 0;
     return (cstring) result;
@@ -271,14 +276,14 @@ string_to_cstring(string str, u8* dest=0) {
 inline string
 cstring_to_string(cstring str) {
     string result;
-    result.data = (u8*) str;
+    result.data = cast(u8*) str;
     result.count = cstring_count(str);
     return result;
 }
 
 inline void
 cstring_free(cstring str) {
-    free((void*) str);
+    free(cast(void*) str);
 }
 
 struct Fixed_Array {
@@ -368,7 +373,7 @@ struct Var_Args {
 
 inline Type_Info*
 to_type_info(Type type) {
-    return (Type_Info*) type;
+    return cast(Type_Info*) type;
 }
 
 internal void
@@ -383,19 +388,19 @@ internal s64
 data_to_s64(Basic_Type_Info info, void* data) {
     switch (info) {
         case Basic_Type_Info.S8: {
-            return *((s8*) data);
+            return *(cast(s8*) data);
         }
         
         case Basic_Type_Info.S16: {
-            return *((s16*) data);
+            return *(cast(s16*) data);
         }
         
         case Basic_Type_Info.S32: {
-            return *((s32*) data);
+            return *(cast(s32*) data);
         }
         
         case Basic_Type_Info.S64: {
-            return *((s64*) data);
+            return *(cast(s64*) data);
         }
     }
     
@@ -406,19 +411,19 @@ internal u64
 data_to_u64(Basic_Type_Info info, void* data) {
     switch (info) {
         case Basic_Type_Info.U8: {
-            return *((u8*) data);
+            return *(cast(u8*) data);
         }
         
         case Basic_Type_Info.U16: {
-            return *((u16*) data);
+            return *(cast(u16*) data);
         }
         
         case Basic_Type_Info.U32: {
-            return *((u32*) data);
+            return *(cast(u32*) data);
         }
         
         case Basic_Type_Info.U64: {
-            return *((u64*) data);
+            return *(cast(u64*) data);
         }
     }
     
@@ -429,11 +434,11 @@ internal f64
 data_to_f64(Basic_Type_Info info, void* data) {
     switch (info) {
         case Basic_Type_Info.F32: {
-            return *((f32*) data);
+            return *(cast(f32*) data);
         }
         
         case Basic_Type_Info.F64: {
-            return *((f64*) data);
+            return *(cast(f64*) data);
         }
     }
     
@@ -529,9 +534,14 @@ string_print_floating_point(String_Builder* sb, f64 floating_point) {
     string_builder_push(sb, test);
 }
 
-#define pln(format, ...) print(format##"\n", __VA_ARGS__)
+#expand pln(format, ...) {
+// TODO(Alexander): find out how we can add newline without calling string_concat
+print(format, __VA_ARGS__)
+}
 // Below one tells you location of your prints
-//#define pln(format, ...) print(__FILE__##":"##__LINE__##": "##format##"\n", __VA_ARGS__)
+//#expand pln(format, ...) {
+//print(__FILE__##":"##__LINE__##": "##format##"\n", __VA_ARGS__)
+//}
 
 inline void
 print(string format, ...var_args) {
@@ -581,7 +591,7 @@ string_builder_push_vformat(String_Builder* sb, string format, Var_Args var_args
                 // data sizes > 8 are passed as pointer, as specified by callign convention.
                 
                 if (arg.data_size > 8) {
-                    string_print_data_from_type_info(sb, arg.type, *((void**) var_arg_data));
+                    string_print_data_from_type_info(sb, arg.type, *(cast(void**) var_arg_data));
                 } else {
                     string_print_data_from_type_info(sb, arg.type, var_arg_data);
                 }
@@ -605,7 +615,7 @@ string_builder_push_vformat(String_Builder* sb, string format, Var_Args var_args
         // TODO(Alexander): this is a bit of a hack becuase
         // data sizes > 8 are passed as pointer, as specified by callign convention.
         if (arg.data_size > 8) {
-            string_print_data_from_type_info(sb, arg.type, *((void**) var_arg_data));
+            string_print_data_from_type_info(sb, arg.type, *(cast(void**) var_arg_data));
         } else {
             string_print_data_from_type_info(sb, arg.type, var_arg_data);
         }
@@ -622,7 +632,7 @@ string_print_data_from_type_info(String_Builder* sb, Type_Info* type, void* data
         case Type_Kind.Basic: {
             switch (type.Basic) {
                 case Basic_Type_Info.Bool: {
-                    if (*((bool*) data)) {
+                    if (*(cast(bool*) data)) {
                         string_builder_push(sb, "true");
                     } else {
                         string_builder_push(sb, "false");
@@ -652,13 +662,13 @@ string_print_data_from_type_info(String_Builder* sb, Type_Info* type, void* data
                 }
                 
                 case Basic_Type_Info.String: {
-                    string_builder_push(sb, *((string*) data));
+                    string_builder_push(sb, *(cast(string*) data));
                 }
                 
                 case Basic_Type_Info.CString: {
-                    cstring cstr = *((cstring*) data);
+                    cstring cstr = *(cast(cstring*) data);
                     string s;
-                    s.data = (u8*) cstr;
+                    s.data = cast(u8*) cstr;
                     s.count = cstring_count(cstr);
                     string_builder_push(sb, s);
                 }
@@ -706,12 +716,12 @@ string_print_data_from_type_info(String_Builder* sb, Type_Info* type, void* data
                 arr.data = data;
                 arr.count = type.Array.fixed_count;
             } else {
-                arr = *((Fixed_Array*) data);
+                arr = *(cast(Fixed_Array*) data);
             }
             
             Type_Info* elem_type = type.Array.elem_type;
             
-            const int max_elements_to_show = 5;
+            int max_elements_to_show = 5;
             
             for (int array_index = 0; 
                  array_index < arr.count && array_index < max_elements_to_show; 
@@ -728,7 +738,7 @@ string_print_data_from_type_info(String_Builder* sb, Type_Info* type, void* data
                 if (doubleQuoted) {
                     string_builder_push(sb, "\"");
                 }
-                string_print_data_from_type_info(sb, elem_type, (u8*) arr.data + offset, indent + 4);
+                string_print_data_from_type_info(sb, elem_type, cast(u8*) arr.data + offset, indent + 4);
                 if (doubleQuoted) {
                     string_builder_push(sb, "\"");
                 }
@@ -766,7 +776,7 @@ string_print_data_from_type_info(String_Builder* sb, Type_Info* type, void* data
                 
                 print_newline_with_spaces(sb, indent);
                 string_builder_push_format(sb, "%: ", field.ident);
-                string_print_data_from_type_info(sb, field.type, (u8*) data + field.offset, indent);
+                string_print_data_from_type_info(sb, field.type, cast(u8*) data + field.offset, indent);
                 
                 if (field_index + 1 < type.Struct.fields.count) {
                     string_builder_push(sb, ", ");
@@ -783,8 +793,9 @@ string_print_data_from_type_info(String_Builder* sb, Type_Info* type, void* data
     }
 }
 
-#define print_var(var) \
+#expand print_var(var) {
 print_data_from_type_info(type_of(var), &var);
+}
 
 struct Dynamic_Function {
     void* pointer;

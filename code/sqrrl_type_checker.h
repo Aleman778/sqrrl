@@ -116,7 +116,6 @@ print_span_location(Span span) {
 
 inline void
 type_error(Type_Context* tcx, string message, Span span) {
-    
     print_span_location(span);
     pln("error: %", f_string(message));
     if (tcx->error_count < 3) {
@@ -134,7 +133,7 @@ type_error_mismatch(Type_Context* tcx, Type* expected, Type* found, Span span) {
 
 inline void
 type_warning(Type_Context* tcx, string message, Span span) {
-    Span_Data spand = {};
+    pln("warning span = %", f_int(span.file_index));
     print_span_location(span);
     pln("warning: %\n", f_string(message));
     if (tcx->error_count < 3) {
@@ -304,6 +303,8 @@ struct Ast_File;
 bool match_struct_like_args(Type_Context* tcx, Type* formal_type, int first_field, int last_field, Ast* args, bool report_error);
 Type* type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error);
 Type* type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool report_error);
+
+bool type_infer_function_declaration(Type_Context* tcx, Type* type, Ast* body, bool report_error);
 
 bool type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool rhs_is_value, Span span,
                            Operator op=Op_Assign, bool report_error=true);

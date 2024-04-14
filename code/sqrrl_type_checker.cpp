@@ -104,6 +104,11 @@ type_check_value(Type_Context* tcx, Type* type, Value value, Span span, bool rep
             result = type->kind == TypeKind_Basic;
             if (!result) break;
             
+            if (type->Basic.flags & BasicFlag_Floating) {
+                result = true;
+                break;
+            }
+            
             if (type->Basic.flags & BasicFlag_Unsigned) {
                 if (value.data.signed_int < 0) {
                     type_warning(tcx, string_print("expected type `%` signed/ unsigned mismatch with `%`", 
@@ -133,6 +138,11 @@ type_check_value(Type_Context* tcx, Type* type, Value value, Span span, bool rep
             
             result = type->kind == TypeKind_Basic;
             if (!result) break;
+            
+            if (type->Basic.flags & BasicFlag_Floating) {
+                result = true;
+                break;
+            }
             
             if (type->Basic.flags & BasicFlag_Unsigned) {
                 if (value.data.unsigned_int > type->Basic.limits.max_unsigned_value) {
@@ -860,6 +870,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                                                                           actual_arg_types,
                                                                           actual_arg_is_value,
                                                                           false);
+                        
                         
                         if (match.score > highest_score) {
                             highest_score = match.score;
@@ -2297,12 +2308,6 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             //}
         } break;
         
-        // TODO: These should probably not be separate AST nodes
-        case Ast_Const_Type: {
-            result = create_type_from_ast(tcx, ast->Const_Type, report_error);
-            result.mods |= AstDeclModifier_Const;
-        } break;
-        
         case Ast_Volatile_Type: {
             result = create_type_from_ast(tcx, ast->Volatile_Type, report_error);
             result.mods |= AstDeclModifier_Volatile;
@@ -2356,16 +2361,11 @@ process_define_directive(Type_Context* tcx, Ast* ast, bool report_error) {
     Type* result = 0;
     Value comptime_value = {};
     
-    if (is_valid_ast(ast->Define_Directive.arguments)) {
-        unimplemented;
-        
-    } else {
-        Ast* stmt = ast->Define_Directive.stmt;
-        result = type_infer_statement(tcx, stmt, report_error);
-        
-        if (stmt->kind == Ast_Expr_Stmt) {
-            comptime_value = constant_folding_of_expressions(tcx, stmt->Expr_Stmt);
-        }
+    Ast* stmt = ast->Define_Directive.stmt;
+    result = type_infer_statement(tcx, stmt, report_error);
+    
+    if (stmt->kind == Ast_Expr_Stmt) {
+        comptime_value = constant_folding_of_expressions(tcx, stmt->Expr_Stmt);
     }
     
     Entity entity;
@@ -2492,26 +2492,16 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                 }
             }
             
-            unimplemented;
-            
-#if 0
-            if (!stmt->Decl_Stmt.stmt || stmt->Decl_Stmt.stmt->kind == Ast_None) {
+            if (decl_type->kind == TypeKind_Function) {
+                if (type_infer_function_declaration(tcx, decl_type, stmt->Decl_Stmt.stmt, report_error)) {
+                    result = decl_type;
+                    stmt->type = result;
+                }
+            } else {
                 stmt->type = decl_type;
                 stmt->Decl_Stmt.type->type = decl_type;
                 result = decl_type;
-                // TODO(Alexander): what is this doing here?
-                //map_put(tcx->local_type_table, ident, result);
-                
-            } else {
-                Type* found_type = type_infer_statement(tcx, stmt->Decl_Stmt.stmt, report_error);
-                
-                if (found_type) {
-                    result = decl_type;
-                    stmt->type = result;
-                    //map_put(tcx->locals, ident, result);
-                }
             }
-#endif
         } break;
         
         case Ast_If_Stmt: {
@@ -2759,7 +2749,7 @@ type_check_assignment(Type_Context* tcx, Type* dest, Type* src, bool is_src_valu
                 if (dest_float == src_float) {
                     lossy = dest->size < src->size;
                 } else {
-                    lossy = src_float;
+                    lossy = true;
                 }
                 
             } else if (src->Basic.kind == Basic_string) {
@@ -3286,65 +3276,41 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
 }
 
 bool
-type_infer_declaration(Type_Context* tcx, Ast* ast, string_id ident, bool report_error) {
+type_infer_function_declaration(Type_Context* tcx, Type* type, Ast* body, bool report_error) {
+    assert(type && type->kind == TypeKind_Function);
     
     bool result = true;
-    
     tcx->return_type = 0;
     tcx->block_depth = 0;
-    
-    if (is_ast_type(ast)) {
-        Type* type = save_type_declaration_from_ast(tcx, ident, ast, report_error);
-        if (!type) {
-            result = false;
-        }
+    if (is_ast_block(body)) {
+        Scope scope = {};
         
-    } else if (ast->kind == Ast_Decl_Stmt) {
-        Type* type = ast->Decl_Stmt.type->type;
-        ast->type = type;
+        begin_block_scope(tcx, &scope);
         
-        if (ast->Decl_Stmt.type->kind == Ast_Function_Type) {
-            if (type && type->kind == TypeKind_Function) {
-                Scope scope = {};
-                begin_block_scope(tcx, &scope);
+        // Store the arguments the main block scope
+        Type_Function* func = &type->Function;
+        if (func->arg_idents) {
+            for (int arg_index = 0; 
+                 arg_index < array_count(func->arg_idents);
+                 arg_index++) {
                 
-                // Store the arguments the main block scope
-                Type_Function* func = &type->Function;
-                if (func->arg_idents) {
-                    for (int arg_index = 0; 
-                         arg_index < array_count(func->arg_idents);
-                         arg_index++) {
-                        
-                        Type* arg_type = func->arg_types[arg_index];
-                        if (arg_type) {
-                            string_id arg_ident = func->arg_idents[arg_index];
-                            // TODO(Alexander): maybe we need to also store spans in procedure type?
-                            
-                            if (!register_entity(tcx, arg_ident, create_variable(arg_type), ast->span, report_error)) {
-                                result = false;
-                            }
-                        } else {
-                            assert(0);
-                        }
+                Type* arg_type = func->arg_types[arg_index];
+                if (arg_type) {
+                    string_id arg_ident = func->arg_idents[arg_index];
+                    // TODO(Alexander): maybe we need to also store spans in procedure type?
+                    
+                    if (!register_entity(tcx, arg_ident, create_variable(arg_type), ast->span, report_error)) {
+                        result = false;
                     }
+                } else {
+                    assert(0);
                 }
-                tcx->return_type = type->Function.return_type;
-                result = result && type_infer_block_in_scope(tcx, ast->Decl_Stmt.stmt, report_error);
-                end_block_scope(tcx, &scope);
-                
-            } else {
-                result = false;
             }
-            
-        } else {
-            result = type_infer_statement(tcx, ast, report_error);
         }
         
-    } else if (is_ast_stmt_or_directive(ast)) {
-        result = type_infer_statement(tcx, ast, report_error);
-        
-    } else {
-        assert(0 && "illegal type: expected X_Stmt or any X_Type node");
+        tcx->return_type = type->Function.return_type;
+        result = result && type_infer_block_in_scope(tcx, body, report_error);
+        end_block_scope(tcx, &scope);
     }
     
     return result;
@@ -3564,6 +3530,16 @@ init_type_context(Type_Context* tcx, Interp* interp, Data_Packer* data_packer, B
     DEBUG_setup_intrinsic_types(tcx);
 }
 
+bool
+run_type_infererence(Type_Context* tcx, Compilation_Unit* cu) {
+    if (is_ast_type(ast)) {
+        return save_type_declaration_from_ast(tcx, cu->ident, cu->ast, report_error);
+        
+    } else {
+        return type_check_statement(tcx, cu->ast);
+    }
+}
+
 s32
 run_type_checker(Type_Context* tcx, Interp* interp) {
     tcx->interp = interp;
@@ -3612,7 +3588,7 @@ run_type_checker(Type_Context* tcx, Interp* interp) {
                 cu->status == CUnitStatus_Type_Inference_Failed) {
                 tcx->module = cu->module;
                 tcx->file = cu->file;
-                if (type_infer_declaration(tcx, cu->ast, cu->ident, false)) {
+                if (do_type_infer(tcx, cu, false)declaration(tcx, cu->ast, cu->ident, false)) {
                     interp->compilation_units[cu_index].status = CUnitStatus_Type_Inference_Finished;
                     num_succeeded++;
                 }

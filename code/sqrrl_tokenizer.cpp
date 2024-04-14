@@ -452,9 +452,6 @@ advance_token(Tokenizer* tokenizer) {
                 if (*tokenizer->next == '=') {
                     utf8_advance_character(tokenizer);
                     token.type = Token_Equals;
-                } else if (*tokenizer->next == '>') {
-                    utf8_advance_character(tokenizer);
-                    token.type = Token_Double_Right_Arrow;
                 } else {
                     token.type = Token_Assign;
                 }
@@ -498,9 +495,6 @@ advance_token(Tokenizer* tokenizer) {
                     } else {
                         token.type = Token_Shl;
                     }
-                } else if (*tokenizer->next == '-') {
-                    utf8_advance_character(tokenizer);
-                    token.type = Token_Left_Arrow;
                 } else {
                     token.type = Token_Lt;
                 }
@@ -525,9 +519,6 @@ advance_token(Tokenizer* tokenizer) {
                 } else if (*tokenizer->next == '=') {
                     utf8_advance_character(tokenizer);
                     token.type = Token_Sub_Assign;
-                } else if (*tokenizer->next == '>') {
-                    utf8_advance_character(tokenizer);
-                    token.type = Token_Right_Arrow;
                 } else {
                     token.type = Token_Sub;
                 }

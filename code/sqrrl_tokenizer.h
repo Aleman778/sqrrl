@@ -61,9 +61,6 @@ TOKEN(Logical_And,             "&&")                \
 TOKEN(Logical_Or,              "||")                \
 TOKEN(Lt_Equals,               "<=")                \
 TOKEN(Gt_Equals,               ">=")                \
-TOKEN(Left_Arrow,              "<-")                \
-TOKEN(Right_Arrow,             "->")                \
-TOKEN(Double_Right_Arrow,      "=>")                \
 TOKEN(Scope,                   "::")                \
 TOKEN(Range,                   "..")                \
 TOKEN(Ellipsis,                "...")               \
@@ -184,25 +181,9 @@ tokenizer_set_source(Tokenizer* tokenizer, string source, string file, u32 file_
     array_push(tokenizer->lines, 0);
 }
 
-inline void
-tokenizer_finalize(Tokenizer* tokenizer) {
-    if (tokenizer->file_index > 0) {
-        // We load previous line numbers
-        Source_File* file = get_source_file_by_index((u32) tokenizer->file_index);
-        if (file) {
-            file->lines = tokenizer->lines;
-        }
-    }
-    
-}
-
 inline void 
 tokenizer_set_substring(Tokenizer* tokenizer, string substring, 
                         smm first_line_number, smm first_column_number, u32 file_index) {
-    
-    tokenizer_finalize(tokenizer);
-    //pln("substr: file_index = %,  ");
-    
     u8* begin = substring.data;
     u8* end = begin + substring.count;
     
@@ -216,45 +197,7 @@ tokenizer_set_substring(Tokenizer* tokenizer, string substring,
     tokenizer->line_number = first_line_number;
     tokenizer->column_number = first_column_number;
     
-    if (file_index > 0) {
-        Source_File* file = get_source_file_by_index((u32) file_index);
-        if (file) {
-            tokenizer->lines = file->lines;
-        }
-    }
-    
     utf8_advance_character(tokenizer);
-}
-
-struct Source_Group {
-    umm file_offset;
-    umm offset;
-    umm count;
-    
-    u32 line;
-    // TODO(Alexander): we need to record expanded macro spans here, column will just be 0 always
-    u32 column;
-    u32 file_index;
-    b32 c_compatibility_mode; // TODO(Alexander): maybe convert to flags
-};
-
-inline void
-tokenizer_set_source_group(Tokenizer* tokenizer, Source_Group* group) {
-    u8* data = tokenizer->source.data + group->offset;
-    string source_substring = create_string(group->count, data);
-    tokenizer_set_substring(tokenizer, source_substring, group->line, group->column, group->file_index);
-    
-    // TODO(Alexander): maybe cache file_index?
-    Source_File* file = get_source_file_by_index(group->file_index);
-    tokenizer->file = file->abspath;
-    if (group->line == 0) {
-        array_free(tokenizer->lines);
-    }
-    
-    tokenizer->start = data;
-    if (tokenizer->lines) {
-        tokenizer->start -= array_last(tokenizer->lines);
-    }
 }
 
 struct Tokenizer_State {

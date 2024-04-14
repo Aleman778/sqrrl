@@ -103,6 +103,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         return 0;
     }
     
+    Interp interp = {};
+    
     if (compiler.task == CompilerTask_Test) {
         working_directory = compiler.working_directory;
         unimplemented;
@@ -126,8 +128,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     Data_Packer data_packer = {};
     data_packer.rdata_arena.flags |= ArenaPushFlag_Align_From_Zero;
     data_packer.data_arena.flags |= ArenaPushFlag_Align_From_Zero;
-    
-    Interp interp = {};
     
     Type_Context tcx = {};
     tcx.scope = &interp.global_scope;
@@ -163,7 +163,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
     Ast_Module ast_module = {};
-    Source_File* file = create_source_file(compiler.filename);
+    Source_File* file = create_source_file(compiler.filename, false);
     interp_add_source_file(&interp, &ast_module, file);
     if (!compiler.output_filename.data) {
         string name_part = string_view(file->abspath.data + file->filedir.count, 
@@ -196,7 +196,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         }
         
         if (error_count > 0) {
-            pln("\nErrors found during parsing, exiting...\n");
+            pln("\n% errors found during parsing, exiting...\n", f_int(error_count));
             return 1;
         }
     }

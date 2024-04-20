@@ -187,7 +187,7 @@ type_check_value(Type_Context* tcx, Type* type, Value value, Span span, bool rep
     return result;
 }
 
-// TODO(Alexander): this is a compile opt technique, this belongs in different file
+// TODO(Alexander): should this be separated from type inference, feels off like this
 Value
 constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
     Value result = {};
@@ -393,7 +393,6 @@ struct Function_Match_Result {
     int score;
     bool accepted;
 };
-
 
 internal Function_Match_Result
 match_function_args(Type_Context* tcx,
@@ -952,7 +951,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 for_compound(expr->Call_Expr.args, arg) {
                     //pln("% < % = %", f_smm(arg_index), f_smm(formal_arg_count), f_bool(arg_index < formal_arg_count));
                     if (arg_index < formal_arg_count && is_valid_ast(arg->Argument.assign)) {
-                        constant_folding_of_expressions(tcx, arg->Argument.assign);
                         Type* formal_type = t_func->arg_types[arg_index];
                         arg->Argument.assign = auto_type_conversion(tcx, formal_type, arg->Argument.assign);
                         arg->type = arg->Argument.assign->type;
@@ -1032,8 +1030,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             if (type_infer_expression(tcx, expr->Index_Expr.index, t_smm, report_error)) {
                 Type* type = type_infer_expression(tcx, expr->Index_Expr.array, parent_type, report_error);
                 if (type) {
-                    constant_folding_of_expressions(tcx, expr->Index_Expr.index);
-                    
                     if (type->kind == TypeKind_Array) {
                         result = type->Array.type;
                     } else if (type->kind == TypeKind_Pointer) {
@@ -1402,8 +1398,6 @@ match_struct_like_args(Type_Context* tcx, Type* formal_type, int first_field, in
         
         Type* actual_type = 0;
         if (field->Argument.assign) {
-            
-            constant_folding_of_expressions(tcx, field->Argument.assign);
             actual_type = type_infer_expression(tcx, field->Argument.assign, field_type, report_error);
         } else {
             actual_type = type_infer_expression(tcx, field->Argument.ident, field_type, report_error);
@@ -1443,7 +1437,7 @@ push_function_overload(Type_Context* tcx, Entity* entity, Type* new_type, Span s
     for_array_v(entity->overloads, overloaded_fn, _) {
         if (match_function_args(tcx, overloaded_fn, 
                                 new_type->Function.arg_types,
-                                0, report_error, true).accepted) {
+                                0, false, true).accepted) {
             
             // TODO(Alexander): we might not have stored the unit yet so this error isn't going to do anything
             if (overloaded_fn->Function.unit) {
@@ -1682,7 +1676,6 @@ create_type_struct_like_from_ast(Type_Context* tcx,
         }
         
         switch (argument->Argument.ident->kind) {
-            
             case Ast_Ident: {
                 string_id ident = ast_unwrap_ident(argument->Argument.ident);
                 if (type) {
@@ -1710,6 +1703,7 @@ create_type_struct_like_from_ast(Type_Context* tcx,
             } break;
             
             default: {
+                // Check for anonymous struct/ union
                 if (type->kind == TypeKind_Struct) {
                     for_array_v(type->Struct_Like.idents, field_ident, field_index) {
                         Type* field_type = type->Struct_Like.types[field_index];
@@ -1767,36 +1761,38 @@ create_type_struct_like_from_ast(Type_Context* tcx,
 }
 
 Type*
-save_type_declaration_from_ast(Type_Context* tcx, string_id ident, Ast* ast, bool report_error) {
-    Type* type = create_type_from_ast(tcx, ast, report_error).type;
+save_type_declaration(Type_Context* tcx, Ast* ast, string_id ident, bool report_error) {
+    Type* type = ast->type;
+    if (!type) {
+        return type;
+    }
     
-    if (type) {
-        if (ident == Kw_operator) {
-            Operator op = ast->Function_Type.overload_operator;
-            ast->type = type;
-            type = save_operator_overload(tcx, type, op, ast->span, report_error);
-            
-        } else {
-            
-            if (type->kind == TypeKind_Struct && type->ident == 0) {
-                // TODO: investigate why this is triggered, potentially a forward struct declaration
-                //pln("%: %", f_type(type), f_ast(ast));
-            }
-            
-            if (type->kind == TypeKind_Function) {
-                if (!register_entity(tcx, ident, create_function(type), ast->span, report_error)) {
-                    type = 0;
-                }
-            } else {
-                if (!register_entity(tcx, ident, create_typedef(type), ast->span, report_error)) {
-                    type = 0;
-                }
-            }
+    if (ident == Kw_operator) {
+        Operator op = ast->Function_Type.overload_operator;
+        ast->type = type;
+        type = save_operator_overload(tcx, type, op, ast->span, report_error);
+        
+    } else {
+        
+        if (type->kind == TypeKind_Struct && type->ident == 0) {
+            // TODO: investigate why this is triggered, potentially a forward struct declaration
+            //pln("%: %", f_type(type), f_ast(ast));
+            unimplemented;
         }
         
-        if (type) {
-            ast->type = type;
+        if (type->kind == TypeKind_Function) {
+            if (!register_entity(tcx, ident, create_function(type), ast->span, report_error)) {
+                type = 0;
+            }
+        } else {
+            if (!register_entity(tcx, ident, create_typedef(type), ast->span, report_error)) {
+                type = 0;
+            }
         }
+    }
+    
+    if (type) {
+        ast->type = type;
     }
     
     return type;
@@ -1828,6 +1824,9 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             // Array capacity
             smm capacity = 0;
             if (ast->Array_Type.shape) {
+                unimplemented;
+                // TODO: here we can ask for a constant, might be easier otherwise we cannot resolve exact type at inference stage.
+#if 0
                 Value capacity_value = constant_folding_of_expressions(tcx, ast->Array_Type.shape);
                 
                 capacity = value_to_smm(capacity_value);
@@ -1838,6 +1837,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     result.type = 0;
                     return result;
                 }
+#endif
             }
             
             Type* elem_type = create_type_from_ast(tcx, ast->Array_Type.elem_type, report_error).type;
@@ -1882,13 +1882,13 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         } break;
         
         case Ast_Tuple_Type: {
-            // TODO(Alexander): implement this
-            assert(0 && "unimplemented");
+            // TODO(Alexander): don't think I will support this, remove it
+            unimplemented;
         } break;
         
         case Ast_Infer_Type: {
-            // TODO(Alexander): implement this
-            assert(0 && "unimplemented");
+            // TODO(Alexander): implement this, maybe useful let's see
+            unimplemented;
         } break;
         
         case Ast_Function_Type: {
@@ -1965,10 +1965,10 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     
                     if (is_valid_ast(ast_argument->Argument.assign)) {
                         Ast* default_arg = ast_argument->Argument.assign;
-                        if (type_infer_expression(tcx, default_arg, type, report_error)) {
-                            
-                        }
-                        constant_folding_of_expressions(tcx, default_arg);
+                        //if (type_infer_expression(tcx, default_arg, type, report_error)) {
+                        unimplemented;
+                        //}
+                        //constant_folding_of_expressions(tcx, default_arg);
                         array_push(func->default_args, default_arg);
                         
                     } else if (!result.type->Function.is_variadic) {
@@ -2263,9 +2263,11 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 assert(!argument->Argument.type && "enums fields don't have different types, parsing bug");
                 
                 if (is_valid_ast(argument->Argument.assign)) {
-                    value = constant_folding_of_expressions(tcx, argument->Argument.assign);
+                    unimplemented;
+                    //argument->Argument.assign
+                    //value = constant_folding_of_expressions(tcx, argument->Argument.assign);
                     
-                    if (value.type ==Value_void) {
+                    if (value.type == Value_void) {
                         type_error(tcx, string_lit("enums assignment can only be integer literal"),
                                    argument->Argument.assign->span);
                         break;
@@ -2336,6 +2338,7 @@ try_expand_if_directive(Type_Context* tcx, Ast* stmt, bool report_error) {
     if (!type_infer_expression(tcx, stmt->If_Directive.cond, t_s64, report_error)) {
         return false;
     }
+    
     Value value = constant_folding_of_expressions(tcx, stmt->If_Directive.cond);
     if (is_integer(value)) {
         if (value_to_bool(value)) {
@@ -2356,39 +2359,11 @@ try_expand_if_directive(Type_Context* tcx, Ast* stmt, bool report_error) {
     }
 }
 
-Type*
-process_define_directive(Type_Context* tcx, Ast* ast, bool report_error) {
-    Type* result = 0;
-    Value comptime_value = {};
-    
-    Ast* stmt = ast->Define_Directive.stmt;
-    result = type_infer_statement(tcx, stmt, report_error);
-    
-    if (stmt->kind == Ast_Expr_Stmt) {
-        comptime_value = constant_folding_of_expressions(tcx, stmt->Expr_Stmt);
-    }
-    
-    Entity entity;
-    if (is_void(comptime_value)) {
-        entity = create_macro(ast->Define_Directive.stmt);
-        result = t_code;
-    } else {
-        entity = create_constant_value(result, comptime_value);
-    }
-    
-    string_id ident = ast_unwrap_ident(ast->Define_Directive.ident);
-    if (!register_entity(tcx, ident, entity, ast->span, report_error)) {
-        result = 0;
-    }
-    
-    return result;
-}
-
-Type*
+bool
 type_infer_block_in_scope(Type_Context* tcx, Ast* stmt, bool report_error) {
     assert(stmt->kind == Ast_Block_Stmt);
     
-    Type* result = 0;
+    bool result = true;
     Ast* stmts = stmt->Block_Stmt.stmts;
     for_compound(stmts, it) {
         result = type_infer_statement(tcx, it, report_error);
@@ -2400,10 +2375,9 @@ type_infer_block_in_scope(Type_Context* tcx, Ast* stmt, bool report_error) {
     return result;
 }
 
-Type*
+bool
 type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
-    Type* result = 0;
-    
+    bool result = false;
     
     switch (stmt->kind) {
         case Ast_Assign_Stmt: {
@@ -2432,19 +2406,15 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                     return 0;
                 }
                 
-                constant_folding_of_expressions(tcx, stmt->Assign_Stmt.expr);
-                
-                result = expected_type;
                 stmt->Assign_Stmt.expr =
                     auto_type_conversion(tcx, expected_type, stmt->Assign_Stmt.expr);
             } else {
-                result = expected_type;
-                stmt->Assign_Stmt.expr->type = result;
+                stmt->Assign_Stmt.expr->type = expected_type;
             }
             
             
             if (result) {
-                Entity entity = create_variable(result);
+                Entity entity = create_variable(expected_type);
                 
                 string_id ident = try_unwrap_ident(stmt->Assign_Stmt.ident);
                 if (ident) {
@@ -2460,15 +2430,12 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                         }
                     }
                 }
-                
-                stmt->type = result;
             }
             
         } break;
         
         case Ast_Expr_Stmt: {
             result = type_infer_expression(tcx, stmt->Expr_Stmt, 0, report_error);
-            constant_folding_of_expressions(tcx, stmt->Expr_Stmt);
         } break;
         
         case Ast_Block_Stmt: {
@@ -2486,37 +2453,29 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
             Type* decl_type = stmt->Decl_Stmt.type->type;
             if (!decl_type) {
                 decl_type = create_type_from_ast(tcx, stmt->Decl_Stmt.type, report_error).type;
-                
-                if (!decl_type) {
-                    break;
-                }
+                stmt->Decl_Stmt.type->type = decl_type;
             }
             
-            if (decl_type->kind == TypeKind_Function) {
-                if (type_infer_function_declaration(tcx, decl_type, stmt->Decl_Stmt.stmt, report_error)) {
-                    result = decl_type;
-                    stmt->type = result;
+            if (decl_type) {
+                save_type_declaration(tcx, stmt->Decl_Stmt.type, ident, stmt);
+                
+                if (decl_type->kind == TypeKind_Function) {
+                    if (type_infer_function_declaration(tcx, decl_type, stmt->Decl_Stmt.stmt, stmt->span, report_error)) {
+                        result = true;
+                    }
+                } else {
+                    stmt->type = decl_type;
+                    stmt->Decl_Stmt.type->type = decl_type;
+                    result = true;
                 }
-            } else {
-                stmt->type = decl_type;
-                stmt->Decl_Stmt.type->type = decl_type;
-                result = decl_type;
             }
         } break;
         
         case Ast_If_Stmt: {
-            Type* cond = type_infer_expression(tcx, stmt->If_Stmt.cond, t_bool, report_error);
-            constant_folding_of_expressions(tcx, stmt->If_Stmt.cond);
-            Type* then_block = type_infer_statement(tcx, stmt->If_Stmt.then_block, report_error);
+            result = type_infer_expression(tcx, stmt->If_Stmt.cond, t_bool, report_error);
+            result = result && type_infer_statement(tcx, stmt->If_Stmt.then_block, report_error);
             if (is_ast_stmt(stmt->If_Stmt.else_block)) {
-                Type* else_block = type_infer_statement(tcx, stmt->If_Stmt.else_block, report_error);
-                if (cond && then_block && else_block) {
-                    result = cond;
-                }
-            } else {
-                if (cond && then_block) {
-                    result = cond;
-                }
+                result = result && type_infer_statement(tcx, stmt->If_Stmt.else_block, report_error);
             }
         } break;
         
@@ -2529,41 +2488,26 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
             Scope scope = {};
             begin_block_scope(tcx, &scope);
             
-            Type* init = type_infer_statement(tcx, stmt->For_Stmt.init, report_error);
-            Type* cond = type_infer_expression(tcx, stmt->For_Stmt.cond, t_bool, report_error);
-            constant_folding_of_expressions(tcx, stmt->For_Stmt.cond);
-            Type* update = type_infer_expression(tcx, stmt->For_Stmt.update, 0, report_error);
+            result = result && type_infer_statement(tcx, stmt->For_Stmt.init, report_error);
+            result = result && type_infer_expression(tcx, stmt->For_Stmt.cond, t_bool, report_error);
+            result = result && type_infer_expression(tcx, stmt->For_Stmt.update, 0, report_error);
             
-            
-            
-            Type* block;
             if (stmt->For_Stmt.block->kind == Ast_Block_Stmt) {
-                block = type_infer_block_in_scope(tcx, stmt->For_Stmt.block, report_error);
+                result = result && type_infer_block_in_scope(tcx, stmt->For_Stmt.block, report_error);
             } else {
-                block = type_infer_statement(tcx, stmt->For_Stmt.block, report_error);
-            }
-            
-            if (init && cond && update && block) {
-                result = init;
+                result = result && type_infer_statement(tcx, stmt->For_Stmt.block, report_error);
             }
             
             end_block_scope(tcx, &scope);
         } break;
         
         case Ast_While_Stmt: {
-            Type* cond = type_infer_expression(tcx, stmt->While_Stmt.cond, t_bool, report_error);
-            constant_folding_of_expressions(tcx, stmt->While_Stmt.cond);
-            Type* block = type_infer_statement(tcx, stmt->While_Stmt.block, report_error);
-            
-            if (cond && block) {
-                result = cond;
-            }
+            result = type_infer_expression(tcx, stmt->While_Stmt.cond, t_bool, report_error);
+            result = result && type_infer_statement(tcx, stmt->While_Stmt.block, report_error);
         } break;
         
         case Ast_Switch_Stmt: {
-            Type* cond = type_infer_expression(tcx, stmt->Switch_Stmt.cond, 0, report_error);
-            constant_folding_of_expressions(tcx, stmt->Switch_Stmt.cond);
-            result = cond;
+            result = type_infer_expression(tcx, stmt->Switch_Stmt.cond, 0, report_error);
             
             bool has_default = false;
             
@@ -2573,20 +2517,11 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
             for_compound(stmt->Switch_Stmt.cases, it) {
                 assert(it->kind == Ast_Switch_Case);
                 
-                if (!is_valid_ast(it->Switch_Case.cond)) {
-                    if (has_default) {
-                        if (report_error) {
-                            type_error(tcx, string_lit("cannot define more than one default case"),
-                                       it->span);
-                        }
-                        return 0;
-                    }
-                    has_default = true;
-                    
-                } else {
-                    Value case_cond = constant_folding_of_expressions(tcx, it->Switch_Case.cond);
+                if (is_valid_ast(it->Switch_Case.cond)) {
                     type_infer_expression(tcx, it->Switch_Case.cond, 0, true);
                     
+#if 0
+                    // TODO: should be moved out somewhere else, like type check stage
                     if (!is_integer(case_cond)) {
                         if (report_error) {
                             if (case_cond.type != Value_void) {
@@ -2613,6 +2548,16 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                     } else {
                         map_put(occupancy, val, true);
                     }
+#endif
+                } else {
+                    if (has_default) {
+                        if (report_error) {
+                            type_error(tcx, string_lit("cannot define more than one default case"),
+                                       it->span);
+                        }
+                        return 0;
+                    }
+                    has_default = true;
                 }
                 
                 if (it->Switch_Case.stmt && !type_infer_statement(tcx, 
@@ -2631,17 +2576,15 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                 if (is_valid_ast(stmt->Return_Stmt.expr)) {
                     result = type_infer_expression(tcx, stmt->Return_Stmt.expr, 
                                                    tcx->return_type, report_error);
-                    constant_folding_of_expressions(tcx, stmt->Return_Stmt.expr);
                     if (stmt->Return_Stmt.expr->type) {
                         stmt->Return_Stmt.expr = auto_type_conversion(tcx, tcx->return_type, stmt->Return_Stmt.expr);
                         result = stmt->Return_Stmt.expr->type;
                     } else {
-                        result = 0;
+                        result = false;
                     }
                 } else {
                     result = t_void;
                 }
-                stmt->type = result;
             } else {
                 if (report_error) {
                     type_error(tcx, string_lit("cannot use `return` outside of a function"),
@@ -2651,13 +2594,14 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         } break;
         
         case Ast_If_Directive: {
-            if (try_expand_if_directive(tcx, stmt, report_error)) {
-                result = t_void;
-            }
+            result = try_expand_if_directive(tcx, stmt, report_error);
         } break;
         
         case Ast_Define_Directive: {
-            result = process_define_directive(tcx, stmt, report_error);
+            Entity entity = create_macro(stmt);
+            Ast* ast_ident = stmt->Define_Directive.ident;
+            string_id ident = ast_unwrap_ident(ast_ident);
+            result = register_entity(tcx, ident, entity, ast_ident->span, report_error);
         } break;
         
         case Ast_Include_Directive: {
@@ -3183,6 +3127,7 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
             Type* expected_type = stmt->type;
             assert(expected_type && "compiler bug: assign statement has no type");
             
+            
             Type* found_type = stmt->Assign_Stmt.expr->type;
             if (found_type) {
                 result = result &&  type_check_assignment(tcx, expected_type, found_type, is_ast_value(stmt->Assign_Stmt.expr),
@@ -3248,21 +3193,18 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
         case Ast_Return_Stmt: {
             assert(tcx->return_type);
             
-            Type* found_type = stmt->type;
-            if (!found_type) {
-                type_error(tcx, string_lit("compiler bug! No return type was found in return statement"), stmt->span);
-                pln("%", f_ast(stmt));
+            if (is_valid_ast(stmt->Expr_Stmt)) {
+                Type* found_type = stmt->Expr_Stmt->type;
+                if (!found_type) {
+                    type_error(tcx, string_lit("compiler bug! No return type was found in return statement"), stmt->span);
+                    pln("%", f_ast(stmt));
+                }
+                
+                result = result && type_check_expression(tcx, stmt->Return_Stmt.expr);
+                result = result && type_check_assignment(tcx, tcx->return_type, found_type, 
+                                                         is_ast_value(stmt->Return_Stmt.expr),
+                                                         stmt->Return_Stmt.expr->span);
             }
-            
-            result = result && type_check_expression(tcx, stmt->Return_Stmt.expr);
-            result = result && type_check_assignment(tcx, tcx->return_type, found_type, 
-                                                     is_ast_value(stmt->Return_Stmt.expr),
-                                                     stmt->Return_Stmt.expr->span);
-            
-            if (!result) {
-                pln("%", f_ast(stmt));
-            }
-            
         } break;
         
         case Ast_If_Directive: {
@@ -3276,7 +3218,7 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
 }
 
 bool
-type_infer_function_declaration(Type_Context* tcx, Type* type, Ast* body, bool report_error) {
+type_infer_function_declaration(Type_Context* tcx, Type* type, Ast* body, Span span, bool report_error) {
     assert(type && type->kind == TypeKind_Function);
     
     bool result = true;
@@ -3299,7 +3241,7 @@ type_infer_function_declaration(Type_Context* tcx, Type* type, Ast* body, bool r
                     string_id arg_ident = func->arg_idents[arg_index];
                     // TODO(Alexander): maybe we need to also store spans in procedure type?
                     
-                    if (!register_entity(tcx, arg_ident, create_variable(arg_type), ast->span, report_error)) {
+                    if (!register_entity(tcx, arg_ident, create_variable(arg_type), span, report_error)) {
                         result = false;
                     }
                 } else {
@@ -3391,6 +3333,7 @@ check_if_statement_will_return(Ast* stmt) {
     return false;
 }
 
+#if 0
 bool
 type_check_declaration(Type_Context* tcx, Compilation_Unit* cu) {
     tcx->return_type = t_void;
@@ -3435,6 +3378,7 @@ type_check_declaration(Type_Context* tcx, Compilation_Unit* cu) {
     
     return result;
 }
+#endif
 
 void
 DEBUG_setup_intrinsic_types(Type_Context* tcx) {
@@ -3531,110 +3475,64 @@ init_type_context(Type_Context* tcx, Interp* interp, Data_Packer* data_packer, B
 }
 
 bool
-run_type_infererence(Type_Context* tcx, Compilation_Unit* cu) {
-    if (is_ast_type(ast)) {
-        return save_type_declaration_from_ast(tcx, cu->ident, cu->ast, report_error);
-        
-    } else {
-        return type_check_statement(tcx, cu->ast);
-    }
+run_type_infererence(Type_Context* tcx, Compilation_Unit* cu, bool report_error) {
+    tcx->module = cu->module;
+    tcx->file = cu->file;
+    return type_infer_statement(tcx, cu->ast, report_error);
 }
 
 s32
 run_type_checker(Type_Context* tcx, Interp* interp) {
     tcx->interp = interp;
     
-#if 0
-    // Declare all the types 
-    for_array_it(interp->compilation_units, cu) {
-        if (is_ast_type(cu->ast)) {
-            Type* type = arena_push_struct(&tcx->type_arena, Type);
-            cu->ast->type = type;
-            
-            // HACK: make sure we declare structs/ unions so they can be overridden.
-            if (cu->ast->kind == Ast_Struct_Type) {
-                type->kind = TypeKind_Struct;
-                register_entity(tcx, ident, create_typedef(type), span);
-            } else if (cu->ast->kind == Ast_Union_Type) {
-                type->kind = TypeKind_Union;
-            }
-            
-            
-            //if (!map_key_exists(tcx->global_type_table, cu->ident)) {
-            // TODO(Alexander): distinguish between types and types of variables
-            // E.g. in `int main(...)`, main is not a type it's a global variable
-            // but `typedef u32 string_id;` in this case string_id is a type.
-            //map_put(tcx->global_type_table, cu->ident, type);
-            //map_put(tcx->globals, cu->ident, type);
-            //} 
+    // Push all compilation units to queue
+    array(Compilation_Unit*)* queue = 0;
+    
+    // Queue directives first
+    for_array_v(interp->compilation_units, cu, _c) {
+        if (is_ast_directive(cu->ast)) {
+            array_push(queue, cu);
         }
     }
-#endif
     
-    
-    // Type inference
-    int last_num_succeeded = 0;
-    int num_succeeded = 0;
-    do {
-        last_num_succeeded = num_succeeded;
-        num_succeeded = 0;
-        
-        // NOTE(Alexander): prefer resolving types first because it helps resolving bodies of functions
-        for (int cu_index = 0; cu_index < array_count(interp->compilation_units); cu_index++) {
-            Compilation_Unit* cu = &interp->compilation_units[cu_index];
-            if (!is_ast_type(cu->ast)) continue;
-            
-            if (cu->status == CUnitStatus_Parsing_Finished ||
-                cu->status == CUnitStatus_Type_Inference_Failed) {
-                tcx->module = cu->module;
-                tcx->file = cu->file;
-                if (do_type_infer(tcx, cu, false)declaration(tcx, cu->ast, cu->ident, false)) {
-                    interp->compilation_units[cu_index].status = CUnitStatus_Type_Inference_Finished;
-                    num_succeeded++;
-                }
-            } else {
-                num_succeeded++;
-            }
-        }
-        
-        for (int cu_index = 0; cu_index < array_count(interp->compilation_units); cu_index++) {
-            Compilation_Unit* cu = &interp->compilation_units[cu_index];
-            if (is_ast_type(cu->ast)) continue;
-            
-            // NOTE(Alexander): copy paste above
-            if (cu->status == CUnitStatus_Parsing_Finished ||
-                cu->status == CUnitStatus_Type_Inference_Failed) {
-                tcx->module = cu->module;
-                tcx->file = cu->file;
-                if (type_infer_declaration(tcx, cu->ast, cu->ident, false)) {
-                    interp->compilation_units[cu_index].status = CUnitStatus_Type_Inference_Finished;
-                    num_succeeded++;
-                }
-            } else {
-                num_succeeded++;
-            }
-        }
-        
-        if (num_succeeded == array_count(interp->compilation_units)) {
-            break;
-        }
-    } while (last_num_succeeded != num_succeeded);
-    
-    for (int cu_index = 0; cu_index < array_count(interp->compilation_units); cu_index++) {
-        Compilation_Unit* cu = &interp->compilation_units[cu_index];
-        if (cu->status == CUnitStatus_Parsing_Finished ||
-            cu->status == CUnitStatus_Type_Inference_Failed) {
-            tcx->module = cu->module;
-            tcx->file = cu->file;
-            type_infer_declaration(tcx, cu->ast, cu->ident, true);
+    // Queue declarations last
+    for_array_v(interp->compilation_units, cu, _c1) {
+        if (is_ast_stmt(cu->ast)) {
+            array_push(queue, cu);
         }
     }
+    
+    // NOTE(Alexander): exit condition: assumes that when all items in queue failed then we can
+    //                  nolonger process any further and have to report errors and exit.
+    smm last_queue_count = 0;
+    while (last_queue_count != array_count(queue)) {
+        smm queue_count = array_count(queue);
+        for (smm queue_index = 0; queue_index < queue_count; queue_index++) {
+            Compilation_Unit* cu = queue[queue_index];
+            if (!run_type_infererence(tcx, cu, false)) {
+                // Failed, retry later
+                array_push(queue, cu);
+            }
+        }
+        
+        // Remove processed nodes in queue
+        array_remove_n(queue, 0, queue_count);
+        last_queue_count = queue_count;
+    }
+    
+    // NOTE(Alexander): anything left in the queue we report errors for
+    for_array_v(queue, cu, _d) {
+        run_type_infererence(tcx, cu, true);
+    }
+    
     
     if (tcx->error_count == 0) {
+        assert(last_queue_count && "expect type inference queue to be empty");
+        
         // Run type checking on statements
-        for_array(interp->compilation_units, cu, _e) {
+        for_array_v(interp->compilation_units, cu, _e) {
             if (is_ast_stmt(cu->ast)) {
-                type_check_declaration(tcx, cu);
+                type_check_statement(tcx, cu->ast);
             }
         }
     }

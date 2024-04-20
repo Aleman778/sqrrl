@@ -212,21 +212,22 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     bool flag_dump_bc     = value_to_bool(interp_get_value(&interp, Sym_DUMP_BYTECODE));
     bool flag_dump_disasm = value_to_bool(interp_get_value(&interp, Sym_DUMP_DISASM));
     
-    if (tcx.error_count != 0) {
-        for_array(interp.compilation_units, cu, _) {
+    if (tcx.error_count > 0) {
+        for_array_v(interp.compilation_units, cu, _) {
             if (!(cu->ast && cu->ast->kind == Ast_Decl_Stmt)) continue;
             
-            if (flag_dump_ast || (cu->ast->type->kind == TypeKind_Function &&
+            if (flag_dump_ast || (cu->ast->type && 
+                                  cu->ast->type->kind == TypeKind_Function &&
                                   cu->ast->type->Function.dump_ast)) {
                 print_ast(cu->ast);
             }
         }
         
-        pln("\nErrors found during type checking, exiting...\n");
+        pln("\n% errors found during type checking, exiting...\n", f_int(tcx.error_count));
         return 1;
     }
     
-    for_array(interp.compilation_units, cu, _) {
+    for_array_v(interp.compilation_units, cu, _) {
         if (!(cu->ast && cu->ast->kind == Ast_Decl_Stmt)) continue;
         
         if (flag_dump_ast || (cu->ast->type->kind == TypeKind_Function &&
@@ -294,7 +295,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         }
     }
     
-    for_array(interp.compilation_units, cu, _2) {
+    for_array_v(interp.compilation_units, cu, _2) {
         if (!cu->bytecode_function && cu->ast->kind == Ast_Decl_Stmt) {
             Type* type = cu->ast->type;
             if (type->kind == TypeKind_Function) {
@@ -325,7 +326,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
     // Build the bytecode
-    for_array(interp.compilation_units, cu, _3) {
+    for_array_v(interp.compilation_units, cu, _3) {
         if (cu->bytecode_function) {
             bool is_main = cu->is_main;
             emit_function(&bytecode_builder, cu->bytecode_function, cu->ast,
@@ -341,7 +342,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     // Print the bytecode
     String_Builder sb = {};
-    for_array(interp.compilation_units, cu, _4) {
+    for_array_v(interp.compilation_units, cu, _4) {
         if (flag_dump_bc || (cu->ast && cu->ast->type && 
                              cu->ast->type->kind == TypeKind_Function &&
                              cu->ast->type->Function.dump_bytecode)) {

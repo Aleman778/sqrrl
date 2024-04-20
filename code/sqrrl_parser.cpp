@@ -988,9 +988,8 @@ parse_statement(Parser* parser, bool report_error) {
                             result->Decl_Stmt.ident = type->Function_Type.ident;
                             result->Decl_Stmt.type = type;
                             
-                            if (peek_token_match(parser, Token_Open_Brace, false)) {
+                            if (peek_token_match(parser, Token_Open_Brace, true)) {
                                 result->Decl_Stmt.stmt = parse_block_statement(parser);
-                                //}
                             }
                         } break;
                         
@@ -1736,6 +1735,12 @@ set_attributes_on_declaration(Ast* decl, Ast* attributes, Ast_Decl_Modifier mods
             }
         } break;
     }
+}
+
+void
+parse_declaration(Parser* parser, Ast_File* ast_file) {
+    
+    
 }
 
 void

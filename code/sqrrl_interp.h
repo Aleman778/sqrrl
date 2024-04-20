@@ -34,7 +34,8 @@ struct Interp {
     Scope global_scope;
     
     Memory_Arena ast_arena;
-    array(Compilation_Unit)* compilation_units;
+    
+    array(Compilation_Unit*)* compilation_units;
     
     array(Included_File)* included_files;
 };
@@ -45,6 +46,16 @@ interp_add_source_file(Interp* interp, Ast_Module* module, Source_File* file) {
     included_file.file = file;
     included_file.module = module;
     array_push(interp->included_files, included_file);
+}
+
+void
+interp_add_compilation_unit(Interp* interp, Ast_Module* module, Ast_File* file, Ast* decl, string_id ident) {
+    Compilation_Unit* cu = arena_push_struct(&interp->ast_arena, Compilation_Unit);
+    cu->module = module;
+    cu->file = file;
+    cu->ident = ident;
+    cu->ast = decl;
+    array_push(interp->compilation_units, cu);
 }
 
 void
@@ -63,24 +74,13 @@ register_compilation_units_from_ast_decl(Interp* interp, Ast_Module* module, Ast
         } break;
         
         case Ast_Decl_Stmt: {
-            Compilation_Unit cu = {};
-            cu.module = module;
-            cu.file = file;
-            cu.ident = ast_unwrap_ident(decl->Decl_Stmt.ident);
-            cu.ast = decl->Decl_Stmt.type;
-            array_push(interp->compilation_units, cu);
-            
-            cu.ast = decl;
-            array_push(interp->compilation_units, cu);
+            string_id ident = ast_unwrap_ident(decl->Decl_Stmt.ident);
+            interp_add_compilation_unit(interp, module, file, decl, ident);
         } break;
         
         case Ast_Assign_Stmt: {
-            Compilation_Unit cu = {};
-            cu.module = module;
-            cu.file = file;
-            cu.ident = ast_unwrap_ident(decl->Assign_Stmt.ident);
-            cu.ast = decl;
-            array_push(interp->compilation_units, cu);
+            string_id ident = ast_unwrap_ident(decl->Assign_Stmt.ident);
+            interp_add_compilation_unit(interp, module, file, decl, ident);
         } break;
         
         case Ast_Typedef: {
@@ -90,11 +90,7 @@ register_compilation_units_from_ast_decl(Interp* interp, Ast_Module* module, Ast
         default: {
             // TODO(Alexander): maybe don't accept everything but let's see
             if (is_valid_ast(decl)) {
-                Compilation_Unit cu = {};
-                cu.module = module;
-                cu.file = file;
-                cu.ast = decl;
-                array_push(interp->compilation_units, cu);
+                interp_add_compilation_unit(interp, module, file, decl, 0);
             }
         } break;
     }

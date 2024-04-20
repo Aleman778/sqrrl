@@ -70,7 +70,8 @@ enum {
 };
 
 enum Type_Kind {
-    TypeKind_Unresolved,
+    TypeKind_Unresolved = 0,
+    
     TypeKind_Void,
     TypeKind_Any,
     TypeKind_Type,
@@ -200,9 +201,7 @@ get_array_element_size(Type* elem_type) {
 
 inline bool 
 is_valid_type(Type* type) {
-    return (type &&
-            type->kind != TypeKind_Unresolved &&
-            type->kind != TypeKind_Void);
+    return type && type->kind != TypeKind_Unresolved;
 }
 
 bool

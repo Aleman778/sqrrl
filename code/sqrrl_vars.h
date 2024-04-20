@@ -59,6 +59,97 @@ VAR(void)     \
 VAR(Type)     \
 VAR_GROUP(builtin_types_end)
 
+// OP(symbol, prec, assoc, is_comparator, signed_opcode, unsigned_opcode)
+#define DEF_OPERATORS \
+OP_GROUP(builtin_operators_begin) \
+OP(None,                !,  0, Assoc_Left,  false, BC_NOOP, BC_NOOP) \
+OP(Post_Increment,     a++, 14, Assoc_Left,  false, BC_NOOP, BC_NOOP) \
+OP(Post_Decrement,     a--, 14, Assoc_Left,  false, BC_NOOP, BC_NOOP) \
+OP(Negate,              -, 13, Assoc_Right, false, BC_NEG, BC_NEG) \
+OP(Logical_Not,         !, 13, Assoc_Right, false, BC_NOT, BC_NOT) \
+OP(Bitwise_Not,         ~, 13, Assoc_Right, false, BC_NOT, BC_NOT) \
+OP(Address_Of,          &, 13, Assoc_Right, false, BC_NOOP, BC_NOOP) \
+OP(Dereference,         *, 13, Assoc_Right, false, BC_NOOP, BC_NOOP) \
+OP(Pre_Increment,      ++a, 13, Assoc_Right, false, BC_NOOP, BC_NOOP) \
+OP(Pre_Decrement,      --a, 13, Assoc_Right, false, BC_NOOP, BC_NOOP) \
+OP(Multiply,           *,  11, Assoc_Left,  false, BC_MUL, BC_MUL) \
+OP(Divide,             /,  11, Assoc_Left,  false, BC_DIV_S, BC_DIV_U) \
+OP(Modulo,             %,  11, Assoc_Left,  false, BC_MOD_S, BC_MOD_U) \
+OP(Add,                +,  10, Assoc_Left,  false, BC_ADD, BC_ADD) \
+OP(Subtract,           -,  10, Assoc_Left,  false, BC_SUB, BC_SUB) \
+OP(Shift_Left,         <<, 9,  Assoc_Left,  false, BC_SHL, BC_SHL) \
+OP(Shift_Right,        >>, 9,  Assoc_Left,  false, BC_SAR, BC_SHR) \
+OP(Less_Than,          <,  8,  Assoc_Left,  true, BC_LT_S, BC_LT_U) \
+OP(Less_Equals,        <=, 8,  Assoc_Left,  true, BC_LE_S, BC_LE_U) \
+OP(Greater_Than,       >,  8,  Assoc_Left,  true, BC_GT_S, BC_GT_U) \
+OP(Greater_Equals,     >=, 8,  Assoc_Left,  true, BC_GE_S, BC_GE_U) \
+OP(Equals,             ==, 7,  Assoc_Left,  true, BC_EQ, BC_EQ) \
+OP(Not_Equals,         !=, 7,  Assoc_Left,  true, BC_NEQ, BC_NEQ) \
+OP(Bitwise_And,        &,  6,  Assoc_Left,  false, BC_AND, BC_AND) \
+OP(Bitwise_Or,         |,  5,  Assoc_Left,  false, BC_OR, BC_OR) \
+OP(Bitwise_Xor,        ^,  4,  Assoc_Left,  false, BC_XOR, BC_XOR) \
+OP(Logical_And,        &&, 3,  Assoc_Left,  false, BC_NOOP, BC_NOOP) \
+OP(Logical_Or,         ||, 2,  Assoc_Left,  false, BC_NOOP, BC_NOOP) \
+OP(Assign,             =,  1,  Assoc_Right, false, BC_NOOP, BC_NOOP) \
+OP(Add_Assign,         +=, 1,  Assoc_Right, false, BC_ADD, BC_ADD) \
+OP(Subtract_Assign,    -=, 1,  Assoc_Right, false, BC_SUB, BC_SUB) \
+OP(Multiply_Assign,    *=, 1,  Assoc_Right, false, BC_MUL, BC_MUL) \
+OP(Divide_Assign,      /=, 1,  Assoc_Right, false, BC_DIV_S, BC_DIV_U) \
+OP(Modulo_Assign,      %=, 1,  Assoc_Right, false, BC_MOD_S, BC_MOD_U) \
+OP(Bitwise_And_Assign, &=, 1,  Assoc_Right, false, BC_AND, BC_AND) \
+OP(Bitwise_Or_Assign,  |=, 1,  Assoc_Right, false, BC_OR, BC_OR) \
+OP(Bitwise_Xor_Assign, ^=, 1,  Assoc_Right, false, BC_XOR, BC_XOR) \
+OP(Shift_Left_Assign,  <<=, 1, Assoc_Right, false, BC_SHL, BC_SHL) \
+OP(Shift_Right_Assign, >>=, 1, Assoc_Right, false, BC_SAR, BC_SHR) \
+OP_GROUP(builtin_operators_end)
+
+enum Assoc {
+    Assoc_Left,
+    Assoc_Right,
+};
+
+//global cstring operator_strings[] = {
+//#define OP(name, op, ...) #op,
+//DEF_OPERATORS
+//#undef OP
+//};
+
+u8 operator_prec_table[] = {
+#define OP(symbol, name, prec,...) prec,
+#define OP_GROUP(...) 0,
+    DEF_OPERATORS
+#undef OP_GROUP
+#undef OP
+};
+
+Assoc operator_assoc_table[] = {
+#define OP(symbol, name, prec, assoc,...) assoc,
+#define OP_GROUP(...) Assoc_Left,
+    DEF_OPERATORS
+#undef OP_GROUP
+#undef OP
+};
+
+bool operator_is_comparator_table[] = {
+#define OP(symbol, name, prec, assoc, is_comparator,...) is_comparator,
+#define OP_GROUP(...) false,
+    DEF_OPERATORS
+#undef OP_GROUP
+#undef OP
+};
+
+
+Bytecode_Operator bytecode_operator_table[] = {
+#define OP(symbol, name, prec, assoc, is_comparator, sop, uop) sop, uop,
+#define OP_GROUP(...) BC_NOOP, BC_NOOP,
+    DEF_OPERATORS
+#undef OP_GROUP
+#undef OP
+};
+
+#define operator_is_comparator(binop) (operator_is_comparator_table[binop])
+
+
 #define DEF_SYMBOLS \
 VAR(__VA_ARGS__) \
 VAR(__COUNTER__) \
@@ -131,58 +222,6 @@ VAR(dump_ast) \
 VAR(Var_Args) \
 VAR(Dynamic_Library) \
 
-typedef u32 string_id;
-
-struct String_Interner {
-    string_map(string_id)* str_to_id = 0;
-    array(string)* id_to_str = 0;
-    u32 id_counter = 0;
-};
-
-global String_Interner global_vars;
-
-
-string_id
-save_cstring(String_Interner* interner, cstring s) {
-    string_id id = string_map_get(interner->str_to_id, s);
-    if (!id) {
-        id = interner->id_counter++;
-        string_map_put(interner->str_to_id, s, id);
-        array_push(interner->id_to_str, string_lit(s));
-    }
-    return id;
-}
-
-inline string_id
-vars_save_cstring(cstring s) {
-    return save_cstring(&global_vars, s);
-}
-
-inline string_id
-save_string(String_Interner* interner, string s) {
-    cstring cs = string_to_cstring(s);
-    return save_cstring(interner, cs);
-}
-
-inline string_id
-vars_save_string(string s) {
-    return save_string(&global_vars, s);
-}
-
-string
-load_string(String_Interner* interner, string_id id) {
-    string result = {};
-    if (id < array_count(interner->id_to_str)) {
-        result = interner->id_to_str[id];
-    }
-    return result;
-}
-
-inline string
-vars_load_string(string_id id) {
-    return load_string(&global_vars, id);
-}
-
 void
 initialize_keywords_and_symbols(String_Interner* interner) {
     if (interner->id_counter != 0) {
@@ -192,17 +231,28 @@ initialize_keywords_and_symbols(String_Interner* interner) {
     string_map_new_arena(interner->str_to_id);
 #define VAR(symbol) save_cstring(interner, #symbol);
 #define VAR_GROUP(symbol) VAR(symbol)
-    DEF_KEYWORDS DEF_TYPE_KEYWORDS DEF_SYMBOLS
+#define OP(name, symbol, ...) VAR(symbol)
+#define OP_GROUP(symbol) VAR(symbol)
+    DEF_KEYWORDS DEF_TYPE_KEYWORDS DEF_OPERATORS DEF_SYMBOLS
+#undef OP_GROUP
+#undef OP
 #undef VAR_GROUP
 #undef VAR
 }
 
 typedef string_id Var;
+typedef string_id Operator;
 enum {
 #define VAR_GROUP(symbol) symbol,
 #define VAR(symbol) Kw_##symbol,
     DEF_KEYWORDS DEF_TYPE_KEYWORDS
 #undef VAR
+    
+#define OP(name, ...) Op_##name,
+#define OP_GROUP(name) name,
+    DEF_OPERATORS
+#undef OP_GROUP
+#undef OP
     
 #define VAR(symbol) Sym_##symbol,
     DEF_SYMBOLS
@@ -218,12 +268,12 @@ vars_initialize_keywords_and_symbols() {
 
 inline bool
 is_builtin_keyword(string_id id) {
-    return id > builtin_keywords_begin && id <= builtin_keywords_end;
+    return id > builtin_keywords_begin && id < builtin_keywords_end;
 }
 
 inline bool
 is_builtin_type_keyword(string_id id) {
-    return id > builtin_types_begin && id <= builtin_types_end;
+    return id > builtin_types_begin && id < builtin_types_end;
 }
 
 inline bool
@@ -231,7 +281,17 @@ is_not_builtin_keyword(string_id id) {
     return id > builtin_keywords_end;
 }
 
+inline bool
+is_builtin_operator(string_id id) {
+    return id > builtin_operators_begin && id < builtin_operators_end;
+}
+
 inline void
 string_builder_push(String_Builder* sb, string_id ident) {
     string_builder_push(sb, vars_load_string(ident));
+}
+
+inline bool
+operator_is_assign(Operator op) {
+    return op >= Op_Assign;
 }

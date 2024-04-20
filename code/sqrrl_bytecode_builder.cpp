@@ -1113,13 +1113,13 @@ emit_statement(Bytecode_Builder* bc, Ast* stmt, s32 break_label, s32 continue_la
             }
         } break;
         
-        case Ast_Assign_Stmt: {
+        case Ast_Assignment: {
             Type* type = stmt->type;
             
             Bc_Local local = {};
-            if (stmt->Assign_Stmt.mods & AstDeclModifier_Local_Persist) {
+            if (stmt->Assignment.mods & AstDeclModifier_Local_Persist) {
                 int global_index = add_bytecode_global(bc, BC_MEM_READ_WRITE, type->size, type->align, 0, 
-                                                       stmt->Assign_Stmt.expr);
+                                                       stmt->Assignment.expr);
                 local.is_ref = true;
                 local.index = add_register(bc);
                 bc_global(bc, local.index, global_index);
@@ -1128,14 +1128,14 @@ emit_statement(Bytecode_Builder* bc, Ast* stmt, s32 break_label, s32 continue_la
                 if (is_aggregate_type(type)) {
                     local.is_ref = true;
                     local.index = bc_local(bc, type);
-                    emit_initializing_expression(bc, stmt->Assign_Stmt.expr, local.index);
+                    emit_initializing_expression(bc, stmt->Assignment.expr, local.index);
                 } else {
                     local.index = add_register(bc);
-                    emit_value_expression(bc, stmt->Assign_Stmt.expr, local.index);
+                    emit_value_expression(bc, stmt->Assignment.expr, local.index);
                 }
             }
             
-            string_id ident = ast_unwrap_ident(stmt->Assign_Stmt.ident);
+            string_id ident = ast_unwrap_ident(stmt->Assignment.ident);
             map_put(bc->locals, ident, local);
             //array_push(array_last(bc->block_scopes), local.index);
         } break;

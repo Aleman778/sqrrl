@@ -186,9 +186,9 @@ run_compiler_tests(string filename,
                 }
             }
             
-        } else if (cu->ast->kind == Ast_Assign_Stmt) {
+        } else if (cu->ast->kind == Ast_Assignment) {
             Type* type = cu->ast->type;
-            string_id ident = ast_unwrap_ident(cu->ast->Assign_Stmt.ident);
+            string_id ident = ast_unwrap_ident(cu->ast->Assignment.ident);
             
             void* data = interp_get_data_pointer(&interp, ident);
             if (!data) {

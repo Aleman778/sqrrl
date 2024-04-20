@@ -184,6 +184,10 @@ safe_cast_u32(s32 value) {
     return (u32) value;
 }
 
+//
+// C string style helpers
+//
+
 inline umm
 cstring_count(cstring str) {
     return (umm) strlen(str);
@@ -248,7 +252,10 @@ cstring_concat(cstring a, cstring b) {
                           b, cstring_count(b));
 }
 
-// NOTE(Alexander): strings
+//
+// Strings
+//
+
 struct string {
     u8* data;
     smm count;
@@ -466,6 +473,10 @@ string string_print(cstring format...);
 #define pln(format, ...) print(format##"\n", ##__VA_ARGS__)
 //#define pln(...)
 
+//
+// String builder
+//
+
 struct String_Builder {
     u8* data;
     smm size;
@@ -599,45 +610,20 @@ string_builder_to_string_nocopy(String_Builder* sb) {
     return result;
 }
 
-// TODO(Alexander): implement this later, we use stb_ds for now!
-// NOTE(Alexander): dynamic arrays, usage:
-//     i32* array = 0;
-//     arr_push(array, 5);
 
-//struct Array_,Header {
-//smm count;
-//smm capacity;
-//};
-
-//#define arr_push(a, x) _arr_push(a, sizeof((a)[0]), )
-//#define arr_count(a) ((Array_Header*) (a) - 1)->count
-//#define arr_capacity(a) ((Array_Header*) (a) - 1)->capacity
-
-//void
-//_arr_alloc(void** array, smm elem_size, smm capacity) {
-//if (*array) {
-//Array_Header* header = (Array_Header*) *array - 1;
-//smm new_capacity = header->capacity*2;
 //
-//} else {
-//Array_Header* header = (Array_Header*) malloc(sizeof(Array_Header) + capacity*elem_size);
-//header->count = 0;
-//header->capacity = capacity;
-//*array = header + 1;
-//}
-//}
+// Dynamic Arrays
+//
+// TODO(Alexander): implement this later, we use stb_ds for now!
 
-//void
-//_arr_push(void* array, smm elem_size, void* data) {
-
-//}
+// Usage:
+//     array(int)* values = 0;           // Make empty array by assigning 0 (NULL-pointer)
+//     array_push(values, 10);           // Memory is automatically allocated when needed
+//     int count = array_count(values);  // count = 1
+//     int x = array_pop(values);        // x = 10
+//     array_free(values)                // Make sure to free the array when no longer in use
 
 // NOTE(Alexander): change the naming convention of stb_ds
-// Usage:
-// array(int)* values = 0;           // Don't need to allocate memory, then don't forget to set it to null (0)
-// array_push(values, 10);           // Will allocate memory here
-// int count = array_count(values);  // count = 1
-// int x = array_pop(values);        // x = 10
 #define array(V) V
 #define array_free(a) arrfree(a)
 #define array_push(a, x) arrput(a, x)
@@ -677,12 +663,18 @@ for (auto it = arr[it_index]; \
 it_index < array_count(arr); \
 it = arr[++it_index < array_count(arr) ? it_index : 0])
 
-// NOTE(Alexander): hash maps
+
+//
+// Hashmap
+//
+
+
 // Usage:
-// map(int, int)* map = 0;                 // Don't need to allocate memory, then don't forget to set it to null (0)
-// map_put(map, 10, 20);                   // Will allocate memory here
-// int x = map_get(map, 10);               // x = 20
-// int count = map_count(map);             // count = 1
+//     map(int, int)* map = 0;       // Make empty hash map by assigning 0 (NULL-pointer)
+//     map_put(map, 10, 20);         // Will allocate memory here
+//     int x = map_get(map, 10);     // x = 20
+//     int count = map_count(map);   // count = 1
+//     map_free(map);                // Make sure to free the array when no longer in use
 #define map(K, V) struct { K key; V value; }
 #define map_free(m) hmfree(m)
 #define map_put(m, k, v) hmput(m, k, v)
@@ -693,18 +685,21 @@ it = arr[++it_index < array_count(arr) ? it_index : 0])
 #define map_count(m) hmlen(m)
 #define map_set_default_value(m, v) hmdefault(m, v)
 
-// NOTE(Alexander): hash map iterator
-// Usage: continuing from previous example...
-//
-// int result = 0;
-// for_map(map, it) {
-//     result += it->value;
-// }
-// pln("%d", f_int(result)); // 10
+// Hashmap iterators
+// Usage: (continuing from previous example...)
+//     int result = 0;
+//     for_map(map, it) {
+//         result += it->value;
+//     }
+//     pln("%d", f_int(result)); // 10
 #define for_map(map, it) \
 for (auto it = map; it < map + map_count(map); it++)
 
-// NOTE(Alexander): string hash maps
+
+//
+// String hashmap (cstring as key, same API as map, but it has string_* prefix)
+//
+
 #define string_map(V) struct { cstring key; V value; }
 #define string_map_free(m) smfree(m)
 #define string_map_count(m) shlen(m)
@@ -715,9 +710,11 @@ for (auto it = map; it < map + map_count(map); it++)
 #define string_map_new_arena(m) sh_new_arena(m)
 #define string_map_set_default_value(m, v) shdefault(m, v)
 
-// NOTE(Alexander): hash map
 
-// NOTE(Alexander): memory arena
+//
+// Memory Arena
+//
+
 #ifndef DEFAULT_ALIGNMENT
 #define DEFAULT_ALIGNMENT (2*alignof(smm))
 #endif
@@ -939,7 +936,67 @@ free_arena(Memory_Arena* arena) {
 }
 
 
-// NOTE(Alexander): buffer for pushing binary data
+//
+// String interner
+//
+
+typedef u32 string_id;
+
+struct String_Interner {
+    string_map(string_id)* str_to_id = 0;
+    array(string)* id_to_str = 0;
+    u32 id_counter = 0;
+};
+
+// TODO(Alexander): this is global for now
+global String_Interner global_vars;
+
+string_id
+save_cstring(String_Interner* interner, cstring s) {
+    string_id id = string_map_get(interner->str_to_id, s);
+    if (!id) {
+        id = interner->id_counter++;
+        string_map_put(interner->str_to_id, s, id);
+        array_push(interner->id_to_str, string_lit(s));
+    }
+    return id;
+}
+
+inline string_id
+vars_save_cstring(cstring s) {
+    return save_cstring(&global_vars, s);
+}
+
+inline string_id
+save_string(String_Interner* interner, string s) {
+    cstring cs = string_to_cstring(s);
+    return save_cstring(interner, cs);
+}
+
+inline string_id
+vars_save_string(string s) {
+    return save_string(&global_vars, s);
+}
+
+string
+load_string(String_Interner* interner, string_id id) {
+    string result = {};
+    if (id < array_count(interner->id_to_str)) {
+        result = interner->id_to_str[id];
+    }
+    return result;
+}
+
+inline string
+vars_load_string(string_id id) {
+    return load_string(&global_vars, id);
+}
+
+
+//
+// Non-auto resizable buffer
+//
+
 struct Buffer {
     u8* data;
     smm size;

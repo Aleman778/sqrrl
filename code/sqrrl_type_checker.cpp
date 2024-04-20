@@ -1615,7 +1615,7 @@ save_operator_overload(Type_Context* tcx, Type* type, Operator op, Span span, bo
             } else {
                 if (report_error) {
                     type_error(tcx, string_print("unary operator `%` is not overloadable", 
-                                                 f_cstring(operator_strings[op])), span);
+                                                 f_string(vars_load_string(op))), span);
                 }
                 return 0;
             }
@@ -1767,8 +1767,8 @@ save_type_declaration(Type_Context* tcx, Ast* ast, string_id ident, bool report_
         return type;
     }
     
-    if (ident == Kw_operator) {
-        Operator op = ast->Function_Type.overload_operator;
+    if (is_builtin_operator(ident)) {
+        Operator op = ident;
         ast->type = type;
         type = save_operator_overload(tcx, type, op, ast->span, report_error);
         
@@ -1881,18 +1881,9 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             }
         } break;
         
-        case Ast_Tuple_Type: {
-            // TODO(Alexander): don't think I will support this, remove it
-            unimplemented;
-        } break;
-        
-        case Ast_Infer_Type: {
-            // TODO(Alexander): implement this, maybe useful let's see
-            unimplemented;
-        } break;
-        
         case Ast_Function_Type: {
             result.type->Function.is_variadic = false;
+            
             Type* return_type = create_type_from_ast(tcx, ast->Function_Type.return_type, report_error).type;
             if (return_type) {
                 result.type->Function.return_type = return_type;
@@ -1905,9 +1896,6 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             Ast* ast_arguments = ast->Function_Type.arguments;
             Type_Function* func = &result.type->Function;
             smm offset = 0;
-            //if (ast_unwrap_ident(ast->Function_Type.ident) == vars_save_cstring("DEBUG_write_tmx_map")) {
-            //__debugbreak();
-            //}
             
             array_free(func->arg_idents);
             array_free(func->arg_types);
@@ -1986,19 +1974,14 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 }
             }
             
-            if (ast->Function_Type.ident && ast->Function_Type.ident->kind == Ast_Ident) {
-                result.type->Function.ident = ast_unwrap_ident(ast->Function_Type.ident);
-            }
+            result.type->Function.ident = try_unwrap_ident(ast->Function_Type.ident);
             result.type->kind = TypeKind_Function;
-            // TODO: should function really have a size?
-            // If we assume function to be a function pointer then it makes sense,
-            // but right now that isn't possible
-            //result.type->size = sizeof(smm);
-            //result.type->align = alignof(smm);
+            result.type->size = 0;
+            result.type->align = 0;
             
-            if (ast->Function_Type.mods & AstDeclModifier_Export) {
-                result.type->Function.is_exported = true;
-            }
+            //if (ast->Function_Type.mods & AstDeclModifier_Export) {
+            //result.type->Function.is_exported = true;
+            //}
             
             if (ast->Function_Type.attributes) {
                 
@@ -2156,7 +2139,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     array_push(import.functions, lib_func);
                     map_put(tcx->import_table.libs, library_id, import);
                     
-                    //pln("% = 0x%", f_cstring(name), f_u64_HEX(func->intrinsic));
+                    //pln("% = 0x%", f_cstring(name), f_u64_HEX(func->intrins
                 }
             }
         } break;
@@ -2310,16 +2293,6 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             //}
         } break;
         
-        case Ast_Volatile_Type: {
-            result = create_type_from_ast(tcx, ast->Volatile_Type, report_error);
-            result.mods |= AstDeclModifier_Volatile;
-        } break;
-        
-        case Ast_Local_Persist_Type: {
-            result = create_type_from_ast(tcx, ast->Local_Persist_Type, report_error);
-            result.mods |= AstDeclModifier_Local_Persist;
-        } break;
-        
         default: {
             unimplemented;
         } break;
@@ -2380,8 +2353,8 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
     bool result = false;
     
     switch (stmt->kind) {
-        case Ast_Assign_Stmt: {
-            Create_Type_From_Ast_Result created_type = create_type_from_ast(tcx, stmt->Assign_Stmt.type, report_error);
+        case Ast_Assignment: {
+            Create_Type_From_Ast_Result created_type = create_type_from_ast(tcx, stmt->Assignment.type, report_error);
             
             Type* expected_type = created_type.type;
             if (!expected_type || expected_type->size <= 0) {
@@ -2394,11 +2367,11 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                 return result;
             }
             
-            stmt->Assign_Stmt.mods = created_type.mods;
+            stmt->Assignment.mods = created_type.mods;
             
-            if (is_valid_ast(stmt->Assign_Stmt.expr)) {
+            if (is_valid_ast(stmt->Assignment.expr)) {
                 Type* found_type = type_infer_expression(tcx, 
-                                                         stmt->Assign_Stmt.expr, 
+                                                         stmt->Assignment.expr, 
                                                          expected_type,
                                                          report_error);
                 
@@ -2406,25 +2379,25 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                     return 0;
                 }
                 
-                stmt->Assign_Stmt.expr =
-                    auto_type_conversion(tcx, expected_type, stmt->Assign_Stmt.expr);
+                stmt->Assignment.expr =
+                    auto_type_conversion(tcx, expected_type, stmt->Assignment.expr);
             } else {
-                stmt->Assign_Stmt.expr->type = expected_type;
+                stmt->Assignment.expr->type = expected_type;
             }
             
             
             if (result) {
                 Entity entity = create_variable(expected_type);
                 
-                string_id ident = try_unwrap_ident(stmt->Assign_Stmt.ident);
+                string_id ident = try_unwrap_ident(stmt->Assignment.ident);
                 if (ident) {
                     if (!register_entity(tcx, ident, entity, stmt->span, report_error)) {
                         result = 0;
                     }
                     
                 } else {
-                    for_compound(stmt->Assign_Stmt.ident, ast_ident) {
-                        ident = try_unwrap_ident(stmt->Assign_Stmt.ident);
+                    for_compound(stmt->Assignment.ident, ast_ident) {
+                        ident = try_unwrap_ident(stmt->Assignment.ident);
                         if (!register_entity(tcx, ident, entity, stmt->span, report_error)) {
                             result = 0;
                         }
@@ -2931,7 +2904,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                     } else {
                         type_error(tcx, 
                                    string_print("unary operator `%` expects integral value, found `%`", 
-                                                f_cstring(operator_strings[op]), 
+                                                f_string(vars_load_string(op)), 
                                                 f_type(first)),
                                    expr->span);
                     }
@@ -2966,14 +2939,14 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                             type_error(tcx, 
                                        string_print("`% % %` expects integral value on right-hand side", 
                                                     f_type(first), 
-                                                    f_cstring(operator_strings[op]), 
+                                                    f_string(vars_load_string(op)), 
                                                     f_type(second)),
                                        expr->span);
                         }
                     } else if (second->kind != TypeKind_Pointer && second->kind != TypeKind_Function) {
                         type_error(tcx, 
                                    string_print("operator `%` expects integral or pointer on right-hand side, found `%`", 
-                                                f_cstring(operator_strings[op]),
+                                                f_string(vars_load_string(op)),
                                                 f_type(second)),
                                    expr->span);
                     }
@@ -2986,7 +2959,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                         } else {
                             type_error(tcx, 
                                        string_print("operator `%` expects pointer on right-hand side, found `%`", 
-                                                    f_cstring(operator_strings[op]),
+                                                    f_string(vars_load_string(op)),
                                                     f_type(second)),
                                        expr->span);
                         }
@@ -2996,7 +2969,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                 } else {
                     type_error(tcx, 
                                string_print("operator `%` is not supported for `%` on left-hand side",
-                                            f_cstring(operator_strings[op]),
+                                            f_string(vars_load_string(op)),
                                             f_type(first)),
                                expr->span);
                 }
@@ -3012,7 +2985,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                     if (!(first->kind == TypeKind_Basic && first->Basic.flags & BasicFlag_Integer)) {
                         type_error(tcx, 
                                    string_print("operator `%` is not supported for `%` on left-hand side",
-                                                f_cstring(operator_strings[op]),
+                                                f_string(vars_load_string(op)),
                                                 f_type(first)),
                                    expr->span);
                     }
@@ -3023,7 +2996,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                     if (!(second->kind == TypeKind_Basic && second->Basic.flags & BasicFlag_Integer)) {
                         type_error(tcx, 
                                    string_print("operator `%` is not supported for `%` on right-hand side",
-                                                f_cstring(operator_strings[op]),
+                                                f_string(vars_load_string(op)),
                                                 f_type(second)),
                                    expr->span);
                     }
@@ -3039,7 +3012,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                 }
             } else {
                 type_error(tcx, string_print("unexpected type `%` on left-hand side for operator `%`", 
-                                             f_type(first), f_cstring(operator_strings[op])), 
+                                             f_type(first), f_string(vars_load_string(op))), 
                            expr->Binary_Expr.first->span);
                 result = false;
             }
@@ -3120,18 +3093,18 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
     switch (stmt->kind) {
         case Ast_None: break;
         
-        case Ast_Assign_Stmt: {
-            if (stmt->Assign_Stmt.expr) {
-                result = result && type_check_expression(tcx, stmt->Assign_Stmt.expr);
+        case Ast_Assignment: {
+            if (stmt->Assignment.expr) {
+                result = result && type_check_expression(tcx, stmt->Assignment.expr);
             }
             Type* expected_type = stmt->type;
             assert(expected_type && "compiler bug: assign statement has no type");
             
             
-            Type* found_type = stmt->Assign_Stmt.expr->type;
+            Type* found_type = stmt->Assignment.expr->type;
             if (found_type) {
-                result = result &&  type_check_assignment(tcx, expected_type, found_type, is_ast_value(stmt->Assign_Stmt.expr),
-                                                          stmt->Assign_Stmt.expr->span);
+                result = result &&  type_check_assignment(tcx, expected_type, found_type, is_ast_value(stmt->Assignment.expr),
+                                                          stmt->Assignment.expr->span);
             }
         } break;
         

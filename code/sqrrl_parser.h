@@ -103,6 +103,8 @@ Parse_U64_Value_Result parse_u64_value(Token token);
 bool next_token_if_matched(Parser* parser, Token_Type expected, bool report_error=true);
 bool parse_keyword(Parser* parser, Var keyword, bool report_error=true);
 
+Ast* parse_declaration(Parser* parser, bool top_level=false, bool report_error=true);
+
 Ast* parse_identifier(Parser* parser, bool report_error=true);
 Ast* parse_atom(Parser* parser, bool report_error=true, u8 min_prec=1);
 Ast* parse_expression(Parser* parser, bool report_error=true, u8 min_prec=1, Ast* atom_expr=0);
@@ -113,8 +115,7 @@ Ast* parse_directive(Parser* parser);
 
 inline Ast* parse_array_type(Parser* parser, Ast* elem_type, Ast_Decl_Modifier mods=0);
 Ast* parse_type(Parser* parser, bool report_error=true, Ast_Decl_Modifier mods=0);
-Ast* parse_complex_type(Parser* parser, Ast* base_type, bool report_error=true, Ast_Decl_Modifier mods=0);
-Ast* parse_pointer_type(Parser* parser, Ast* base_type, bool report_error=true, Ast_Decl_Modifier mods=0);
+Ast* parse_function_signature(Parser* parser, Ast* return_type, bool report_error=true, Ast_Decl_Modifier mods=0);
 
 Operator parse_unary_op(Parser* parser);
 Operator parse_binary_op(Parser* parser);

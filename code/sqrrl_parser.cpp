@@ -659,39 +659,26 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
 }
 
 inline internal Ast*
-try_extract_identifier_from_function_type(Ast* type) {
-    if (type && type->kind == Ast_Pointer_Type) {
-        type = type->Pointer_Type;
-    }
+parse_assignment(Parser* parser, Ast* type, Ast* ident=0) {
     
-    if (type && type->kind == Ast_Function_Type) {
-        return type->Function_Type.ident;
-    }
-    
-    return 0;
-}
-
-inline internal Ast*
-parse_assign_statement(Parser* parser, Ast* type, Ast* ident=0) {
-    
-    Ast* result = push_ast_node(parser, Ast_Assign_Stmt);
-    result->Assign_Stmt.type = type;
-    result->Assign_Stmt.ident = ident ? ident : parse_identifier(parser);
+    Ast* result = push_ast_node(parser, Ast_Assignment);
+    result->Assignment.type = type;
+    result->Assignment.ident = ident ? ident : parse_identifier(parser);
     
     if (peek_token_match(parser, Token_Comma, false)) {
         Ast* ident_list_cont = parse_prefixed_compound(parser, Token_Comma, 
                                                        &parse_actual_identifier);
         Ast* ident_list_head = push_ast_node(parser, Ast_Compound);
-        ident_list_head->Compound.node = result->Assign_Stmt.ident;
+        ident_list_head->Compound.node = result->Assignment.ident;
         ident_list_head->Compound.next = ident_list_cont;
-        result->Assign_Stmt.ident = ident_list_head;
+        result->Assignment.ident = ident_list_head;
     }
     
     if (next_token_if_matched(parser, Token_Assign, false)) {
-        result->Assign_Stmt.expr = parse_expression(parser);
+        result->Assignment.expr = parse_expression(parser);
         
     } else {
-        result->Assign_Stmt.expr = push_ast_node(parser, Ast_None);
+        result->Assignment.expr = push_ast_node(parser, Ast_None);
     }
     // TODO(alexander): maybe add support for int x = 5, y = 10; ?
     
@@ -952,99 +939,15 @@ parse_statement(Parser* parser, bool report_error) {
             } break;
             
             default: {
-                Ast* type = parse_type(parser, false);
-                
-                if (type) {
-                    switch (type->kind) {
-                        case Ast_Struct_Type:
-                        case Ast_Union_Type:
-                        case Ast_Enum_Type: {
-                            result = push_ast_node(parser, Ast_Decl_Stmt, &token);
-                            result->Decl_Stmt.ident = type->children[0];
-                            result->Decl_Stmt.type = type;
-                            result->Decl_Stmt.stmt = push_ast_node(parser, Ast_None);
-                        } break;
-                        
-                        case Ast_Function_Type: {
-                            if (attributes) {
-                                Ast* last = type->Function_Type.attributes;
-                                if (last) {
-                                    for_compound(last, it) {};
-                                    *compound_it = *attributes;
-                                } else {
-                                    type->Function_Type.attributes = attributes;
-                                }
-                            }
-                            
-                            //if (peek_token_match(parser, Token_Mul, false)) {
-                            //Ast* ident = type->Function_Type.ident;
-                            //type = parse_pointer_type(parser, type, report_error);
-                            
-                            //if (peek_token_match(parser, Token_Assign, false)) {
-                            //result = parse_assign_statement(parser, type, ident);
-                            //}
-                            //} else {
-                            result = push_ast_node(parser, Ast_Decl_Stmt, &token);
-                            result->Decl_Stmt.ident = type->Function_Type.ident;
-                            result->Decl_Stmt.type = type;
-                            
-                            if (peek_token_match(parser, Token_Open_Brace, true)) {
-                                result->Decl_Stmt.stmt = parse_block_statement(parser);
-                            }
-                        } break;
-                        
-                        case Ast_Pointer_Type: {
-                            Ast* ident = try_extract_identifier_from_function_type(type);
-                            if (ident) {
-                                if (peek_token_match(parser, Token_Assign, false)) {
-                                    result = parse_assign_statement(parser, type, ident);
-                                }
-                            } else {
-                                result = parse_assign_statement(parser, type);
-                            }
-                        } break;
-                        
-                        case Ast_Typedef: {
-                            result = type;
-                        } break;
-                        
-                        case Ast_Named_Type: {
-                            Token peek = peek_token(parser);
-                            if (peek.type == Token_Ident) {
-                                result = parse_assign_statement(parser, type);
-                            } else {
-                                Ast* ident = type->Named_Type;
-                                
-                                result = push_ast_node(parser, Ast_Expr_Stmt);
-                                result->Expr_Stmt = parse_expression(parser, true, 1, ident);
-                            }
-                        } break;
-                        
-                        default: {
-                            result = parse_assign_statement(parser, type);
-                        } break;
-                    }
-                }
-            }
+                result = parse_declaration(parser, false, false);
+            } break;
         }
+        
     } else if (token.type == Token_Directive) {
-        next_token(parser);
         result = parse_directive(parser);
-        
-    } else if (token.type == Token_String) {
-        next_token(parser);
-        
-        Ast* context = parse_string(parser);
-        token = next_token(parser);
-        result = parse_block_statement(parser, &token);
-        result->Block_Stmt.context = context;
         
     } else if (token.type == Token_Open_Brace) {
         result = parse_block_statement(parser, &token);
-        
-    } else if (token.type == Token_Open_Bracket) {
-        Ast* type = parse_type(parser, true);
-        result = parse_assign_statement(parser, type);
     }
     
     if (!result) {
@@ -1123,14 +1026,10 @@ parse_formal_struct_or_union_argument(Parser* parser) {
     
     Ast* type = parse_type(parser);
     result->Argument.type = type;
-    result->Argument.ident = try_extract_identifier_from_function_type(type);
-    if (!result->Argument.ident) {
-        result->Argument.ident = parse_identifier(parser, false);
-    }
     
-    if (result->Argument.ident && 
-        next_token_if_matched(parser, Token_Comma, false)) {
-        
+    result->Argument.ident = parse_identifier(parser);
+    if (!result->Argument.ident) return result;
+    if (next_token_if_matched(parser, Token_Comma, false)) {
         Ast* curr = push_ast_node(parser, Ast_Compound);
         curr->Compound.node = result->Argument.ident;
         result->Argument.ident = curr;
@@ -1195,22 +1094,15 @@ parse_formal_function_argument(Parser* parser) {
     if (next_token_if_matched(parser, Token_Ellipsis, false)) {
         result->Argument.type = push_ast_node(parser, Ast_Ellipsis);
         result->Argument.ident = parse_identifier(parser, false);
-        return result;
-    }
-    
-    Ast* type = parse_type(parser);
-    result->Argument.type = type;
-    
-    result->Argument.ident = try_extract_identifier_from_function_type(type);
-    if (!result->Argument.ident) {
-        result->Argument.ident = parse_identifier(parser, false);
-    }
-    
-    if (next_token_if_matched(parser, Token_Assign, false)) {
-        result->Argument.assign = parse_expression(parser);
+        
     } else {
-        result->Argument.assign = push_ast_node(parser, Ast_None);
+        result->Argument.type = parse_type(parser);
+        result->Argument.ident = parse_identifier(parser);
+        if (next_token_if_matched(parser, Token_Assign, false)) {
+            result->Argument.assign = parse_expression(parser);
+        }
     }
+    
     return result;
 }
 
@@ -1392,27 +1284,6 @@ parse_prefixed_compound(Parser* parser, Token_Type prefix,
     return result;
 }
 
-internal inline Ast*
-parse_type_modifiers(Parser* parser, Ast* result) {
-    
-    // TODO(Alexander): this is a hack for now we probably want to put these in a bitfield or something
-    while (peek_token_match(parser, Token_Ident, false)) {
-        if (parse_keyword(parser, Kw_volatile, false)) {
-            Ast* volatile_type = push_ast_node(parser, Ast_Volatile_Type);
-            volatile_type->Volatile_Type = result;
-            result = volatile_type;
-        } else if (parse_keyword(parser, Kw_local_persist, false)) {
-            Ast* local_persist_type = push_ast_node(parser, Ast_Local_Persist_Type);
-            local_persist_type->Local_Persist_Type = result;
-            result = local_persist_type;
-        } else {
-            break;
-        }
-    }
-    
-    return result;
-}
-
 internal inline Ast_Decl_Modifier
 parse_procedure_type_mods(Parser* parser, Ast** attributes) {
     Ast_Decl_Modifier result = AstDeclModifier_None;
@@ -1481,266 +1352,140 @@ parse_array_type(Parser* parser, Ast* elem_type, Ast_Decl_Modifier mods) {
 
 Ast*
 parse_type(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
+    Ast* result = 0;
+    
     Token token = peek_token(parser);
-    
-    if (token.type == Token_Open_Paren) {
-        // TODO(alexander): tuple type
+    if (token.type == Token_Ident) {
+        if (report_error) {
+            parse_error_expected_type(parser, token);
+        }
+        return result;
     }
     
-    
-    if (token.type == Token_Open_Bracket) {
+    string_id ident = vars_save_string(token.source);
+    if (is_builtin_type_keyword(ident) || is_not_builtin_keyword(ident)) {
         next_token(parser);
-        return parse_array_type(parser, 0, mods);
+        result = push_ast_node(parser, Ast_Named_Type);
+        result->Named_Type = push_ast_node(parser, Ast_Ident);
+        result->Named_Type->Ident = ident;
+    } else {
+        if (report_error) {
+            parse_error_expected_type(parser, token);
+        }
+        return result;
     }
     
+    for (;;) {
+        token = peek_token(parser);
+        switch (token.type) {
+            case Token_Attribute:
+            case Token_Open_Paren: {
+                result = parse_function_signature(parser, result, mods);
+            } continue;
+            
+            case Token_Open_Bracket: {
+                result = parse_array_type(parser, result, mods);
+            } continue;
+            
+            case Token_Mul: {
+                Ast* pointer = push_ast_node(parser, Ast_Pointer_Type);
+                pointer->Pointer_Type = result;
+                result = pointer;
+            } continue;
+        }
+        
+        break;
+    }
+    
+    return result;
+}
+
+Ast*
+parse_function_signature(Parser* parser, Ast* return_type, bool report_error, Ast_Decl_Modifier mods) {
+    assert(parser->current_token.type == Token_Open_Paren);
+    
+    Ast* result = 0;
+    // TODO(alexander): check what the base type is, e.g. cannot be struct type as return type
+    result = push_ast_node(parser, Ast_Function_Type);
+    result->Function_Type.return_type = return_type;
+    //result->Function_Type.attributes = attributes;
+    result->Function_Type.arguments = parse_compound(parser,
+                                                     Token_Open_Paren, Token_Close_Paren, Token_Comma,
+                                                     &parse_formal_function_argument);
+    
+    return result;
+}
+
+Ast*
+parse_declaration(Parser* parser, bool top_level, bool report_error) {
+    Ast* result = 0;
+    
+    Token token = peek_token(parser);
+    if (token.type == Token_Directive) {
+        result = parse_directive(parser);
+    }
     
     if (token.type != Token_Ident) {
         if (report_error) {
-            parse_error_expected_type(parser, token);
+            parse_error_unexpected_token(parser, token);
         }
-        return 0;
+        return result;
     }
     
-    Ast* base = 0;
-    Ast* base_mod = parse_type_modifiers(parser, base);
-    
-    token = next_token(parser);
     string_id ident = vars_save_string(token.source);
-    if (is_builtin_type_keyword(ident) || is_not_builtin_keyword(ident)) {
-        base = push_ast_node(parser, Ast_Named_Type);
-        base->Named_Type = push_ast_node(parser, Ast_Ident);
-        base->Named_Type->Ident = ident;
+    switch (ident) {
+        case Kw_struct:
+        case Kw_union: {
+            next_token(parser);
+            
+            result = push_ast_node(parser, ident == Kw_struct ? Ast_Struct_Type : Ast_Union_Type);
+            //Ast* mod = parse_type_modifiers(parser, result);
+            result->Struct_Type.ident = parse_identifier(parser, top_level);
+            result->Struct_Type.fields = parse_compound(parser,
+                                                        Token_Open_Brace,
+                                                        Token_Close_Brace,
+                                                        Token_Semi,
+                                                        &parse_formal_struct_or_union_argument);
+            //result = mod;
+        } break;
         
-    } else {
-        switch (ident) {
-            case Kw_struct:
-            case Kw_union: {
-                base = push_ast_node(parser, ident == Kw_struct ? Ast_Struct_Type : Ast_Union_Type);
-                Ast* mod = parse_type_modifiers(parser, base);
-                base->Struct_Type.ident = parse_identifier(parser, false);
-                base->Struct_Type.fields = parse_compound(parser,
-                                                          Token_Open_Brace,
-                                                          Token_Close_Brace,
-                                                          Token_Semi,
-                                                          &parse_formal_struct_or_union_argument);
-                base = mod;
-                base = parse_pointer_type(parser, base, report_error, mods);
-                return base;
-                
-            } break;
+        case Kw_enum: { 
+            next_token(parser);
             
-            case Kw_enum: { 
-                base = push_ast_node(parser, Ast_Enum_Type);
-                base->Enum_Type.ident = parse_identifier(parser, true);
-                if (next_token_if_matched(parser, Token_Colon, false)) {
-                    base->Enum_Type.elem_type = parse_type(parser);
-                }
-                base->Enum_Type.fields = parse_compound(parser,
-                                                        Token_Open_Brace, Token_Close_Brace, Token_Comma,
-                                                        &parse_formal_enum_argument);
-                base = parse_pointer_type(parser, base, report_error,  mods);
-                return base;
-            } break;
-            
-            case Kw_typedef: {
-                base = push_ast_node(parser, Ast_Typedef);
-                base->Typedef.type = parse_type(parser);
-                
-                Ast* base_type = base->Typedef.type;
-                if (base_type->kind == Ast_Pointer_Type) {
-                    base_type = base->Typedef.type->Pointer_Type;
-                }
-                
-                if (base_type->kind == Ast_Function_Type) {
-                    base->Typedef.ident = base_type->Function_Type.ident;
-                }
-                
-                Ast* base_ident = base->Typedef.ident;
-                
-                if (!base_ident) {
-                    base->Typedef.ident = parse_identifier(parser);
-                }
-                
-                return base;
-            } break;
-            
-            default: {
-                if (report_error) {
-                    parse_error_expected_type(parser, token);
-                }
-                return 0;
-            } break;
-        }
-    }
-    
-    Ast* result = 0;
-    if (base) {
-        if (base_mod) {
-            // TODO(Alexander): hack to join base_mod -> base
-            Ast* it = base_mod;
-            while (it->children[0]) it = it->children[0];
-            it->children[0] = base;
-            base = base_mod;
-        }
-        
-        base = parse_type_modifiers(parser, base);
-        
-        result = parse_complex_type(parser, base, report_error, mods);
-    } else {
-        if (report_error) {
-            parse_error_expected_type(parser, token);
-        }
-    }
-    
-    
-    return result;
-}
-
-Ast*
-parse_complex_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_Modifier mods) {
-    Ast* result = base_type;
-    
-    Token token = peek_token(parser);
-    switch (token.type) {
-        case Token_Attribute:
-        case Token_Ident: {
-            Ast* attributes = 0;
-            Ast_Decl_Modifier function_mods = parse_procedure_type_mods(parser, &attributes);
-            Operator overload_operator = Op_None;
-            
-            Token peek2 = peek_second_token(parser);
-            
-            Token op_token = {};
-            if (parse_keyword(parser, Kw_operator, false)) {
-                overload_operator = parse_binary_op(parser);
-                if (overload_operator == Op_None) {
-                    overload_operator = parse_unary_op(parser);
-                }
-                op_token = next_token(parser);
-                if (overload_operator == Op_None) {
-                    parse_error(parser, op_token, string_print("expected binary operator, found `%`",
-                                                               f_string(op_token.source)));
-                }
-                
-                if (peek_token_match(parser, Token_Open_Paren, true)) {
-                    peek2.type = Token_Open_Paren;
-                }
+            result = push_ast_node(parser, Ast_Enum_Type);
+            result->Enum_Type.ident = parse_identifier(parser, top_level);
+            if (next_token_if_matched(parser, Token_Colon, false)) {
+                result->Enum_Type.elem_type = parse_type(parser);
             }
+            result->Enum_Type.fields = parse_compound(parser,
+                                                      Token_Open_Brace, Token_Close_Brace, Token_Comma,
+                                                      &parse_formal_enum_argument);
+        } break;
+        
+        case Kw_typedef: {
+            next_token(parser);
             
-            if (peek2.type == Token_Open_Paren) {
-                // TODO(alexander): check what the base type is, e.g. cannot be struct type as return type
-                result = push_ast_node(parser, Ast_Function_Type);
-                result->Function_Type.return_type = base_type;
-                result->Function_Type.mods = function_mods | mods;
-                result->Function_Type.attributes = attributes;
-                result->Function_Type.overload_operator = overload_operator;
-                if (overload_operator == Op_None) {
-                    result->Function_Type.ident = parse_identifier(parser);
-                } else {
-                    Ast* ident = push_ast_node(parser, Ast_Ident, &op_token);
-                    ident->Ident = Kw_operator;
-                    result->Function_Type.ident = ident;
-                }
-                result->Function_Type.arguments = parse_compound(parser,
-                                                                 Token_Open_Paren, Token_Close_Paren, Token_Comma,
-                                                                 &parse_formal_function_argument);
-                if (peek_token_match(parser, Token_Mul, false)) {
-                    result = parse_pointer_type(parser, result, report_error, mods);
-                }
-                
-                return result;
+            result = push_ast_node(parser, Ast_Typedef);
+            result->Typedef.ident = parse_identifier(parser);
+            next_token_if_matched(parser, Token_Equals);
+            result->Typedef.type = parse_type(parser);
+        } break;
+        
+        default: {
+            Ast* type = parse_type(parser, report_error);
+            Ast* ast_ident = parse_identifier(parser, top_level);
+            
+            if (next_token_if_matched(parser, Token_Open_Paren, false)) {
+                result = parse_function_signature(parser, type);
+                result->Function_Type.ident = ast_ident;
+                result->Function_Type.block = parse_block_statement(parser);
             } else {
-                if (function_mods != AstDeclModifier_None) {
-                    parse_error_unexpected_token(parser, Token_Open_Paren, peek_second_token(parser));
-                }
+                parse_assignment(parser, type, ast_ident);
             }
-        } break;
-        
-        case Token_Mul: {
-            result = parse_pointer_type(parser, base_type, report_error, mods);
-        } break;
+        }
     }
     
     return result;
-}
-
-Ast*
-parse_pointer_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_Modifier mods) {
-    if (next_token_if_matched(parser, Token_Mul, false)) {
-        Ast* result = push_ast_node(parser, Ast_Pointer_Type);
-        result->Pointer_Type = base_type;
-        return parse_complex_type(parser, result, false, mods);
-    }
-    
-    return base_type;
-}
-
-void
-set_attributes_on_declaration(Ast* decl, Ast* attributes, Ast_Decl_Modifier mods) {
-    
-    
-    switch (decl->kind) {
-        case Ast_Compound: {
-            for_compound(decl->Block_Stmt.stmts, it) {
-                set_attributes_on_declaration(it, attributes, mods);
-            }
-        } break;
-        
-        case Ast_Block_Stmt: {
-            for_compound(decl->Block_Stmt.stmts, it) {
-                set_attributes_on_declaration(it, attributes, mods);
-            }
-        } break;
-        
-        case Ast_Decl_Stmt: {
-            if (decl->Decl_Stmt.stmt || (mods & AstDeclModifier_External)) {
-                
-                // Replicate attributes and modifiers to decl/type
-                if (decl->Decl_Stmt.type) {
-                    Ast* type_ast = decl->Decl_Stmt.type;
-                    
-                    switch (decl->Decl_Stmt.type->kind) {
-                        case Ast_Function_Type: {
-                            type_ast->Function_Type.mods |= mods;
-                            
-                            //if (attributes) {
-                            //pln("fn: %", f_ast(type_ast));
-                            //assert(type_ast->Function_Type.attributes == 0 && "overwrite");
-                            //}
-                            Ast* last_attr = type_ast->Function_Type.attributes;
-                            
-                            if (attributes) {
-                                if (last_attr) {
-                                    for_compound(last_attr, it) {};
-                                    *compound_it = *attributes;
-                                } else {
-                                    type_ast->Function_Type.attributes = attributes;
-                                }
-                            }
-                        } break;
-                        
-                        case Ast_Struct_Type: {
-                            type_ast->Struct_Type.attributes = attributes;
-                        } break;
-                        
-                        case Ast_Union_Type: {
-                            type_ast->Struct_Type.attributes = attributes;
-                        } break;
-                        
-                        case Ast_Enum_Type: {
-                            type_ast->Struct_Type.attributes = attributes;
-                        } break;
-                    }
-                }
-            }
-        } break;
-    }
-}
-
-void
-parse_declaration(Parser* parser, Ast_File* ast_file) {
-    
-    
 }
 
 void
@@ -1752,14 +1497,8 @@ parse_top_level_declaration(Parser* parser, Ast_File* ast_file) {
         attributes = parse_prefixed_compound(parser, Token_Attribute, 
                                              &parse_declaration_attribute);
     }
-    //token = peek_token(parser);
     
-    //if (token.type != Token_Ident) {
-    //next_token(parser);
-    //parse_error_unexpected_token(parser, Token_Ident, token);
-    //return;
-    //}
-    
+#if 0
     Ast_Decl_Modifier mods = AstDeclModifier_None;
     while (true) {
         token = peek_token(parser);
@@ -1815,10 +1554,10 @@ parse_top_level_declaration(Parser* parser, Ast_File* ast_file) {
         
         break;
     }
+#endif
     
     token = peek_token(parser);
-    Ast* decl = parse_statement(parser);
-    set_attributes_on_declaration(decl, attributes, mods);
+    Ast* decl = parse_declaration(parser, true, true);
     array_push(ast_file->declarations, decl);
     
     while (next_token_if_matched(parser, Token_Semi, false));

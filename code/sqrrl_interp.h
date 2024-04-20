@@ -59,51 +59,6 @@ interp_add_compilation_unit(Interp* interp, Ast_Module* module, Ast_File* file, 
 }
 
 void
-register_compilation_units_from_ast_decl(Interp* interp, Ast_Module* module, Ast_File* file, Ast* decl) {
-    switch (decl->kind) {
-        case Ast_Compound: {
-            for_compound(decl, it) {
-                register_compilation_units_from_ast_decl(interp, module, file, it);
-            }
-        } break;
-        
-        case Ast_Block_Stmt: {
-            for_compound(decl->Block_Stmt.stmts, it) {
-                register_compilation_units_from_ast_decl(interp, module, file, it);
-            }
-        } break;
-        
-        case Ast_Decl_Stmt: {
-            string_id ident = ast_unwrap_ident(decl->Decl_Stmt.ident);
-            interp_add_compilation_unit(interp, module, file, decl, ident);
-        } break;
-        
-        case Ast_Assign_Stmt: {
-            string_id ident = ast_unwrap_ident(decl->Assign_Stmt.ident);
-            interp_add_compilation_unit(interp, module, file, decl, ident);
-        } break;
-        
-        case Ast_Typedef: {
-            unimplemented;
-        } break;
-        
-        default: {
-            // TODO(Alexander): maybe don't accept everything but let's see
-            if (is_valid_ast(decl)) {
-                interp_add_compilation_unit(interp, module, file, decl, 0);
-            }
-        } break;
-    }
-}
-
-inline void
-register_compilation_units_from_ast_file(Interp* interp, Ast_Module* module, Ast_File* file) {
-    for_array_v(file->declarations, decl, _) {
-        register_compilation_units_from_ast_decl(interp, module, file, decl);
-    }
-}
-
-void
 add_file_to_module(Interp* interp, Ast_Module* module, Ast_File* file) {
     bool new_file = true;
     for_array_v(module->files, existing_file, _) {
@@ -114,7 +69,6 @@ add_file_to_module(Interp* interp, Ast_Module* module, Ast_File* file) {
     
     if (new_file) {
         array_push(module->files, file);
-        register_compilation_units_from_ast_file(interp, module, file);
     }
 }
 

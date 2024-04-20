@@ -76,7 +76,7 @@ Ast* values;                                    \
 })                                              \
 AST_GROUP(Expr_End,    "expression")            \
 AST_GROUP(Stmt_Begin,  "statement")             \
-AST(Assign_Stmt,       "assignment", struct {   \
+AST(Assignment,        "assignment", struct {   \
 Ast* type;                                      \
 Ast* ident;                                     \
 Ast* expr;                                      \
@@ -92,11 +92,6 @@ Ast* ident;                                     \
 })                                              \
 AST(Continue_Stmt,     "continue", struct {     \
 Ast* ident;                                     \
-})                                              \
-AST(Decl_Stmt,         "declaration", struct {  \
-Ast* ident;                                     \
-Ast* type;                                      \
-Ast* stmt;                                      \
 })                                              \
 AST(If_Stmt,           "if", struct {           \
 Ast* cond;                                      \
@@ -161,17 +156,12 @@ Ast* shape;                                     \
 b32 is_dynamic;                                 \
 })                                              \
 AST(Pointer_Type,      "pointer", Ast*)         \
-AST(Tuple_Type,        "tuple", struct {        \
-Ast* elem_types;                                \
-})                                              \
-AST(Infer_Type,        "infer", void*)          \
 AST(Function_Type,     "function", struct {     \
-Ast* ident;                                     \
 Ast* attributes;                                \
+Ast* ident;                                     \
 Ast* return_type;                               \
 Ast* arguments;                                 \
-Operator overload_operator;                     \
-Ast_Decl_Modifier mods;                         \
+Ast* block;                                     \
 })                                              \
 AST(Struct_Type,       "struct", struct {       \
 Ast* ident;                                     \
@@ -189,17 +179,12 @@ Ast* attributes;                                \
 Ast* elem_type;                                 \
 Ast* fields;                                    \
 })                                              \
-AST(Volatile_Type,     "volatile", Ast*)        \
-AST(Local_Persist_Type, "local persist", Ast*) \
-AST(Declspec_Type,     "declspec", struct {     \
-Ast* type; \
-Ast* spec; \
-})        \
 AST(Typedef,           "typedef", struct {      \
 Ast* type;                                      \
 Ast* ident;                                     \
 })                                              \
 AST_GROUP(Type_End,    "type")
+
 
 // NOTE(Alexander): iterate through a compound AST node, usage:
 // Ast* compound = parse_compound(interp, ...)
@@ -401,7 +386,7 @@ inline bool
 should_ast_stmt_end_with_semicolon(Ast* node) {
     // TODO(Alexander): make an array instead
     return !(node->kind == Ast_Block_Stmt ||
-             node->kind == Ast_Decl_Stmt ||
+             node->kind == Ast_Function_Type ||
              node->kind == Ast_If_Stmt ||
              node->kind == Ast_Switch_Stmt ||
              node->kind == Ast_For_Stmt ||
@@ -418,6 +403,7 @@ inline bool
 is_ast_none(Ast* ast) {
     return ast && ast->kind == Ast_None;
 }
+
 
 inline bool
 is_valid_ast(Ast* ast) {
@@ -708,22 +694,24 @@ string_builder_push(String_Builder* sb, Ast* node, u32 spacing=0) {
             string_builder_push(sb, node->Aggregate_Expr.elements, spacing);
         } break;
         
-        case Ast_Assign_Stmt: {
-            string_builder_push(sb, node->Assign_Stmt.mods);
-            string_builder_push(sb, node->Assign_Stmt.type, spacing);
-            string_builder_push(sb, node->Assign_Stmt.ident, spacing);
-            string_builder_push(sb, node->Assign_Stmt.expr, spacing);
+        case Ast_Assignment: {
+            string_builder_push(sb, node->Assignment.mods);
+            string_builder_push(sb, node->Assignment.type, spacing);
+            string_builder_push(sb, node->Assignment.ident, spacing);
+            string_builder_push(sb, node->Assignment.expr, spacing);
         } break;
         
         case Ast_Unary_Expr: {
-            assert_enum(Op, node->Unary_Expr.op);
-            string_builder_push_format(sb, " (%)", f_cstring(operator_strings[node->Unary_Expr.op]));
+            //assert_enum(Op, node->Unary_Expr.op);
+            string op = vars_load_string(node->Unary_Expr.op);
+            string_builder_push_format(sb, " (%)", f_string(op));
             string_builder_push(sb, node->Unary_Expr.first, spacing);
         } break;
         
         case Ast_Binary_Expr: {
-            assert_enum(Op, node->Binary_Expr.op);
-            string_builder_push_format(sb, " (%)", f_cstring(operator_strings[node->Binary_Expr.op]));
+            //assert_enum(Op, node->Binary_Expr.op);
+            string op = vars_load_string(node->Unary_Expr.op);
+            string_builder_push_format(sb, " (%)", f_string(op));
             if (node->Binary_Expr.overload) { 
                 string_builder_push(sb, "\n");
                 for (u32 s = 0; s < spacing; s++) string_builder_push(sb, " ");
@@ -744,14 +732,6 @@ string_builder_push(String_Builder* sb, Ast* node, u32 spacing=0) {
             for_compound(node, child_node) {
                 string_builder_push(sb, child_node, spacing);
             }
-        } break;
-        
-        case Ast_Function_Type: {
-            string_builder_push(sb, node->Function_Type.mods);
-            string_builder_push(sb, node->Function_Type.return_type, spacing);
-            string_builder_push(sb, node->Function_Type.ident, spacing);
-            string_builder_push(sb, node->Function_Type.attributes, spacing);
-            string_builder_push(sb, node->Function_Type.arguments, spacing);
         } break;
         
         case Ast_Include_Directive: {

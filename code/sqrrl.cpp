@@ -302,9 +302,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 add_bytecode_function(&bytecode_builder, type);
             }
             
-        } else if (cu->ast->kind == Ast_Assign_Stmt) {
+        } else if (cu->ast->kind == Ast_Assignment) {
             Type* type = cu->ast->type;
-            string_id ident = ast_unwrap_ident(cu->ast->Assign_Stmt.ident);
+            string_id ident = ast_unwrap_ident(cu->ast->Assignment.ident);
             
             if (map_key_exists(bytecode_builder.globals, ident)) {
                 type_error(&tcx, string_print("cannot redeclare global `%`", f_var(ident)),

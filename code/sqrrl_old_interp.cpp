@@ -450,12 +450,12 @@ interp_statement(Interp* interp, Ast* ast) {
     Interp_Value result = {};
     
     switch (ast->kind) {
-        case Ast_Assign_Stmt: {
-            result = interp_expression(interp, ast->Assign_Stmt.expr);
+        case Ast_Assignment: {
+            result = interp_expression(interp, ast->Assignment.expr);
             
             // TODO(Alexander): check expr.type and type
             Type* type = ast->type;
-            string_id ident = ast->Assign_Stmt.ident->Ident;
+            string_id ident = ast->Assignment.ident->Ident;
             result.data = push_interp_value(interp, type, ident, result);
         } break;
         

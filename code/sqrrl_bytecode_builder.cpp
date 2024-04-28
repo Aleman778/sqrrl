@@ -1099,12 +1099,13 @@ emit_condition_expression(Bytecode_Builder* bc, Ast* cond, int result, bool inve
 void
 emit_statement(Bytecode_Builder* bc, Ast* stmt, s32 break_label, s32 continue_label) {
     switch (stmt->kind) {
-        case Ast_Decl_Stmt: {
-            Ast* decl = stmt->Decl_Stmt.stmt;
-            if (is_ast_stmt(decl)) {
-                emit_statement(bc, decl, break_label, continue_label);
-            }
-        } break;
+        //case Ast_Function_Type: {
+        //unimplemented;
+        //Ast* decl = stmt->Decl_Stmt.stmt;
+        //if (is_ast_stmt(decl)) {
+        //emit_statement(bc, decl, break_label, continue_label);
+        //}
+        //} break;
         
         case Ast_Expr_Stmt: {
             Ast* expr = stmt->Expr_Stmt;
@@ -1871,12 +1872,12 @@ Bytecode_Function*
 emit_function(Bytecode_Builder* bc, Bytecode_Function* func, Ast* ast,
               bool is_main, bool insert_debug_break) {
     assert(ast->type->kind == TypeKind_Function);
-    assert(ast->kind == Ast_Decl_Stmt);
+    assert(ast->kind == Ast_Function_Type);
     
-    if (!is_valid_ast(ast->Decl_Stmt.stmt)) {
+    if (!is_valid_ast(ast->Function_Type.block)) {
         return 0;
     }
-    //pln("Emitting function `%`", f_var(ast_unwrap_ident(ast->Decl_Stmt.ident)));
+    //pln("Emitting function `%`", f_var(ast_unwrap_ident(ast->Function_Type.ident)));
     
     map_free(bc->locals);
     
@@ -1890,7 +1891,7 @@ emit_function(Bytecode_Builder* bc, Bytecode_Function* func, Ast* ast,
     if (is_main) {
         bc->bytecode.entry_func_index = func->type_index;
         Bytecode_Export main_export = {};
-        main_export.function = ast_unwrap_ident(ast->Decl_Stmt.ident);
+        main_export.function = ast_unwrap_ident(ast->Function_Type.ident);
         main_export.func_index = func->type_index;
         array_push(bc->bytecode.exports, main_export);
     }
@@ -1915,7 +1916,7 @@ emit_function(Bytecode_Builder* bc, Bytecode_Function* func, Ast* ast,
         assert(arg_index == r);
     }
     
-    emit_statement(bc, ast->Decl_Stmt.stmt, 0, 0);
+    emit_statement(bc, ast->Function_Type.block, 0, 0);
     
     // Drop arguments
     for (int arg_index = func->arg_count - 1; arg_index >= 0; arg_index--) {

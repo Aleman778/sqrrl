@@ -945,7 +945,6 @@ typedef u32 string_id;
 struct String_Interner {
     string_map(string_id)* str_to_id = 0;
     array(string)* id_to_str = 0;
-    u32 id_counter = 0;
 };
 
 // TODO(Alexander): this is global for now
@@ -955,7 +954,7 @@ string_id
 save_cstring(String_Interner* interner, cstring s) {
     string_id id = string_map_get(interner->str_to_id, s);
     if (!id) {
-        id = interner->id_counter++;
+        id = (string_id) array_count(interner->id_to_str);
         string_map_put(interner->str_to_id, s, id);
         array_push(interner->id_to_str, string_lit(s));
     }

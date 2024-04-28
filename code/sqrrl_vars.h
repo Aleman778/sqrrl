@@ -60,9 +60,9 @@ VAR(Type)     \
 VAR_GROUP(builtin_types_end)
 
 // OP(symbol, prec, assoc, is_comparator, signed_opcode, unsigned_opcode)
+#define Op_None 0
 #define DEF_OPERATORS \
-OP_GROUP(builtin_operators_begin) \
-OP(None,                !,  0, Assoc_Left,  false, BC_NOOP, BC_NOOP) \
+VAR_GROUP(builtin_operators_begin) \
 OP(Post_Increment,     a++, 14, Assoc_Left,  false, BC_NOOP, BC_NOOP) \
 OP(Post_Decrement,     a--, 14, Assoc_Left,  false, BC_NOOP, BC_NOOP) \
 OP(Negate,              -, 13, Assoc_Right, false, BC_NEG, BC_NEG) \
@@ -101,7 +101,7 @@ OP(Bitwise_Or_Assign,  |=, 1,  Assoc_Right, false, BC_OR, BC_OR) \
 OP(Bitwise_Xor_Assign, ^=, 1,  Assoc_Right, false, BC_XOR, BC_XOR) \
 OP(Shift_Left_Assign,  <<=, 1, Assoc_Right, false, BC_SHL, BC_SHL) \
 OP(Shift_Right_Assign, >>=, 1, Assoc_Right, false, BC_SAR, BC_SHR) \
-OP_GROUP(builtin_operators_end)
+VAR_GROUP(builtin_operators_end)
 
 enum Assoc {
     Assoc_Left,
@@ -116,34 +116,34 @@ enum Assoc {
 
 u8 operator_prec_table[] = {
 #define OP(symbol, name, prec,...) prec,
-#define OP_GROUP(...) 0,
+#define VAR_GROUP(...) 0,
     DEF_OPERATORS
-#undef OP_GROUP
+#undef VAR_GROUP
 #undef OP
 };
 
 Assoc operator_assoc_table[] = {
 #define OP(symbol, name, prec, assoc,...) assoc,
-#define OP_GROUP(...) Assoc_Left,
+#define VAR_GROUP(...) Assoc_Left,
     DEF_OPERATORS
-#undef OP_GROUP
+#undef VAR_GROUP
 #undef OP
 };
 
 bool operator_is_comparator_table[] = {
 #define OP(symbol, name, prec, assoc, is_comparator,...) is_comparator,
-#define OP_GROUP(...) false,
+#define VAR_GROUP(...) false,
     DEF_OPERATORS
-#undef OP_GROUP
+#undef VAR_GROUP
 #undef OP
 };
 
 
 Bytecode_Operator bytecode_operator_table[] = {
 #define OP(symbol, name, prec, assoc, is_comparator, sop, uop) sop, uop,
-#define OP_GROUP(...) BC_NOOP, BC_NOOP,
+#define VAR_GROUP(...) BC_NOOP, BC_NOOP,
     DEF_OPERATORS
-#undef OP_GROUP
+#undef VAR_GROUP
 #undef OP
 };
 
@@ -224,17 +224,15 @@ VAR(Dynamic_Library) \
 
 void
 initialize_keywords_and_symbols(String_Interner* interner) {
-    if (interner->id_counter != 0) {
+    if (!array_count(interner)) {
         return;
     }
     
     string_map_new_arena(interner->str_to_id);
 #define VAR(symbol) save_cstring(interner, #symbol);
 #define VAR_GROUP(symbol) VAR(symbol)
-#define OP(name, symbol, ...) VAR(symbol)
-#define OP_GROUP(symbol) VAR(symbol)
+#define OP(name, symbol, ...) array_push(interner->id_to_str, string_lit(#symbol));
     DEF_KEYWORDS DEF_TYPE_KEYWORDS DEF_OPERATORS DEF_SYMBOLS
-#undef OP_GROUP
 #undef OP
 #undef VAR_GROUP
 #undef VAR
@@ -249,9 +247,7 @@ enum {
 #undef VAR
     
 #define OP(name, ...) Op_##name,
-#define OP_GROUP(name) name,
     DEF_OPERATORS
-#undef OP_GROUP
 #undef OP
     
 #define VAR(symbol) Sym_##symbol,
@@ -295,3 +291,13 @@ inline bool
 operator_is_assign(Operator op) {
     return op >= Op_Assign;
 }
+
+inline u8
+operator_get_precedence(Operator op) {
+    return operator_prec_table[op - builtin_operators_begin];
+}
+
+inline Assoc
+operator_get_associativity(Operator op) {
+    return operator_assoc_table[op - builtin_operators_begin];
+} 

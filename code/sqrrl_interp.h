@@ -19,8 +19,6 @@ struct Compilation_Unit {
     Bytecode_Function* bytecode_function;
     s64 external_address;
     
-    string_id ident;
-    
     Compilation_Unit_Status status;
     bool is_main;
 };
@@ -49,13 +47,20 @@ interp_add_source_file(Interp* interp, Ast_Module* module, Source_File* file) {
 }
 
 void
-interp_add_compilation_unit(Interp* interp, Ast_Module* module, Ast_File* file, Ast* decl, string_id ident) {
-    Compilation_Unit* cu = arena_push_struct(&interp->ast_arena, Compilation_Unit);
-    cu->module = module;
-    cu->file = file;
-    cu->ident = ident;
-    cu->ast = decl;
-    array_push(interp->compilation_units, cu);
+interp_add_compilation_unit(Interp* interp, Ast_Module* module, Ast_File* file, Ast* decl) {
+    if (decl->kind == Ast_Block_Stmt) {
+        for_compound(decl->Block_Stmt.stmts, it) {
+            interp_add_compilation_unit(interp, module, file, decl);
+        }
+        
+    } else {
+        Compilation_Unit* cu = arena_push_struct(&interp->ast_arena, Compilation_Unit);
+        cu->module = module;
+        cu->file = file;
+        //cu->ident = ident;
+        cu->ast = decl;
+        array_push(interp->compilation_units, cu);
+    }
 }
 
 void

@@ -304,7 +304,7 @@ bool match_struct_like_args(Type_Context* tcx, Type* formal_type, int first_fiel
 bool type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error);
 Type* type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool report_error);
 
-bool type_infer_function_declaration(Type_Context* tcx, Type* type, Ast* body, Span span, bool report_error);
+bool type_infer_function(Type_Context* tcx, Ast* ast, bool report_error);
 
 bool type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool rhs_is_value, Span span,
                            Operator op=Op_Assign, bool report_error=true);

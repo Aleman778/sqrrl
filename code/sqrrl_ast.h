@@ -71,12 +71,9 @@ AST(Aggregate_Expr, "aggregate initializer", struct { \
 Ast* elements;                                  \
 smm first_index;                                \
 })                                              \
-AST(Tuple_Expr,        "tuple", struct {        \
-Ast* values;                                    \
-})                                              \
 AST_GROUP(Expr_End,    "expression")            \
 AST_GROUP(Stmt_Begin,  "statement")             \
-AST(Assignment,        "assignment", struct {   \
+AST(Assignment,       "assignment", struct {    \
 Ast* type;                                      \
 Ast* ident;                                     \
 Ast* expr;                                      \
@@ -100,7 +97,7 @@ Ast* else_block;                                \
 })                                              \
 AST(Switch_Stmt,       "switch", struct {       \
 Ast* cond;                                      \
-Ast* cases;                                \
+Ast* cases;                                     \
 })                                              \
 AST(For_Stmt,          "for", struct {          \
 Ast* label;                                     \
@@ -117,8 +114,41 @@ Ast* block;                                     \
 AST(Return_Stmt,       "return", struct {       \
 Ast* expr;                                      \
 })                                              \
+AST_GROUP(Type_Begin,  "type")                  \
+AST(Named_Type,        "named", Ast*)           \
+AST(Array_Type,        "array", struct {        \
+Ast* elem_type;                                 \
+Ast* shape;                                     \
+b32 is_dynamic;                                 \
+})                                              \
+AST(Pointer_Type,      "pointer", Ast*)         \
+AST(Function_Type,     "function", struct {     \
+Ast* attributes;                                \
+Ast* return_type;                               \
+Ast* ident;                                     \
+Ast* arguments;                                 \
+Ast* block;                                     \
+Ast_Decl_Modifier mods;                         \
+})                                              \
+AST(Struct_Type,       "struct", struct {       \
+Ast* attributes;                                \
+Ast* ident;                                     \
+Ast* fields;                                    \
+})                                              \
+AST(Union_Type,        "union", struct {        \
+Ast* attributes;                                \
+Ast* ident;                                     \
+Ast* fields;                                    \
+})                                              \
+AST(Enum_Type,         "enum", struct {         \
+Ast* attributes;                                \
+Ast* ident;                                     \
+Ast* elem_type;                                 \
+Ast* fields;                                    \
+})                                              \
+AST_GROUP(Type_End,    "type")                  \
 AST_GROUP(Stmt_End,    "statement")             \
-AST_GROUP(Directive_Begin,    "directive")             \
+AST_GROUP(Directive_Begin,    "directive")      \
 AST(If_Directive,       "#if", struct {         \
 Ast* cond;                                      \
 Ast* then_block;                                \
@@ -147,43 +177,7 @@ Ast* ident;                                     \
 Ast* arguments;                                 \
 Ast* block;                                     \
 })                                              \
-AST_GROUP(Directive_End,    "directive")        \
-AST_GROUP(Type_Begin,  "type")                  \
-AST(Named_Type,        "named", Ast*)           \
-AST(Array_Type,        "array", struct {        \
-Ast* elem_type;                                 \
-Ast* shape;                                     \
-b32 is_dynamic;                                 \
-})                                              \
-AST(Pointer_Type,      "pointer", Ast*)         \
-AST(Function_Type,     "function", struct {     \
-Ast* attributes;                                \
-Ast* ident;                                     \
-Ast* return_type;                               \
-Ast* arguments;                                 \
-Ast* block;                                     \
-})                                              \
-AST(Struct_Type,       "struct", struct {       \
-Ast* ident;                                     \
-Ast* attributes;                                \
-Ast* fields;                                    \
-})                                              \
-AST(Union_Type,        "union", struct {        \
-Ast* ident;                                     \
-Ast* attributes;                                \
-Ast* fields;                                    \
-})                                              \
-AST(Enum_Type,         "enum", struct {         \
-Ast* ident;                                     \
-Ast* attributes;                                \
-Ast* elem_type;                                 \
-Ast* fields;                                    \
-})                                              \
-AST(Typedef,           "typedef", struct {      \
-Ast* type;                                      \
-Ast* ident;                                     \
-})                                              \
-AST_GROUP(Type_End,    "type")
+AST_GROUP(Directive_End,    "directive")
 
 
 // NOTE(Alexander): iterate through a compound AST node, usage:

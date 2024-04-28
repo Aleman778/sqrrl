@@ -1286,10 +1286,6 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                 }
             }
         } break;
-        
-        case Ast_Tuple_Expr: {
-            unimplemented;
-        } break;
     }
     
     return result;
@@ -1760,7 +1756,7 @@ create_type_struct_like_from_ast(Type_Context* tcx,
     return result;
 }
 
-Type*
+bool
 save_type_declaration(Type_Context* tcx, Ast* ast, string_id ident, bool report_error) {
     Type* type = ast->type;
     if (!type) {
@@ -1878,269 +1874,6 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             Type* ptr_type = create_type_from_ast(tcx, ast->Pointer_Type, report_error).type;
             if (ptr_type) {
                 result.type = type_wrap_pointer(tcx, ptr_type);
-            }
-        } break;
-        
-        case Ast_Function_Type: {
-            result.type->Function.is_variadic = false;
-            
-            Type* return_type = create_type_from_ast(tcx, ast->Function_Type.return_type, report_error).type;
-            if (return_type) {
-                result.type->Function.return_type = return_type;
-            } else {
-                result.type = 0;
-                return result;
-            }
-            
-            // NOTE(Alexander): Loads in the function arguments
-            Ast* ast_arguments = ast->Function_Type.arguments;
-            Type_Function* func = &result.type->Function;
-            smm offset = 0;
-            
-            array_free(func->arg_idents);
-            array_free(func->arg_types);
-            for_compound(ast_arguments, ast_argument) {
-                assert(ast_argument->kind == Ast_Argument);
-                if (!ast_argument->Argument.type) {
-                    break;
-                }
-                
-                if (result.type->Function.is_variadic) {
-                    if (report_error) {
-                        type_error(tcx,
-                                   string_lit("variable arguments `...` has to be the last argument"), 
-                                   ast_argument->span);
-                    }
-                    return result;
-                }
-                
-                Ast* ast_argument_type = ast_argument->Argument.type;
-                
-                Type* type = 0;
-                if (ast_argument_type->kind == Ast_Ellipsis) {
-                    result.type->Function.is_variadic = true;
-                    type = resolve_typedef_from_identifier(tcx, Sym_Var_Args, ast_argument_type->span, false);
-                    if (!type) {
-                        type = t_type;
-                    }
-                    
-                } else {
-                    type = create_type_from_ast(tcx, ast_argument_type, report_error).type;
-                }
-                
-                if (type && type->kind != TypeKind_Unresolved) {
-                    
-                    if (type->kind == TypeKind_Void) {
-                        // TODO: make sure no arguments are specified before or after this, report error
-                        verify(func->first_default_arg_index == 0);
-                        break;
-                    }
-                    
-                    if (type->size == 0) {
-                        if (report_error) {
-                            type_error(tcx,
-                                       string_print("invalid argument type `%` try pointer instead `%*`", f_type(type), f_type(type)), 
-                                       ast_argument->span);
-                        }
-                        return {};
-                    }
-                    
-                    string_id ident = ast_argument->Argument.ident->Ident;
-                    s32 arg_index = (s32) array_count(func->arg_idents);
-                    map_put(func->ident_to_index, ident, arg_index);
-                    array_push(func->arg_idents, ident);
-                    array_push(func->arg_types, type);
-                    
-                    if (is_valid_ast(ast_argument->Argument.assign)) {
-                        Ast* default_arg = ast_argument->Argument.assign;
-                        //if (type_infer_expression(tcx, default_arg, type, report_error)) {
-                        unimplemented;
-                        //}
-                        //constant_folding_of_expressions(tcx, default_arg);
-                        array_push(func->default_args, default_arg);
-                        
-                    } else if (!result.type->Function.is_variadic) {
-                        if (func->first_default_arg_index == arg_index) {
-                            func->first_default_arg_index++;
-                        } else {
-                            if (report_error) {
-                                type_error(tcx, string_print("missing default argument for parameter %",
-                                                             f_int(arg_index)), ast_argument->span);
-                            }
-                        }
-                    }
-                } else {
-                    return {};
-                }
-            }
-            
-            result.type->Function.ident = try_unwrap_ident(ast->Function_Type.ident);
-            result.type->kind = TypeKind_Function;
-            result.type->size = 0;
-            result.type->align = 0;
-            
-            //if (ast->Function_Type.mods & AstDeclModifier_Export) {
-            //result.type->Function.is_exported = true;
-            //}
-            
-            if (ast->Function_Type.attributes) {
-                
-                // Parse attributes
-                Parsed_Attribute attr = parse_attribute(ast->Function_Type.attributes);
-                string library_name = {};
-                string library_function_name = {};
-                string_id dynamic_library_id = 0;
-                
-                while (attr.is_valid) {
-                    switch (attr.ident) {
-                        case Sym_link: {
-                            if (!result.type->Function.ident) {
-                                attr.is_valid = false;
-                            }
-                            
-                            if (attr.args[0].kind != AttributeArg_String) {
-                                attr.is_valid = false;
-                            }
-                            
-                            library_name = attr.args[0].String;
-                        } break;
-                        
-                        case Sym_link_dynamic: {
-                            if (!result.type->Function.ident) {
-                                attr.is_valid = false;
-                            }
-                            
-                            if (attr.args[0].kind != AttributeArg_Ident) {
-                                attr.is_valid = false;
-                            }
-                            
-                            dynamic_library_id = attr.args[0].Ident;
-                        } break;
-                        
-                        case Sym_extern_name: {
-                            if (!result.type->Function.ident) {
-                                attr.is_valid = false;
-                            }
-                            
-                            if (attr.args[0].kind != AttributeArg_String) {
-                                attr.is_valid = false;
-                            }
-                            
-                            library_function_name = attr.args[0].String;
-                        } break;
-                        
-                        case Sym_intrinsic: {
-                            if (attr.arg_count != 0) {
-                                attr.is_valid = false;
-                            }
-                            
-                            result.type->Function.is_intrinsic = true;
-                        } break;
-                        
-                        case Sym_dump_bytecode: {
-                            result.type->Function.dump_bytecode = true;
-                        } break;
-                        
-                        case Sym_dump_ast: {
-                            result.type->Function.dump_ast = true;
-                        } break;
-                    }
-                    
-                    if (!attr.is_valid) {
-                        type_error(tcx, string_print("@% attribute is malformed", f_var(attr.ident)), ast->span);
-                        break;
-                    }
-                    
-                    attr = parse_attribute(attr.next);
-                }
-                
-                // Try linking against library
-                string_id library_id = 0;
-                string_id library_function_id = 0;
-                
-                if (library_name.count > 0) {
-                    // Linking dynamic library by compiler
-                    library_id = vars_save_string(library_name);
-                    library_function_id = result.type->Function.ident;
-                    if (library_function_name.count == 0) {
-                        library_function_name = vars_load_string(library_function_id);
-                    } else {
-                        library_function_id = vars_save_string(library_function_name);
-                    }
-                    
-                    //pln("LIB: %, FUNC: %", f_string(library_name), f_string(library_function_name));
-                    
-                    switch (tcx->target_backend) {
-                        case Backend_X64: { 
-                            // Load function pointer from dynamic library
-                            cstring name = string_to_cstring(library_function_name);
-                            cstring library = string_to_cstring(library_name);
-                            
-                            func->external_address = DEBUG_get_external_procedure_address(library, name);
-                            if (!func->external_address) {
-                                if (report_error) {
-                                    type_error(tcx,
-                                               string_print("procedure `%` is not found in library `%`",
-                                                            f_string(library_function_name),
-                                                            f_string(library_name)),
-                                               ast->span);
-                                }
-                                result.type = 0;
-                                return result;
-                            }
-                            
-                            cstring_free(library);
-                            cstring_free(name);
-                        } break;
-                        
-                        case Backend_WASM: {
-                            // noop
-                        } break;
-                        
-                        default: unimplemented;
-                    }
-                }
-                
-                if (dynamic_library_id) {
-                    verify(!func->external_address); // TODO: compiler error
-                    
-                    // Linking dynamic library by user code
-                    library_id = dynamic_library_id;
-                    library_function_id = result.type->Function.ident;
-                    
-                    Type* lib_type = resolve_typedef_from_identifier(tcx, Sym_Dynamic_Library, ast->span, false);
-                    if (!lib_type) {
-                        if (report_error) {
-                            type_error(tcx, string_print("Missing implementation declaration of `Dynamic_Library`"), ast->span);
-                        }
-                        
-                        result.type = 0;
-                        return result;
-                    }
-                    
-                    register_entity(tcx, library_id, create_variable(lib_type), empty_span, false);
-                }
-                
-                if (library_id && library_function_id) {
-                    func->is_imported = true;
-                    
-                    // Compiler only sets up empty pointers that user code has to set.
-                    Library_Imports import = map_get(tcx->import_table.libs, library_id);
-                    import.resolve_at_runtime = dynamic_library_id;
-                    import.is_valid = true;
-                    
-                    Library_Function lib_func = {};
-                    lib_func.name = library_function_id;
-                    lib_func.pointer = func->external_address;
-                    lib_func.type = result.type;
-                    
-                    //pln("cu: % ", f_var(result.type->Function.ident));
-                    
-                    array_push(import.functions, lib_func);
-                    map_put(tcx->import_table.libs, library_id, import);
-                    
-                    //pln("% = 0x%", f_cstring(name), f_u64_HEX(func->intrins
-                }
             }
         } break;
         
@@ -2277,22 +2010,6 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             }
         } break;
         
-        case Ast_Typedef: {
-            assert(ast->Typedef.ident->kind == Ast_Ident);
-            
-            Type* type = create_type_from_ast(tcx, ast->Typedef.type, report_error).type;
-            if (type) {
-                *result.type = *type;
-            }
-            
-            //if (!result) {
-            //result = create_type_from_ast(tcx, ast->Typedef.type, report_error);
-            //result.type = save_type_declaration_from_ast(tcx, ident, ast->Typedef.type, report_error);
-            //} else {
-            //type_error(tcx, string_print("`%` is already defined", f_var(ident)), ast->span);
-            //}
-        } break;
-        
         default: {
             unimplemented;
         } break;
@@ -2315,10 +2032,10 @@ try_expand_if_directive(Type_Context* tcx, Ast* stmt, bool report_error) {
     Value value = constant_folding_of_expressions(tcx, stmt->If_Directive.cond);
     if (is_integer(value)) {
         if (value_to_bool(value)) {
-            register_compilation_units_from_ast_decl(tcx->interp, tcx->module, tcx->file, stmt->If_Directive.then_block);
+            //register_compilation_units_from_ast_decl(tcx->interp, tcx->module, tcx->file, stmt->If_Directive.then_block);
             
         } else if (is_valid_ast(stmt->If_Directive.else_block)) {
-            register_compilation_units_from_ast_decl(tcx->interp, tcx->module, tcx->file, stmt->If_Directive.else_block);
+            //register_compilation_units_from_ast_decl(tcx->interp, tcx->module, tcx->file, stmt->If_Directive.else_block);
         }
         return true;
         
@@ -2412,36 +2129,14 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         } break;
         
         case Ast_Block_Stmt: {
-            result = t_void;
-            
             Scope scope = {};
             begin_block_scope(tcx, &scope);
             result = type_infer_block_in_scope(tcx, stmt, report_error);
             end_block_scope(tcx, &scope);
         } break;
         
-        case Ast_Decl_Stmt: {
-            string_id ident = ast_unwrap_ident(stmt->Decl_Stmt.ident);
-            
-            Type* decl_type = stmt->Decl_Stmt.type->type;
-            if (!decl_type) {
-                decl_type = create_type_from_ast(tcx, stmt->Decl_Stmt.type, report_error).type;
-                stmt->Decl_Stmt.type->type = decl_type;
-            }
-            
-            if (decl_type) {
-                save_type_declaration(tcx, stmt->Decl_Stmt.type, ident, stmt);
-                
-                if (decl_type->kind == TypeKind_Function) {
-                    if (type_infer_function_declaration(tcx, decl_type, stmt->Decl_Stmt.stmt, stmt->span, report_error)) {
-                        result = true;
-                    }
-                } else {
-                    stmt->type = decl_type;
-                    stmt->Decl_Stmt.type->type = decl_type;
-                    result = true;
-                }
-            }
+        case Ast_Function_Type: {
+            type_infer_function(tcx, stmt, report_error); 
         } break;
         
         case Ast_If_Stmt: {
@@ -3118,12 +2813,6 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
             }
         } break;
         
-        case Ast_Decl_Stmt: {
-            if (stmt->Decl_Stmt.stmt) {
-                result = result && type_check_statement(tcx, stmt->Decl_Stmt.stmt);
-            }
-        } break;
-        
         case Ast_If_Stmt: {
             result = result && type_check_expression(tcx, stmt->If_Stmt.cond);
             result = result && type_check_statement(tcx, stmt->If_Stmt.then_block);
@@ -3190,14 +2879,298 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
     return result;
 }
 
+Type*
+type_infer_function_signature(Type_Context* tcx, Ast* ast, bool report_error) {
+    assert(ast && ast->kind == Ast_Function_Type);
+    if (!ast->type) {
+        ast->type = arena_push_struct(&tcx->type_arena, Type);
+    }
+    Type* result = ast->type;
+    result->Function.is_variadic = false;
+    
+    Type* return_type = create_type_from_ast(tcx, ast->Function_Type.return_type, report_error).type;
+    if (return_type) {
+        result->Function.return_type = return_type;
+    } else {
+        result = 0;
+        return result;
+    }
+    
+    Ast* ast_arguments = ast->Function_Type.arguments;
+    Type_Function* func = &result->Function;
+    smm offset = 0;
+    
+    array_free(func->arg_idents);
+    array_free(func->arg_types);
+    for_compound(ast_arguments, ast_argument) {
+        assert(ast_argument->kind == Ast_Argument);
+        if (!ast_argument->Argument.type) {
+            break;
+        }
+        
+        if (result->Function.is_variadic) {
+            if (report_error) {
+                type_error(tcx,
+                           string_lit("variable arguments `...` has to be the last argument"), 
+                           ast_argument->span);
+            }
+            return result;
+        }
+        
+        Ast* ast_argument_type = ast_argument->Argument.type;
+        
+        Type* type = 0;
+        if (ast_argument_type->kind == Ast_Ellipsis) {
+            result->Function.is_variadic = true;
+            type = resolve_typedef_from_identifier(tcx, Sym_Var_Args, ast_argument_type->span, false);
+            if (!type) {
+                type = t_type;
+            }
+            
+        } else {
+            type = create_type_from_ast(tcx, ast_argument_type, report_error).type;
+        }
+        
+        if (type && type->kind != TypeKind_Unresolved) {
+            
+            if (type->kind == TypeKind_Void) {
+                // TODO: make sure no arguments are specified before or after this, report error
+                verify(func->first_default_arg_index == 0);
+                break;
+            }
+            
+            if (type->size == 0) {
+                if (report_error) {
+                    type_error(tcx,
+                               string_print("invalid argument type `%` try pointer instead `%*`", f_type(type), f_type(type)), 
+                               ast_argument->span);
+                }
+                return {};
+            }
+            
+            string_id ident = ast_argument->Argument.ident->Ident;
+            s32 arg_index = (s32) array_count(func->arg_idents);
+            map_put(func->ident_to_index, ident, arg_index);
+            array_push(func->arg_idents, ident);
+            array_push(func->arg_types, type);
+            
+            if (is_valid_ast(ast_argument->Argument.assign)) {
+                Ast* default_arg = ast_argument->Argument.assign;
+                //if (type_infer_expression(tcx, default_arg, type, report_error)) {
+                unimplemented;
+                //}
+                //constant_folding_of_expressions(tcx, default_arg);
+                array_push(func->default_args, default_arg);
+                
+            } else if (!result->Function.is_variadic) {
+                if (func->first_default_arg_index == arg_index) {
+                    func->first_default_arg_index++;
+                } else {
+                    if (report_error) {
+                        type_error(tcx, string_print("missing default argument for parameter %",
+                                                     f_int(arg_index)), ast_argument->span);
+                    }
+                }
+            }
+        } else {
+            return {};
+        }
+    }
+    
+    result->Function.ident = try_unwrap_ident(ast->Function_Type.ident);
+    result->kind = TypeKind_Function;
+    result->size = 0;
+    result->align = 0;
+    
+    //if (ast->Function_Type.mods & AstDeclModifier_Export) {
+    //result->Function.is_exported = true;
+    //}
+    
+    if (ast->Function_Type.attributes) {
+        // Parse attributes
+        Parsed_Attribute attr = parse_attribute(ast->Function_Type.attributes);
+        string library_name = {};
+        string library_function_name = {};
+        string_id dynamic_library_id = 0;
+        
+        while (attr.is_valid) {
+            switch (attr.ident) {
+                case Sym_link: {
+                    if (!result->Function.ident) {
+                        attr.is_valid = false;
+                    }
+                    
+                    if (attr.args[0].kind != AttributeArg_String) {
+                        attr.is_valid = false;
+                    }
+                    
+                    library_name = attr.args[0].String;
+                } break;
+                
+                case Sym_link_dynamic: {
+                    if (!result->Function.ident) {
+                        attr.is_valid = false;
+                    }
+                    
+                    if (attr.args[0].kind != AttributeArg_Ident) {
+                        attr.is_valid = false;
+                    }
+                    
+                    dynamic_library_id = attr.args[0].Ident;
+                } break;
+                
+                case Sym_extern_name: {
+                    if (!result->Function.ident) {
+                        attr.is_valid = false;
+                    }
+                    
+                    if (attr.args[0].kind != AttributeArg_String) {
+                        attr.is_valid = false;
+                    }
+                    
+                    library_function_name = attr.args[0].String;
+                } break;
+                
+                case Sym_intrinsic: {
+                    if (attr.arg_count != 0) {
+                        attr.is_valid = false;
+                    }
+                    
+                    result->Function.is_intrinsic = true;
+                } break;
+                
+                case Sym_dump_bytecode: {
+                    result->Function.dump_bytecode = true;
+                } break;
+                
+                case Sym_dump_ast: {
+                    result->Function.dump_ast = true;
+                } break;
+            }
+            
+            if (!attr.is_valid) {
+                type_error(tcx, string_print("@% attribute is malformed", f_var(attr.ident)), ast->span);
+                break;
+            }
+            
+            attr = parse_attribute(attr.next);
+        }
+        
+        // Try linking against library
+        string_id library_id = 0;
+        string_id library_function_id = 0;
+        
+        if (library_name.count > 0) {
+            // Linking dynamic library by compiler
+            library_id = vars_save_string(library_name);
+            library_function_id = result->Function.ident;
+            if (library_function_name.count == 0) {
+                library_function_name = vars_load_string(library_function_id);
+            } else {
+                library_function_id = vars_save_string(library_function_name);
+            }
+            
+            //pln("LIB: %, FUNC: %", f_string(library_name), f_string(library_function_name));
+            
+            switch (tcx->target_backend) {
+                case Backend_X64: { 
+                    // Load function pointer from dynamic library
+                    cstring name = string_to_cstring(library_function_name);
+                    cstring library = string_to_cstring(library_name);
+                    
+                    func->external_address = DEBUG_get_external_procedure_address(library, name);
+                    if (!func->external_address) {
+                        if (report_error) {
+                            type_error(tcx,
+                                       string_print("procedure `%` is not found in library `%`",
+                                                    f_string(library_function_name),
+                                                    f_string(library_name)),
+                                       ast->span);
+                        }
+                        result = 0;
+                        return result;
+                    }
+                    
+                    cstring_free(library);
+                    cstring_free(name);
+                } break;
+                
+                case Backend_WASM: {
+                    // noop
+                } break;
+                
+                default: unimplemented;
+            }
+        }
+        
+        if (dynamic_library_id) {
+            verify(!func->external_address); // TODO: compiler error
+            
+            // Linking dynamic library by user code
+            library_id = dynamic_library_id;
+            library_function_id = result->Function.ident;
+            
+            Type* lib_type = resolve_typedef_from_identifier(tcx, Sym_Dynamic_Library, ast->span, false);
+            if (!lib_type) {
+                if (report_error) {
+                    type_error(tcx, string_print("Missing implementation declaration of `Dynamic_Library`"), ast->span);
+                }
+                
+                result = 0;
+                return result;
+            }
+            
+            register_entity(tcx, library_id, create_variable(lib_type), empty_span, false);
+        }
+        
+        if (library_id && library_function_id) {
+            func->is_imported = true;
+            
+            // Compiler only sets up empty pointers that user code has to set.
+            Library_Imports import = map_get(tcx->import_table.libs, library_id);
+            import.resolve_at_runtime = dynamic_library_id;
+            import.is_valid = true;
+            
+            Library_Function lib_func = {};
+            lib_func.name = library_function_id;
+            lib_func.pointer = func->external_address;
+            lib_func.type = result;
+            
+            //pln("cu: % ", f_var(result->Function.ident));
+            
+            array_push(import.functions, lib_func);
+            map_put(tcx->import_table.libs, library_id, import);
+            
+            //pln("% = 0x%", f_cstring(name), f_u64_HEX(func->intrins
+        }
+    }
+    
+    return result;
+}
+
 bool
-type_infer_function_declaration(Type_Context* tcx, Type* type, Ast* body, Span span, bool report_error) {
-    assert(type && type->kind == TypeKind_Function);
+type_infer_function(Type_Context* tcx, Ast* ast, bool report_error) {
+    assert(ast && ast->kind == Ast_Function_Type);
+    
+    Type* type = type_infer_function_signature(tcx, ast, report_error);
+    if (!(type && type->kind == TypeKind_Function)) {
+        return false;
+    }
+    
+    string_id ident = ast_unwrap_ident(ast->Function_Type.ident);
+    save_type_declaration(tcx, type, ident, stmt);
     
     bool result = true;
     tcx->return_type = 0;
     tcx->block_depth = 0;
+    Ast* body = ast->Function_Type.block;
     if (is_ast_block(body)) {
+        tcx->return_type = type->Function.return_type;
+        if (ident == Sym_main) {
+            // TODO(Alexander): we need a better way to figure out which is the entry point
+            tcx->entry_point = type;
+        }
+        
         Scope scope = {};
         
         begin_block_scope(tcx, &scope);
@@ -3214,7 +3187,7 @@ type_infer_function_declaration(Type_Context* tcx, Type* type, Ast* body, Span s
                     string_id arg_ident = func->arg_idents[arg_index];
                     // TODO(Alexander): maybe we need to also store spans in procedure type?
                     
-                    if (!register_entity(tcx, arg_ident, create_variable(arg_type), span, report_error)) {
+                    if (!register_entity(tcx, arg_ident, create_variable(arg_type), ast->span, report_error)) {
                         result = false;
                     }
                 } else {
@@ -3226,6 +3199,12 @@ type_infer_function_declaration(Type_Context* tcx, Type* type, Ast* body, Span s
         tcx->return_type = type->Function.return_type;
         result = result && type_infer_block_in_scope(tcx, body, report_error);
         end_block_scope(tcx, &scope);
+    } else {
+        unimplemented;
+        //if (report_error) {
+        
+        //type_error(tcx, string_print())
+        //}
     }
     
     return result;
@@ -3498,9 +3477,12 @@ run_type_checker(Type_Context* tcx, Interp* interp) {
         run_type_infererence(tcx, cu, true);
     }
     
+    if (!tcx->entry_point) {
+        type_error(tcx, string_lit("`main` function must be defined"), empty_span);
+    }
     
     if (tcx->error_count == 0) {
-        assert(last_queue_count && "expect type inference queue to be empty");
+        //assert(last_queue_count && "expect type inference queue to be empty");
         
         // Run type checking on statements
         for_array_v(interp->compilation_units, cu, _e) {

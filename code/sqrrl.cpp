@@ -196,26 +196,20 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         }
         
         if (error_count > 0) {
-            pln("\n% errors found during parsing, exiting...\n", f_int(error_count));
+            pln("\n% error(s) found during parsing, exiting...\n", f_int(error_count));
             return 1;
         }
     }
     
     // Typecheck the AST
     run_type_checker(&tcx, &interp);
-    if (tcx.error_count == 0 && !tcx.entry_point) {
-        type_error(&tcx, string_lit("`main` function must be defined"), empty_span);
-        return 1;
-    }
     
-    bool flag_dump_ast    = value_to_bool(interp_get_value(&interp, Sym_DUMP_AST));
+    bool flag_dump_ast    = true;//value_to_bool(interp_get_value(&interp, Sym_DUMP_AST));
     bool flag_dump_bc     = value_to_bool(interp_get_value(&interp, Sym_DUMP_BYTECODE));
     bool flag_dump_disasm = value_to_bool(interp_get_value(&interp, Sym_DUMP_DISASM));
     
     if (tcx.error_count > 0) {
         for_array_v(interp.compilation_units, cu, _) {
-            if (!(cu->ast && cu->ast->kind == Ast_Decl_Stmt)) continue;
-            
             if (flag_dump_ast || (cu->ast->type && 
                                   cu->ast->type->kind == TypeKind_Function &&
                                   cu->ast->type->Function.dump_ast)) {
@@ -223,13 +217,11 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             }
         }
         
-        pln("\n% errors found during type checking, exiting...\n", f_int(tcx.error_count));
+        pln("\n% error(s) found during type checking, exiting...\n", f_int(tcx.error_count));
         return 1;
     }
     
     for_array_v(interp.compilation_units, cu, _) {
-        if (!(cu->ast && cu->ast->kind == Ast_Decl_Stmt)) continue;
-        
         if (flag_dump_ast || (cu->ast->type->kind == TypeKind_Function &&
                               cu->ast->type->Function.dump_ast)) {
             print_ast(cu->ast);
@@ -296,32 +288,35 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
     for_array_v(interp.compilation_units, cu, _2) {
-        if (!cu->bytecode_function && cu->ast->kind == Ast_Decl_Stmt) {
-            Type* type = cu->ast->type;
-            if (type->kind == TypeKind_Function) {
+        
+        switch (cu->ast->kind) {
+            case Ast_Function_Type: {
+                Type* type = cu->ast->type;
+                assert(type->kind == TypeKind_Function);
                 add_bytecode_function(&bytecode_builder, type);
+            } break;
+            
+            case Ast_Assignment: {
+                Type* type = cu->ast->type;
+                string_id ident = ast_unwrap_ident(cu->ast->Assignment.ident);
+                
+                if (map_key_exists(bytecode_builder.globals, ident)) {
+                    type_error(&tcx, string_print("cannot redeclare global `%`", f_var(ident)),
+                               cu->ast->span);
+                    continue;
+                }
+                
+                void* data = interp_get_data_pointer(&interp, ident);
+                if (!data) {
+                    type_error(&tcx, string_print("compiler bug: value of `%` is void", f_var(ident)),
+                               cu->ast->span);
+                    assert(0);
+                }
+                
+                int global_index = add_bytecode_global(&bytecode_builder, BC_MEM_READ_WRITE,
+                                                       type->size, type->align, data);
+                map_put(bytecode_builder.globals, ident, global_index);
             }
-            
-        } else if (cu->ast->kind == Ast_Assignment) {
-            Type* type = cu->ast->type;
-            string_id ident = ast_unwrap_ident(cu->ast->Assignment.ident);
-            
-            if (map_key_exists(bytecode_builder.globals, ident)) {
-                type_error(&tcx, string_print("cannot redeclare global `%`", f_var(ident)),
-                           cu->ast->span);
-                continue;
-            }
-            
-            void* data = interp_get_data_pointer(&interp, ident);
-            if (!data) {
-                type_error(&tcx, string_print("compiler bug: value of `%` is void", f_var(ident)),
-                           cu->ast->span);
-                assert(0);
-            }
-            
-            int global_index = add_bytecode_global(&bytecode_builder, BC_MEM_READ_WRITE,
-                                                   type->size, type->align, data);
-            map_put(bytecode_builder.globals, ident, global_index);
         }
     }
     

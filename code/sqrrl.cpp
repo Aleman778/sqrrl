@@ -144,11 +144,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
     Type_Context tcx = {};
-    begin_block(&tcx, &ast_file->block);
-    for_array_v(ast_file->block.statements, it, _2323) {
-        infer_declaration(&tcx, (Ast_Declaration*) it);
-    }
-    end_block(&tcx);
+    infer_block(&tcx, &ast_file->block);
+    check_block(&tcx, &ast_file->block);
     
     String_Builder sb = {};
     print_ast_file(&sb, ast_file);

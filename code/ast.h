@@ -6,27 +6,33 @@ struct Ast_Declaration;
 
 enum Ast_Kind {    
     AST_TYPE,
-    AST_ALIAS_TYPE,
-    AST_STRUCT_TYPE,
-    AST_PROCEDURE_TYPE,
-    
     AST_IDENTIFIER,
     AST_LITERAL,
+    AST_ARGUMENT,
     AST_STRUCT_LITERAL,
     AST_UNARY,
     AST_BINARY,
     AST_CAST,
-    AST_DECLARATION,
     Ast_IDENT,
-    AST_CALL,
+    AST_PROCEDURE_CALL,
     AST_RETURN,
+    
+    AST_DECLARATION,
+    AST_PROCEDURE,
+    AST_STRUCT,
     
     AST_BLOCK,
     
 };
 
+struct Span {
+    Location loc;
+};
+
 struct Ast {
     Ast_Kind kind;
+    
+    Span span;
 };
 
 struct Ast_Expression : Ast {
@@ -71,34 +77,10 @@ enum {
 struct Ast_Type : Ast_Expression {
 #define AST_KIND_Ast_Type AST_TYPE
     Type_Storage storage;
-    Identifier alias;
     u32 flags;
     
     s32 size;
     s32 align;
-};
-
-struct Ast_Alias_Type : Ast_Type {
-#define AST_KIND_Ast_Alias_Type AST_ALIAS_TYPE
-};
-
-struct Ast_Struct_Type : Ast_Type {
-#define AST_KIND_Ast_Struct_Type AST_STRUCT_TYPE
-};
-
-struct Ast_Argument {
-    Ast_Type* type;
-    Identifier identifier;
-    Ast_Expression* initializer;
-};
-
-typedef Ast_Argument Ast_Argument_List;
-
-struct Ast_Procedure_Type : Ast_Type {
-#define AST_KIND_Ast_Procedure_Type AST_PROCEDURE_TYPE
-    
-    Ast_Type* return_type;
-    Ast_Argument_List* args;
 };
 
 inline Ast_Type
@@ -112,6 +94,7 @@ create_basic_type(Type_Storage storage, u32 flags, int size) {
 }
 
 // TODO(Alexander): temporary, we need to fill in sizes later for int/ smm
+// NOTE(Alexander): must have the same order as Type_Storage 
 Ast_Type ast_basic_types[] = {
     create_basic_type(TYPE_NONE,    0, 0),
     create_basic_type(TYPE_VOID,    0, 0),
@@ -136,18 +119,28 @@ Ast_Type ast_basic_types[] = {
     create_basic_type(TYPE_FLOAT,   TYPE_FLAG_FLOAT, 0)
 };
 
+Ast_Type* t_void = &ast_basic_types[TYPE_VOID];
+
 typedef Ast_Expression* Ast_Expression_List;
 
-struct Ast_Identifier : Ast_Expression {
+struct Ast_Identifier : Ast_Type {
 #define AST_KIND_Ast_Identifier AST_IDENTIFIER
     
     Identifier identifier;
 };
 
 inline Identifier
-ast_unwrap_ident(Ast* ast) {
+unwrap_identifier(Ast* ast) {
     assert(ast->kind == AST_IDENTIFIER);
     return ((Ast_Identifier*) ast)->identifier;
+}
+
+inline Identifier
+try_unwrap_identifier(Ast* ast) {
+    if (ast->kind == AST_IDENTIFIER) {
+        return unwrap_identifier(ast);
+    }
+    return Kw_invalid;
 }
 
 struct Ast_Literal : Ast_Expression {
@@ -197,37 +190,43 @@ struct Ast_Binary : Ast_Expression {
     int operator_type;
 };
 
-struct Ast_Scope_Member {
-    Ast_Declaration* declaration;
-    Ast_Type* type_def;
+struct Ast_Cast : Ast_Expression {
+#define AST_KIND_Ast_Cast AST_CAST
+    
+    Ast_Type* type;
+    Ast_Expression* expression;
+};
+
+struct Ast_Argument : Ast_Expression {
+#define AST_KIND_Ast_Argument AST_ARGUMENT
+    
+    Ast_Expression* expression;
+    Ast_Identifier* identifier;
+};
+
+struct Ast_Procedure_Call : Ast_Expression {
+#define AST_KIND_Ast_Procedure_Call AST_PROCEDURE_CALL
+    
+    Ast_Expression* proc;
+    array(Ast_Argument)* args;
+};
+
+struct Ast_Return : Ast_Expression {
+#define AST_KIND_Ast_Return AST_RETURN
+    
+    Ast_Expression* expression;
 };
 
 struct Ast_Block : Ast_Expression {
 #define AST_KIND_Ast_Block AST_BLOCK
     
     Ast_Block* parent;
-    array(Ast*)* statements;
-    map(Identifier, Ast_Scope_Member*)* members;
+    array(Ast_Expression*)* statements;
+    map(Identifier, Ast_Declaration*)* members;
 };
 
-struct Ast_Cast : Ast_Expression {
-#define AST_KIND_Ast_Cast AST_CAST
-    
-    Ast_Type* type;
-    Ast_Expression* expr;
-};
-struct Ast_Call : Ast_Expression {
-#define AST_KIND_Ast_Call AST_CALL
-    
-    Ast_Expression* proc;
-    Ast_Argument_List* args;
-};
+void add_member(Ast_Block* block, Ast_Declaration* decl);
 
-struct Ast_Return : Ast_Expression {
-#define AST_KIND_Ast_Return AST_RETURN
-    
-    Ast_Expression* expr;
-};
 
 struct Ast_Declaration : Ast_Expression {
 #define AST_KIND_Ast_Declaration AST_DECLARATION
@@ -235,6 +234,20 @@ struct Ast_Declaration : Ast_Expression {
     Ast_Expression* type;
     Ast_Expression* initializer;
     Identifier identifier;
+};
+
+struct Ast_Procedure : Ast_Declaration {
+#define AST_KIND_Ast_Procedure AST_PROCEDURE
+    
+    Ast_Type* return_type;
+    Ast_Block* args;
+    Ast_Block* body;
+};
+
+struct Ast_Struct : Ast_Declaration {
+#define AST_KIND_Ast_Struct AST_STRUCT
+    
+    Ast_Block* args;
 };
 
 struct Ast_File {

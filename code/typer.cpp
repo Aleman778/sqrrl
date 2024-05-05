@@ -1,74 +1,40 @@
 
+void
+type_error(Type_Context* tcx, string message, Location loc) {
+    if (tcx->error_count == 0) {
+        Source_File* file = get_source_file_by_index(loc.file_index);
+        pln("%:%:%: error: %", f_string(file->abspath), f_int(loc.line_number + 1), f_int(loc.column_number + 1), f_string(message));
+        
+        DEBUG_log_backtrace();
+        assert(0);
+    }
+    
+    tcx->error_count++;
+}
+
 Ast_Type*
-resolve_type_definition(Type_Context* tcx, Ast_Block* block, Identifier ident) {
+resolve_identifier(Type_Context* tcx, Ast_Block* block, Identifier ident) {
     if (is_builtin_type_keyword(ident)) {
         return &ast_basic_types[ident - builtin_types_begin];
         
     } else {
         Ast_Type* result = 0;
         
-        Ast_Scope_Member* member = map_get(block->members, ident);
+        Ast_Declaration* member = map_get(block->members, ident);
         if (member) {
-            result = member->type_def;
-        }
-        
-        if (!result && block->parent) {
-            result = resolve_type_definition(tcx, block->parent, ident);
+            result = member->inferred_type;
+            
+        } else if (block->parent) {
+            result = resolve_identifier(tcx, block->parent, ident);
         }
         
         return result;
     }
 }
 
-
-Ast_Type*
-infer_type(Type_Context* tcx, Ast_Type* type) {
-    if (type->inferred_type) {
-        return type->inferred_type;
-    }
-    
-    Ast_Type* result = 0;
-    switch (type->kind) {
-        case AST_ALIAS_TYPE: {
-            result = resolve_type_definition(tcx, tcx->block, type->alias);
-        } break;
-        
-        case AST_PROCEDURE_TYPE: {
-            if (infer_procedure_signature(tcx, (Ast_Procedure_Type*) type)) {
-                result = type;
-            }
-        } break;
-        
-        default: {
-            result = type;
-        } break;
-    }
-    
-    type->inferred_type = result;
-    return result;
-}
-
-bool
-infer_procedure_signature(Type_Context* tcx, Ast_Procedure_Type* signature) {
-    
-    // infer types used in signature (return + args) make sure they are valid types
-    bool result = true;
-    result = result && infer_type(tcx, signature->return_type);
-    for_array_it(signature->args, arg) {
-        
-        Ast_Type* type = arg->type;
-        if (!type) {
-            type = (Ast_Type*) arg->initializer;
-        }
-        
-        if (!type) {
-            result = false;
-            break;
-        }
-        
-        result = result && infer_type(tcx, type);
-    }
-    return result;
+inline Ast_Type*
+resolve_identifier(Type_Context* tcx, Identifier ident) {
+    return resolve_identifier(tcx, tcx->block, ident);
 }
 
 Ast_Type*
@@ -76,11 +42,8 @@ infer_expression(Type_Context* tcx, Ast_Expression* expr) {
     Ast_Type* result = 0;
     
     switch (expr->kind) {
-        case AST_TYPE:
-        case AST_ALIAS_TYPE: 
-        case AST_PROCEDURE_TYPE:
-        case AST_STRUCT_TYPE: {
-            result = infer_type(tcx, (Ast_Type*) expr);
+        case AST_TYPE: {
+            result = (Ast_Type*) expr;
         } break;
         
         case AST_LITERAL: {
@@ -90,14 +53,7 @@ infer_expression(Type_Context* tcx, Ast_Expression* expr) {
         
         case AST_IDENTIFIER: {
             auto ident = (Ast_Identifier*) expr;
-            unimplemented;
-            //result = resolve_variable_type(tcx, ident->identifier);
-        } break;
-        
-        case AST_DECLARATION: {
-            if (infer_declaration(tcx, (Ast_Declaration*) expr)) {
-                result = &ast_basic_types[1];
-            }
+            result = resolve_identifier(tcx, ident->identifier);
         } break;
         
         case AST_UNARY: {
@@ -110,21 +66,32 @@ infer_expression(Type_Context* tcx, Ast_Expression* expr) {
         
         case AST_BLOCK: {
             auto block = (Ast_Block*) expr;
-            result = &ast_basic_types[1];
+            
             begin_block(tcx, block);
-            for_array_v(block->statements, it, _) {
-                if (!infer_expression(tcx, (Ast_Expression*) it)) {
-                    result = 0;
-                    break;
-                }
+            if (infer_block(tcx, block)) {
+                result = t_void;
             }
             end_block(tcx);
         } break;
         
         case AST_RETURN: {
             auto ret = (Ast_Return*) expr;
-            Ast_Type* found = infer_expression(tcx, ret->expr);
+            Ast_Type* found = infer_expression(tcx, ret->expression);
             result = found;
+        } break;
+        
+        case AST_DECLARATION: {
+            result = infer_declaration(tcx, (Ast_Declaration*) expr);
+        } break;
+        
+        case AST_PROCEDURE: {
+            if (infer_function(tcx, (Ast_Procedure*) expr)) {
+                result = t_void;
+            }
+        } break;
+        
+        case AST_STRUCT: {
+            unimplemented;
         } break;
         
         default: {
@@ -177,65 +144,110 @@ infer_binary_expression(Type_Context* tcx, Ast_Binary* binary) {
 }
 
 bool
-infer_function_declaration(Type_Context* tcx, Ast_Procedure_Type* sig, Ast_Block* block) {
+infer_block(Type_Context* tcx, Ast_Block* block) {
     bool success = true;
-    
-    begin_block(tcx, block);
-    
-    // Push arguments to block
-    for_array_it(sig->args, arg) {
-        //register_variable(tcx, arg->ident, arg->type);
-    }
-    
-    if (success) {
-        for_array_v(block->statements, it, _) {
-            if (!infer_expression(tcx, (Ast_Expression*) it)) {
-                success = false;
-                break;
-            }
+    for_array_v(block->statements, stmt, _) {
+        if (!infer_expression(tcx, (Ast_Expression*) stmt)) {
+            success = false;
+            break;
         }
     }
     
-    end_block(tcx);
     return success;
 }
 
 bool
-infer_declaration(Type_Context* tcx, Ast_Declaration* decl) { 
-    Ast_Type* type = infer_expression(tcx, decl->type);
-    //assert(type); // TODO: probably return?
+infer_function(Type_Context* tcx, Ast_Procedure* proc) {
+    begin_block(tcx, proc->args);
+    bool result = infer_block(tcx, proc->args);
     
+    if (proc->body) {
+        begin_block(tcx, proc->body);
+        result = result && infer_block(tcx, proc->body);
+        end_block(tcx);
+    }
     
-    if (!type) return false;
+    end_block(tcx);
+    return result;
+}
+
+Ast_Type*
+infer_declaration(Type_Context* tcx, Ast_Declaration* decl) {
+    Ast_Type* result = infer_expression(tcx, decl->type);
+    if (result && decl->initializer) {
+        if (!infer_expression(tcx, decl->initializer)) {
+            result = 0;
+        }
+    }
     
-    // TODO(Alexander): register type in type table
+    return result;
+}
+
+bool
+check_assignment(Type_Context* tcx, Ast_Type* dest, Ast_Expression* src_expr) {
+    Ast_Type* src = src_expr->inferred_type;
+    if (!dest || !src) {
+        // TODO(Alexander): I think if we hit this there should be an error at infer stage.
+        return false;
+    }
     
-    switch (type->kind) {
-        case AST_PROCEDURE_TYPE: {
-            if (decl->initializer && decl->initializer->kind == AST_BLOCK) {
-                infer_function_declaration(tcx,
-                                           (Ast_Procedure_Type*) type,
-                                           (Ast_Block*) decl->initializer);
-            } else {
-                
+    bool result = true;
+    if ((dest->flags & TYPE_FLAG_INTEGER && dest->flags & TYPE_FLAG_INTEGER) ||
+        (dest->flags & TYPE_FLAG_FLOAT && dest->flags & TYPE_FLAG_FLOAT)) {
+        if (dest->size < src->size) {
+            result = false;
+            type_error_lossy_conversion(tcx, dest, src, {});
+        }
+    }
+    
+    return result;
+}
+
+bool
+check_expression(Type_Context* tcx, Ast_Expression* expr) {
+    bool result = true;
+    
+    switch (expr->kind) {
+        case AST_IDENTIFIER: {
+            if (!expr->inferred_type) {
+                Identifier ident = try_unwrap_identifier(expr);
+                if (ident) {
+                    type_error(tcx, string_print("undeclared identifier `%`", f_ident(ident)), {});
+                } else {
+                    type_error(tcx, string_lit("invalid identifier"), {});
+                }
+                result = false;
             }
         } break;
         
-        case AST_STRUCT_TYPE: {
-            if (decl->initializer && decl->initializer->kind == AST_BLOCK) {
-                
-            }
+        case AST_RETURN: {
+            result = check_expression(tcx, ((Ast_Return*) expr)->expression);
+            result = result && check_assignment(tcx, tcx->return_type, expr);
+        } break;
+        
+        case AST_BLOCK: {
+            result = check_block(tcx, (Ast_Block*) expr);
+        } break;
+        
+        case AST_PROCEDURE: {
+            Ast_Procedure* proc = (Ast_Procedure*) expr;
+            Ast_Type* prev_return_type = tcx->return_type;
+            tcx->return_type = proc->return_type;
+            result = check_expression(tcx, proc->body);
+            tcx->return_type = prev_return_type;
         } break;
     }
     
-    if (decl->initializer) {
-        Ast_Type* actual_type = infer_expression(tcx, decl->initializer);
-        if (type && actual_type) {
-            return true;
+    return result;
+}
+
+bool
+check_block(Type_Context* tcx, Ast_Block* block) {
+    for_array_v(block->statements, stmt, _) {
+        if (!check_expression(tcx, (Ast_Expression*) stmt)) {
+            return false;
         }
-    } else {
-        return true;
     }
     
-    return false;
+    return true;
 }

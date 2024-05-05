@@ -458,7 +458,7 @@ enum Format_Type { // TODO(Alexander): add more types
 #define f_cstring(x) FormatType_cstring, (cstring) (x)
 #define f_ast(x) FormatType_ast, (Ast*) (x)
 #define f_value(x) FormatType_value, (Value*) (x)
-#define f_type(x) FormatType_type, (Type*) (x)
+#define f_type(x) FormatType_type, (Ast_Type*) (x)
 #define f_bc_type(x) FormatType_bytecode_type, (Bytecode_Type) (x)
 
 void print(cstring format...);

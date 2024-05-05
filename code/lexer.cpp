@@ -215,9 +215,9 @@ syntax_error(Lexer* lexer, string message, Token* error_token) {
 }
 
 void
-syntax_error_expected(Lexer* lexer, u8 expected, Token* error_token) {
+syntax_error_expected(Lexer* lexer, Token_Kind expected, Token* error_token) {
     Token token = error_token ? *error_token : lexer->curr_token;
-    syntax_error(lexer, string_print("expected `%`, found `%`", f_char(expected),
+    syntax_error(lexer, string_print("expected `%`, found `%`", f_string(token_kind_to_string(expected)),
                                      f_string(token_to_string(token))));
 }
 
@@ -241,7 +241,7 @@ lex(Lexer* lexer) {
     result.source.data = lexer->curr - 1;
     result.kind = token_lit(ch);
     if (is_ident_start(ch)) {
-        result.kind = lex_identifier(lexer, &result.ident);
+        result.kind = lex_identifier(lexer, &result.identifier);
         
     } else if (is_digit(ch)) {
         result.kind = lex_number(lexer, &result, ch);
@@ -268,7 +268,7 @@ bool
 lex_expect(Lexer* lexer, u8 kind) {
     if (lex(lexer) != kind) {
         unlex(lexer);
-        syntax_error_expected(lexer, kind);
+        syntax_error_expected(lexer, (Token_Kind) kind);
         return false;
     }
     

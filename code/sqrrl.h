@@ -63,7 +63,7 @@ enum Compiler_Task {
 //#include "sqrrl_pe_converter.h"
 //#include "sqrrl_x64_converter.h"
 //#include "sqrrl_wasm_converter.h"
-//#include "sqrrl_test.h"
+//#include "sqrrl_testh"
 
 extern "C" int compiler_main_entry(int argc, char* argv[]);
 

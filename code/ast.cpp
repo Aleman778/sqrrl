@@ -1,14 +1,14 @@
 
-inline void
-print_argument_list(String_Builder* sb, Ast_Argument_List* args, int indent) {
-    if (!args) {
-        string_builder_push(sb, "null");
-    }
-    for_array_it(args, arg) {
-        string_builder_push_newline(sb, indent);
-        string_builder_push(sb, "- ");
-        print_ast_expression(sb, arg->initializer, indent + 2, false);
-        // TODO(Alexander): print type and identifier when applicable
+void
+add_member(Ast_Block* block, Ast_Declaration* decl) {
+    array_push(block->statements, decl);
+    
+    if (decl->identifier && map_get_index(block->members, decl->identifier) == -1) {
+        map_put(block->members, decl->identifier, decl);
+        
+    } else {
+        // TODO(Alexander): error redeclare unless function
+        unimplemented;
     }
 }
 
@@ -77,36 +77,6 @@ print_ast_expression(String_Builder* sb, Ast_Expression* expr, int indent, bool 
             print_ast_type_storage(sb, ((Ast_Type*) expr)->storage);
         } break;
         
-        case AST_ALIAS_TYPE: {
-            auto type = (Ast_Alias_Type*) expr;
-            string_builder_push(sb, "Ast_Alias_Type:");
-            
-            string_builder_push_newline(sb, indent + 2);
-            string_builder_push_format(sb, "alias: %", f_ident(type->alias));
-        } break;
-        
-        case AST_STRUCT_TYPE: {
-            auto type = (Ast_Struct_Type*) expr;
-            string_builder_push(sb, "Ast_Struct_Type:");
-            
-            string_builder_push_newline(sb, indent + 2);
-            string_builder_push_format(sb, "alias: %", f_ident(type->alias));
-        } break;
-        
-        case AST_PROCEDURE_TYPE: {
-            auto proc = (Ast_Procedure_Type*) expr;
-            string_builder_push(sb, "Ast_Procedure_Type:");
-            
-            string_builder_push_newline(sb, indent + 2);
-            string_builder_push_format(sb, "return_type: ");
-            print_ast_expression(sb, proc->return_type, indent + 4);
-            
-            
-            string_builder_push_newline(sb, indent + 2);
-            string_builder_push_format(sb, "args: ");
-            print_argument_list(sb, proc->args, indent + 4);
-        } break;
-        
         case AST_LITERAL: {
             auto literal = (Ast_Literal*) expr;
             string_builder_push_format(sb, "Ast_Literal:");
@@ -134,13 +104,9 @@ print_ast_expression(String_Builder* sb, Ast_Expression* expr, int indent, bool 
             print_ast_block(sb, (Ast_Block*) expr, indent);
         } break;
         
-        case AST_DECLARATION: {
-            print_ast_declaration(sb, (Ast_Declaration*) expr, indent);
-        } break;
-        
-        case AST_CALL: {
-            auto call = (Ast_Call*) expr;
-            string_builder_push(sb, "Ast_Call:");
+        case AST_PROCEDURE_CALL: {
+            auto call = (Ast_Procedure_Call*) expr;
+            string_builder_push(sb, "Ast_Procedure_Call:");
             
             string_builder_push_newline(sb, indent + 2);
             string_builder_push_format(sb, "proc: ");
@@ -148,7 +114,7 @@ print_ast_expression(String_Builder* sb, Ast_Expression* expr, int indent, bool 
             
             string_builder_push_newline(sb, indent + 2);
             string_builder_push_format(sb, "args: ");
-            print_argument_list(sb, call->args, indent + 4);
+            print_ast_expression(sb, call->args, indent + 4);
         } break;
         
         case AST_IDENTIFIER: {
@@ -178,7 +144,39 @@ print_ast_expression(String_Builder* sb, Ast_Expression* expr, int indent, bool 
             string_builder_push(sb, "Ast_Return:");
             string_builder_push_newline(sb, indent + 2);
             string_builder_push(sb, "expr: ");
-            print_ast_expression(sb, ret->expr, indent + 4);
+            print_ast_expression(sb, ret->expression, indent + 4);
+        } break;
+        
+        case AST_DECLARATION: {
+            string_builder_push(sb, "Ast_Declaration:");
+            print_ast_declaration(sb, (Ast_Declaration*) expr, indent);
+        } break;
+        
+        case AST_PROCEDURE: {
+            auto proc = (Ast_Procedure*) expr;
+            string_builder_push(sb, "Ast_Procedure:");
+            print_ast_declaration(sb, (Ast_Declaration*) expr, indent);
+            
+            string_builder_push_newline(sb, indent + 2);
+            string_builder_push_format(sb, "return_type: ");
+            print_ast_expression(sb, proc->return_type, indent + 4);
+            
+            string_builder_push_newline(sb, indent + 2);
+            string_builder_push_format(sb, "args: ");
+            print_ast_expression(sb, proc->args, indent + 4);
+            
+            string_builder_push_newline(sb, indent + 2);
+            string_builder_push_format(sb, "body: ");
+            print_ast_expression(sb, proc->body, indent + 4);
+        } break;
+        
+        case AST_STRUCT: {
+            auto struct_node = (Ast_Struct*) expr;
+            string_builder_push(sb, "Ast_Struct:");
+            print_ast_declaration(sb, (Ast_Declaration*) expr, indent);
+            
+            string_builder_push_newline(sb, indent + 2);
+            string_builder_push_format(sb, "identifier: %", f_ident(struct_node->identifier));
         } break;
         
         default: {
@@ -193,29 +191,8 @@ print_ast_expression(String_Builder* sb, Ast_Expression* expr, int indent, bool 
     }
 }
 
-inline void
-print_ast_proc_signature(String_Builder* sb, Ast_Procedure_Type* sig, int indent=0) {
-    string_builder_push_newline(sb, indent);
-    string_builder_push(sb, "return_type: ");
-    print_ast_expression(sb, sig->return_type);
-    
-    string_builder_push_newline(sb, indent);
-    string_builder_push(sb, "args:");
-    
-    if (!sig->args) {
-        string_builder_push(sb, " null");
-    }
-    for_array_it(sig->args, arg) {
-        string_builder_push_newline(sb, indent + 2);
-        string_builder_push_format(sb, "- %: ", f_ident(arg->identifier));
-        print_ast_expression(sb, arg->type, indent + 4);
-    }
-}
-
 void
 print_ast_declaration(String_Builder* sb, Ast_Declaration* decl, int indent) {
-    string_builder_push(sb, "Ast_Declaration:");
-    
     string_builder_push_newline(sb, indent + 2);
     string_builder_push(sb, "type: ");
     print_ast_expression(sb, decl->type, indent + 4);

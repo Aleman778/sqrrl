@@ -111,11 +111,34 @@ struct Token {
     string source;
     
     union {
-        Identifier ident;
+        Identifier identifier;
         u64 u64_value;
         f64 f64_value;
     };
 };
+
+string
+token_kind_to_string(Token_Kind kind) {
+    string result = {};
+    if (kind < 128) {
+        result = string_alloc(1);
+        result.data[0] = (u8) kind;
+    } else if (kind >= Token_Asm && kind <= Token_While) {
+        return global_vars.id_to_str[Kw_asm + (kind - Token_Asm)];
+    } else if (kind >= Token_Void && kind <= Token_Typeid) {
+        return global_vars.id_to_str[Kw_void + (kind - Token_Void)];
+    } else {
+        switch (kind) {
+            case Token_Ident:          result = string_lit("identifier"); break;
+            case Token_Int_Literal:    result = string_lit("int literal"); break;
+            case Token_Float_Literal:  result = string_lit("float literal"); break;
+            case Token_String_Literal: result = string_lit("string literal"); break;
+            case Token_Char_Literal:   result = string_lit("char literal"); break;
+        }
+    }
+    
+    return result;
+}
 
 string
 token_to_string(Token token) {
@@ -143,7 +166,7 @@ struct Lexer {
 
 void syntax_error(Lexer* lexer, string message, Token* error_token=0);
 
-void syntax_error_expected(Lexer* lexer, u8 expected, Token* error_token=0);
+void syntax_error_expected(Lexer* lexer, Token_Kind expected, Token* error_token=0);
 
 Token_Kind lex(Lexer* lexer);
 

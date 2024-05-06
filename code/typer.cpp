@@ -1,31 +1,46 @@
 
 void
-type_error(Type_Context* tcx, string message, Location loc) {
+type_error(Type_Context* tcx, string message, Span span) {
     if (tcx->error_count == 0) {
-        Source_File* file = get_source_file_by_index(loc.file_index);
-        pln("%:%:%: error: %", f_string(file->abspath), f_int(loc.line_number + 1), f_int(loc.column_number + 1), f_string(message));
+        Source_File* file = 0;
+        if (tcx->file) {
+            file = tcx->file->source_file;
+        }
+        
+        if (file) {
+            pln("%:%:%: error: %", f_string(file->abspath), 
+                f_int(span.l0 + 1), f_int(span.c0 + 1), f_string(message));
+        } else {
+            pln("error: %", f_string(message));
+        }
         
         DEBUG_log_backtrace();
-        assert(0);
     }
     
     tcx->error_count++;
 }
 
-Ast_Type*
+Ast_Declaration*
+resolve_declaration_by_identifier(Type_Context* tcx, Ast_Block* block, Identifier ident) {
+    Ast_Declaration* result = map_get(block->members, ident);
+    if (!result && block->parent) {
+        result = resolve_declaration_by_identifier(tcx, block->parent, ident);
+    }
+    
+    
+    return result;
+}
+
+inline Ast_Type*
 resolve_identifier(Type_Context* tcx, Ast_Block* block, Identifier ident) {
     if (is_builtin_type_keyword(ident)) {
         return &ast_basic_types[ident - builtin_types_begin];
         
     } else {
         Ast_Type* result = 0;
-        
-        Ast_Declaration* member = map_get(block->members, ident);
-        if (member) {
-            result = member->inferred_type;
-            
-        } else if (block->parent) {
-            result = resolve_identifier(tcx, block->parent, ident);
+        Ast_Declaration* decl = resolve_declaration_by_identifier(tcx, block, ident);
+        if (decl) {
+            result = decl->inferred_type;
         }
         
         return result;
@@ -185,18 +200,26 @@ infer_declaration(Type_Context* tcx, Ast_Declaration* decl) {
 
 bool
 check_assignment(Type_Context* tcx, Ast_Type* dest, Ast_Expression* src_expr) {
+    bool result = true;
     Ast_Type* src = src_expr->inferred_type;
     if (!dest || !src) {
         // TODO(Alexander): I think if we hit this there should be an error at infer stage.
         return false;
     }
     
-    bool result = true;
-    if ((dest->flags & TYPE_FLAG_INTEGER && dest->flags & TYPE_FLAG_INTEGER) ||
-        (dest->flags & TYPE_FLAG_FLOAT && dest->flags & TYPE_FLAG_FLOAT)) {
-        if (dest->size < src->size) {
+    // Integer and float types accept only equal or conversions that are non-lossy 
+    // (no data is lost in the auto conversion) lossy if one of these statements are true
+    // - not same kind e.g. one is int and other is float
+    // - size of dest type is smaller than src type
+    u32 numeric_flags = TYPE_FLAG_INTEGER | TYPE_FLAG_FLOAT;
+    u32 src_numeric_flags = (src->flags & numeric_flags);
+    u32 dest_numeric_flags = (dest->flags & numeric_flags);
+    
+    if (src_numeric_flags && dest_numeric_flags) {
+        
+        if (src_numeric_flags != dest_numeric_flags || dest->size < src->size) {
             result = false;
-            type_error_lossy_conversion(tcx, dest, src, {});
+            type_error_lossy_conversion(tcx, dest, src, src_expr->span);
         }
     }
     
@@ -212,9 +235,9 @@ check_expression(Type_Context* tcx, Ast_Expression* expr) {
             if (!expr->inferred_type) {
                 Identifier ident = try_unwrap_identifier(expr);
                 if (ident) {
-                    type_error(tcx, string_print("undeclared identifier `%`", f_ident(ident)), {});
+                    type_error(tcx, string_print("undeclared identifier `%`", f_ident(ident)), expr->span);
                 } else {
-                    type_error(tcx, string_lit("invalid identifier"), {});
+                    type_error(tcx, string_lit("invalid identifier"), expr->span);
                 }
                 result = false;
             }
@@ -227,6 +250,34 @@ check_expression(Type_Context* tcx, Ast_Expression* expr) {
         
         case AST_BLOCK: {
             result = check_block(tcx, (Ast_Block*) expr);
+        } break;
+        
+        case AST_DECLARATION: {
+            Ast_Declaration* decl = (Ast_Declaration*) expr;
+            
+            // Check if this declaration shadows a previous one
+            Ast_Declaration* shadow = resolve_declaration_by_identifier(tcx, tcx->block, decl->identifier);
+            if (shadow != decl) {
+                type_error(tcx, string_print("cannot redeclare previous declaration `%`", 
+                                             f_ident(decl->identifier)), decl->span);
+            }
+            
+            Ast_Expression* initializer = decl->initializer;
+            if (initializer) {
+                Ast_Type* type = 0;
+                if (decl->type) {
+                    type = decl->type->inferred_type;
+                }
+                
+                if (type && type->storage != TYPE_VOID) {
+                    result = check_expression(tcx, initializer);
+                    result = result && check_assignment(tcx, type, initializer);
+                    
+                } else {
+                    result = false;
+                    type_error(tcx, string_lit("cannot declare with void type"), {});
+                }
+            }
         } break;
         
         case AST_PROCEDURE: {
@@ -243,11 +294,13 @@ check_expression(Type_Context* tcx, Ast_Expression* expr) {
 
 bool
 check_block(Type_Context* tcx, Ast_Block* block) {
+    begin_block(tcx, block);
     for_array_v(block->statements, stmt, _) {
         if (!check_expression(tcx, (Ast_Expression*) stmt)) {
             return false;
         }
     }
+    end_block(tcx);
     
     return true;
 }

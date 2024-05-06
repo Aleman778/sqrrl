@@ -100,9 +100,9 @@ enum Token_Kind {
 #define token_lit(ch) ((Token_Kind) ch)
 
 struct Location {
-    u32 file_index;
-    u32 line_number;
-    u32 column_number;
+    s32 file_index;
+    s32 line_number;
+    s32 column_number;
 };
 
 struct Token {

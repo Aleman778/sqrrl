@@ -239,6 +239,16 @@ format_sprintf(char* dst, umm dst_size, Format_Type type, va_list args) {
             result.count = snprintf(dst, dst_size, "%.*s", (int) str.count, (char*) str.data);
         } break;
         
+        case FormatType_type: {
+            Ast_Type* ty = va_arg(args, Ast_Type*);
+            if (ty->storage <= TYPE_TYPEID) {
+                string str = vars_load_string(builtin_types_begin + ty->storage);
+                result.count = snprintf(dst, dst_size, "%.*s", (int) str.count, (char*) str.data);
+            } else {
+                unimplemented;
+            }
+        } break;
+        
 #if 0
         case FormatType_bytecode_type: {
             String_Builder sb = {};

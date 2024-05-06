@@ -156,9 +156,25 @@ lex_number(Lexer* lexer, Token* token, u8 ch) {
         has_integral_digits = true;
     }
     
-    // TODO(Alexander): add support for float literals
-    token->u64_value = integral_part;
-    return Token_Int_Literal;
+    
+    if (*lexer->curr == '.') {
+        lexer_next_char(lexer);
+        u64 fractional_part = 0;
+        lex_integer(lexer, base, &fractional_part);
+        token->f64_value = (f64) fractional_part / (f64) integral_part;
+        
+        // TODO(Alexander): add support for e
+        
+        if (*lexer->curr == 'e' || *lexer->curr == 'E') {
+            unimplemented;
+        }
+        
+        return Token_Float_Literal;
+        
+    } else {
+        token->u64_value = integral_part;
+        return Token_Int_Literal;
+    }
 }
 
 void
@@ -207,7 +223,6 @@ syntax_error(Lexer* lexer, string message, Token* error_token) {
         pln("%:%:%: error: %", f_string(file->abspath), f_int(loc.line_number + 1), f_int(loc.column_number + 1), f_string(message));
         
         DEBUG_log_backtrace();
-        assert(0);
     }
     
     lexer->error_count++;

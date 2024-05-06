@@ -137,6 +137,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     lexer_init_source(&lexer, &ast_arena, source, file->index);
     Ast_File* ast_file = parse_file(&lexer);
+    ast_file->source_file = file;
     
     if (!file)  {
         pln("Failed to parse");
@@ -144,6 +145,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
     Type_Context tcx = {};
+    tcx.file = ast_file;
     infer_block(&tcx, &ast_file->block);
     check_block(&tcx, &ast_file->block);
     

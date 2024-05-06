@@ -22,11 +22,12 @@ enum Ast_Kind {
     AST_STRUCT,
     
     AST_BLOCK,
-    
 };
 
+
 struct Span {
-    Location loc;
+    s32 l0, l1;
+    s16 c0, c1;
 };
 
 struct Ast {
@@ -251,17 +252,33 @@ struct Ast_Struct : Ast_Declaration {
 };
 
 struct Ast_File {
-    
     Ast_Block block;
+    
+    Source_File* source_file;
 };
 
-#define push_ast_node(lexer, T) (T*) \
-_push_ast_node(lexer, sizeof(T), alignof(T), AST_KIND_##T)
+#define push_ast_node(lexer, T, ...) (T*) \
+_push_ast_node(lexer, sizeof(T), alignof(T), AST_KIND_##T, __VA_ARGS__)
+
+inline Span
+token_to_span(Token token) {
+    Span result = {};
+    result.l0 = token.loc.line_number;
+    result.l1 = result.l0;
+    result.c0 = (s16) token.loc.column_number;
+    result.c1 = (s16) (result.c0 + token.source.count);
+    return result;
+}
 
 inline Ast*
-_push_ast_node(Lexer* lexer, umm size, umm align, Ast_Kind kind) {
+_push_ast_node(Lexer* lexer, umm size, umm align, Ast_Kind kind, Token* token=0) {
+    if (!token) {
+        token = &lexer->curr_token;
+    }
+    
     Ast* result = (Ast*) arena_push_size(lexer->ast_arena, size, align);
     result->kind = kind;
+    result->span = token_to_span(*token);
     return result;
 }
 

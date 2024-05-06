@@ -2,6 +2,7 @@
 struct Type_Context {
     Memory_Arena* arena;
     
+    Ast_File* file;
     Ast_Block* block;
     Ast_Type* return_type;
     
@@ -9,14 +10,21 @@ struct Type_Context {
 };
 
 void
-type_error(Type_Context* tcx, string message, Location loc);
+type_error(Type_Context* tcx, string message, Span span);
+
+// Sample error message:
+// 
+// error: conversion from `f32` to `int`, possible loss of data
+//   |
+// 43| int var = foo;
+//   |           ~~~
 
 inline void
-type_error_lossy_conversion(Type_Context* tcx, Ast_Type* dest, Ast_Type* src, Location loc) {
+type_error_lossy_conversion(Type_Context* tcx, Ast_Type* dest, Ast_Type* src, Span span) {
     type_error(tcx, 
                string_print("conversion from `%` to `%`, possible loss of data",
                             f_type(src), f_type(dest)),
-               loc);
+               span);
 }
 
 inline void

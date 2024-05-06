@@ -6,8 +6,8 @@ add_member(Ast_Block* block, Ast_Declaration* decl) {
     if (decl->identifier && map_get_index(block->members, decl->identifier) == -1) {
         map_put(block->members, decl->identifier, decl);
         
-    } else {
-        // TODO(Alexander): error redeclare unless function
+    } else if (decl->kind == AST_PROCEDURE) {
+        // TODO(Alexander): create a set of overloaded functions
         unimplemented;
     }
 }

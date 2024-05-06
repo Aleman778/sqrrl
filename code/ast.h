@@ -69,10 +69,9 @@ enum Type_Storage {
 };
 
 enum {
-    TYPE_FLAG_CONST = bit(0),
+    TYPE_FLAG_UNSIGNED = bit(0),
     TYPE_FLAG_INTEGER = bit(1),
-    TYPE_FLAG_UNSIGNED = bit(2),
-    TYPE_FLAG_FLOAT = bit(3),
+    TYPE_FLAG_FLOAT = bit(2),
 };
 
 struct Ast_Type : Ast_Expression {
@@ -92,6 +91,16 @@ create_basic_type(Type_Storage storage, u32 flags, int size) {
     result.size = size;
     result.align = size;
     return result;
+}
+
+string
+type_to_string(Ast_Type* type) {
+    if (type->storage <= TYPE_TYPEID) {
+        return vars_load_string(builtin_types_begin + type->storage);
+    } else {
+        unimplemented;
+        return string_lit("?");
+    }
 }
 
 // TODO(Alexander): temporary, we need to fill in sizes later for int/ smm
@@ -153,6 +162,7 @@ struct Ast_Literal : Ast_Expression {
         f32 f32_value;
         f64 f64_value;
     };
+    bool u64_overflow;
 };
 
 struct Ast_Struct_Literal : Ast_Expression {

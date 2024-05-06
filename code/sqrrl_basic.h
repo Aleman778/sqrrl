@@ -72,6 +72,7 @@ typedef const char*  cstring;
 #define U16_MAX 0xffffU
 #define U32_MAX 0xffffffffU
 #define U64_MAX 0xffffffffffffffffull
+#define U64_LAST_BIT 8000000000000000ull
 #define UMM_MAX U64_MAX // TODO(Alexander): we need to detect and set this correctly later
 #define UINT_MAX U32_MAX
 #define BOOL_MAX S8_MAX

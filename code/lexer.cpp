@@ -87,7 +87,7 @@ lex_identifier(Lexer* lexer, Identifier* out_ident) {
 }
 
 inline bool
-lex_integer(Lexer* lexer, int base, u64* result) {
+lex_integer(Lexer* lexer, int base, u64* result, bool* overflow_flag=0) {
     bool has_digits = false;
     while (lexer->curr < lexer->end) {
         if (*lexer->curr == '_') {
@@ -107,11 +107,19 @@ lex_integer(Lexer* lexer, int base, u64* result) {
         
         lexer_next_char(lexer);
         if (d >= base) {
-            unimplemented;
-            //tokenization_error(lexer, string_print("expected digit with base %, found `%`", f_int(base), f_char(*lexer->curr)));
+            lex_error(lexer, string_print("expected digit with base %, found `%`", f_int(base), f_char(*lexer->curr)),
+                      lexer->loc);
         }
         
-        *result = *result * base + d;
+        
+        u64 curr = *result;
+        if (overflow_flag) {
+            // TODO(Alexander): optimize this
+            *overflow_flag |= ((curr > U64_MAX / base) || 
+                               (curr == U64_MAX / base && d > U64_MAX % base));
+        }
+        
+        *result = curr * base + d;
         has_digits = true;
     }
     return has_digits;
@@ -152,7 +160,7 @@ lex_number(Lexer* lexer, Token* token, u8 ch) {
         has_integral_digits = true;
     }
     
-    if (lex_integer(lexer, base, &integral_part)) {
+    if (lex_integer(lexer, base, &integral_part, &token->u64_overflow)) {
         has_integral_digits = true;
     }
     
@@ -234,6 +242,16 @@ syntax_error_expected(Lexer* lexer, Token_Kind expected, Token* error_token) {
     Token token = error_token ? *error_token : lexer->curr_token;
     syntax_error(lexer, string_print("expected `%`, found `%`", f_string(token_kind_to_string(expected)),
                                      f_string(token_to_string(token))));
+}
+
+void
+lex_error(Lexer* lexer, string message, Location loc) {
+    if (lexer->error_count == 0) {
+        Source_File* file = get_source_file_by_index(loc.file_index);
+        pln("%:%:%: error: %", f_string(file->abspath), f_int(loc.line_number + 1), f_int(loc.column_number + 1), f_string(message));
+        
+        lexer->error_count++;
+    }
 }
 
 Token_Kind

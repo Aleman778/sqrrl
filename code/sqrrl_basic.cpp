@@ -131,14 +131,16 @@ print(const char* format...) {
                     print_bytecode_type(va_arg(args, Bytecode_Type));
                 } break;
                 
-                case FormatType_type: {
-                    print_type(va_arg(args, Type*));
-                } break;
-                
                 case FormatType_value: {
                     print_value(va_arg(args, Value*));
                 } break;
 #endif
+                
+                case FormatType_type: {
+                    Ast_Type* ty = va_arg(args, Ast_Type*);
+                    string str = type_to_string(ty);
+                    printf("%.*s", (int) str.count, (char*) str.data);
+                } break;
                 
                 default: {
                     assert(0 && "unimplemented format type");
@@ -241,12 +243,8 @@ format_sprintf(char* dst, umm dst_size, Format_Type type, va_list args) {
         
         case FormatType_type: {
             Ast_Type* ty = va_arg(args, Ast_Type*);
-            if (ty->storage <= TYPE_TYPEID) {
-                string str = vars_load_string(builtin_types_begin + ty->storage);
-                result.count = snprintf(dst, dst_size, "%.*s", (int) str.count, (char*) str.data);
-            } else {
-                unimplemented;
-            }
+            string str = type_to_string(ty);
+            result.count = snprintf(dst, dst_size, "%.*s", (int) str.count, (char*) str.data);
         } break;
         
 #if 0

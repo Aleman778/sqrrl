@@ -59,11 +59,12 @@ infer_expression(Type_Context* tcx, Ast_Expression* expr) {
     switch (expr->kind) {
         case AST_TYPE: {
             result = (Ast_Type*) expr;
+            pln("infer AST_TYPE: %", f_type(result));
         } break;
         
         case AST_LITERAL: {
             auto literal = (Ast_Literal*) expr;
-            result = &ast_basic_types[literal->type];
+            result = infer_expression(tcx, &ast_basic_types[literal->type]);
         } break;
         
         case AST_IDENTIFIER: {
@@ -217,7 +218,59 @@ check_assignment(Type_Context* tcx, Ast_Type* dest, Ast_Expression* src_expr) {
     
     if (src_numeric_flags && dest_numeric_flags) {
         
-        if (src_numeric_flags != dest_numeric_flags || dest->size < src->size) {
+        bool lossy = false;
+        if (src_expr->kind == AST_LITERAL) {
+            // For literals we can allow auto casts to arbitrary size as long as the value fits
+            Ast_Literal* lit = (Ast_Literal*) src_expr;
+            
+            if (dest_numeric_flags != src_numeric_flags) {
+                // TODO: Convert literal value
+                unimplemented;
+            }
+            
+            if (dest->flags & TYPE_FLAG_INTEGER) {
+                // Check integer overflow
+                bool overflow = lit->u64_overflow;
+                
+                u64 mask = lit->u64_value;
+                if (!(src->flags & TYPE_FLAG_UNSIGNED) && (mask & U64_LAST_BIT)) {
+                    mask = ~mask;
+                }
+                int num_bits = intrin_index_of_last_set_bit(mask);
+                pln("%: %", f_u64(mask), f_int(num_bits));
+                
+                
+                switch (dest->storage) {
+                    case TYPE_S8:  overflow |= num_bits >= 7;  break;
+                    case TYPE_U8:  overflow |= num_bits >= 8;  break;
+                    case TYPE_S16: overflow |= num_bits >= 15; break;
+                    case TYPE_U16: overflow |= num_bits >= 16; break;
+                    case TYPE_S32: overflow |= num_bits >= 31; break;
+                    case TYPE_U32: overflow |= num_bits >= 32; break;
+                    
+                    case TYPE_VOID:
+                    case TYPE_BOOL:
+                    case TYPE_INT:
+                    case TYPE_SMM:
+                    case TYPE_UMM:
+                    case TYPE_UINT: {
+                        result = false;
+                        type_error(tcx, string_lit("invalid type"), dest->span);
+                    } break;
+                }
+                
+                if (overflow) {
+                    result = false;
+                    type_error(tcx, string_print("constant cannot fit in type `%`", f_type(dest)),
+                               src_expr->span);
+                }
+            }
+            
+        } else {
+            lossy = src_numeric_flags != dest_numeric_flags && dest->size < src->size;
+        }
+        
+        if (lossy) {
             result = false;
             type_error_lossy_conversion(tcx, dest, src, src_expr->span);
         }
@@ -254,10 +307,12 @@ check_expression(Type_Context* tcx, Ast_Expression* expr) {
         
         case AST_DECLARATION: {
             Ast_Declaration* decl = (Ast_Declaration*) expr;
+            result = check_expression(tcx, decl->type);
             
             // Check if this declaration shadows a previous one
             Ast_Declaration* shadow = resolve_declaration_by_identifier(tcx, tcx->block, decl->identifier);
             if (shadow != decl) {
+                result = false;
                 type_error(tcx, string_print("cannot redeclare previous declaration `%`", 
                                              f_ident(decl->identifier)), decl->span);
             }
@@ -270,7 +325,7 @@ check_expression(Type_Context* tcx, Ast_Expression* expr) {
                 }
                 
                 if (type && type->storage != TYPE_VOID) {
-                    result = check_expression(tcx, initializer);
+                    result = result && check_expression(tcx, initializer);
                     result = result && check_assignment(tcx, type, initializer);
                     
                 } else {

@@ -27,6 +27,12 @@ parse_type(Lexer* lexer) {
             result = &ast_basic_types[ident - builtin_types_begin];
         } break;
         
+        case Token_Ident: {
+            Ast_Identifier* alias = push_ast_node(lexer, Ast_Identifier);
+            alias->identifier = lexer->curr_token.identifier;
+            result = alias;
+        } break;
+        
         case Token_Enum: {
             unimplemented;
         } break;
@@ -89,6 +95,7 @@ parse_leaf_expression(Lexer* lexer) {
             Ast_Literal* literal = push_ast_node(lexer, Ast_Literal);
             literal->type = TYPE_INT;
             literal->u64_value = lexer->curr_token.u64_value;
+            literal->u64_overflow = lexer->curr_token.u64_overflow;
             result = literal;
         } break;
         
@@ -103,6 +110,12 @@ parse_leaf_expression(Lexer* lexer) {
             Ast_Identifier* identifier = push_ast_node(lexer, Ast_Identifier);
             identifier->identifier = lexer->curr_token.identifier;
             result = identifier;
+        } break;
+        
+        case '-': {
+            unimplemented;
+            //Ast_Unary* unary = push_ast_node(lexer, Ast_Unary);
+            //unary->left = 
         } break;
         
         case '{': {
@@ -474,16 +487,25 @@ parse_declaration(Lexer* lexer, Ast_Block* block) {
                     lex_expect(lexer, ';');
                     
                 } else {
-                    unimplemented;
+                    
+                    result = push_ast_node(lexer, Ast_Declaration);
+                    result->identifier = identifier;
+                    result->type = type;
+                    lex_expect(lexer, ';');
                 }
                 
                 add_member(block, result);
             }
+            
+            if (!result) {
+                if (type) {
+                    syntax_error(lexer, string_lit("expected identifier in declaration"));
+                } else {
+                    syntax_error(lexer, string_lit("expected declaration"));
+                }
+            }
+            
         } break;
-    }
-    
-    if (!result) {
-        syntax_error(lexer, string_lit("expected declaration"));
     }
     
     while (lex_if_matched(lexer, ';')); // optionally end with semicolon

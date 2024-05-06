@@ -115,6 +115,8 @@ struct Token {
         u64 u64_value;
         f64 f64_value;
     };
+    
+    bool u64_overflow;
 };
 
 string
@@ -167,6 +169,8 @@ struct Lexer {
 void syntax_error(Lexer* lexer, string message, Token* error_token=0);
 
 void syntax_error_expected(Lexer* lexer, Token_Kind expected, Token* error_token=0);
+
+void lex_error(Lexer* lexer, string message, Location loc);
 
 Token_Kind lex(Lexer* lexer);
 

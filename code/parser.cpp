@@ -113,9 +113,10 @@ parse_leaf_expression(Lexer* lexer) {
         } break;
         
         case '-': {
-            unimplemented;
-            //Ast_Unary* unary = push_ast_node(lexer, Ast_Unary);
-            //unary->left = 
+            Ast_Unary* unary = push_ast_node(lexer, Ast_Unary);
+            unary->subexpression = parse_expression(lexer, get_precedence(OP_NEG));
+            unary->op = OP_NEG;
+            result = unary;
         } break;
         
         case '{': {
@@ -133,23 +134,14 @@ parse_leaf_expression(Lexer* lexer) {
     return result;
 }
 
-int
+Operator_Kind
 parse_binary_operator(Token token) {
     switch (token.kind) {
         case '+': return OP_ADD;
         case '-': return OP_SUB;
         case '*': return OP_MUL;
         case '/': return OP_DIV;
-        default: return 0;
-    }
-}
-
-int
-get_precedence(Token token) {
-    switch (token.kind) {
-        case '+': return 10;
-        case '-': return 10;
-        default: return 0;
+        default:  return OP_NONE;
     }
 }
 
@@ -158,13 +150,13 @@ parse_binary_expression(Lexer* lexer, Ast_Expression* left, int min_prec) {
     lex(lexer);
     
     Token token = lexer->curr_token;
-    int operator_type = parse_binary_operator(token);
-    if (!operator_type) {
+    Operator_Kind op = parse_binary_operator(token);
+    if (!op) {
         unlex(lexer);
         return left;
     }
     
-    int next_prec = get_precedence(token);
+    int next_prec = get_precedence(op);
     if (next_prec <= min_prec) {
         unlex(lexer);
         return left;
@@ -174,7 +166,7 @@ parse_binary_expression(Lexer* lexer, Ast_Expression* left, int min_prec) {
     binary->left = left;
     binary->right = parse_expression(lexer, next_prec);
     binary->token = token;
-    binary->operator_type = operator_type;
+    binary->op = op;
     return binary;
 }
 
@@ -195,7 +187,7 @@ parse_expression(Lexer* lexer, int min_prec) {
             Ast_Binary* binary = push_ast_node(lexer, Ast_Binary);
             binary->left = left;
             binary->access_identifier = lexer->curr_token.identifier;
-            binary->operator_type = OP_SCOPE_ACCESS;
+            binary->op = OP_SCOPE_ACCESS;
             left = binary;
             
         } else if (kind == '[') {
@@ -203,7 +195,7 @@ parse_expression(Lexer* lexer, int min_prec) {
             binary->left = left;
             binary->token = lexer->curr_token;
             binary->right = parse_expression(lexer);
-            binary->operator_type = OP_SUBSCRIPT;
+            binary->op = OP_SUBSCRIPT;
             lex_expect(lexer, ']');
             left = binary;
             

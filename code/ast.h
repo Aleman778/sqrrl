@@ -172,9 +172,13 @@ struct Ast_Struct_Literal : Ast_Expression {
     Ast_Block* block;
 };
 
-enum {
+enum Operator_Kind {
     OP_NONE = 0,
     
+    // Unary
+    OP_NEG,
+    
+    // Binary
     OP_ADD,
     OP_SUB,
     OP_MUL,
@@ -183,12 +187,23 @@ enum {
     OP_SUBSCRIPT,
 };
 
+int
+get_precedence(Operator_Kind op) {
+    switch (op) {
+        case OP_NEG: return 13;
+        case OP_ADD:
+        case OP_SUB: return 10;
+        
+        default: return 0;
+    }
+}
+
 struct Ast_Unary : Ast_Expression {
 #define AST_KIND_Ast_Unary AST_UNARY
     
-    Ast_Expression* left;
+    Ast_Expression* subexpression;
     Token token;
-    int operator_type;
+    Operator_Kind op;
 };
 
 struct Ast_Binary : Ast_Expression {
@@ -198,7 +213,7 @@ struct Ast_Binary : Ast_Expression {
     Ast_Expression* right;
     Identifier access_identifier;
     Token token;
-    int operator_type;
+    Operator_Kind op;
 };
 
 struct Ast_Cast : Ast_Expression {

@@ -73,7 +73,7 @@ infer_expression(Type_Context* tcx, Ast_Expression* expr) {
         } break;
         
         case AST_UNARY: {
-            unimplemented;
+            result = infer_unary_expression(tcx, (Ast_Unary*) expr);
         } break;
         
         case AST_BINARY: {
@@ -116,6 +116,19 @@ infer_expression(Type_Context* tcx, Ast_Expression* expr) {
     }
     
     expr->inferred_type = result;
+    return result;
+}
+
+Ast_Type*
+infer_unary_expression(Type_Context* tcx, Ast_Unary* unary) {
+    Ast_Type* result = 0;
+    
+    switch (unary->op) {
+        case OP_NEG: {
+            result = infer_expression(tcx, unary->subexpression);
+        } break;
+    }
+    
     return result;
 }
 

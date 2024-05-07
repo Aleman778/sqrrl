@@ -16,7 +16,7 @@ type_error(Type_Context* tcx, string message, Span span);
 // 
 // error: conversion from `f32` to `int`, possible loss of data
 //   |
-// 43| int var = foo;
+// 43| int foo = bar;
 //   |           ~~~
 
 inline void
@@ -41,6 +41,8 @@ end_block(Type_Context* tcx) {
 
 Ast_Type* infer_expression(Type_Context* tcx, Ast_Expression* expr);
 
+Ast_Type* infer_unary_expression(Type_Context* tcx, Ast_Unary* unary);
+
 Ast_Type* infer_binary_expression(Type_Context* tcx, Ast_Binary* binary);
 
 bool infer_block(Type_Context* tcx, Ast_Block* block);
@@ -48,6 +50,7 @@ bool infer_block(Type_Context* tcx, Ast_Block* block);
 bool infer_function(Type_Context* tcx, Ast_Procedure* proc);
 
 Ast_Type* infer_declaration(Type_Context* tcx, Ast_Declaration* decl);
+
 
 bool check_expression(Type_Context* tcx, Ast_Expression* expr);
 

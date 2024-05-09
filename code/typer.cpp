@@ -58,7 +58,11 @@ infer_expression(Type_Context* tcx, Ast_Expression* expr) {
     
     switch (expr->kind) {
         case AST_TYPE: {
+            // TODO(Alexander): we need to normalize non specific sized integers to known size
             result = (Ast_Type*) expr;
+            if (result->storage == TYPE_INT) {
+                result = &ast_basic_types[TYPE_S32];
+            }
             pln("infer AST_TYPE: %", f_type(result));
         } break;
         
@@ -250,8 +254,6 @@ check_assignment(Type_Context* tcx, Ast_Type* dest, Ast_Expression* src_expr) {
                     mask = ~mask;
                 }
                 int num_bits = intrin_index_of_last_set_bit(mask);
-                pln("%: %", f_u64(mask), f_int(num_bits));
-                
                 
                 switch (dest->storage) {
                     case TYPE_S8:  overflow |= num_bits >= 7;  break;
@@ -307,6 +309,10 @@ check_expression(Type_Context* tcx, Ast_Expression* expr) {
                 }
                 result = false;
             }
+        } break;
+        
+        case AST_UNARY: {
+            result = check_expression(tcx, ((Ast_Unary*) expr)->subexpression);
         } break;
         
         case AST_RETURN: {

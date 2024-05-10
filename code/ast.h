@@ -76,12 +76,18 @@ enum {
 
 struct Ast_Type : Ast_Expression {
 #define AST_KIND_Ast_Type AST_TYPE
+    Ast_Type* subtype;
     Type_Storage storage;
     u32 flags;
     
     s32 size;
     s32 align;
 };
+
+inline umm
+get_array_element_size(Ast_Type* elem_type) {
+    return align_forward(elem_type->size, elem_type->align);
+}
 
 inline Ast_Type
 create_basic_type(Type_Storage storage, u32 flags, int size) {
@@ -130,6 +136,18 @@ Ast_Type ast_basic_types[] = {
 };
 
 Ast_Type* t_void = &ast_basic_types[TYPE_VOID];
+
+internal Ast_Type 
+create_void_ptr_type_definition() {
+    Ast_Type result = {};
+    result.storage = TYPE_POINTER;
+    result.subtype = &ast_basic_types[TYPE_VOID];
+    return result;
+}
+
+Ast_Type t_void_ptr_definition = create_void_ptr_type_definition();
+Ast_Type* t_void_ptr = &t_void_ptr_definition;
+
 
 typedef Ast_Expression* Ast_Expression_List;
 

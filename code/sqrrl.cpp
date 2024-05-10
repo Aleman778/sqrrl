@@ -9,9 +9,6 @@
 
 #include "lexer.cpp"
 #include "ast.cpp"
-#include "parser.cpp"
-#include "typer.cpp"
-
 
 
 //#include "sqrrl_value.cpp"
@@ -21,7 +18,8 @@
 //#include "sqrrl_test.cpp"
 //#include "sqrrl_tokenizer.cpp"
 //#include "sqrrl_parser.cpp"
-//#include "sqrrl_type_checker.cpp"
+#include "parser.cpp"
+#include "typer.cpp"
 //#include "sqrrl_bytecode_builder.cpp"
 //#include "sqrrl_x64_instructions.cpp"
 //#include "sqrrl_x64_converter.cpp"
@@ -144,6 +142,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         return 1;
     }
     
+    // Typing
     Type_Context tcx = {};
     tcx.file = ast_file;
     infer_block(&tcx, &ast_file->block);
@@ -154,6 +153,17 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     string s = string_builder_to_string_nocopy(&sb);
     pln("%", f_string(s));
     string_builder_free(&sb);
+    
+    
+    // Intermediate representation
+    Bytecode_Builder bytecode_builder = {};
+    //bytecode_builder.data_packer = &data_packer;
+    //bytecode_builder.interp = &interp;
+    
+    for_array(ast_file->block.statements, cu, _2) {
+        
+        
+    }
     
     
     
@@ -280,9 +290,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         }
     }
     
-    Bytecode_Builder bytecode_builder = {};
-    bytecode_builder.data_packer = &data_packer;
-    bytecode_builder.interp = &interp;
     
     // First create functions imported from libraries
     for_map(tcx.import_table.libs, it) {

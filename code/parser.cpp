@@ -222,105 +222,6 @@ parse_expression(Lexer* lexer, int min_prec) {
     return left;
 }
 
-Ast_Block*
-parse_block(Lexer* lexer) {
-    assert(lexer->curr_token.kind == '{');
-    
-    Ast_Block* result = push_ast_node(lexer, Ast_Block);
-    
-    while (lex(lexer) != '}') {
-        if (lexer->curr_token.kind == Token_EOF) break;
-        unlex(lexer);
-        
-        Ast_Expression* expr = parse_statement(lexer, result);
-        if (!expr) {
-            break;
-        }
-        array_push(result->statements, expr);
-    }
-    
-    return result;
-}
-
-Ast_Block*
-parse_struct_declaration(Lexer* lexer) {
-    assert(lexer->curr_token.kind == '{');
-    
-    Ast_Block* result = push_ast_node(lexer, Ast_Block);
-    
-    while (lex(lexer) != '}') {
-        if (lexer->curr_token.kind == Token_EOF) break;
-        unlex(lexer);
-        
-        Ast_Declaration* decl = push_ast_node(lexer, Ast_Declaration);
-        decl->type = parse_type(lexer);
-        
-        lex_expect(lexer, Token_Ident);
-        decl->identifier = lexer->curr_token.identifier;
-        
-        if (lex_if_matched(lexer, '=')) {
-            decl->initializer = parse_expression(lexer);
-            if (!decl->initializer) {
-                syntax_error(lexer, string_lit("expected expression after `=`"));
-                break;
-            }
-        }
-        
-        lex_expect(lexer, ';');
-        array_push(result->statements, decl);
-    }
-    
-    return result;
-}
-
-Ast_Block*
-parse_struct_initializer_list(Lexer* lexer) {
-    assert(lexer->curr_token.kind == '{');
-    
-    Ast_Block* result = push_ast_node(lexer, Ast_Block);
-    
-    while (lex(lexer) != '}') {
-        if (lexer->curr_token.kind == Token_EOF) break;
-        unlex(lexer);
-        
-        Ast_Declaration* decl = push_ast_node(lexer, Ast_Declaration);
-        if (lex_if_matched(lexer, Token_Ident)) {
-            decl->identifier = lexer->curr_token.identifier;
-            
-            if (lex_if_matched(lexer, '=')) {
-                decl->initializer = parse_expression(lexer);
-            } else {
-                Ast_Identifier* expr = push_ast_node(lexer, Ast_Identifier);
-                expr->identifier = decl->identifier;
-                
-                decl->identifier = 0;
-                decl->initializer = expr;
-            }
-        } else {
-            decl->initializer = parse_expression(lexer);
-        }
-        
-        
-        if (!decl->initializer) {
-            if (decl->identifier) { 
-                syntax_error(lexer, string_lit("expected expression after `=`"));
-            } else {
-                syntax_error(lexer, string_lit("expected expression in struct initializer list"));
-            }
-            break;
-        }
-        
-        array_push(result->statements, decl);
-        
-        if (!lex_if_matched(lexer, ',')) {
-            lex_expect(lexer, '}');
-            break;
-        }
-    }
-    
-    return result;
-}
-
 Ast_Expression*
 parse_statement(Lexer* lexer, Ast_Block* block) {
     Ast_Expression* result = 0;
@@ -387,6 +288,106 @@ parse_statement(Lexer* lexer, Ast_Block* block) {
 }
 
 Ast_Block*
+parse_block(Lexer* lexer) {
+    assert(lexer->curr_token.kind == '{');
+    
+    Ast_Block* result = push_ast_node(lexer, Ast_Block);
+    
+    while (lex(lexer) != '}') {
+        if (lexer->curr_token.kind == Token_EOF) break;
+        unlex(lexer);
+        
+        Ast_Expression* expr = parse_statement(lexer, result);
+        if (!expr) {
+            break;
+        }
+        array_push(result->statements, expr);
+    }
+    
+    return result;
+}
+
+Ast_Block*
+parse_struct_declaration(Lexer* lexer) {
+    assert(lexer->curr_token.kind == '{');
+    
+    Ast_Block* result = push_ast_node(lexer, Ast_Block);
+    
+    while (lex(lexer) != '}') {
+        if (lexer->curr_token.kind == Token_EOF) break;
+        unlex(lexer);
+        
+        Ast_Declaration* decl = push_ast_node(lexer, Ast_Declaration);
+        decl->type = parse_type(lexer);
+        
+        lex_expect(lexer, Token_Ident);
+        decl->identifier = lexer->curr_token.identifier;
+        
+        if (lex_if_matched(lexer, '=')) {
+            decl->initializer = parse_expression(lexer);
+            if (!decl->initializer) {
+                syntax_error(lexer, string_lit("expected expression after `=`"));
+                break;
+            }
+        }
+        
+        lex_expect(lexer, ';');
+        
+        add_member(result, decl);
+    }
+    
+    return result;
+}
+
+Ast_Block*
+parse_struct_initializer_list(Lexer* lexer) {
+    assert(lexer->curr_token.kind == '{');
+    
+    Ast_Block* result = push_ast_node(lexer, Ast_Block);
+    
+    while (lex(lexer) != '}') {
+        if (lexer->curr_token.kind == Token_EOF) break;
+        unlex(lexer);
+        
+        Ast_Declaration* decl = push_ast_node(lexer, Ast_Declaration);
+        if (lex_if_matched(lexer, Token_Ident)) {
+            decl->identifier = lexer->curr_token.identifier;
+            
+            if (lex_if_matched(lexer, '=')) {
+                decl->initializer = parse_expression(lexer);
+            } else {
+                Ast_Identifier* expr = push_ast_node(lexer, Ast_Identifier);
+                expr->identifier = decl->identifier;
+                
+                decl->identifier = 0;
+                decl->initializer = expr;
+            }
+        } else {
+            decl->initializer = parse_expression(lexer);
+        }
+        
+        
+        if (!decl->initializer) {
+            if (decl->identifier) { 
+                syntax_error(lexer, string_lit("expected expression after `=`"));
+            } else {
+                syntax_error(lexer, string_lit("expected expression in struct initializer list"));
+            }
+            break;
+        }
+        
+        array_push(result->statements, decl);
+        
+        if (!lex_if_matched(lexer, ',')) {
+            lex_expect(lexer, '}');
+            break;
+        }
+    }
+    
+    return result;
+}
+
+Ast_Block*
 parse_type_argument_list(Lexer* lexer, bool expect_ident) {
     Ast_Block* result = push_ast_node(lexer, Ast_Block);
     while (lex(lexer) != ')') {
@@ -426,10 +427,18 @@ parse_declaration(Lexer* lexer, Ast_Block* block) {
     Ast_Declaration* result = 0;
     
     switch (lex(lexer)) {
-        
         case Token_Struct:
         case Token_Union: {
-            unimplemented;
+            Ast_Struct* decl = push_ast_node(lexer, Ast_Struct);
+            
+            // TODO(Alexander): allow anonymous structs within struct blocks
+            lex_expect(lexer, Token_Ident);
+            decl->identifier = lexer->curr_token.identifier;
+            
+            lex_expect(lexer, '{');
+            decl->args = parse_struct_declaration(lexer);
+            result = decl;
+            
         } break;
         
         case Token_Enum: {

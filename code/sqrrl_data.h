@@ -54,7 +54,7 @@ struct Data_Packer {
     array(Relocation)* relocations;
     
     map(string_id, Exported_Data)* exported_strings;
-    map(Type*, Exported_Data)* exported_types;
+    map(Ast_Type*, Exported_Data)* exported_types;
 };
 
 

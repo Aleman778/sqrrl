@@ -87,14 +87,14 @@ enum Type_Kind {
 typedef map(string_id, s32) Ident_Mapper;
 
 struct Struct_Like_Info {
-    array(Type*)* types;
+    array(Ast_Type*)* types;
     array(string_id)* idents;
     array(umm)* offsets;
     Ident_Mapper* ident_to_index;
 };
 
 struct Struct_Field_Info {
-    Type* type;
+    Ast_Type* type;
     smm offset;
 };
 
@@ -123,7 +123,7 @@ struct Type_Union {
 
 struct Type_Enum {
     map(string_id, Value)* values;
-    Type* type;
+    Ast_Type* type;
 };
 
 enum Calling_Convention {
@@ -136,10 +136,10 @@ struct Compilation_Unit;
 
 struct Type_Function {
     array(string_id)* arg_idents;
-    array(Type*)* arg_types;
+    array(Ast_Type*)* arg_types;
     Ident_Mapper* ident_to_index;
     array(Ast*)* default_args;
-    Type* return_type;
+    Ast_Type* return_type;
     Calling_Convention cconv;
     Compilation_Unit* unit;
     void* external_address;
@@ -163,7 +163,7 @@ enum Array_Kind {
 };
 
 struct Type_Array {
-    Type* type;
+    Ast_Type* type;
     smm capacity;
     Array_Kind kind;
 };
@@ -185,7 +185,7 @@ struct Type {
         Type_Enum Enum;
         Type_Function Function;
         
-        Type* Pointer;
+        Ast_Type* Pointer;
     };
     
     string_id ident;
@@ -194,19 +194,19 @@ struct Type {
 };
 
 inline umm
-get_array_element_size(Type* elem_type) {
+get_array_element_size(Ast_Type* elem_type) {
     return align_forward(elem_type->size, elem_type->align);
 }
 
 inline bool 
-is_valid_type(Type* type) {
+is_valid_type(Ast_Type* type) {
     return (type &&
             type->kind != TypeKind_Unresolved &&
             type->kind != TypeKind_Void);
 }
 
 bool
-is_aggregate_type(Type* type) {
+is_aggregate_type(Ast_Type* type) {
     return ((type->kind == TypeKind_Basic && type->Basic.kind == Basic_string) ||
             type->kind == TypeKind_Struct ||
             type->kind == TypeKind_Union ||
@@ -214,7 +214,7 @@ is_aggregate_type(Type* type) {
 }
 
 bool
-is_aggregate_array_type(Type* type) {
+is_aggregate_array_type(Ast_Type* type) {
     return ((type->kind == TypeKind_Array && type->Array.kind != ArrayKind_Fixed_Inplace) ||
             (type->kind == TypeKind_Basic && type->Basic.kind == Basic_string));
 }
@@ -241,18 +241,18 @@ create_void_ptr_type_definition() {
 }
 Type void_ptr_type_definition = create_void_ptr_type_definition();
 
-global Type* t_unresolve = &unresolved_type_definition;
-global Type* t_void = &void_type_definition;
-global Type* t_code = &code_type_definition;
-global Type* t_void_ptr = &void_ptr_type_definition;
-global Type* t_any = &any_type_definition;
-global Type* t_type = &type_definition;
-#define BASIC(ident, ...) global Type* t_##ident = &basic_type_definitions[Basic_##ident];
+global Ast_Type* t_unresolve = &unresolved_type_definition;
+global Ast_Type* t_void = &void_type_definition;
+global Ast_Type* t_code = &code_type_definition;
+global Ast_Type* t_void_ptr = &void_ptr_type_definition;
+global Ast_Type* t_any = &any_type_definition;
+global Ast_Type* t_type = &type_definition;
+#define BASIC(ident, ...) global Ast_Type* t_##ident = &basic_type_definitions[Basic_##ident];
 DEF_BASIC_TYPES
 #undef BASIC
 
-inline Type*
-normalize_type_for_casting(Type* type) {
+inline Ast_Type*
+normalize_type_for_casting(Ast_Type* type) {
     // Make similar types 
     if (type->kind == TypeKind_Pointer ||
         type->kind == TypeKind_Function || 
@@ -270,7 +270,7 @@ normalize_type_for_casting(Type* type) {
 }
 
 Format_Type
-convert_type_to_format_type(Type* type) {
+convert_type_to_format_type(Ast_Type* type) {
     switch (type->kind) {
         case TypeKind_Basic: {
             switch (type->Basic.kind) {
@@ -329,7 +329,7 @@ convert_value_type_to_format_type(Value_Type type) {
 }
 
 void
-string_builder_push(String_Builder* sb, Type* type, bool multiline=false) {
+string_builder_push(String_Builder* sb, Ast_Type* type, bool multiline=false) {
     if (!type) {
         string_builder_push(sb, "null");
         return;
@@ -403,7 +403,7 @@ string_builder_push(String_Builder* sb, Type* type, bool multiline=false) {
             
             Type_Function* func = &type->Function;
             for_array_v(func->arg_idents, arg_ident, arg_index) {
-                Type* arg_type = func->arg_types[arg_index];
+                Ast_Type* arg_type = func->arg_types[arg_index];
                 
                 string_builder_push(sb, arg_type);
                 if (arg_ident > 0) {
@@ -423,15 +423,15 @@ string_builder_push(String_Builder* sb, Type* type, bool multiline=false) {
     }
 }
 
-typedef umm intrin_type_def(Type*);
+typedef umm intrin_type_def(Ast_Type*);
 
 umm
-type_sizeof(Type* type) {
+type_sizeof(Ast_Type* type) {
     return type->size;
 }
 
 umm
-type_alignof(Type* type) {
+type_alignof(Ast_Type* type) {
     return type->align;
 }
 
@@ -517,18 +517,18 @@ struct Type_Info {
 
 Exported_Data export_var_args_info(Data_Packer* packer, int var_arg_start, Ast* actual_arguments);
 
-Exported_Data export_type_info(Data_Packer* packer, Type* type);
+Exported_Data export_type_info(Data_Packer* packer, Ast_Type* type);
 
-void print_type(Type* type);
+void print_type(Ast_Type* type);
 
-inline Type*
-type_deref(Type* type) {
+inline Ast_Type*
+type_deref(Ast_Type* type) {
     assert(type && type->kind == TypeKind_Pointer);
     return type->Pointer;
 }
 
 // TODO(Alexander): dummy functions
 inline s64
-type_of(Type* type) {
+type_of(Ast_Type* type) {
     return (s64) type;
 }

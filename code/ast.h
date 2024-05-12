@@ -6,14 +6,14 @@ struct Ast_Declaration;
 
 enum Ast_Kind {    
     AST_TYPE,
-    AST_IDENTIFIER,
+    AST_IDENTIFIERIFIER,
     AST_LITERAL,
     AST_ARGUMENT,
     AST_STRUCT_LITERAL,
     AST_UNARY,
     AST_BINARY,
     AST_CAST,
-    Ast_IDENT,
+    AST_IDENTIFIER,
     AST_PROCEDURE_CALL,
     AST_RETURN,
     
@@ -65,7 +65,13 @@ enum Type_Storage {
     TYPE_TYPEID,
     
     TYPE_FLOAT,
-    TYPE_POINTER
+    TYPE_POINTER,
+    TYPE_STRUCT,
+    TYPE_UNION,
+    TYPE_ARRAY_FIXED,
+    TYPE_ARRAY_RESIZABLE,
+    TYPE_ARRAY_VIEW,
+    TYPE_PROCEDURE
 };
 
 enum {
@@ -97,6 +103,15 @@ create_basic_type(Type_Storage storage, u32 flags, int size) {
     result.size = size;
     result.align = size;
     return result;
+}
+
+bool
+is_aggregate_type(Ast_Type* type) {
+    return (type->storage == TYPE_STRING ||
+            type->storage == TYPE_STRUCT ||
+            type->storage == TYPE_UNION ||
+            type->storage == TYPE_ARRAY_VIEW ||
+            type->storage == TYPE_ARRAY_RESIZABLE);
 }
 
 string
@@ -151,21 +166,21 @@ Ast_Type* t_void_ptr = &t_void_ptr_definition;
 
 typedef Ast_Expression* Ast_Expression_List;
 
-struct Ast_Identifier : Ast_Type {
-#define AST_KIND_Ast_Identifier AST_IDENTIFIER
+struct AST_IDENTIFIERifier : Ast_Type {
+#define AST_KIND_AST_IDENTIFIERifier AST_IDENTIFIERIFIER
     
     Identifier identifier;
 };
 
 inline Identifier
 unwrap_identifier(Ast* ast) {
-    assert(ast->kind == AST_IDENTIFIER);
-    return ((Ast_Identifier*) ast)->identifier;
+    assert(ast->kind == AST_IDENTIFIERIFIER);
+    return ((AST_IDENTIFIERifier*) ast)->identifier;
 }
 
 inline Identifier
 try_unwrap_identifier(Ast* ast) {
-    if (ast->kind == AST_IDENTIFIER) {
+    if (ast->kind == AST_IDENTIFIERIFIER) {
         return unwrap_identifier(ast);
     }
     return Kw_invalid;
@@ -245,7 +260,7 @@ struct Ast_Argument : Ast_Expression {
 #define AST_KIND_Ast_Argument AST_ARGUMENT
     
     Ast_Expression* expression;
-    Ast_Identifier* identifier;
+    AST_IDENTIFIERifier* identifier;
 };
 
 struct Ast_Procedure_Call : Ast_Expression {

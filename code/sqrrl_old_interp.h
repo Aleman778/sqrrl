@@ -56,7 +56,7 @@ interp_unresolved_identifier_error(Interp* interp, string_id ident) {
 }
 
 inline void
-interp_mismatched_types(Interp* interp, Type* expected, Type* found) {
+interp_mismatched_types(Interp* interp, Ast_Type* expected, Ast_Type* found) {
     interp_error(interp, string_print("mismatched types, expected `%` found `%`", 
                                       f_type(expected), f_type(found)));
 }
@@ -77,7 +77,7 @@ value_to_interp_value(Interp* interp, Value value, void* data=0) {
 }
 
 inline Interp_Value
-interp_value_load_from_memory(Interp* interp, Type* type, void* data) {
+interp_value_load_from_memory(Interp* interp, Ast_Type* type, void* data) {
     Value value = value_load_from_memory(type, data);
     return value_to_interp_value(interp, value, data);
 }
@@ -104,7 +104,7 @@ get_interp_value_pointer(Interp* interp, string_id ident) {
 }
 
 Interp_Value
-get_interp_value(Interp* interp, Type* type, string_id ident) {
+get_interp_value(Interp* interp, Ast_Type* type, string_id ident) {
     if (interp->curr_scope) {
         void* data = get_interp_value_pointer(interp, ident);
         if (data) {
@@ -117,7 +117,7 @@ get_interp_value(Interp* interp, Type* type, string_id ident) {
 }
 
 void*
-push_interp_value(Interp* interp, Type* type, string_id ident, Interp_Value value) {
+push_interp_value(Interp* interp, Ast_Type* type, string_id ident, Interp_Value value) {
     if (!interp->curr_scope) {
         Interp_Scope* first_scope = arena_push_struct(&interp->stack, Interp_Scope);
         interp->curr_scope = first_scope;
@@ -144,7 +144,7 @@ push_interp_value(Interp* interp, Type* type, string_id ident, Interp_Value valu
 
 Interp_Value interp_expression(Interp* interp, Ast* ast);
 Interp_Value interp_field_expr(Interp* interp, Interp_Value var, string_id ident);
-Interp_Value interp_function_call(Interp* interp, Ast* args, Type* function_type);
+Interp_Value interp_function_call(Interp* interp, Ast* args, Ast_Type* function_type);
 Interp_Value interp_statement(Interp* interp, Ast* ast);
 Interp_Value interp_block(Interp* interp, Ast* ast);
 

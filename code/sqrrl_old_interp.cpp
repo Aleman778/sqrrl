@@ -1,7 +1,7 @@
 
 Interp_Value 
 interp_expression(Interp* interp, Ast* ast) {
-    assert(is_ast_expr(ast) || ast->kind == Ast_Value || ast->kind == Ast_Ident || ast->kind == Ast_None);
+    assert(is_ast_expr(ast) || ast->kind == Ast_Value || ast->kind == AST_IDENTIFIER || ast->kind == Ast_None);
     
     //Interp_Value result = create_interp_value(interp);
     Interp_Value result = {};
@@ -12,7 +12,7 @@ interp_expression(Interp* interp, Ast* ast) {
             result.value = ast->Value;
         } break;
         
-        case Ast_Ident: {
+        case AST_IDENTIFIER: {
             result = get_interp_value(interp, ast->type, ast->Ident);
             if (is_void(result.value)) {
                 interp_error(interp, string_print("undeclared identifier `%`", 
@@ -20,7 +20,7 @@ interp_expression(Interp* interp, Ast* ast) {
             }
         } break;
         
-        case Ast_Unary_Expr: {
+        case AST_UNARY: {
             Interp_Value first_op = interp_expression(interp, ast->Unary_Expr.first);
             result.type = *ast->type;
             switch (ast->Unary_Expr.op) {
@@ -47,10 +47,10 @@ interp_expression(Interp* interp, Ast* ast) {
                 
                 case Op_Address_Of: {
                     Ast* expr = ast->Unary_Expr.first;
-                    Type* type = expr->type;
+                    Ast_Type* type = expr->type;
                     
-                    if (expr->kind == Ast_Ident) {
-                        string_id ident = ast_unwrap_ident(expr);
+                    if (expr->kind == AST_IDENTIFIER) {
+                        string_id ident = unwrap_identifier(expr);
                         void* data = get_interp_value_pointer(interp, ident);
                         Value value;
                         value.type = Value_pointer;
@@ -74,7 +74,7 @@ interp_expression(Interp* interp, Ast* ast) {
             }
         } break;
         
-        case Ast_Binary_Expr: {
+        case AST_BINARY: {
             Interp_Value first_op = interp_expression(interp, ast->Binary_Expr.first);
             
             
@@ -161,8 +161,8 @@ interp_expression(Interp* interp, Ast* ast) {
                 if (!is_void(result.value) && operator_is_assign(ast->Binary_Expr.op)) {
                     
                     void* data = first_op.data;
-                    if (ast->Binary_Expr.first->kind == Ast_Ident) {
-                        string_id ident = ast_unwrap_ident(ast->Binary_Expr.first);
+                    if (ast->Binary_Expr.first->kind == AST_IDENTIFIER) {
+                        string_id ident = unwrap_identifier(ast->Binary_Expr.first);
                         data = get_interp_value_pointer(interp, ident);
                     }
                     
@@ -193,8 +193,8 @@ interp_expression(Interp* interp, Ast* ast) {
             
         } break;
         
-        case Ast_Call_Expr: {
-            string_id ident = ast_unwrap_ident(ast->Call_Expr.ident);
+        case AST_PROCEDURE_CALL_Expr: {
+            string_id ident = unwrap_identifier(ast->Call_Expr.ident);
             result = interp_function_call(interp, ast->Call_Expr.args, ast->Call_Expr.function_type);
             result.modifier = InterpValueMod_None; // NOTE(Alexander): avoids returing multiple times
         } break;
@@ -202,14 +202,14 @@ interp_expression(Interp* interp, Ast* ast) {
         case Ast_Field_Expr: {
             Interp_Value var = interp_expression(interp, ast->Field_Expr.var);
             
-            assert(ast->Field_Expr.field->kind == Ast_Ident); // TODO(Alexander): turn into an error, where?
+            assert(ast->Field_Expr.field->kind == AST_IDENTIFIER); // TODO(Alexander): turn into an error, where?
             string_id ident = ast->Field_Expr.field->Ident;
             
             result = interp_field_expr(interp, var, ident);
         } break;
         
         case Ast_Cast_Expr: {
-            Type* type = ast->type;
+            Ast_Type* type = ast->type;
             Interp_Value expr = interp_expression(interp, ast->Cast_Expr.expr);
             Value value = expr.value;
             
@@ -256,7 +256,7 @@ interp_expression(Interp* interp, Ast* ast) {
                     
                     smm array_index = value_to_smm(index.value);
                     if (array_index < array_value.count) {
-                        Type* elem_type = array.type.Array.type;
+                        Ast_Type* elem_type = array.type.Array.type;
                         
                         smm elem_size = elem_type->size;
                         assert(elem_size > 0 && "not valid array element size");
@@ -292,9 +292,9 @@ interp_expression(Interp* interp, Ast* ast) {
 }
 
 Interp_Value
-interp_function_call(Interp* interp, Ast* args, Type* function_type) {
+interp_function_call(Interp* interp, Ast* args, Ast_Type* function_type) {
     Interp_Value result = create_interp_value(interp);
-    Type* type = function_type;
+    Ast_Type* type = function_type;
     
     if (type) {
         if (type->kind == TypeKind_Function) {
@@ -322,7 +322,7 @@ interp_function_call(Interp* interp, Ast* args, Type* function_type) {
                     if (arg_index < formal_arg_count) {
                         // TODO(Alexander): assign binary expressions needs to be handled here
                         string_id arg_ident = func->arg_idents[arg_index];
-                        Type* formal_type = func->arg_types[arg_index];
+                        Ast_Type* formal_type = func->arg_types[arg_index];
                         
                         // NOTE(Alexander): we need to allocate it in order to pass it to the function
                         // Currently we only pass variables to functions through references
@@ -401,7 +401,7 @@ interp_field_expr(Interp* interp, Interp_Value var, string_id ident) {
             Struct_Like_Info* type = &var.type.Struct_Like;
             
             smm field_index = map_get(type->ident_to_index, ident);
-            Type* field_type = type->types[field_index];
+            Ast_Type* field_type = type->types[field_index];
             if (field_type && var.value.type == Value_pointer && var.data) {
                 void* data = var.data;
                 smm field_offset = type->offsets[field_index];
@@ -424,7 +424,7 @@ interp_field_expr(Interp* interp, Interp_Value var, string_id ident) {
         
         case TypeKind_Pointer: {
             if (var.value.type == Value_pointer && var.data) {
-                Type* deref_type = var.type.Pointer;
+                Ast_Type* deref_type = var.type.Pointer;
                 var = interp_value_load_from_memory(interp, deref_type, var.value.data.data);
                 result = interp_field_expr(interp, var, ident);
                 
@@ -454,7 +454,7 @@ interp_statement(Interp* interp, Ast* ast) {
             result = interp_expression(interp, ast->Assign_Stmt.expr);
             
             // TODO(Alexander): check expr.type and type
-            Type* type = ast->type;
+            Ast_Type* type = ast->type;
             string_id ident = ast->Assign_Stmt.ident->Ident;
             result.data = push_interp_value(interp, type, ident, result);
         } break;

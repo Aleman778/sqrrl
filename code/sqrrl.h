@@ -47,7 +47,6 @@ enum Compiler_Task {
 #include "lexer.h"
 //#include "sqrrl_tokenizer.h"
 
-#include "sqrrl_bytecode.h"
 //#include "sqrrl_value.h"
 //#include "sqrrl_types.h"
 //#include "sqrrl_ast.h"
@@ -58,6 +57,8 @@ enum Compiler_Task {
 #include "typer.h"
 
 #include "sqrrl_data.h"
+
+#include "sqrrl_bytecode.h"
 
 //#include "sqrrl_interp.h"
 #include "sqrrl_bytecode_builder.h"

@@ -295,7 +295,7 @@ string_builder_push_data_format(String_Builder* sb, Format_Type type, va_list ar
         } break;
         
         case FormatType_type: {
-            string_builder_push(sb, va_arg(result, Type*));
+            string_builder_push(sb, va_arg(result, Ast_Type*));
         } break;
         
         case FormatType_bytecode_type: {

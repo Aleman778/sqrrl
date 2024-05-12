@@ -168,7 +168,7 @@ run_compiler_tests(string filename,
     for_array(ast_file.units, cu, _2) {
         if (!cu->bytecode_function && cu->ast->kind == Ast_Decl_Stmt) {
             
-            Type* type = cu->ast->type;
+            Ast_Type* type = cu->ast->type;
             if (type->kind == TypeKind_Function) {
                 
                 Bytecode_Function* func = add_bytecode_function(&bytecode_builder, type);
@@ -187,8 +187,8 @@ run_compiler_tests(string filename,
             }
             
         } else if (cu->ast->kind == Ast_Assign_Stmt) {
-            Type* type = cu->ast->type;
-            string_id ident = ast_unwrap_ident(cu->ast->Assign_Stmt.ident);
+            Ast_Type* type = cu->ast->type;
+            string_id ident = unwrap_identifier(cu->ast->Assign_Stmt.ident);
             
             void* data = interp_get_data_pointer(&interp, ident);
             if (!data) {
@@ -269,7 +269,7 @@ run_compiler_tests(string filename,
             if (!attributes) continue;
             
             for_compound(attributes, attr) {
-                string_id attr_ident = ast_unwrap_ident(attr->Attribute.ident);
+                string_id attr_ident = unwrap_identifier(attr->Attribute.ident);
                 if (attr_ident == Sym_test_proc) {
                     // TODO(Alexander): check the expr part for exec mode
                     Test_Execution_Modes modes = TestExecutionMode_All;

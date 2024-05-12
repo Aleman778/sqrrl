@@ -148,9 +148,9 @@ struct Value {
 };
 
 
-void value_store_in_memory(Type* type, void* dest, Value_Data src);
+void value_store_in_memory(Ast_Type* type, void* dest, Value_Data src);
 void convert_aggregate_literal_to_memory(Ast* expr, void* dest);
-Value value_load_from_memory(Type* type, void* data);
+Value value_load_from_memory(Ast_Type* type, void* data);
 Value_Type value_type_from_basic_flags(u32 flags);
 
 inline Value

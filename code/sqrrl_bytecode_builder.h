@@ -13,13 +13,13 @@ struct Bytecode_Builder {
     array(bool)* registers;
     array(array(int)*)* block_scopes;
     
-    Bytecode_Function* curr_function;
+    Bytecode_Procedure* curr_procedure;
     Bytecode_Instruction* curr_insn;
     
     Data_Packer* data_packer;
     //Interp* interp;
     
-    Bytecode bytecode;
+    Bytecode_Module module;
     
     u32 block_depth;
     
@@ -43,34 +43,7 @@ to_bytecode_opcode(Operator_Kind op, Ast_Type* type) {
     }
 }
 
-Bytecode_Type
-to_bytecode_type(Ast_Type* type) {
-    Bytecode_Type result = {};
-    result.size = (u8) type->size;
-    
-    switch (type->storage) {
-        case TYPE_STRING:
-        case TYPE_CSTRING: {
-            result.kind = BC_TYPE_PTR;
-        } break;
-        
-        default: {
-            if (type->flags & TYPE_FLAG_INTEGER) {
-                result.kind = BC_TYPE_INT;
-                result.flags = (type->flags & TYPE_FLAG_UNSIGNED) ? 0 : BC_FLAG_SIGNED;
-                
-            } else if (type->flags & TYPE_FLAG_FLOAT) {
-                result.kind = BC_TYPE_FLOAT;
-                result.flags = BC_FLAG_SIGNED;
-            } else {
-                assert(0 && "invalid type");
-            }
-        } break;
-    }
-    
-    return result;
-}
-
+#if 0
 void emit_value_expression(Bytecode_Builder* bc, Ast* expr, int result=-1);
 
 int emit_value_fetch_expression(Bytecode_Builder* bc, Ast* expr);
@@ -93,23 +66,24 @@ void emit_condition_expression(Bytecode_Builder* bc, Ast* cond, int result, bool
 void emit_type_cast(Bytecode_Builder* bc, Ast* expr, int result);
 inline void emit_array_type_cast(Bytecode_Builder* bc, Ast_Type* t_dest, Ast_Type* t_src, Ast* src_ast, int array_ptr);
 
-void emit_function_call(Bytecode_Builder* bc, Ast_Type* type, array(Ast*)* args, Ast* var_args,
-                        int result_index, int function_ptr_index);
+void emit_procedure_call(Bytecode_Builder* bc, Ast_Type* type, array(Ast*)* args, Ast* var_args,
+                         int result_index, int procedure_ptr_index);
 
 void emit_statement(Bytecode_Builder* bc, Ast* stmt, s32 break_label, s32 continue_label);
 
-Bytecode_Function* emit_function(Bytecode_Builder* bc, Bytecode_Function* func, Ast* ast,
-                                 bool is_main, bool insert_debug_break);
+Bytecode_Procedure* emit_procedure(Bytecode_Builder* bc, Bytecode_Procedure* func, Ast* ast,
+                                   bool is_main, bool insert_debug_break);
 
-void emit_initializer_function(Bytecode_Builder* bc);
+void emit_initializer_procedure(Bytecode_Builder* bc);
 
 void validate_bytecode(Bytecode* bytecode);
+#endif
 
-Bytecode_Function* add_bytecode_function(Bytecode_Builder* bc, Ast_Type* type);
+Bytecode_Procedure* add_bytecode_procedure(Bytecode_Builder* bc, Ast_Type* type);
 
-Bytecode_Instruction* add_bytecode_insn(Bytecode_Builder* bc, 
-                                        Bytecode_Operator opcode, 
-                                        umm size, umm align, cstring loc);
+Bytecode_Instruction* add_bytecode_instruction(Bytecode_Builder* bc, 
+                                               Bytecode_Operator opcode, 
+                                               umm size, umm align, cstring loc);
 
 int add_bytecode_global(Bytecode_Builder* bc, Exported_Data exported_data);
 int add_bytecode_global(Bytecode_Builder* bc, 
@@ -134,18 +108,18 @@ Bytecode_Instruction* add_bytecode_instruction(Bytecode_Builder* bc,
 
 inline int
 add_register(Bytecode_Builder* bc, Ast_Type* type=0) {
-    assert(bc->curr_function);
+    assert(bc->curr_procedure);
     int result = (int) array_count(bc->registers);
     array_push(bc->registers, true);
-    bc->curr_function->register_count = result + 1;
+    bc->curr_procedure->register_count = result + 1;
     //pln("Added register r% (largest r%)", f_int(result),
-    //f_int(bc->curr_function->register_count));
+    //f_int(bc->curr_procedure->register_count));
     return result;
 }
 
 inline void
 drop_register(Bytecode_Builder* bc, int index) {
-    assert(bc->curr_function);
+    assert(bc->curr_procedure);
     assert(index >= 0 && index < array_count(bc->registers) && "invalid register");
     
     if (bc->registers[index]) {
@@ -154,7 +128,7 @@ drop_register(Bytecode_Builder* bc, int index) {
         bc->registers[index] = false;
         //pln("Dropped register r%", f_int(index));
         // TODO: add drop instruction
-        //return bc->curr_function->register_count++;
+        //return bc->curr_procedure->register_count++;
     }
 }
 
@@ -174,7 +148,7 @@ end_tmp_scope(Bytecode_Builder* bc, int first) {
 inline int
 bc_const_int(Bytecode_Builder* bc, Ast_Type* type, int res_index, s64 val) {
     Bytecode_Const_Int* insn = bc_instruction(bc, BC_INT_CONST, Bytecode_Const_Int);
-    insn->type = to_bytecode_type(type);
+    insn->type = to_bytecode_type(type->storage);
     insn->res_index = res_index;
     insn->val = val;
     return insn->res_index;
@@ -183,7 +157,7 @@ bc_const_int(Bytecode_Builder* bc, Ast_Type* type, int res_index, s64 val) {
 inline int
 bc_const_f32(Bytecode_Builder* bc, int res_index, f32 val) {
     Bytecode_Const_F32* insn = bc_instruction(bc, BC_F32_CONST, Bytecode_Const_F32);
-    insn->type = bc_type(BC_TYPE_FLOAT, 0, 4);
+    insn->type = BC_F32;
     insn->res_index = res_index;
     insn->val = val;
     return insn->res_index;
@@ -192,7 +166,7 @@ bc_const_f32(Bytecode_Builder* bc, int res_index, f32 val) {
 inline int
 bc_const_f64(Bytecode_Builder* bc, int res_index, f64 val) {
     Bytecode_Const_F64* insn = bc_instruction(bc, BC_F64_CONST, Bytecode_Const_F64);
-    insn->type = bc_type(BC_TYPE_FLOAT, 0, 8);
+    insn->type = BC_F64;
     insn->res_index = res_index;
     insn->val = val;
     return insn->res_index;
@@ -200,9 +174,9 @@ bc_const_f64(Bytecode_Builder* bc, int res_index, f64 val) {
 
 inline int
 bc_const_zero(Bytecode_Builder* bc, Ast_Type* type, int res_index) {
-    if (type->storage == TYPE_F32) {
+    if (type->storage == BC_F32) {
         bc_const_f32(bc, res_index, 0);
-    } else if (type->storage == TYPE_F64) {
+    } else if (type->storage == BC_F64) {
         bc_const_f64(bc, res_index, 0);
     } else {
         bc_const_int(bc, type, res_index, 0);
@@ -213,7 +187,7 @@ bc_const_zero(Bytecode_Builder* bc, Ast_Type* type, int res_index) {
 inline int
 bc_return(Bytecode_Builder* bc, Ast_Type* type, int res_index) {
     Bytecode_Result* insn = bc_instruction(bc, BC_RETURN, Bytecode_Result);
-    insn->type = to_bytecode_type(type);
+    insn->type = type->storage;
     insn->res_index = res_index;
     return insn->res_index;
 }
@@ -253,7 +227,7 @@ bc_assignment(Bytecode_Builder* bc, Bytecode_Operator opcode, Bytecode_Type type
 
 inline int 
 _bc_load(Bytecode_Builder* bc, Ast_Type* type, int dest, int src, cstring comment=0) {
-    //Bytecode_Type bc_type = register_type(bc->curr_function, src);
+    //Bytecode_Type bc_type = register_type(bc->curr_procedure, src);
     //assert(bc_type.kind == BC_TYPE_PTR && "expected BC_TYPE_PTR to load");
     return bc_assignment(bc, BC_LOAD, to_bytecode_type(type), dest, src, comment);
 }
@@ -308,7 +282,7 @@ inline int
 bc_array_access(Bytecode_Builder* bc, Ast_Type* elem_type, 
                 int res_index, int base, int index) {
     
-    //Bytecode_Type bc_type = register_type(bc->curr_function, base);
+    //Bytecode_Type bc_type = register_type(bc->curr_procedure, base);
     //assert(bc_type.kind == BC_TYPE_PTR && "expected array base to be BC_TYPE_PTR");
     
     Bytecode_Array_Access* insn = bc_instruction(bc, BC_ARRAY_ACCESS, Bytecode_Array_Access);
@@ -380,7 +354,7 @@ bc_global(Bytecode_Builder* bc, int res_index, int global_index) {
 
 inline int
 bc_local(Bytecode_Builder* bc, Ast_Type* type) {
-    assert(bc->curr_function);
+    assert(bc->curr_procedure);
     int result = add_register(bc, t_void_ptr);
     Bytecode_Local* insn =  bc_instruction(bc, BC_LOCAL, Bytecode_Local);
     insn->type = BC_PTR;
@@ -391,8 +365,8 @@ bc_local(Bytecode_Builder* bc, Ast_Type* type) {
 }
 
 inline int
-bc_function(Bytecode_Builder* bc, int res_index, int func_index) {
-    assert(bc->curr_function);
+bc_procedure(Bytecode_Builder* bc, int res_index, int func_index) {
+    assert(bc->curr_procedure);
     Bytecode_Assign* insn =  bc_instruction(bc, BC_FUNCTION, Bytecode_Assign);
     insn->type = BC_PTR;
     insn->dest_index = res_index;
@@ -403,7 +377,7 @@ bc_function(Bytecode_Builder* bc, int res_index, int func_index) {
 inline int
 bc_begin_block(Bytecode_Builder* bc, Bytecode_Operator opcode=BC_BLOCK) {
     bc_instruction(bc, opcode, Bytecode_Instruction);
-    bc->curr_function->block_count++;
+    bc->curr_procedure->block_count++;
     bc->block_depth++;
     return begin_tmp_scope(bc);
 }
@@ -427,6 +401,6 @@ void string_builder_dump_bytecode_type(String_Builder* sb, Bytecode_Type type);
 void print_bytecode_type(Bytecode_Type type);
 void string_builder_dump_bytecode_globals(String_Builder* sb, Bytecode* bc);
 void string_bc_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Instruction* insn);
-void string_bc_dump_bytecode(String_Builder* sb, Bytecode* bc, Bytecode_Function* func, Ast_Type* type=0);
-void string_builder_dump_bytecode_function(String_Builder* sb, Bytecode* bc, Bytecode_Function* func);
+void string_bc_dump_bytecode(String_Builder* sb, Bytecode* bc, Bytecode_Procedure* func, Ast_Type* type=0);
+void string_builder_dump_bytecode_procedure(String_Builder* sb, Bytecode* bc, Bytecode_Procedure* func);
 void dump_bytecode(Bytecode* bc);

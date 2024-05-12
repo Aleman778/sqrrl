@@ -117,9 +117,9 @@ print_ast_expression(String_Builder* sb, Ast_Expression* expr, int indent, bool 
             print_ast_expression(sb, call->args, indent + 4);
         } break;
         
-        case AST_IDENTIFIER: {
-            auto ident = (Ast_Identifier*) expr;
-            string_builder_push(sb, "Ast_Identifier:");
+        case AST_IDENTIFIERIFIER: {
+            auto ident = (AST_IDENTIFIERifier*) expr;
+            string_builder_push(sb, "AST_IDENTIFIERifier:");
             string_builder_push_newline(sb, indent + 2);
             string_builder_push_format(sb, "identifier: %", f_ident(ident->identifier));
         } break;

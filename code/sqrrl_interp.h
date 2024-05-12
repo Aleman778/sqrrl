@@ -14,7 +14,7 @@ struct Compilation_Unit {
     Ast_File* file;
     Ast* ast;
     
-    Type* type;
+    Ast_Type* type;
     Value value;
     Bytecode_Function* bytecode_function;
     s64 external_address;
@@ -66,7 +66,7 @@ register_compilation_units_from_ast_decl(Interp* interp, Ast_Module* module, Ast
             Compilation_Unit cu = {};
             cu.module = module;
             cu.file = file;
-            cu.ident = ast_unwrap_ident(decl->Decl_Stmt.ident);
+            cu.ident = unwrap_identifier(decl->Decl_Stmt.ident);
             cu.ast = decl->Decl_Stmt.type;
             array_push(interp->compilation_units, cu);
             
@@ -78,7 +78,7 @@ register_compilation_units_from_ast_decl(Interp* interp, Ast_Module* module, Ast
             Compilation_Unit cu = {};
             cu.module = module;
             cu.file = file;
-            cu.ident = ast_unwrap_ident(decl->Assign_Stmt.ident);
+            cu.ident = unwrap_identifier(decl->Assign_Stmt.ident);
             cu.ast = decl;
             array_push(interp->compilation_units, cu);
         } break;
@@ -129,7 +129,7 @@ scope_get_data_pointer(Scope* interp, string_id ident) {
 }
 
 inline Entity
-create_constant_value(Type* type, Value value) {
+create_constant_value(Ast_Type* type, Value value) {
     Entity entity = {};
     entity.kind = EntityKind_Constant;
     entity.type = type;
@@ -138,7 +138,7 @@ create_constant_value(Type* type, Value value) {
 }
 
 inline Entity
-create_variable(Type* type) {
+create_variable(Ast_Type* type) {
     Entity entity = {};
     entity.kind = EntityKind_Variable;
     entity.type = type;
@@ -146,7 +146,7 @@ create_variable(Type* type) {
 }
 
 inline Entity
-create_typedef(Type* type) {
+create_typedef(Ast_Type* type) {
     Entity entity = {};
     entity.kind = EntityKind_Typedef;
     entity.type = type;
@@ -162,7 +162,7 @@ create_macro(Ast* ast) {
 }
 
 inline Entity
-create_function(Type* type) {
+create_function(Ast_Type* type) {
     Entity entity = {};
     entity.kind = EntityKind_Function;
     entity.type = type;
@@ -180,7 +180,7 @@ scope_get_constant_value(Scope* scope, string_id ident) {
 }
 
 inline void
-interp_put_global(Interp* interp, string_id ident, Type* type, Value value) {
+interp_put_global(Interp* interp, string_id ident, Ast_Type* type, Value value) {
     Entity entity = create_constant_value(type, value);
     map_put(interp->global_scope.entities, ident, entity);
 }

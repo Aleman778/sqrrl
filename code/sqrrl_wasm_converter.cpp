@@ -457,7 +457,7 @@ convert_bytecode_function_to_wasm(WASM_Assembler* wasm, Buffer* buf, Bytecode* m
 #endif
     }
     
-    //Bytecode_Type* args = 
+    //Bytecode_Ast_Type* args = 
     //Bytecode_Operand dest = bc_binary_first(insn);
     //Bytecode_Operand src = bc_binary_second(insn);
     //wasm_prepare_store(buf, dest, src, insn->type);

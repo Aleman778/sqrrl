@@ -20,6 +20,7 @@
 //#include "sqrrl_parser.cpp"
 #include "parser.cpp"
 #include "typer.cpp"
+#include "bytecode_builder.cpp"
 //#include "sqrrl_bytecode_builder.cpp"
 //#include "sqrrl_x64_instructions.cpp"
 //#include "sqrrl_x64_converter.cpp"
@@ -296,7 +297,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         
         Exported_Data library = {};
         for_array(it->value.functions, function, function_index) {
-            Type* type = function->type;
+            Ast_Type* type = function->type;
             assert(type && type->kind == TypeKind_Function);
             
             Bytecode_Function* func = add_bytecode_function(&bytecode_builder, type);
@@ -348,14 +349,14 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     for_array(interp.compilation_units, cu, _2) {
         if (!cu->bytecode_function && cu->ast->kind == Ast_Decl_Stmt) {
-            Type* type = cu->ast->type;
+            Ast_Type* type = cu->ast->type;
             if (type->kind == TypeKind_Function) {
                 add_bytecode_function(&bytecode_builder, type);
             }
             
         } else if (cu->ast->kind == Ast_Assign_Stmt) {
-            Type* type = cu->ast->type;
-            string_id ident = ast_unwrap_ident(cu->ast->Assign_Stmt.ident);
+            Ast_Type* type = cu->ast->type;
+            string_id ident = unwrap_identifier(cu->ast->Assign_Stmt.ident);
             
             if (map_key_exists(bytecode_builder.globals, ident)) {
                 type_error(&tcx, string_print("cannot redeclare global `%`", f_var(ident)),

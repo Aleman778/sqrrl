@@ -28,7 +28,7 @@ parse_type(Lexer* lexer) {
         } break;
         
         case Token_Ident: {
-            Ast_Identifier* alias = push_ast_node(lexer, Ast_Identifier);
+            AST_IDENTIFIERifier* alias = push_ast_node(lexer, AST_IDENTIFIERifier);
             alias->identifier = lexer->curr_token.identifier;
             result = alias;
         } break;
@@ -64,8 +64,8 @@ parse_call_argument_list(Lexer* lexer) {
         
         
         if (lex_if_matched(lexer, '=')) {
-            if (arg.expression->kind == AST_IDENTIFIER) {
-                arg.identifier = (Ast_Identifier*) arg.expression;
+            if (arg.expression->kind == AST_IDENTIFIERIFIER) {
+                arg.identifier = (AST_IDENTIFIERifier*) arg.expression;
             } else {
                 // TODO(Alexander): report error
                 unimplemented;
@@ -107,7 +107,7 @@ parse_leaf_expression(Lexer* lexer) {
         } break;
         
         case Token_Ident: {
-            Ast_Identifier* identifier = push_ast_node(lexer, Ast_Identifier);
+            AST_IDENTIFIERifier* identifier = push_ast_node(lexer, AST_IDENTIFIERifier);
             identifier->identifier = lexer->curr_token.identifier;
             result = identifier;
         } break;
@@ -199,7 +199,7 @@ parse_expression(Lexer* lexer, int min_prec) {
             lex_expect(lexer, ']');
             left = binary;
             
-        } else if (kind == '{' && left && left->kind == AST_IDENTIFIER) {
+        } else if (kind == '{' && left && left->kind == AST_IDENTIFIERIFIER) {
             Ast_Struct_Literal* literal = push_ast_node(lexer, Ast_Struct_Literal);
             literal->identifier = unwrap_identifier(left);
             literal->block = parse_struct_initializer_list(lexer);
@@ -356,7 +356,7 @@ parse_struct_initializer_list(Lexer* lexer) {
             if (lex_if_matched(lexer, '=')) {
                 decl->initializer = parse_expression(lexer);
             } else {
-                Ast_Identifier* expr = push_ast_node(lexer, Ast_Identifier);
+                AST_IDENTIFIERifier* expr = push_ast_node(lexer, AST_IDENTIFIERifier);
                 expr->identifier = decl->identifier;
                 
                 decl->identifier = 0;

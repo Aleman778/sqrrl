@@ -71,8 +71,8 @@ infer_expression(Type_Context* tcx, Ast_Expression* expr) {
             result = infer_expression(tcx, &ast_basic_types[literal->type]);
         } break;
         
-        case AST_IDENTIFIER: {
-            auto ident = (Ast_Identifier*) expr;
+        case AST_IDENTIFIERIFIER: {
+            auto ident = (AST_IDENTIFIERifier*) expr;
             result = resolve_identifier(tcx, ident->identifier);
         } break;
         
@@ -299,7 +299,7 @@ check_expression(Type_Context* tcx, Ast_Expression* expr) {
     bool result = true;
     
     switch (expr->kind) {
-        case AST_IDENTIFIER: {
+        case AST_IDENTIFIERIFIER: {
             if (!expr->inferred_type) {
                 Identifier ident = try_unwrap_identifier(expr);
                 if (ident) {

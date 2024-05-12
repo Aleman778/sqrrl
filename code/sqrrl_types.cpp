@@ -40,7 +40,7 @@ export_var_args_info(Data_Packer* packer, int var_arg_start, Ast* actual_argumen
 }
 
 Exported_Data
-export_type_info(Data_Packer* packer, Type* type) {
+export_type_info(Data_Packer* packer, Ast_Type* type) {
     Exported_Data result = map_get(packer->exported_types, type);
     
     if (!result.data) {
@@ -172,7 +172,7 @@ export_type_info(Data_Packer* packer, Type* type) {
 }
 
 void
-print_type(Type* type) {
+print_type(Ast_Type* type) {
     String_Builder sb = {};
     string_builder_alloc(&sb, 20);
     string_builder_push(&sb, type);

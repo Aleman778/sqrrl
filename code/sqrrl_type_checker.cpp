@@ -1,6 +1,6 @@
 
-Type*
-normalize_basic_types(Type* type) {
+Ast_Type*
+normalize_basic_types(Ast_Type* type) {
     if (!type) {
         return type;
     }
@@ -23,7 +23,7 @@ normalize_basic_types(Type* type) {
     return type;
 } 
 
-Type*
+Ast_Type*
 type_infer_value(Type_Context* tcx, Value value) {
     switch (value.type) {
         case Value_void: return t_void;
@@ -48,7 +48,7 @@ type_infer_value(Type_Context* tcx, Value value) {
         case Value_string: {
 #if 0 // TODO(Alexander): maybe string literals should be u8 arrays, for now it's easier to use t_string
             umm char_count = value.data.str.count;
-            Type* result = arena_push_struct(&tcx->type_arena, Type);
+            Ast_Type* result = arena_push_struct(&tcx->type_arena, Type);
             result->kind = TypeKind_Array;
             result->Array.type = t_u8;
             result->Array.capacity = (smm) char_count;
@@ -68,7 +68,7 @@ type_infer_value(Type_Context* tcx, Value value) {
 }
 
 bool
-type_check_value(Type_Context* tcx, Type* type, Value value, Span span, bool report_error) {
+type_check_value(Type_Context* tcx, Ast_Type* type, Value value, Span span, bool report_error) {
     bool result = true;
     
     if (type->kind == TypeKind_Enum) {
@@ -188,15 +188,15 @@ constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
             result = ast->Value;
         } break;
         
-        case Ast_Ident: {
-            string_id ident = ast_unwrap_ident(ast);
+        case AST_IDENTIFIER: {
+            string_id ident = unwrap_identifier(ast);
             Entity entity = resolve_entity_from_identifier(tcx, ident, ast->span, false);
             if (entity.kind == EntityKind_Constant) {
                 result = entity.value;
             }
         } break;
         
-        case Ast_Unary_Expr: {
+        case AST_UNARY: {
             Value first = constant_folding_of_expressions(tcx, ast->Unary_Expr.first);
             if (!is_void(first)) {
                 switch (ast->Unary_Expr.op) {
@@ -224,7 +224,7 @@ constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
             }
         } break;
         
-        case Ast_Binary_Expr: {
+        case AST_BINARY: {
             if (operator_is_assign(ast->Binary_Expr.op)) {
                 // NOTE(Alexander): we cannot constant fold lhs of an assignemnt operator
                 constant_folding_of_expressions(tcx, ast->Binary_Expr.second);
@@ -327,7 +327,7 @@ constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
             Value value = constant_folding_of_expressions(tcx, ast->Cast_Expr.expr);
             
             if (!is_void(value)) {
-                Type* type = ast->type;
+                Ast_Type* type = ast->type;
                 if (!type && is_valid_ast(ast->Cast_Expr.type)) {
                     type = create_type_from_ast(tcx, ast->Cast_Expr.type, false).type;
                 }
@@ -342,7 +342,7 @@ constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
             if (ast->Field_Expr.var) {
                 string_id var_ident = try_unwrap_ident(ast->Field_Expr.var);
                 if (var_ident > 0) {
-                    Type* type = resolve_typedef_from_identifier(tcx, var_ident, 
+                    Ast_Type* type = resolve_typedef_from_identifier(tcx, var_ident, 
                                                                  ast->Field_Expr.var->span, false);
                     
                     if (type && type->kind == TypeKind_Enum) {
@@ -355,7 +355,7 @@ constant_folding_of_expressions(Type_Context* tcx, Ast* ast) {
             
         } break;
         
-        case Ast_Call_Expr: {
+        case AST_PROCEDURE_CALL_Expr: {
             for_compound(ast->Call_Expr.args, arg) {
                 if (arg->Argument.assign) {
                     constant_folding_of_expressions(tcx, arg->Argument.assign);
@@ -387,8 +387,8 @@ struct Function_Match_Result {
 
 internal Function_Match_Result
 match_function_args(Type_Context* tcx,
-                    Type* function_type,
-                    array(Type*)* actual_args,
+                    Ast_Type* function_type,
+                    array(Ast_Type*)* actual_args,
                     array(bool)* actual_args_is_value,
                     bool report_error,
                     bool strict_match=false) {
@@ -398,7 +398,7 @@ match_function_args(Type_Context* tcx,
     result.score = 1;
     
     Type_Function* t_func = &function_type->Function;
-    array(Type*)* formal_args = t_func->arg_types;
+    array(Ast_Type*)* formal_args = t_func->arg_types;
     smm actual_arg_count = array_count(actual_args);
     smm formal_arg_count = array_count(formal_args);
     
@@ -410,7 +410,7 @@ match_function_args(Type_Context* tcx,
     
     // TODO(Alexander): nice to have: support for keyworded args, default args
     for_array_v(actual_args, actual_type, arg_index) {
-        Type* formal_type = 0;
+        Ast_Type* formal_type = 0;
         if (arg_index < array_count(formal_args)) {
             formal_type = formal_args[arg_index];
         }
@@ -455,14 +455,14 @@ match_function_args(Type_Context* tcx,
 }
 
 internal Ast*
-auto_type_conversion(Type_Context* tcx, Type* target_type, Ast* node, Operator op=Op_Assign) {
+auto_type_conversion(Type_Context* tcx, Ast_Type* target_type, Ast* node, Operator op=Op_Assign) {
     if (target_type->kind == TypeKind_Any) {
         return node;
     }
     
     
     Ast* result = node;
-    Type* initial_type = node->type;
+    Ast_Type* initial_type = node->type;
     
     // TODO(Alexander): we don't want to change types without doing explicit cast
     // otherwise the backend gets confused and outputs wrong code.
@@ -524,9 +524,9 @@ auto_type_conversion(Type_Context* tcx, Type* target_type, Ast* node, Operator o
 }
 
 // NOTE(Alexander): parent_type is used to coerce a non-typed literal to a specific type
-Type*
-type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool report_error) {
-    Type* result = 0;
+Ast_Type*
+type_infer_expression(Type_Context* tcx, Ast* expr, Ast_Type* parent_type, bool report_error) {
+    Ast_Type* result = 0;
     
     switch (expr->kind) {
         case Ast_None: {
@@ -565,8 +565,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             expr->type = result;
         } break;
         
-        case Ast_Ident: {
-            string_id ident = ast_unwrap_ident(expr);
+        case AST_IDENTIFIER: {
+            string_id ident = unwrap_identifier(expr);
             Entity entity = resolve_entity_from_identifier(tcx, ident, expr->span, report_error);
             if (entity.kind == EntityKind_Typedef) {
                 result = t_type;
@@ -601,7 +601,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             expr->type = result;
         } break;
         
-        case Ast_Unary_Expr: {
+        case AST_UNARY: {
             if (parent_type) {
                 if (expr->Unary_Expr.op == Op_Dereference) {
                     parent_type = type_wrap_pointer(tcx, parent_type);
@@ -609,7 +609,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             }
             
             Operator op = expr->Unary_Expr.op;
-            Type* type = type_infer_expression(tcx, expr->Unary_Expr.first, parent_type, report_error);
+            Ast_Type* type = type_infer_expression(tcx, expr->Unary_Expr.first, parent_type, report_error);
             
             
             if (op == Op_Negate) {
@@ -657,13 +657,13 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             }
         } break;
         
-        case Ast_Binary_Expr: {
+        case AST_BINARY: {
             Operator op = expr->Binary_Expr.op;
-            Type* first_type = type_infer_expression(tcx, 
+            Ast_Type* first_type = type_infer_expression(tcx, 
                                                      expr->Binary_Expr.first,
                                                      0,
                                                      report_error);
-            Type* second_type = type_infer_expression(tcx, 
+            Ast_Type* second_type = type_infer_expression(tcx, 
                                                       expr->Binary_Expr.second,
                                                       first_type,
                                                       report_error);
@@ -689,7 +689,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             }
             
             if (expr->Binary_Expr.overload) {
-                Type* overload = expr->Binary_Expr.overload;
+                Ast_Type* overload = expr->Binary_Expr.overload;
                 assert(overload->kind == TypeKind_Function);
                 result = overload->Function.return_type;
                 
@@ -792,15 +792,15 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         } break;
         
         case Ast_Ternary_Expr: {
-            Type* first_type = type_infer_expression(tcx, 
+            Ast_Type* first_type = type_infer_expression(tcx, 
                                                      expr->Ternary_Expr.first,
                                                      t_bool,
                                                      report_error);
-            Type* second_type = type_infer_expression(tcx, 
+            Ast_Type* second_type = type_infer_expression(tcx, 
                                                       expr->Ternary_Expr.second,
                                                       0,
                                                       report_error);
-            Type* third_type = type_infer_expression(tcx, 
+            Ast_Type* third_type = type_infer_expression(tcx, 
                                                      expr->Ternary_Expr.third,
                                                      second_type,
                                                      report_error);
@@ -810,19 +810,19 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             }
         } break;
         
-        case Ast_Call_Expr: {
-            Type* function_type = 0;
+        case AST_PROCEDURE_CALL_Expr: {
+            Ast_Type* function_type = 0;
             const string_id ident = try_unwrap_ident(expr->Call_Expr.ident);
             
             //if (ident == vars_save_cstring("CreateFileA")) {
             //__debugbreak();
             //}
             
-            array(Type*)* actual_arg_types = 0;
+            array(Ast_Type*)* actual_arg_types = 0;
             array(bool)* actual_arg_is_value = 0;
             Ast* actual_args = expr->Call_Expr.args;
             for_compound(actual_args, actual_arg) {
-                Type* actual_type = 0;
+                Ast_Type* actual_type = 0;
                 
                 if (is_valid_ast(actual_arg->Argument.assign)) {
                     actual_type = type_infer_expression(tcx, 
@@ -847,7 +847,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
             
             if (ident) {
                 int highest_score = 0;
-                Type* function_with_highest_score = 0;
+                Ast_Type* function_with_highest_score = 0;
                 
                 Overloaded_Function_List* overload = &map_get(tcx->overloaded_functions, ident);
                 if (overload && overload->is_valid) {
@@ -942,7 +942,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     //pln("% < % = %", f_smm(arg_index), f_smm(formal_arg_count), f_bool(arg_index < formal_arg_count));
                     if (arg_index < formal_arg_count && is_valid_ast(arg->Argument.assign)) {
                         constant_folding_of_expressions(tcx, arg->Argument.assign);
-                        Type* formal_type = t_func->arg_types[arg_index];
+                        Ast_Type* formal_type = t_func->arg_types[arg_index];
                         arg->Argument.assign = auto_type_conversion(tcx, formal_type, arg->Argument.assign);
                         arg->type = arg->Argument.assign->type;
                         arg_index++;
@@ -966,7 +966,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                     
                     assert(array_count(actual_arg_types) == 1);
                     
-                    Type* type = actual_arg_types[0];
+                    Ast_Type* type = actual_arg_types[0];
                     
                     if (type->kind == TypeKind_Type) {
                         assert(actual_args && actual_args->Compound.node);
@@ -990,7 +990,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
                         type_arg = type_arg->Compound.node;
                     }
                     
-                    Type* actual_type = type_arg->type;
+                    Ast_Type* actual_type = type_arg->type;
                     expr->kind = Ast_Exported_Data;
                     expr->Exported_Data = export_type_info(tcx->data_packer, actual_type);
                 }
@@ -998,13 +998,13 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         } break;
         
         case Ast_Cast_Expr: {
-            Type* type = expr->type;
+            Ast_Type* type = expr->type;
             if (!type) {
                 type = create_type_from_ast(tcx, expr->Cast_Expr.type, report_error).type;
             }
             
             if (type) {
-                Type* actual_type = type_infer_expression(tcx, expr->Cast_Expr.expr, type, report_error);
+                Ast_Type* actual_type = type_infer_expression(tcx, expr->Cast_Expr.expr, type, report_error);
                 if (actual_type) {
                     expr->type = type;
                     result = expr->type;
@@ -1019,7 +1019,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         
         case Ast_Index_Expr: {
             if (type_infer_expression(tcx, expr->Index_Expr.index, t_smm, report_error)) {
-                Type* type = type_infer_expression(tcx, expr->Index_Expr.array, parent_type, report_error);
+                Ast_Type* type = type_infer_expression(tcx, expr->Index_Expr.array, parent_type, report_error);
                 if (type) {
                     constant_folding_of_expressions(tcx, expr->Index_Expr.index);
                     
@@ -1040,8 +1040,8 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         } break;
         
         case Ast_Field_Expr: {
-            Type* type = type_infer_expression(tcx, expr->Field_Expr.var, 0, report_error);
-            string_id field_ident = ast_unwrap_ident(expr->Field_Expr.field);
+            Ast_Type* type = type_infer_expression(tcx, expr->Field_Expr.var, 0, report_error);
+            string_id field_ident = unwrap_identifier(expr->Field_Expr.field);
             
             if (!type) {
                 break;
@@ -1144,7 +1144,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
         
         case Ast_Aggregate_Expr: {
             if (parent_type && parent_type->kind == TypeKind_Array) {
-                Type* type = parent_type->Array.type;
+                Ast_Type* type = parent_type->Array.type;
                 
                 result = parent_type;
                 
@@ -1290,7 +1290,7 @@ type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool repo
 
 
 struct Type_Struct_Like {
-    array(Type*)* types;
+    array(Ast_Type*)* types;
     array(string_id)* idents;
     array(umm)* offsets;
     
@@ -1304,7 +1304,7 @@ struct Type_Struct_Like {
 };
 
 inline Type_Struct_Like
-convert_type_to_struct_like(Type* type) {
+convert_type_to_struct_like(Ast_Type* type) {
     Type_Struct_Like result = {};
     
     if (type->kind == TypeKind_Struct) {
@@ -1323,7 +1323,7 @@ convert_type_to_struct_like(Type* type) {
 }
 
 bool
-match_struct_like_args(Type_Context* tcx, Type* formal_type, int first_field, int last_field, Ast* args, bool report_error) {
+match_struct_like_args(Type_Context* tcx, Ast_Type* formal_type, int first_field, int last_field, Ast* args, bool report_error) {
     Type_Struct_Like formal = convert_type_to_struct_like(formal_type);
     int formal_field_count = last_field - first_field;
     
@@ -1338,7 +1338,7 @@ match_struct_like_args(Type_Context* tcx, Type* formal_type, int first_field, in
         int field_index = next_field_index++;
         
         if (field->Argument.ident) {
-            string_id ident = ast_unwrap_ident(field->Argument.ident);
+            string_id ident = unwrap_identifier(field->Argument.ident);
             
             int idx = (int) map_get_index(formal.ident_to_index, ident);
             if (idx == -1) {
@@ -1375,7 +1375,7 @@ match_struct_like_args(Type_Context* tcx, Type* formal_type, int first_field, in
             break;
         }
         
-        Type* field_type = 0;
+        Ast_Type* field_type = 0;
         if (next_field_index <= last_field) {
             field_type = formal.types[field_index];
         } else {
@@ -1389,7 +1389,7 @@ match_struct_like_args(Type_Context* tcx, Type* formal_type, int first_field, in
             break;
         }
         
-        Type* actual_type = 0;
+        Ast_Type* actual_type = 0;
         if (field->Argument.assign) {
             
             constant_folding_of_expressions(tcx, field->Argument.assign);
@@ -1408,7 +1408,7 @@ match_struct_like_args(Type_Context* tcx, Type* formal_type, int first_field, in
 }
 
 internal inline void 
-push_type_to_struct_like(Type_Struct_Like* dest, Type* type, string_id ident, int pack) {
+push_type_to_struct_like(Type_Struct_Like* dest, Ast_Type* type, string_id ident, int pack) {
     if (pack != 0) {
         dest->offset = align_forward(dest->offset, pack > 0 ? pack : type->align);
     }
@@ -1427,8 +1427,8 @@ push_type_to_struct_like(Type_Struct_Like* dest, Type* type, string_id ident, in
     }
 }
 
-Type*
-push_function_overload(Type_Context* tcx, Entity* entity, Type* new_type, Span span, bool report_error) {
+Ast_Type*
+push_function_overload(Type_Context* tcx, Entity* entity, Ast_Type* new_type, Span span, bool report_error) {
     for_array_v(entity->overloads, overloaded_fn, _) {
         if (match_function_args(tcx, overloaded_fn, 
                                 new_type->Function.arg_types,
@@ -1473,8 +1473,8 @@ register_entity(Type_Context* tcx, string_id ident, Entity entity, Span span, bo
         
         
     } else if (existing.kind == EntityKind_Typedef  && entity.kind == EntityKind_Typedef) {
-        Type* new_type = entity.type;
-        Type* old_type = existing.type;
+        Ast_Type* new_type = entity.type;
+        Ast_Type* old_type = existing.type;
         
         if (new_type != old_type) {
             if (new_type->kind == TypeKind_Struct &&
@@ -1520,8 +1520,8 @@ register_entity(Type_Context* tcx, string_id ident, Entity entity, Span span, bo
         
     } else if (existing.kind == EntityKind_Function && entity.kind == EntityKind_Function) {
         
-        Type* new_type = entity.type;
-        Type* old_type = existing.type;
+        Ast_Type* new_type = entity.type;
+        Ast_Type* old_type = existing.type;
         if (new_type != old_type) {
             Entity new_entity = {};
             new_entity.kind = EntityKind_Function_Overloads;
@@ -1566,9 +1566,9 @@ resolve_entity_from_identifier(Type_Context* tcx, string_id ident, Span span, bo
     return {};
 }
 
-Type*
+Ast_Type*
 resolve_typedef_from_identifier(Type_Context* tcx, string_id ident, Span span, bool report_error) {
-    Type* result = 0;
+    Ast_Type* result = 0;
     
     if (is_builtin_type_keyword(ident)) {
         if (ident == Kw_void) {
@@ -1591,15 +1591,15 @@ resolve_typedef_from_identifier(Type_Context* tcx, string_id ident, Span span, b
 }
 
 
-Type*
-save_operator_overload(Type_Context* tcx, Type* type, Operator op, Span span, bool report_error) {
+Ast_Type*
+save_operator_overload(Type_Context* tcx, Ast_Type* type, Operator op, Span span, bool report_error) {
     assert(type->kind == TypeKind_Function);
     // TODO(Alexander): support for Unary operator overloading
     
     int arg_count = (int) array_count(type->Function.arg_types);
     if (arg_count == 1 || arg_count == 2) {
-        Type* lhs = type->Function.arg_types[0];
-        Type* rhs = 0;
+        Ast_Type* lhs = type->Function.arg_types[0];
+        Ast_Type* rhs = 0;
         
         // TODO(Alexander): we validate if the operator is possible to override
         if (arg_count == 2) {
@@ -1658,7 +1658,7 @@ create_type_struct_like_from_ast(Type_Context* tcx,
         }
         
         Ast* ast_type = argument->Argument.type;
-        Type* type = create_type_from_ast(tcx, ast_type, report_error).type;
+        Ast_Type* type = create_type_from_ast(tcx, ast_type, report_error).type;
         
         if (!type || type->size == 0) {
             if (report_error) {
@@ -1672,8 +1672,8 @@ create_type_struct_like_from_ast(Type_Context* tcx,
         
         switch (argument->Argument.ident->kind) {
             
-            case Ast_Ident: {
-                string_id ident = ast_unwrap_ident(argument->Argument.ident);
+            case AST_IDENTIFIER: {
+                string_id ident = unwrap_identifier(argument->Argument.ident);
                 if (type) {
                     push_type_to_struct_like(&result, type, ident, pack);
                 } else {
@@ -1684,9 +1684,9 @@ create_type_struct_like_from_ast(Type_Context* tcx,
             case Ast_Compound: {
                 
                 if (type) {
-                    for_compound(argument->Argument.ident, ast_ident) {
-                        assert(ast_ident->kind == Ast_Ident);
-                        string_id ident = ast_ident->Ident;
+                    for_compound(argument->Argument.ident, AST_IDENTIFIER) {
+                        assert(AST_IDENTIFIER->kind == AST_IDENTIFIER);
+                        string_id ident = AST_IDENTIFIER->Ident;
                         push_type_to_struct_like(&result, type, ident, pack);
                         
                         if (is_union) {
@@ -1701,14 +1701,14 @@ create_type_struct_like_from_ast(Type_Context* tcx,
             default: {
                 if (type->kind == TypeKind_Struct) {
                     for_array_v(type->Struct_Like.idents, field_ident, field_index) {
-                        Type* field_type = type->Struct_Like.types[field_index];
+                        Ast_Type* field_type = type->Struct_Like.types[field_index];
                         push_type_to_struct_like(&result, field_type, field_ident, pack);
                     }
                 } else if (type->kind == TypeKind_Union) {
                     smm prev_offset = result.offset;
                     smm next_offset = result.offset;
                     for_array_v(type->Struct_Like.idents, field_ident, field_index) {
-                        Type* field_type = type->Struct_Like.types[field_index];
+                        Ast_Type* field_type = type->Struct_Like.types[field_index];
                         smm field_offset = type->Struct_Like.offsets[field_index];
                         
                         if (field_offset == 0) {
@@ -1755,9 +1755,9 @@ create_type_struct_like_from_ast(Type_Context* tcx,
     return result;
 }
 
-Type*
+Ast_Type*
 save_type_declaration_from_ast(Type_Context* tcx, string_id ident, Ast* ast, bool report_error) {
-    Type* type = create_type_from_ast(tcx, ast, report_error).type;
+    Ast_Type* type = create_type_from_ast(tcx, ast, report_error).type;
     
     if (type) {
         if (ident == Kw_operator) {
@@ -1829,7 +1829,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 }
             }
             
-            Type* elem_type = create_type_from_ast(tcx, ast->Array_Type.elem_type, report_error).type;
+            Ast_Type* elem_type = create_type_from_ast(tcx, ast->Array_Type.elem_type, report_error).type;
             if (elem_type && elem_type->size > 0 && elem_type->align > 0) {
                 result.type->kind = TypeKind_Array;
                 result.type->Array.type = elem_type;
@@ -1864,7 +1864,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             // TODO(Alexander): do we really want to store a new type declaration
             // for each time we use a pointer?!???
             
-            Type* ptr_type = create_type_from_ast(tcx, ast->Pointer_Type, report_error).type;
+            Ast_Type* ptr_type = create_type_from_ast(tcx, ast->Pointer_Type, report_error).type;
             if (ptr_type) {
                 result.type = type_wrap_pointer(tcx, ptr_type);
             }
@@ -1882,7 +1882,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         
         case Ast_Function_Type: {
             result.type->Function.is_variadic = false;
-            Type* return_type = create_type_from_ast(tcx, ast->Function_Type.return_type, report_error).type;
+            Ast_Type* return_type = create_type_from_ast(tcx, ast->Function_Type.return_type, report_error).type;
             if (return_type) {
                 result.type->Function.return_type = return_type;
             } else {
@@ -1894,7 +1894,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
             Ast* ast_arguments = ast->Function_Type.arguments;
             Type_Function* func = &result.type->Function;
             smm offset = 0;
-            //if (ast_unwrap_ident(ast->Function_Type.ident) == vars_save_cstring("DEBUG_write_tmx_map")) {
+            //if (unwrap_identifier(ast->Function_Type.ident) == vars_save_cstring("DEBUG_write_tmx_map")) {
             //__debugbreak();
             //}
             
@@ -1917,7 +1917,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 
                 Ast* ast_argument_type = ast_argument->Argument.type;
                 
-                Type* type = 0;
+                Ast_Type* type = 0;
                 if (ast_argument_type->kind == Ast_Ellipsis) {
                     result.type->Function.is_variadic = true;
                     type = resolve_typedef_from_identifier(tcx, Sym_Var_Args, ast_argument_type->span, false);
@@ -1975,8 +1975,8 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                 }
             }
             
-            if (ast->Function_Type.ident && ast->Function_Type.ident->kind == Ast_Ident) {
-                result.type->Function.ident = ast_unwrap_ident(ast->Function_Type.ident);
+            if (ast->Function_Type.ident && ast->Function_Type.ident->kind == AST_IDENTIFIER) {
+                result.type->Function.ident = unwrap_identifier(ast->Function_Type.ident);
             }
             result.type->kind = TypeKind_Function;
             // TODO: should function really have a size?
@@ -2114,7 +2114,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     library_id = dynamic_library_id;
                     library_function_id = result.type->Function.ident;
                     
-                    Type* lib_type = resolve_typedef_from_identifier(tcx, Sym_Dynamic_Library, ast->span, false);
+                    Ast_Type* lib_type = resolve_typedef_from_identifier(tcx, Sym_Dynamic_Library, ast->span, false);
                     if (!lib_type) {
                         if (report_error) {
                             type_error(tcx, string_print("Missing implementation declaration of `Dynamic_Library`"), ast->span);
@@ -2153,7 +2153,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         case Ast_Struct_Type: {
             int pack = -1;
             for_compound(ast->Function_Type.attributes, attr) {
-                string_id ident = ast_unwrap_ident(attr->Attribute.ident);
+                string_id ident = unwrap_identifier(attr->Attribute.ident);
                 if (ident == Sym_pack) {
                     pack = 0;
                 }
@@ -2181,7 +2181,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
                     result.type->align = (s32) struct_like.align;
                     
                     // TODO: maybe do this when saving the type!!!
-                    //Type* type_decl = resolve_typedef_from_identifier(tcx, ident, ast->span, false);
+                    //Ast_Type* type_decl = resolve_typedef_from_identifier(tcx, ident, ast->span, false);
                     //if (type_decl) {
                     //*type_decl = *result.type;
                     //}
@@ -2214,7 +2214,7 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         case Ast_Enum_Type: {
             result.type->kind = TypeKind_Enum;
             
-            Type* type;
+            Ast_Type* type;
             if (ast->Enum_Type.elem_type && ast->Enum_Type.elem_type->kind != Ast_None) {
                 type = create_type_from_ast(tcx, ast->Enum_Type.elem_type, report_error).type;
                 if (type->kind != TypeKind_Basic) {
@@ -2282,9 +2282,9 @@ create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error) {
         } break;
         
         case Ast_Typedef: {
-            assert(ast->Typedef.ident->kind == Ast_Ident);
+            assert(ast->Typedef.ident->kind == AST_IDENTIFIER);
             
-            Type* type = create_type_from_ast(tcx, ast->Typedef.type, report_error).type;
+            Ast_Type* type = create_type_from_ast(tcx, ast->Typedef.type, report_error).type;
             if (type) {
                 *result.type = *type;
             }
@@ -2351,9 +2351,9 @@ try_expand_if_directive(Type_Context* tcx, Ast* stmt, bool report_error) {
     }
 }
 
-Type*
+Ast_Type*
 process_define_directive(Type_Context* tcx, Ast* ast, bool report_error) {
-    Type* result = 0;
+    Ast_Type* result = 0;
     Value comptime_value = {};
     
     if (is_valid_ast(ast->Define_Directive.arguments)) {
@@ -2376,7 +2376,7 @@ process_define_directive(Type_Context* tcx, Ast* ast, bool report_error) {
         entity = create_constant_value(result, comptime_value);
     }
     
-    string_id ident = ast_unwrap_ident(ast->Define_Directive.ident);
+    string_id ident = unwrap_identifier(ast->Define_Directive.ident);
     if (!register_entity(tcx, ident, entity, ast->span, report_error)) {
         result = 0;
     }
@@ -2384,11 +2384,11 @@ process_define_directive(Type_Context* tcx, Ast* ast, bool report_error) {
     return result;
 }
 
-Type*
+Ast_Type*
 type_infer_block_in_scope(Type_Context* tcx, Ast* stmt, bool report_error) {
     assert(stmt->kind == Ast_Block_Stmt);
     
-    Type* result = 0;
+    Ast_Type* result = 0;
     Ast* stmts = stmt->Block_Stmt.stmts;
     for_compound(stmts, it) {
         result = type_infer_statement(tcx, it, report_error);
@@ -2400,16 +2400,16 @@ type_infer_block_in_scope(Type_Context* tcx, Ast* stmt, bool report_error) {
     return result;
 }
 
-Type*
+Ast_Type*
 type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
-    Type* result = 0;
+    Ast_Type* result = 0;
     
     
     switch (stmt->kind) {
         case Ast_Assign_Stmt: {
             Create_Type_From_Ast_Result created_type = create_type_from_ast(tcx, stmt->Assign_Stmt.type, report_error);
             
-            Type* expected_type = created_type.type;
+            Ast_Type* expected_type = created_type.type;
             if (!expected_type || expected_type->size <= 0) {
                 if (expected_type && report_error) {
                     type_error(tcx, string_print("type `%` is invalid here", f_type(expected_type)),
@@ -2423,7 +2423,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
             stmt->Assign_Stmt.mods = created_type.mods;
             
             if (is_valid_ast(stmt->Assign_Stmt.expr)) {
-                Type* found_type = type_infer_expression(tcx, 
+                Ast_Type* found_type = type_infer_expression(tcx, 
                                                          stmt->Assign_Stmt.expr, 
                                                          expected_type,
                                                          report_error);
@@ -2453,7 +2453,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                     }
                     
                 } else {
-                    for_compound(stmt->Assign_Stmt.ident, ast_ident) {
+                    for_compound(stmt->Assign_Stmt.ident, AST_IDENTIFIER) {
                         ident = try_unwrap_ident(stmt->Assign_Stmt.ident);
                         if (!register_entity(tcx, ident, entity, stmt->span, report_error)) {
                             result = 0;
@@ -2481,9 +2481,9 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         } break;
         
         case Ast_Decl_Stmt: {
-            string_id ident = ast_unwrap_ident(stmt->Decl_Stmt.ident);
+            string_id ident = unwrap_identifier(stmt->Decl_Stmt.ident);
             
-            Type* decl_type = stmt->Decl_Stmt.type->type;
+            Ast_Type* decl_type = stmt->Decl_Stmt.type->type;
             if (!decl_type) {
                 decl_type = create_type_from_ast(tcx, stmt->Decl_Stmt.type, report_error).type;
                 
@@ -2503,7 +2503,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
                 //map_put(tcx->local_type_table, ident, result);
                 
             } else {
-                Type* found_type = type_infer_statement(tcx, stmt->Decl_Stmt.stmt, report_error);
+                Ast_Type* found_type = type_infer_statement(tcx, stmt->Decl_Stmt.stmt, report_error);
                 
                 if (found_type) {
                     result = decl_type;
@@ -2515,11 +2515,11 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         } break;
         
         case Ast_If_Stmt: {
-            Type* cond = type_infer_expression(tcx, stmt->If_Stmt.cond, t_bool, report_error);
+            Ast_Type* cond = type_infer_expression(tcx, stmt->If_Stmt.cond, t_bool, report_error);
             constant_folding_of_expressions(tcx, stmt->If_Stmt.cond);
-            Type* then_block = type_infer_statement(tcx, stmt->If_Stmt.then_block, report_error);
+            Ast_Type* then_block = type_infer_statement(tcx, stmt->If_Stmt.then_block, report_error);
             if (is_ast_stmt(stmt->If_Stmt.else_block)) {
-                Type* else_block = type_infer_statement(tcx, stmt->If_Stmt.else_block, report_error);
+                Ast_Type* else_block = type_infer_statement(tcx, stmt->If_Stmt.else_block, report_error);
                 if (cond && then_block && else_block) {
                     result = cond;
                 }
@@ -2539,14 +2539,14 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
             Scope scope = {};
             begin_block_scope(tcx, &scope);
             
-            Type* init = type_infer_statement(tcx, stmt->For_Stmt.init, report_error);
-            Type* cond = type_infer_expression(tcx, stmt->For_Stmt.cond, t_bool, report_error);
+            Ast_Type* init = type_infer_statement(tcx, stmt->For_Stmt.init, report_error);
+            Ast_Type* cond = type_infer_expression(tcx, stmt->For_Stmt.cond, t_bool, report_error);
             constant_folding_of_expressions(tcx, stmt->For_Stmt.cond);
-            Type* update = type_infer_expression(tcx, stmt->For_Stmt.update, 0, report_error);
+            Ast_Type* update = type_infer_expression(tcx, stmt->For_Stmt.update, 0, report_error);
             
             
             
-            Type* block;
+            Ast_Type* block;
             if (stmt->For_Stmt.block->kind == Ast_Block_Stmt) {
                 block = type_infer_block_in_scope(tcx, stmt->For_Stmt.block, report_error);
             } else {
@@ -2561,9 +2561,9 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         } break;
         
         case Ast_While_Stmt: {
-            Type* cond = type_infer_expression(tcx, stmt->While_Stmt.cond, t_bool, report_error);
+            Ast_Type* cond = type_infer_expression(tcx, stmt->While_Stmt.cond, t_bool, report_error);
             constant_folding_of_expressions(tcx, stmt->While_Stmt.cond);
-            Type* block = type_infer_statement(tcx, stmt->While_Stmt.block, report_error);
+            Ast_Type* block = type_infer_statement(tcx, stmt->While_Stmt.block, report_error);
             
             if (cond && block) {
                 result = cond;
@@ -2571,7 +2571,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
         } break;
         
         case Ast_Switch_Stmt: {
-            Type* cond = type_infer_expression(tcx, stmt->Switch_Stmt.cond, 0, report_error);
+            Ast_Type* cond = type_infer_expression(tcx, stmt->Switch_Stmt.cond, 0, report_error);
             constant_folding_of_expressions(tcx, stmt->Switch_Stmt.cond);
             result = cond;
             
@@ -2689,7 +2689,7 @@ type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error) {
 }
 
 bool
-type_check_assignment(Type_Context* tcx, Type* dest, Type* src, bool is_src_value, Span span, Operator op, bool report_error) {
+type_check_assignment(Type_Context* tcx, Ast_Type* dest, Ast_Type* src, bool is_src_value, Span span, Operator op, bool report_error) {
     assert(dest && src);
     
     //if (dest->kind == TypeKind_Any || src->kind == TypeKind_Any) {
@@ -2842,8 +2842,8 @@ type_check_assignment(Type_Context* tcx, Type* dest, Type* src, bool is_src_valu
         } break;
         
         case TypeKind_Function: {
-            array(Type*)* dest_args = dest->Function.arg_types;
-            array(Type*)* src_args = src->Function.arg_types;
+            array(Ast_Type*)* dest_args = dest->Function.arg_types;
+            array(Ast_Type*)* src_args = src->Function.arg_types;
             
             if (array_count(dest_args) != array_count(src_args)) {
                 return false;
@@ -2869,8 +2869,8 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
     bool result = true;
     
     switch (expr->kind) {
-        case Ast_Call_Expr: {
-            Type* function_type = expr->Call_Expr.function_type;
+        case AST_PROCEDURE_CALL_Expr: {
+            Ast_Type* function_type = expr->Call_Expr.function_type;
             assert(function_type->kind == TypeKind_Function);
             
             Type_Function* t_func = &function_type->Function;
@@ -2925,8 +2925,8 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                     }
                     
                     
-                    if (arg->Argument.ident && arg->Argument.ident->kind == Ast_Ident) {
-                        string_id arg_ident = ast_unwrap_ident(arg->Argument.ident);
+                    if (arg->Argument.ident && arg->Argument.ident->kind == AST_IDENTIFIER) {
+                        string_id arg_ident = unwrap_identifier(arg->Argument.ident);
                         smm index = map_get_index(t_func->ident_to_index, arg_ident);
                         if (index > 0) {
                             arg_index = t_func->ident_to_index[index].value;
@@ -2940,7 +2940,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
                             break;
                         }
                     }
-                    Type* arg_type = t_func->arg_types[arg_index];
+                    Ast_Type* arg_type = t_func->arg_types[arg_index];
                     //__debugbreak();
                     if (!type_equals(arg_type, arg->Argument.assign->type)) {
                         type_error_mismatch(tcx, arg_type, 
@@ -2966,7 +2966,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
             }
         } break;
         
-        case Ast_Unary_Expr: {
+        case AST_UNARY: {
             
             result = type_check_expression(tcx, expr->Binary_Expr.first);
             
@@ -2975,7 +2975,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
             }
             
             Operator op = expr->Unary_Expr.op;
-            Type* first = expr->Unary_Expr.first->type;
+            Ast_Type* first = expr->Unary_Expr.first->type;
             
             
             switch (op) {
@@ -3007,7 +3007,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
             
         } break;
         
-        case Ast_Binary_Expr: {
+        case AST_BINARY: {
             result = type_check_expression(tcx, expr->Binary_Expr.first);
             result = result && type_check_expression(tcx, expr->Binary_Expr.second);
             
@@ -3016,8 +3016,8 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
             }
             
             Operator op = expr->Binary_Expr.op;
-            Type* first = expr->Binary_Expr.first->type;
-            Type* second = expr->Binary_Expr.second->type;
+            Ast_Type* first = expr->Binary_Expr.first->type;
+            Ast_Type* second = expr->Binary_Expr.second->type;
             
             if (first->kind == TypeKind_Pointer || first->kind == TypeKind_Function) {
                 if (op == Op_Add || 
@@ -3114,10 +3114,10 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
         case Ast_Cast_Expr: {
             result = type_check_expression(tcx, expr->Cast_Expr.expr);
             
-            Type* real_src = expr->Cast_Expr.expr->type;
-            Type* real_dest = expr->type;
-            Type* src = normalize_type_for_casting(real_src);
-            Type* dest = normalize_type_for_casting(real_dest);
+            Ast_Type* real_src = expr->Cast_Expr.expr->type;
+            Ast_Type* real_dest = expr->type;
+            Ast_Type* src = normalize_type_for_casting(real_src);
+            Ast_Type* dest = normalize_type_for_casting(real_dest);
             
             bool is_valid_cast = false;
             if (dest->kind == TypeKind_Basic && src->kind == TypeKind_Basic) {
@@ -3149,7 +3149,7 @@ type_check_expression(Type_Context* tcx, Ast* expr) {
         case Ast_Index_Expr: {
             assert(expr->Index_Expr.array);
             assert(expr->Index_Expr.index);
-            Type* type = expr->Index_Expr.array->type;
+            Ast_Type* type = expr->Index_Expr.array->type;
             
             if (expr->Index_Expr.index->kind == Ast_Value) {
                 Value index_value = expr->Index_Expr.index->Value;
@@ -3190,10 +3190,10 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
             if (stmt->Assign_Stmt.expr) {
                 result = result && type_check_expression(tcx, stmt->Assign_Stmt.expr);
             }
-            Type* expected_type = stmt->type;
+            Ast_Type* expected_type = stmt->type;
             assert(expected_type && "compiler bug: assign statement has no type");
             
-            Type* found_type = stmt->Assign_Stmt.expr->type;
+            Ast_Type* found_type = stmt->Assign_Stmt.expr->type;
             if (found_type) {
                 result = result &&  type_check_assignment(tcx, expected_type, found_type, is_ast_value(stmt->Assign_Stmt.expr),
                                                           stmt->Assign_Stmt.expr->span);
@@ -3258,7 +3258,7 @@ type_check_statement(Type_Context* tcx, Ast* stmt) {
         case Ast_Return_Stmt: {
             assert(tcx->return_type);
             
-            Type* found_type = stmt->type;
+            Ast_Type* found_type = stmt->type;
             if (!found_type) {
                 type_error(tcx, string_lit("compiler bug! No return type was found in return statement"), stmt->span);
                 pln("%", f_ast(stmt));
@@ -3294,13 +3294,13 @@ type_infer_declaration(Type_Context* tcx, Ast* ast, string_id ident, bool report
     tcx->block_depth = 0;
     
     if (is_ast_type(ast)) {
-        Type* type = save_type_declaration_from_ast(tcx, ident, ast, report_error);
+        Ast_Type* type = save_type_declaration_from_ast(tcx, ident, ast, report_error);
         if (!type) {
             result = false;
         }
         
     } else if (ast->kind == Ast_Decl_Stmt) {
-        Type* type = ast->Decl_Stmt.type->type;
+        Ast_Type* type = ast->Decl_Stmt.type->type;
         ast->type = type;
         
         if (ast->Decl_Stmt.type->kind == Ast_Function_Type) {
@@ -3315,7 +3315,7 @@ type_infer_declaration(Type_Context* tcx, Ast* ast, string_id ident, bool report
                          arg_index < array_count(func->arg_idents);
                          arg_index++) {
                         
-                        Type* arg_type = func->arg_types[arg_index];
+                        Ast_Type* arg_type = func->arg_types[arg_index];
                         if (arg_type) {
                             string_id arg_ident = func->arg_idents[arg_index];
                             // TODO(Alexander): maybe we need to also store spans in procedure type?
@@ -3389,7 +3389,7 @@ check_if_statement_will_return(Ast* stmt) {
                 }
             }
             
-            Type* cond_type = stmt->Switch_Case.cond->type;
+            Ast_Type* cond_type = stmt->Switch_Case.cond->type;
             if (cond_type && cond_type->kind == TypeKind_Enum) {
                 int cond_count = 0;
                 for_compound(stmt->Switch_Stmt.cases, it) {
@@ -3430,7 +3430,7 @@ type_check_declaration(Type_Context* tcx, Compilation_Unit* cu) {
     tcx->return_type = t_void;
     
     Ast* ast = cu->ast;
-    Type* type = ast->type;
+    Ast_Type* type = ast->type;
     if (ast->kind == Ast_Decl_Stmt) {
         type = ast->Decl_Stmt.type->type;
         if (type && type->kind == TypeKind_Function) {
@@ -3474,7 +3474,7 @@ void
 DEBUG_setup_intrinsic_types(Type_Context* tcx) {
     
 #define _push_intrinsic(type, name, _is_variadic, interp_intrinsic_fp, intrinsic_fp, _return_type) \
-Type* type = arena_push_struct(&tcx->type_arena, Type); \
+Ast_Type* type = arena_push_struct(&tcx->type_arena, Type); \
 { \
 type->kind = TypeKind_Function; \
 type->Function.is_variadic = _is_variadic; \
@@ -3573,7 +3573,7 @@ run_type_checker(Type_Context* tcx, Interp* interp) {
     // Declare all the types 
     for_array_it(interp->compilation_units, cu) {
         if (is_ast_type(cu->ast)) {
-            Type* type = arena_push_struct(&tcx->type_arena, Type);
+            Ast_Type* type = arena_push_struct(&tcx->type_arena, Type);
             cu->ast->type = type;
             
             // HACK: make sure we declare structs/ unions so they can be overridden.

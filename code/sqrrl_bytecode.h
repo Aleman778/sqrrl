@@ -23,7 +23,7 @@ enum Bytecode_Operator : u8 {
     // Pointers
     BC_LOCAL,        // ptr x := locals(size, align)
     BC_GLOBAL,       // ptr x := globals(index)
-    BC_FUNCTION,     // ptr x := function(index)
+    BC_PROCEDURE,    // ptr x := procedure(index)
     BC_ARRAY_ACCESS, // ptr x := a[b]
     BC_FIELD_ACCESS, // ptr x := a.b (or (u8*) a + offset(b)
     
@@ -90,7 +90,7 @@ global const cstring bc_operator_names[] = {
     /* Control flow:     */ "loop", "block", "end", "branch", "call", "call_indirect",
     /*                   */ "return",
     /* Constants:        */ "const", "const", "const",
-    /* Pointers:         */ "local", "global", "function", "array_access",
+    /* Pointers:         */ "local", "global", "procedure", "array_access",
     /*                   */ "field_access",
     /* Memory:           */ "copy", "store", "load", "lea", "memcpy", "memset",
     /* Conversions:      */ "truncate", "extend", "int_to_float", "float_to_int", "float_to_float",
@@ -103,87 +103,52 @@ global const cstring bc_operator_names[] = {
     /* intrinsics (x64): */ "x64_rdts"
 };
 
-global const cstring bc_type_names[] = {
-    "void", "ptr", "int", "float"
-};
-
-enum Bytecode_Type_Kind : u8 {
-    BC_TYPE_VOID,
+enum Bytecode_Type {
     BC_TYPE_PTR,
-    BC_TYPE_INT,
-    BC_TYPE_FLOAT,
+    BC_TYPE_S32,
+    BC_TYPE_S64,
+    BC_TYPE_F32,
+    BC_TYPE_F64
 };
 
-enum Byytecode_Type_Flags {
-    BC_FLAG_SIGNED = bit(0),
-    BC_FLAG_UNIQUE_REGISTER = bit(1),
-};
-
-struct Bytecode_Type {
-    Bytecode_Type_Kind kind;
-    u8 flags;
-    u8 size;
-};
-
-Bytecode_Type
-bc_type(Bytecode_Type_Kind kind, u8 flags, u8 size) {
-    return { kind, flags, size };
+inline Bytecode_Type
+to_bytecode_type(Type_Storage kind) {
+    switch (kind) {
+        case TYPE_BOOL:
+        case TYPE_S8:
+        case TYPE_S16:
+        case TYPE_S32:
+        case TYPE_U8:
+        case TYPE_U16:
+        case TYPE_U32: return BC_S32;
+        
+        case TYPE_S64:
+        case TYPE_U64: return BC_S64;
+        
+        case TYPE_F32: return BC_F32;
+        
+        case TYPE_F64: return BC_F64;
+        
+        case TYPE_STRING:
+        case TYPE_CSTRING:
+        case TYPE_STRUCT:
+        case TYPE_UNION:
+        case TYPE_ARRAY_FIXED:
+        case TYPE_ARRAY_RESIZABLE:
+        case TYPE_ARRAY_VIEW: 
+        case TYPE_PROCEDURE: return BC_PTR;
+        default: unimplemented;
+    }
 }
 
-global const Bytecode_Type bc_type_bool = bc_type(BC_TYPE_INT, 0, 1);
-#define BC_BOOL bc_type_bool
-
-global const Bytecode_Type bc_type_ptr = bc_type(BC_TYPE_PTR, 0, 0);
-#define BC_PTR bc_type_ptr
-
-global const Bytecode_Type bc_type_void = bc_type(BC_TYPE_VOID, 0, 0);
-#define BC_VOID bc_type_void
-
-struct Bytecode_Function_Arg {
-    Bytecode_Type type;
-    u32 size, align;
-};
-
-struct Bytecode_Function {
+struct Bytecode_Procedure {
+    u32 proc_index;
+    
     int register_count;
+    int first_insn;
     
-    union {
-        void* code_ptr;
-        string_id intrinsic_id;
-    };
-    
-    u32 relative_ptr;
-    
-    u32 type_index;
-    
-    u32 insn_count;
-    u32 block_count;
-    
-    s32 arg_count;
-    s32 ret_count;
-    
-    u32 max_caller_arg_count;
-    
-    s32 first_insn; // relative pointer to first instruction
-    
-    bool return_as_first_arg;
-    bool is_imported;
-    bool is_intrinsic;
-    bool is_variadic;
-    
-    // followed by array of Bytecode_Function_Arg, function returns followed by its
-    // arguments types and lastly instructions
+    Ast_Procedure* proc;
 };
-
-inline Bytecode_Function_Arg*
-function_ret_types(Bytecode_Function* func) {
-    return (Bytecode_Function_Arg*) (func + 1);
-}
-
-inline Bytecode_Function_Arg*
-function_arg_types(Bytecode_Function* func) {
-    return (Bytecode_Function_Arg*) (func + 1) + func->ret_count;
-}
 
 enum Bytecode_Import_Kind {
     BC_IMPORT_NONE,
@@ -197,7 +162,7 @@ struct Bytecode_Import {
     
     Bytecode_Import_Kind kind;
     union {
-        u32 func_index;
+        u32 proc_index;
         u32 global_index;
     };
     
@@ -205,8 +170,8 @@ struct Bytecode_Import {
 };
 
 struct Bytecode_Export {
-    string_id function;
-    u32 func_index;
+    string_id procedure;
+    u32 proc_index;
 };
 
 enum Bytecode_Memory_Kind {
@@ -214,11 +179,9 @@ enum Bytecode_Memory_Kind {
     BC_MEM_READ_WRITE,
 };
 
-struct Ast;
-
 struct Bytecode_Global {
     Ast* initializer;
-    void* address; // for JIT
+    void* jit_address;
     u32 offset;
     u32 size, align;
     Bytecode_Memory_Kind kind;
@@ -226,23 +189,18 @@ struct Bytecode_Global {
     // can safely exclude the data if we optimized out this
 };
 
-struct Bytecode {
+struct Bytecode_Module {
     
     array(Bytecode_Import)* imports;
     array(Bytecode_Export)* exports;
     
-    array(Bytecode_Function*)* functions;
-    array(string_id)* function_names;
+    array(Bytecode_Procedure*)* procedures;
+    array(string_id)* procedure_names;
     
     array(Bytecode_Global)* globals;
     
-    int entry_func_index;
+    int entry_proc_index;
 };
-
-global cstring bc_memory_kind_names[] = { 
-    "", "rodata", "data"
-};
-
 
 #define Bytecode_Instruction_Base \
 Bytecode_Operator opcode; \
@@ -254,7 +212,7 @@ cstring comment;
 struct Bytecode_Instruction {
     Bytecode_Instruction_Base;
 };
-global Bytecode_Instruction bc_end_of_function = {};
+global Bytecode_Instruction bc_end_of_procedure = {};
 
 struct Bytecode_Const_Int {
     Bytecode_Instruction_Base;
@@ -348,7 +306,7 @@ struct Bytecode_Memset {
 struct Bytecode_Call {
     Bytecode_Instruction_Base;
     
-    u32 func_index;
+    u32 proc_index;
     s32 arg_count;
     // argument operands followed by return operands
 };
@@ -361,7 +319,7 @@ bc_call_args(Bytecode_Call* call) {
 struct Bytecode_Call_Indirect {
     Bytecode_Instruction_Base;
     
-    int func_ptr_index;
+    int proc_ptr_index;
     s32 ret_count;
     s32 arg_count;
     // argument operands followed by return operands
@@ -389,25 +347,25 @@ struct Bytecode_Branch {
 };
 
 inline Bytecode_Instruction*
-iter_bytecode_instructions(Bytecode_Function* func, Bytecode_Instruction* iter) {
+iter_bytecode_instructions(Bytecode_Procedure* proc, Bytecode_Instruction* iter) {
     if (!iter) {
-        if (!func->first_insn) {
-            return &bc_end_of_function;
+        if (!proc->first_insn) {
+            return &bc_end_of_procedure;
         }
         
-        iter = (Bytecode_Instruction*) ((u8*) func + func->first_insn);
+        iter = (Bytecode_Instruction*) ((u8*) proc + proc->first_insn);
         return iter;
     }
     
     if (!iter->next_insn) {
-        return &bc_end_of_function;
+        return &bc_end_of_procedure;
     }
     
     iter = (Bytecode_Instruction*) ((u8*) iter + iter->next_insn);
     return iter;
 }
 
-#define for_bc_insn(func, insn) \
-for (Bytecode_Instruction* insn = iter_bytecode_instructions(func, 0); \
+#define for_bc_insn(proc, insn) \
+for (Bytecode_Instruction* insn = iter_bytecode_instructions(proc, 0); \
 insn->opcode; \
-insn = iter_bytecode_instructions(func, insn))
+insn = iter_bytecode_instructions(proc, insn))

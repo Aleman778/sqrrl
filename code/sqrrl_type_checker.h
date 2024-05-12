@@ -1,8 +1,8 @@
 
 struct Operator_Overload {
     Operator op;
-    Type* rhs;
-    Type* func;
+    Ast_Type* rhs;
+    Ast_Type* func;
     // NOTE(Alexander): lhs is used to locate this struct
 };
 
@@ -12,14 +12,14 @@ struct Overloaded_Operator_List {
 };
 
 struct Overloaded_Function_List {
-    array(Type*)* functions;
+    array(Ast_Type*)* functions;
     bool is_valid;
 };
 
 // TODO(Alexander): Dynamic Library stuff is a hack and needs to be improved
 struct Library_Function {
     void* pointer;
-    Type* type;
+    Ast_Type* type;
     string_id name;
     u32 relative_ptr;
     u32 bc_func_index;
@@ -62,10 +62,10 @@ enum Entity_Kind {
 struct Entity {
     Entity_Kind kind;
     Ast* ast;
-    Type* type;
+    Ast_Type* type;
     Value value;
     
-    array(Type*)* overloads;
+    array(Ast_Type*)* overloads;
 };
 
 struct Scope {
@@ -85,18 +85,18 @@ struct Type_Context {
     
     Data_Packer* data_packer;
     
-    Type* entry_point;
+    Ast_Type* entry_point;
     
-    map(Type*, Type*)* type_to_pointer;
+    map(Ast_Type*, Ast_Type*)* type_to_pointer;
     
-    map(Type*, Overloaded_Operator_List)* overloaded_operators;
+    map(Ast_Type*, Overloaded_Operator_List)* overloaded_operators;
     map(string_id, Overloaded_Function_List)* overloaded_functions;
     
     Library_Import_Table import_table;
     
     Backend_Type target_backend;
     
-    Type* return_type;
+    Ast_Type* return_type;
     
     s32 block_depth;
     s32 error_count;
@@ -127,7 +127,7 @@ type_error(Type_Context* tcx, string message, Span span) {
 }
 
 inline void
-type_error_mismatch(Type_Context* tcx, Type* expected, Type* found, Span span) {
+type_error_mismatch(Type_Context* tcx, Ast_Type* expected, Ast_Type* found, Span span) {
     type_error(tcx, string_print("mismatched types expected `%`, found `%`",
                                  f_type(expected), f_type(found)), span);
 }
@@ -145,9 +145,9 @@ type_warning(Type_Context* tcx, string message, Span span) {
     tcx->warning_count++;
 }
 
-Type*
-type_wrap_pointer(Type_Context* tcx, Type* type) {
-    Type* result = 0;
+Ast_Type*
+type_wrap_pointer(Type_Context* tcx, Ast_Type* type) {
+    Ast_Type* result = 0;
     
     result = map_get(tcx->type_to_pointer, type);
     if (!result) {
@@ -164,7 +164,7 @@ type_wrap_pointer(Type_Context* tcx, Type* type) {
 
 #if 0
 bool
-push_local(Type_Context* tcx, string_id ident, Type* type, Span span, bool report_error) {
+push_local(Type_Context* tcx, string_id ident, Ast_Type* type, Span span, bool report_error) {
     assert(tcx->block_depth > 0);
     assert(tcx->active_scope);
     
@@ -199,7 +199,7 @@ end_block_scope(Type_Context* tcx, Scope* scope) {
 }
 
 bool
-type_equals(Type* a, Type* b) {
+type_equals(Ast_Type* a, Ast_Type* b) {
     assert(a && b);
     
     if (a->kind == TypeKind_Unresolved || b->kind == TypeKind_Unresolved) {
@@ -280,8 +280,8 @@ type_equals(Type* a, Type* b) {
             for (int arg_index = 0; 
                  arg_index < array_count(proc_a->arg_types); 
                  arg_index++) {
-                Type* arg_a = proc_a->arg_types[arg_index];
-                Type* arg_b = proc_b->arg_types[arg_index];
+                Ast_Type* arg_a = proc_a->arg_types[arg_index];
+                Ast_Type* arg_b = proc_b->arg_types[arg_index];
                 
                 if (!type_equals(arg_a, arg_b)) {
                     return false;
@@ -301,15 +301,15 @@ type_equals(Type* a, Type* b) {
 // NOTE(Alexander): forward declare
 struct Ast_File;
 
-bool match_struct_like_args(Type_Context* tcx, Type* formal_type, int first_field, int last_field, Ast* args, bool report_error);
-Type* type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error);
-Type* type_infer_expression(Type_Context* tcx, Ast* expr, Type* parent_type, bool report_error);
+bool match_struct_like_args(Type_Context* tcx, Ast_Type* formal_type, int first_field, int last_field, Ast* args, bool report_error);
+Ast_Type* type_infer_statement(Type_Context* tcx, Ast* stmt, bool report_error);
+Ast_Type* type_infer_expression(Type_Context* tcx, Ast* expr, Ast_Type* parent_type, bool report_error);
 
-bool type_check_assignment(Type_Context* tcx, Type* lhs, Type* rhs, bool rhs_is_value, Span span,
+bool type_check_assignment(Type_Context* tcx, Ast_Type* lhs, Ast_Type* rhs, bool rhs_is_value, Span span,
                            Operator op=Op_Assign, bool report_error=true);
 
 struct Create_Type_From_Ast_Result {
-    Type* type;
+    Ast_Type* type;
     Ast_Decl_Modifier mods;
 };
 
@@ -317,6 +317,6 @@ struct Create_Type_From_Ast_Result {
 Create_Type_From_Ast_Result create_type_from_ast(Type_Context* tcx, Ast* ast, bool report_error);
 
 Entity resolve_entity_from_identifier(Type_Context* tcx, string_id ident, Span span, bool report_error);
-Type* resolve_typedef_from_identifier(Type_Context* tcx, string_id ident, Span span, bool report_error);
+Ast_Type* resolve_typedef_from_identifier(Type_Context* tcx, string_id ident, Span span, bool report_error);
 
-Type* save_operator_overload(Type_Context* tcx, Type* type, Operator op, Span span, bool report_error);
+Ast_Type* save_operator_overload(Type_Context* tcx, Ast_Type* type, Operator op, Span span, bool report_error);

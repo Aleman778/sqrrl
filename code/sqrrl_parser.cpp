@@ -61,7 +61,7 @@ parse_identifier(Parser* parser, bool report_error) {
         
         next_token(parser);
         result = push_ast_node(parser);
-        result->kind = Ast_Ident;
+        result->kind = AST_IDENTIFIER;
         result->Ident = vars_save_string(token.source);
         // NOTE(Alexander): for easier debugging of code
         result->Ident_Data.contents = vars_load_string(result->Ident);
@@ -117,10 +117,10 @@ parse_escape_character(Parser* parser, u8*& curr, u8* end, bool byte) {
     return 0;
 }
 
-internal Type*
-parse_type_from_value_suffix(Parser* parser, Type* default_type, s32 flags) {
+internal Ast_Type*
+parse_type_from_value_suffix(Parser* parser, Ast_Type* default_type, s32 flags) {
     Token token = parser->current_token;
-    Type* result = default_type;
+    Ast_Type* result = default_type;
     
     if (token.suffix_start != token.source.count) {
         string suffix = string_view(token.source.data + token.suffix_start, 
@@ -175,7 +175,7 @@ internal Ast*
 parse_char(Parser* parser) {
     assert(parser->current_token.type == Token_Char);
     
-    Type* type = parse_type_from_value_suffix(parser, t_u8, BasicFlag_Integer);
+    Ast_Type* type = parse_type_from_value_suffix(parser, t_u8, BasicFlag_Integer);
     string str = parser->current_token.source;
     u8* curr = str.data;
     u8* end = str.data + str.count;
@@ -321,7 +321,7 @@ parse_int(Parser* parser) {
     Token token = parser->current_token;
     assert(token.type == Token_Int);
     
-    Type* type = parse_type_from_value_suffix(parser, 0, BasicFlag_Integer);
+    Ast_Type* type = parse_type_from_value_suffix(parser, 0, BasicFlag_Integer);
     
     Parse_U64_Value_Result parsed_result = parse_u64_value(token);
     if (parsed_result.is_too_large) {
@@ -342,7 +342,7 @@ parse_float(Parser* parser) {
         return 0;
     }
     
-    Type* type = parse_type_from_value_suffix(parser, t_f64, BasicFlag_Floating);
+    Ast_Type* type = parse_type_from_value_suffix(parser, t_f64, BasicFlag_Floating);
     
     u32 curr_index = 0;
     f64 value = 0.0;
@@ -489,7 +489,7 @@ parse_atom(Parser* parser, bool report_error, u8 min_prec) {
                     
                     next_token(parser);
                     result = push_ast_node(parser, &token);
-                    result->kind = Ast_Unary_Expr;
+                    result->kind = AST_UNARY;
                     result->Unary_Expr.op = unop;
                     result->Unary_Expr.first = parse_expression(parser, true, prec);
                 }
@@ -545,12 +545,12 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
                 lhs_expr->kind = Ast_Field_Expr;
                 lhs_expr->Field_Expr.var = rhs_expr;
                 Ast* field = parse_atom(parser, true);
-                if (field->kind == Ast_Ident) {
+                if (field->kind == AST_IDENTIFIER) {
                     lhs_expr->Field_Expr.field = field;
                 } else {
                     // NOTE(Alexander): we have to unwrap the expression so we first fetch the field identifier then perform the expression
                     // TODO(Alexander): this assumes that first node is identifier, otherwise we fail this is quite ugly
-                    assert(field->children[0] && field->children[0]->kind == Ast_Ident);
+                    assert(field->children[0] && field->children[0]->kind == AST_IDENTIFIER);
                     lhs_expr->Field_Expr.field = field->children[0];
                     field->children[0] = lhs_expr;
                     lhs_expr = field;
@@ -560,7 +560,7 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
             
             case Token_Open_Paren: {
                 lhs_expr = push_ast_node(parser);
-                lhs_expr->kind = Ast_Call_Expr;
+                lhs_expr->kind = AST_PROCEDURE_CALL_Expr;
                 lhs_expr->Call_Expr.ident = rhs_expr;
                 lhs_expr->Call_Expr.args = parse_compound(parser, 
                                                           Token_Open_Paren, Token_Close_Paren, Token_Comma, 
@@ -616,7 +616,7 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
         next_token(parser);
         if (token.type == Token_Increment || token.type == Token_Decrement) {
             Ast* unary_expr = push_ast_node(parser);
-            unary_expr->kind = Ast_Unary_Expr;
+            unary_expr->kind = AST_UNARY;
             unary_expr->Unary_Expr.op = token.type == Token_Increment ? 
                 Op_Post_Increment : Op_Post_Decrement;
             unary_expr->Unary_Expr.first = lhs_expr;
@@ -633,7 +633,7 @@ parse_expression(Parser* parser, bool report_error, u8 min_prec, Ast* atom_expr)
         } else {
             Ast* rhs_expr = parse_expression(parser, true, next_min_prec);
             Ast* node = push_ast_node(parser);
-            node->kind = Ast_Binary_Expr;
+            node->kind = AST_BINARY;
             node->Binary_Expr.op = binary_op;
             node->Binary_Expr.first = lhs_expr;
             node->Binary_Expr.second = rhs_expr;
@@ -1500,7 +1500,7 @@ inline Ast*
 parse_array_type(Parser* parser, Ast* elem_type, Ast_Decl_Modifier mods) {
     assert(parser->current_token.type == Token_Open_Bracket);
     
-    if (elem_type && elem_type->kind == Ast_Ident) {
+    if (elem_type && elem_type->kind == AST_IDENTIFIER) {
         Ast* tmp_type = push_ast_node(parser);
         tmp_type->kind = Ast_Named_Type;
         tmp_type->Named_Type = elem_type;
@@ -1561,7 +1561,7 @@ parse_type(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
         base = push_ast_node(parser);
         base->kind = Ast_Named_Type;
         base->Named_Type = push_ast_node(parser);
-        base->Named_Type->kind = Ast_Ident;
+        base->Named_Type->kind = AST_IDENTIFIER;
         base->Named_Type->Ident = Kw_invalid;
         
         bool is_unsigned = false;
@@ -1637,7 +1637,7 @@ parse_type(Parser* parser, bool report_error, Ast_Decl_Modifier mods) {
             base = push_ast_node(parser);
             base->kind = Ast_Named_Type;
             base->Named_Type = push_ast_node(parser);
-            base->Named_Type->kind = Ast_Ident;
+            base->Named_Type->kind = AST_IDENTIFIER;
             base->Named_Type->Ident = ident;
             
         } else {
@@ -1839,7 +1839,7 @@ parse_complex_type(Parser* parser, Ast* base_type, bool report_error, Ast_Decl_M
                     result->Function_Type.ident = parse_identifier(parser);
                 } else {
                     Ast* ident = push_ast_node(parser, &op_token);
-                    ident->kind = Ast_Ident;
+                    ident->kind = AST_IDENTIFIER;
                     ident->Ident = Kw_operator;
                     result->Function_Type.ident = ident;
                 }

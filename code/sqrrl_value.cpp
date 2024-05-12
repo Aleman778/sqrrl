@@ -1,6 +1,6 @@
 
 void
-value_store_in_memory(Type* type, void* dest, Value_Data src) {
+value_store_in_memory(Ast_Type* type, void* dest, Value_Data src) {
     if (type->kind == TypeKind_Enum) {
         type = type->Enum.type;
     }
@@ -65,7 +65,7 @@ void
 convert_aggregate_literal_to_memory(Ast* expr, void* dest) {
     assert(expr->kind == Ast_Aggregate_Expr);
     
-    Type* type = expr->type;
+    Ast_Type* type = expr->type;
     
     if (type->kind == TypeKind_Array) {
         smm capacity = type->Array.capacity;
@@ -138,7 +138,7 @@ value_type_from_basic_flags(u32 flags) {
 }
 
 Value
-value_load_from_memory(Type* type, void* data) {
+value_load_from_memory(Ast_Type* type, void* data) {
     Value result = {};
     
     switch (type->kind) {

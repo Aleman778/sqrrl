@@ -11,6 +11,7 @@
 #define internal static
 #define global static
 #define local_persist static
+#define auto auto
 
 // NOTE(Alexander): count the number of elements in a fixed size array
 #define fixed_array_count(array) (sizeof(array) / sizeof((array)[0]))

@@ -1,20 +1,17 @@
 
-
-
-
-
-
-void
-emit_expression(BC_Builder* bc, Ast_Expression* expr) {
+int
+emit_bytecode_for_expression(Bytecode_Builder* bc, Ast_Expression* expr) {
+    int result = -1;
     
     switch (expr->kind) {
         case AST_LITERAL: {
-            Ast_Literal* lit = (Ast_Literal*) expr;
+            auto lit = (Ast_Literal*) expr;
             Ast_Type* type = lit->inferred_type;
             if (type->flags & TYPE_FLAG_INTEGER) {
-                BC* bc = push_instruction(bc, );
-                inst->constant.lit->value._u64
-                    
+                result = bc_allocate_register(bc, type->size > 4 ? BC_I64 : BC_I32);
+                Bc* inst = bc_instruction(bc, BC_CONST_I64, result, -1, -1);
+                inst->constant._u64 = lit->value._u64;
+                
             } else if (type->flags & TYPE_FLAG_FLOAT) {
                 
             } else {
@@ -22,11 +19,20 @@ emit_expression(BC_Builder* bc, Ast_Expression* expr) {
             }
         } break;
         
+        case AST_BLOCK: {
+            auto block = (Ast_Block*) expr;
+            for_array_v(block->statements.stmts, stmt, _) {
+                emit_bytecode_for_expression(bc, stmt);
+            }
+        } break;
         
+        case AST_DECLARATION: {
+            
+        } break;
     }
     
+    return result;
 }
-
 
 
 

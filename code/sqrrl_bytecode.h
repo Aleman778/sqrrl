@@ -1,11 +1,11 @@
 
 enum Opcode : u8 {
-    BYTECODE_NOOP,
+    BC_NOOP,
     
-    BYTECODE_FUNCTION_START, // res_index = func_index
-    BYTECODE_FUNCTION_END,   // res_index = func_index
+    BC_FUNCTION_START, // res_index = func_index
+    BC_FUNCTION_END,   // res_index = func_index
     
-    BYTECODE_CONST_I64,
+    BC_CONST_I64,
     
 };
 
@@ -13,34 +13,30 @@ global const cstring opcode_names[] = {
     "noop"
 };
 
-enum BC_Type {
-    BYTECODE_PTR,
-    BYTECODE_I32,
-    BYTECODE_I64,
-    BYTECODE_F32,
-    BYTECODE_F64,
+enum Bc_Type {
+    BC_PTR,
+    BC_I32,
+    BC_I64,
+    BC_F32,
+    BC_F64,
 };
 
-struct BC {
+struct Bc {
     Opcode opcode;
     
     int res_index;
     int a_index;
     int b_index;
     
-    union {
-        u64 _u64;
-        f32 _f32;
-        f64 _f64;
-    } constant;
+    Value constant;
 };
 
-struct BC_Function {
+struct Bc_Function {
     int func_index;
     
+    array(Bc_Type)* register_types;
 };
 
-struct BC_Module {
-    array(BC_Function)* functions;
-    
+struct Bc_Module {
+    array(Bc_Function)* functions;
 };

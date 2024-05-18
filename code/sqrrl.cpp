@@ -129,7 +129,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         compiler.output_filename = string_concat(name_part, ".exe");
     }
     
-    // Parsing
+    // Phase 1: Lexing & Parsing
     string source = read_entire_source_file(file);
     Memory_Arena ast_arena = {};
     Lexer lexer = {};
@@ -143,7 +143,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         return 1;
     }
     
-    // Typing
+    // Phase 2: Typing
     Type_Context tcx = {};
     tcx.file = ast_file;
     infer_block(&tcx, &ast_file->block);
@@ -156,9 +156,8 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     string_builder_free(&sb);
     
     
-    // Intermediate representation
+    // Phase 3: Intermediate representation
     Bytecode_Builder bytecode_builder = {};
-    //bytecode_builder.data_packer = &data_packer;
     //bytecode_builder.interp = &interp;
     
     for_array(ast_file->block.statements, cu, _2) {

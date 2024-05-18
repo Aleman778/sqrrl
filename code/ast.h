@@ -6,19 +6,18 @@ struct Ast_Declaration;
 
 enum Ast_Kind {    
     AST_TYPE,
-    AST_IDENTIFIERIFIER,
+    AST_IDENTIFIER,
     AST_LITERAL,
     AST_ARGUMENT,
     AST_STRUCT_LITERAL,
     AST_UNARY,
     AST_BINARY,
     AST_CAST,
-    AST_IDENTIFIER,
-    AST_PROCEDURE_CALL,
+    AST_CALL,
     AST_RETURN,
     
     AST_DECLARATION,
-    AST_PROCEDURE,
+    AST_FUNCTION,
     AST_STRUCT,
     
     AST_BLOCK,
@@ -71,7 +70,7 @@ enum Type_Storage {
     TYPE_ARRAY_FIXED,
     TYPE_ARRAY_RESIZABLE,
     TYPE_ARRAY_VIEW,
-    TYPE_PROCEDURE
+    TYPE_FUNCTION
 };
 
 enum {
@@ -166,21 +165,21 @@ Ast_Type* t_void_ptr = &t_void_ptr_definition;
 
 typedef Ast_Expression* Ast_Expression_List;
 
-struct AST_IDENTIFIERifier : Ast_Type {
-#define AST_KIND_AST_IDENTIFIERifier AST_IDENTIFIERIFIER
+struct Ast_Identifier : Ast_Type {
+#define AST_KIND_Ast_Identifier AST_IDENTIFIER
     
     Identifier identifier;
 };
 
 inline Identifier
 unwrap_identifier(Ast* ast) {
-    assert(ast->kind == AST_IDENTIFIERIFIER);
-    return ((AST_IDENTIFIERifier*) ast)->identifier;
+    assert(ast->kind == AST_IDENTIFIER);
+    return ((Ast_Identifier*) ast)->identifier;
 }
 
 inline Identifier
 try_unwrap_identifier(Ast* ast) {
-    if (ast->kind == AST_IDENTIFIERIFIER) {
+    if (ast->kind == AST_IDENTIFIER) {
         return unwrap_identifier(ast);
     }
     return Kw_invalid;
@@ -190,11 +189,7 @@ struct Ast_Literal : Ast_Expression {
 #define AST_KIND_Ast_Literal AST_LITERAL
     
     Type_Storage type;
-    union {
-        u64 u64_value;
-        f32 f32_value;
-        f64 f64_value;
-    };
+    Value value;
     bool u64_overflow;
 };
 
@@ -260,13 +255,13 @@ struct Ast_Argument : Ast_Expression {
 #define AST_KIND_Ast_Argument AST_ARGUMENT
     
     Ast_Expression* expression;
-    AST_IDENTIFIERifier* identifier;
+    Ast_Identifier* identifier;
 };
 
-struct Ast_Procedure_Call : Ast_Expression {
-#define AST_KIND_Ast_Procedure_Call AST_PROCEDURE_CALL
+struct Ast_Call : Ast_Expression {
+#define AST_KIND_Ast_Call AST_CALL
     
-    Ast_Expression* proc;
+    Ast_Expression* func;
     array(Ast_Argument)* args;
 };
 
@@ -295,8 +290,8 @@ struct Ast_Declaration : Ast_Expression {
     Identifier identifier;
 };
 
-struct Ast_Procedure : Ast_Declaration {
-#define AST_KIND_Ast_Procedure AST_PROCEDURE
+struct Ast_Function : Ast_Declaration {
+#define AST_KIND_Ast_Function AST_FUNCTION
     
     Ast_Type* return_type;
     Ast_Block* args;

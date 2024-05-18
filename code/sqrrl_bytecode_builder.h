@@ -1,4 +1,35 @@
 
+struct BC_Bucket {
+    u8* base;
+    int count;
+};
+
+#define BC_INSTRUCTION_BUCKET_SIZE ARENA_DEFAULT_BLOCK_SIZE
+#define BC_INSTRUCTIONS_PER_BUCKET ((BC_INSTRUCTION_BUCKET_SIZE - sizeof(BC_Bucket))/sizeof(BC))
+
+
+struct BC_Builder {
+    BC_Bucket* bucket;
+    
+    BC_Module module;
+};
+
+BC*
+push_instruction(BC_Builder* bc, Opcode opcode, int res_index, int a_index, int b_index) {
+    BC_Bucket* bucket = bc->bucket;
+    
+    if (!bucket || bucket->count >= BC_INSTRUCTION_BUCKET_SIZE) {
+        bucket = (BC_Bucket*) calloc(1, BC_INSTRUCTION_BUCKET_SIZE);
+        pln("allocating new bucket with capacity: % instructions (instruction size: %)", f_int(BC_INSTRUCTIONS_PER_BUCKET)), f_int(sizeof(BC));
+    }
+    BC* result = (BC*) (bucket + 1) + bucket->count++;
+    
+    bc->bucket = bucket;
+    return result;
+}
+
+#if 0
+
 struct Bc_Local {
     int index;
     bool is_ref;
@@ -148,7 +179,7 @@ end_tmp_scope(Bytecode_Builder* bc, int first) {
 inline int
 bc_const_int(Bytecode_Builder* bc, Ast_Type* type, int res_index, s64 val) {
     Bytecode_Const_Int* insn = bc_instruction(bc, BC_INT_CONST, Bytecode_Const_Int);
-    insn->type = to_bytecode_type(type->storage);
+    insn->type = to_bytecode_type(type);
     insn->res_index = res_index;
     insn->val = val;
     return insn->res_index;
@@ -174,9 +205,9 @@ bc_const_f64(Bytecode_Builder* bc, int res_index, f64 val) {
 
 inline int
 bc_const_zero(Bytecode_Builder* bc, Ast_Type* type, int res_index) {
-    if (type->storage == BC_F32) {
+    if (type->storage == TYPE_F32) {
         bc_const_f32(bc, res_index, 0);
-    } else if (type->storage == BC_F64) {
+    } else if (type->storage == TYPE_F64) {
         bc_const_f64(bc, res_index, 0);
     } else {
         bc_const_int(bc, type, res_index, 0);
@@ -187,7 +218,7 @@ bc_const_zero(Bytecode_Builder* bc, Ast_Type* type, int res_index) {
 inline int
 bc_return(Bytecode_Builder* bc, Ast_Type* type, int res_index) {
     Bytecode_Result* insn = bc_instruction(bc, BC_RETURN, Bytecode_Result);
-    insn->type = type->storage;
+    insn->type = to_bytecode_type(type);
     insn->res_index = res_index;
     return insn->res_index;
 }
@@ -228,7 +259,7 @@ bc_assignment(Bytecode_Builder* bc, Bytecode_Operator opcode, Bytecode_Type type
 inline int 
 _bc_load(Bytecode_Builder* bc, Ast_Type* type, int dest, int src, cstring comment=0) {
     //Bytecode_Type bc_type = register_type(bc->curr_procedure, src);
-    //assert(bc_type.kind == BC_TYPE_PTR && "expected BC_TYPE_PTR to load");
+    //assert(bc_type.kind == BC_PTR && "expected BC_PTR to load");
     return bc_assignment(bc, BC_LOAD, to_bytecode_type(type), dest, src, comment);
 }
 
@@ -283,7 +314,7 @@ bc_array_access(Bytecode_Builder* bc, Ast_Type* elem_type,
                 int res_index, int base, int index) {
     
     //Bytecode_Type bc_type = register_type(bc->curr_procedure, base);
-    //assert(bc_type.kind == BC_TYPE_PTR && "expected array base to be BC_TYPE_PTR");
+    //assert(bc_type.kind == BC_PTR && "expected array base to be BC_PTR");
     
     Bytecode_Array_Access* insn = bc_instruction(bc, BC_ARRAY_ACCESS, Bytecode_Array_Access);
     insn->type = BC_PTR;
@@ -298,7 +329,6 @@ inline void
 bc_branch_if(Bytecode_Builder* bc, int label_index, int cond) {
     assert(cond >= 0 && "missing condition");
     Bytecode_Branch* branch = bc_instruction(bc, BC_BRANCH, Bytecode_Branch);
-    branch->type = BC_BOOL;
     branch->label_index = label_index;
     branch->cond = cond;
 }
@@ -316,19 +346,19 @@ _bc_copy_registers(void* dest, void* src, smm count) {
 }
 
 inline void
-bc_call(Bytecode_Builder* bc, Ast_Type* return_type, u32 func_index, array(int)* args) {
+bc_call(Bytecode_Builder* bc, Ast_Type* return_type, u32 proc_index, array(int)* args) {
     Bytecode_Call* call = bc_instruction_varindices(bc, BC_CALL, Bytecode_Call, array_count(args));
     call->type = to_bytecode_type(return_type);
-    call->func_index = func_index;
+    call->proc_index = proc_index;
     call->arg_count = (s32) array_count(args);
     _bc_copy_registers(bc_call_args(call), args, array_count(args));
 }
 
 inline void
-bc_call_indirect(Bytecode_Builder* bc, Ast_Type* return_type, int func_ptr_index, s32 ret_count, array(int)* args) {
+bc_call_indirect(Bytecode_Builder* bc, Ast_Type* return_type, int proc_ptr_index, s32 ret_count, array(int)* args) {
     Bytecode_Call_Indirect* call = bc_instruction_varindices(bc, BC_CALL_INDIRECT, Bytecode_Call_Indirect, array_count(args));
     call->type = to_bytecode_type(return_type);
-    call->func_ptr_index = func_ptr_index;
+    call->proc_ptr_index = proc_ptr_index;
     call->ret_count = ret_count;
     call->arg_count = (s32) array_count(args);
     _bc_copy_registers(bc_call_args(call), args, array_count(args));
@@ -337,7 +367,7 @@ bc_call_indirect(Bytecode_Builder* bc, Ast_Type* return_type, int func_ptr_index
 inline int*
 bc_intrinsic(Bytecode_Builder* bc, Bytecode_Operator opcode, s32 ret_count, s32 arg_count) {
     Bytecode_Call_Indirect* call = bc_instruction_varindices(bc, opcode, Bytecode_Call_Indirect, arg_count);
-    call->func_ptr_index = -1;
+    call->proc_ptr_index = -1;
     call->ret_count = ret_count;
     call->arg_count = arg_count;
     return bc_call_args(call);
@@ -365,12 +395,12 @@ bc_local(Bytecode_Builder* bc, Ast_Type* type) {
 }
 
 inline int
-bc_procedure(Bytecode_Builder* bc, int res_index, int func_index) {
+bc_procedure(Bytecode_Builder* bc, int res_index, int proc_index) {
     assert(bc->curr_procedure);
     Bytecode_Assign* insn =  bc_instruction(bc, BC_FUNCTION, Bytecode_Assign);
     insn->type = BC_PTR;
     insn->dest_index = res_index;
-    insn->src_index = func_index;
+    insn->src_index = proc_index;
     return insn->dest_index;
 }
 
@@ -404,3 +434,5 @@ void string_bc_dump_bytecode_insn(String_Builder* sb, Bytecode* bc, Bytecode_Ins
 void string_bc_dump_bytecode(String_Builder* sb, Bytecode* bc, Bytecode_Procedure* func, Ast_Type* type=0);
 void string_builder_dump_bytecode_procedure(String_Builder* sb, Bytecode* bc, Bytecode_Procedure* func);
 void dump_bytecode(Bytecode* bc);
+
+#endif

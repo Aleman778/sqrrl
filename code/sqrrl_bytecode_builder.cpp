@@ -1,5 +1,38 @@
 
 
+
+
+
+
+void
+emit_expression(BC_Builder* bc, Ast_Expression* expr) {
+    
+    switch (expr->kind) {
+        case AST_LITERAL: {
+            Ast_Literal* lit = (Ast_Literal*) expr;
+            Ast_Type* type = lit->inferred_type;
+            if (type->flags & TYPE_FLAG_INTEGER) {
+                BC* bc = push_instruction(bc, );
+                inst->constant.lit->value._u64
+                    
+            } else if (type->flags & TYPE_FLAG_FLOAT) {
+                
+            } else {
+                assert(0 && "unknown literal type");
+            }
+        } break;
+        
+        
+    }
+    
+}
+
+
+
+
+
+#if 0
+
 struct Value_or_Ref {
     int index;
     bool is_ref;
@@ -2491,3 +2524,5 @@ dump_bytecode(Bytecode* bc) {
     pln("%", f_string(s));
     string_builder_free(&sb);
 }
+
+#endif

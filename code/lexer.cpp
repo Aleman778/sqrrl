@@ -169,7 +169,7 @@ lex_number(Lexer* lexer, Token* token, u8 ch) {
         lexer_next_char(lexer);
         u64 fractional_part = 0;
         lex_integer(lexer, base, &fractional_part);
-        token->f64_value = (f64) fractional_part / (f64) integral_part;
+        token->literal._f64 = (f64) fractional_part / (f64) integral_part;
         
         // TODO(Alexander): add support for e
         
@@ -180,7 +180,7 @@ lex_number(Lexer* lexer, Token* token, u8 ch) {
         return Token_Float_Literal;
         
     } else {
-        token->u64_value = integral_part;
+        token->literal._u64 = integral_part;
         return Token_Int_Literal;
     }
 }

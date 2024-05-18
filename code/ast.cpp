@@ -6,7 +6,7 @@ add_member(Ast_Block* block, Ast_Declaration* decl) {
     if (decl->identifier && map_get_index(block->members, decl->identifier) == -1) {
         map_put(block->members, decl->identifier, decl);
         
-    } else if (decl->kind == AST_PROCEDURE) {
+    } else if (decl->kind == AST_FUNCTION) {
         // TODO(Alexander): create a set of overloaded functions
         unimplemented;
     }
@@ -77,6 +77,13 @@ print_ast_expression(String_Builder* sb, Ast_Expression* expr, int indent, bool 
             print_ast_type_storage(sb, ((Ast_Type*) expr)->storage);
         } break;
         
+        case AST_IDENTIFIER: {
+            auto ident = (Ast_Identifier*) expr;
+            string_builder_push(sb, "AST_IDENTIFIER:");
+            string_builder_push_newline(sb, indent + 2);
+            string_builder_push_format(sb, "identifier: %", f_ident(ident->identifier));
+        } break;
+        
         case AST_LITERAL: {
             auto literal = (Ast_Literal*) expr;
             string_builder_push_format(sb, "Ast_Literal:");
@@ -86,7 +93,7 @@ print_ast_expression(String_Builder* sb, Ast_Expression* expr, int indent, bool 
             
             // TODO(Alexander): float support
             string_builder_push_newline(sb, indent + 2);
-            string_builder_push_format(sb, "value: %", f_u64(literal->u64_value));
+            string_builder_push_format(sb, "value: %", f_u64(literal->value._u64));
         } break;
         
         case AST_STRUCT_LITERAL: {
@@ -104,24 +111,17 @@ print_ast_expression(String_Builder* sb, Ast_Expression* expr, int indent, bool 
             print_ast_block(sb, (Ast_Block*) expr, indent);
         } break;
         
-        case AST_PROCEDURE_CALL: {
-            auto call = (Ast_Procedure_Call*) expr;
-            string_builder_push(sb, "Ast_Procedure_Call:");
+        case AST_CALL: {
+            auto call = (Ast_Call*) expr;
+            string_builder_push(sb, "Ast_Call:");
             
             string_builder_push_newline(sb, indent + 2);
             string_builder_push_format(sb, "proc: ");
-            print_ast_expression(sb, call->proc, indent + 4);
+            print_ast_expression(sb, call->func, indent + 4);
             
             string_builder_push_newline(sb, indent + 2);
             string_builder_push_format(sb, "args: ");
             print_ast_expression(sb, call->args, indent + 4);
-        } break;
-        
-        case AST_IDENTIFIERIFIER: {
-            auto ident = (AST_IDENTIFIERifier*) expr;
-            string_builder_push(sb, "AST_IDENTIFIERifier:");
-            string_builder_push_newline(sb, indent + 2);
-            string_builder_push_format(sb, "identifier: %", f_ident(ident->identifier));
         } break;
         
         case AST_BINARY: {
@@ -152,22 +152,22 @@ print_ast_expression(String_Builder* sb, Ast_Expression* expr, int indent, bool 
             print_ast_declaration(sb, (Ast_Declaration*) expr, indent);
         } break;
         
-        case AST_PROCEDURE: {
-            auto proc = (Ast_Procedure*) expr;
+        case AST_FUNCTION: {
+            auto func = (Ast_Function*) expr;
             string_builder_push(sb, "Ast_Procedure:");
             print_ast_declaration(sb, (Ast_Declaration*) expr, indent);
             
             string_builder_push_newline(sb, indent + 2);
             string_builder_push_format(sb, "return_type: ");
-            print_ast_expression(sb, proc->return_type, indent + 4);
+            print_ast_expression(sb, func->return_type, indent + 4);
             
             string_builder_push_newline(sb, indent + 2);
             string_builder_push_format(sb, "args: ");
-            print_ast_expression(sb, proc->args, indent + 4);
+            print_ast_expression(sb, func->args, indent + 4);
             
             string_builder_push_newline(sb, indent + 2);
             string_builder_push_format(sb, "body: ");
-            print_ast_expression(sb, proc->body, indent + 4);
+            print_ast_expression(sb, func->body, indent + 4);
         } break;
         
         case AST_STRUCT: {

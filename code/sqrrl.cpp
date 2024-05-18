@@ -20,7 +20,7 @@
 //#include "sqrrl_parser.cpp"
 #include "parser.cpp"
 #include "typer.cpp"
-#include "bytecode_builder.cpp"
+#include "sqrrl_bytecode_builder.cpp"
 //#include "sqrrl_bytecode_builder.cpp"
 //#include "sqrrl_x64_instructions.cpp"
 //#include "sqrrl_x64_converter.cpp"

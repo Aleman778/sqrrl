@@ -71,8 +71,8 @@ infer_expression(Type_Context* tcx, Ast_Expression* expr) {
             result = infer_expression(tcx, &ast_basic_types[literal->type]);
         } break;
         
-        case AST_IDENTIFIERIFIER: {
-            auto ident = (AST_IDENTIFIERifier*) expr;
+        case AST_IDENTIFIER: {
+            auto ident = (Ast_Identifier*) expr;
             result = resolve_identifier(tcx, ident->identifier);
         } break;
         
@@ -104,8 +104,8 @@ infer_expression(Type_Context* tcx, Ast_Expression* expr) {
             result = infer_declaration(tcx, (Ast_Declaration*) expr);
         } break;
         
-        case AST_PROCEDURE: {
-            if (infer_function(tcx, (Ast_Procedure*) expr)) {
+        case AST_FUNCTION: {
+            if (infer_function(tcx, (Ast_Function*) expr)) {
                 result = t_void;
             }
         } break;
@@ -190,7 +190,7 @@ infer_block(Type_Context* tcx, Ast_Block* block) {
 }
 
 bool
-infer_function(Type_Context* tcx, Ast_Procedure* proc) {
+infer_function(Type_Context* tcx, Ast_Function* proc) {
     begin_block(tcx, proc->args);
     bool result = infer_block(tcx, proc->args);
     
@@ -249,7 +249,7 @@ check_assignment(Type_Context* tcx, Ast_Type* dest, Ast_Expression* src_expr) {
                 // Check integer overflow
                 bool overflow = lit->u64_overflow;
                 
-                u64 mask = lit->u64_value;
+                u64 mask = lit->value._u64;
                 if (!(src->flags & TYPE_FLAG_UNSIGNED) && (mask & U64_LAST_BIT)) {
                     mask = ~mask;
                 }
@@ -299,7 +299,7 @@ check_expression(Type_Context* tcx, Ast_Expression* expr) {
     bool result = true;
     
     switch (expr->kind) {
-        case AST_IDENTIFIERIFIER: {
+        case AST_IDENTIFIER: {
             if (!expr->inferred_type) {
                 Identifier ident = try_unwrap_identifier(expr);
                 if (ident) {
@@ -354,8 +354,8 @@ check_expression(Type_Context* tcx, Ast_Expression* expr) {
             }
         } break;
         
-        case AST_PROCEDURE: {
-            Ast_Procedure* proc = (Ast_Procedure*) expr;
+        case AST_FUNCTION: {
+            Ast_Function* proc = (Ast_Function*) expr;
             Ast_Type* prev_return_type = tcx->return_type;
             tcx->return_type = proc->return_type;
             result = check_expression(tcx, proc->body);

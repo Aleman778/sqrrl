@@ -575,7 +575,7 @@ wasm_set_vec_size(Buffer* buf, smm vec_first_byte) {
 
 
 void
-convert_to_wasm_module(Bytecode* module, Data_Packer* data_packer, s64 stk_usage, Buffer* buf) {
+convert_bytecode_module_to_wasm(BC_Module* module, Data_Packer* data_packer, s64 stk_usage, Buffer* buf) {
     
     // TODO(Alexander): make configurable
     u32 stack_size = kilobytes(32); // half a WASM page

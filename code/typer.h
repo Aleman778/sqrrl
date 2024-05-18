@@ -47,7 +47,7 @@ Ast_Type* infer_binary_expression(Type_Context* tcx, Ast_Binary* binary);
 
 bool infer_block(Type_Context* tcx, Ast_Block* block);
 
-bool infer_function(Type_Context* tcx, Ast_Procedure* proc);
+bool infer_function(Type_Context* tcx, Ast_Function* proc);
 
 Ast_Type* infer_declaration(Type_Context* tcx, Ast_Declaration* decl);
 

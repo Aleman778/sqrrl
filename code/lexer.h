@@ -105,6 +105,12 @@ struct Location {
     s32 column_number;
 };
 
+struct Value {
+    u64 _u64;
+    f64 _f64;
+    f32 _f32;
+};
+
 struct Token {
     Token_Kind kind;
     Location loc;
@@ -112,8 +118,7 @@ struct Token {
     
     union {
         Identifier identifier;
-        u64 u64_value;
-        f64 f64_value;
+        Value literal;
     };
     
     bool u64_overflow;

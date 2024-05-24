@@ -32,19 +32,25 @@ resolve_declaration_by_identifier(Type_Context* tcx, Ast_Block* block, Identifie
 }
 
 inline Ast_Type*
-resolve_identifier(Type_Context* tcx, Ast_Block* block, Identifier ident) {
-    if (is_builtin_type_keyword(ident)) {
-        return &ast_basic_types[ident - builtin_types_begin];
-        
-    } else {
-        Ast_Type* result = 0;
-        Ast_Declaration* decl = resolve_declaration_by_identifier(tcx, block, ident);
-        if (decl) {
-            result = decl->inferred_type;
-        }
-        
-        return result;
+resolve_identifier(Type_Context* tcx, Ast_Block* block, Ast_Identifier* ident) {
+    assert(!is_builtin_type_keyword(ident) && "shouldn't be possible");
+    
+    if (ident->resolved_decl) {
+        return ident->resolved_decl->inferred_type
     }
+    
+    
+    Ast_Type* result = 0;
+    Ast_Declaration* decl = resolve_declaration_by_identifier(tcx, block, ident);
+    if (decl) {
+        result = decl->inferred_type;
+        
+        if (result) {
+            ident->resolved_decl = 
+        }
+    }
+    
+    return result;
 }
 
 inline Ast_Type*

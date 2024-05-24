@@ -169,6 +169,8 @@ struct Ast_Identifier : Ast_Type {
 #define AST_KIND_Ast_Identifier AST_IDENTIFIER
     
     Identifier identifier;
+    
+    Ast_Declaration* resolved_decl;
 };
 
 inline Identifier
@@ -288,6 +290,8 @@ struct Ast_Declaration : Ast_Expression {
     Ast_Expression* type;
     Ast_Expression* initializer;
     Identifier identifier;
+    
+    int bytecode_register;
 };
 
 struct Ast_Function : Ast_Declaration {

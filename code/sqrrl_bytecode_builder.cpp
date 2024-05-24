@@ -9,31 +9,83 @@ emit_bytecode_for_expression(Bytecode_Builder* bc, Ast_Expression* expr) {
             Ast_Type* type = lit->inferred_type;
             if (type->flags & TYPE_FLAG_INTEGER) {
                 result = bc_allocate_register(bc, type->size > 4 ? BC_I64 : BC_I32);
-                Bc* inst = bc_instruction(bc, BC_CONST_I64, result, -1, -1);
+                Bc* inst = bc_instruction(bc, BC_LOAD_CONSTANT, result, -1, -1);
                 inst->constant._u64 = lit->value._u64;
                 
             } else if (type->flags & TYPE_FLAG_FLOAT) {
+                unimplemented;
                 
             } else {
                 assert(0 && "unknown literal type");
             }
         } break;
         
+        case AST_IDENTIFIER: {
+            
+        } break;
+        
         case AST_BLOCK: {
             auto block = (Ast_Block*) expr;
-            for_array_v(block->statements.stmts, stmt, _) {
+            for_array_v(block->statements, stmt, _) {
                 emit_bytecode_for_expression(bc, stmt);
             }
         } break;
         
         case AST_DECLARATION: {
+            auto decl = (Ast_Declaration*) expr;
+            Ast_Type* type = decl->inferred_type;
+            if (type->size == 1 || type->size == 2 || type->size == 4 || type->size == 8) {
+                // Small allocations can be stored directly inside register
+                result = emit_bytecode_for_expression(bc, decl->initializer);
+                decl->bytecode_register = result;
+                
+            } else {
+                unimplemented;
+            }
+        } break;
+        
+        case AST_RETURN: {
+            auto ret = (Ast_Return*) expr;
             
+            if (ret->expression) {
+                result = emit_bytecode_for_expression(bc, ret->expression); 
+                assert(result != -1 && "expects return value");
+            }
+            
+            bc_instruction(bc, BC_RETURN, result);
+        } break;
+        
+        default: {
+            unimplemented;
         } break;
     }
     
     return result;
 }
 
+int
+emit_bytecode_for_function(Bytecode_Builder* bc, Ast_Function* func) {
+    int func_index = bc->module.next_func_index++;
+    
+    Bc* inst = bc_instruction(bc, BC_FUNCTION_START, func_index);
+    inst->function = func;
+    
+    emit_bytecode_for_expression(bc, func->body);
+    
+    inst = bc_instruction(bc, BC_FUNCTION_END, func_index);
+    inst->function = func;
+    
+    return func_index;
+}
+
+void
+emit_bytecode_for_declarations(Bytecode_Builder* bc, Ast_Block* block) {
+    for_array_v(block->statements, ast, _) {
+        if (ast->kind == AST_FUNCTION) {
+            emit_bytecode_for_function(bc, (Ast_Function*) ast);
+        }
+    }
+}
 
 
 

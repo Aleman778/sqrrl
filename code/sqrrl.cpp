@@ -160,11 +160,21 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     Bytecode_Builder bytecode_builder = {};
     //bytecode_builder.interp = &interp;
     
-    for_array(ast_file->block.statements, cu, _2) {
-        
-        
-    }
+    emit_bytecode_for_declarations(&bytecode_builder, &ast_file->block);
     
+    Bc_Bucket* it_bucket = bytecode_builder.module.first_bucket;
+    while (it_bucket) {
+        Bc* instructions = (Bc*) (it_bucket + 1);
+        for (int inst_index = 0; inst_index < it_bucket->count; inst_index++) {
+            Bc* bc = &instructions[inst_index];
+            
+            if (bc->opcode == BC_FUNCTION_START || bc->opcode == BC_FUNCTION_END) {
+                pln("% (%)", f_cstring(opcode_names[bc->opcode]), f_int(bc->res_index));
+            }
+        }
+        
+        it_bucket = it_bucket->next;
+    }
     
     
 #if 0

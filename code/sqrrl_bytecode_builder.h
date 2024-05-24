@@ -1,15 +1,9 @@
 
-struct Bc_Bucket {
-    u8* base;
-    int count;
-};
-
-#define BC_INSTRUCTION_BUCKET_SIZE ARENA_DEFAULT_BLOCK_SIZE
-#define BC_INSTRUCTIONS_PER_BUCKET ((BC_INSTRUCTION_BUCKET_SIZE - sizeof(Bc_Bucket))/sizeof(Bc))
-
-
 struct Bytecode_Builder {
     Bc_Bucket* bucket;
+    
+    Bc_Module module;
+    
     
     array(Bc_Type)* register_types;
 };
@@ -23,18 +17,29 @@ bc_allocate_register(Bytecode_Builder* bc, Bc_Type type) {
 }
 
 Bc*
-bc_instruction(Bytecode_Builder* bc, Opcode opcode, int res_index, int a_index, int b_index) {
+bc_instruction(Bytecode_Builder* bc, Opcode opcode,
+               int res_index=-1, int a_index=-1, int b_index=-1) {
+    
     Bc_Bucket* bucket = bc->bucket;
     
     if (!bucket || bucket->count >= BC_INSTRUCTION_BUCKET_SIZE) {
-        bucket = (Bc_Bucket*) calloc(1, BC_INSTRUCTION_BUCKET_SIZE);
-        pln("allocating new bucket with capacity: % instructions (instruction size: %)", f_int(BC_INSTRUCTIONS_PER_BUCKET)), f_int(sizeof(Bc));
+        auto next_bucket = (Bc_Bucket*) calloc(1, BC_INSTRUCTION_BUCKET_SIZE);
+        if (bucket) {
+            bucket->next = next_bucket;
+        }
+        bucket = next_bucket;
+        
+        pln("allocating new bucket with capacity: % instructions (instruction size: %)", f_int(BC_INSTRUCTIONS_PER_BUCKET), f_int(sizeof(Bc)));
     }
     Bc* result = (Bc*) (bucket + 1) + bucket->count++;
     result->opcode = opcode;
     result->res_index = res_index;
     result->a_index = a_index;
     result->b_index = b_index;
+    
+    if (!bc->module.first_bucket) {
+        bc->module.first_bucket = bucket;
+    }
     
     bc->bucket = bucket;
     return result;

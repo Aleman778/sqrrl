@@ -104,7 +104,7 @@ enum X64_Slot_Kind : u8 {
 
 struct X64_Slot {
     X64_Slot_Kind kind;
-    Bytecode_Type type;
+    Bc_Type type;
     
     union {
         s32 disp;
@@ -146,7 +146,7 @@ X64_Reg x64_tmp_xmm_registers[] = {
 };
 
 struct X64_Assembler {
-    Bytecode* bytecode;
+    Bc_Module* module;
     u32* stack;
     
     Memory_Arena arena;
@@ -205,16 +205,17 @@ x64_last_allocated_register(X64_Assembler* x64, X64_Reg tmp_reg_list[], int tmp_
 }
 
 inline void
-_x64_allocate_register(X64_Assembler* x64, Bytecode_Type type, int reg_index, 
+_x64_allocate_register(X64_Assembler* x64, Bc_Type type, int reg_index, 
                        X64_Reg preferred_reg, X64_Reg tmp_reg_list[], int tmp_reg_list_count) {
     X64_Slot* slot = &x64->slots[reg_index];
     if (slot->kind == X64_SLOT_EMPTY) {
         slot->type = type;
         slot->kind = X64_SLOT_SPILL;
         
-        if (!(type.flags & BC_FLAG_UNIQUE_REGISTER)) {
-            return;
-        }
+        unimplemented;
+        //if (!(type.flags & BC_FLAG_UNIQUE_REGISTER)) {
+        //return;
+        //}
         
 #if X64_DEBUG
         pln("pref: % r%", f_cstring(register_names[preferred_reg]), f_int(x64->allocated_registers[preferred_reg]));
@@ -242,21 +243,21 @@ _x64_allocate_register(X64_Assembler* x64, Bytecode_Type type, int reg_index,
 }
 
 inline void
-x64_allocate_register(X64_Assembler* x64, Bytecode_Type type, int reg_index, X64_Reg preferred_reg) {
+x64_allocate_register(X64_Assembler* x64, Bc_Type type, int reg_index, X64_Reg preferred_reg) {
     assert(!(preferred_reg & 0x10) && "expected preferred_reg to be int register");
     _x64_allocate_register(x64, type, reg_index, preferred_reg, 
                            x64_tmp_gpr_registers, fixed_array_count(x64_tmp_gpr_registers));
 }
 
 inline void
-x64_allocate_float_register(X64_Assembler* x64, Bytecode_Type type, int reg_index, X64_Reg preferred_reg) {
+x64_allocate_float_register(X64_Assembler* x64, Bc_Type type, int reg_index, X64_Reg preferred_reg) {
     assert(preferred_reg & 0x10 && "expected preferred_reg to be float register");
     _x64_allocate_register(x64, type, reg_index, preferred_reg, 
                            x64_tmp_xmm_registers, fixed_array_count(x64_tmp_xmm_registers));
 }
 
 inline s32
-x64_allocate_stack(X64_Assembler* x64, Bytecode_Type type, int reg_index,
+x64_allocate_stack(X64_Assembler* x64, Bc_Type type, int reg_index,
                    s32 size, s32 align, s32 stack_usage) {
     X64_Slot* slot = &x64->slots[reg_index];
     if (slot->kind == X64_SLOT_EMPTY) {
@@ -322,9 +323,10 @@ _x64_allocate_tmp_register(X64_Assembler* x64, int reg_index,
         x64->allocated_registers[reg] = -2;
     } else {
         reg = slot.reg;
-        if (slot.type.flags & BC_FLAG_UNIQUE_REGISTER) {
-            x64->allocated_registers[reg] = -2;
-        }
+        unimplemented;
+        //if (slot.type.flags & BC_FLAG_UNIQUE_REGISTER) {
+        //x64->allocated_registers[reg] = -2;
+        //}
     }
     x64->registers_used[reg] = true;
     
@@ -336,9 +338,10 @@ x64_drop_if_register(X64_Assembler* x64, int reg_index) {
     X64_Slot slot = x64->slots[reg_index];
     if (slot.kind == X64_SLOT_REG) {
         X64_Reg reg = slot.reg;
-        if (slot.type.flags & BC_FLAG_UNIQUE_REGISTER) {
-            x64->allocated_registers[reg] = -1;
-        }
+        unimplemented;
+        //if (slot.type.flags & BC_FLAG_UNIQUE_REGISTER) {
+        //x64->allocated_registers[reg] = -1;
+        //}
     }
 }
 
@@ -385,29 +388,25 @@ set_slot(X64_Assembler* x64, int reg_index, X64_Slot slot) {
 }
 
 inline s32
-x64_register_displacement(X64_Assembler* x64, int slot_index, Bytecode_Type type=BC_PTR) {
+x64_register_displacement(X64_Assembler* x64, int slot_index, Bc_Type type=BC_PTR) {
     //return x64->
     return 0;
 }
 
 // TODO(Alexander): we should probably return something more approporiate.
-X64_Assembler convert_bytecode_to_x64_machine_code(Bytecode* bytecode, 
+X64_Assembler convert_bytecode_to_x64_machine_code(Bc* bytecode, 
                                                    Buffer* buf, 
                                                    Data_Packer* data_packer,
                                                    bool is_absolute_ptrs);
 
 void convert_bytecode_function_to_x64_machine_code(X64_Assembler* x64,
-                                                   Bytecode_Function* func,
+                                                   Bc_Function* func,
                                                    Buffer* buf);
 
 
-s32 x64_simple_register_allocator(X64_Assembler* x64, Bytecode_Instruction* bc_insn, int bc_index, s32 stack_usage);
+//s32 x64_simple_register_allocator(X64_Assembler* x64, Bc_Instruction* bc_insn, int bc_index, s32 stack_usage);
 
-void convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, 
-                                               Buffer* buf,
-                                               Bytecode_Function* func,
-                                               Bytecode_Instruction* insn,
-                                               int bc_index);
+void convert_bytecode_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bc* bc);
 
 
 global const X64_Reg int_arg_registers_ccall_windows[] {
@@ -479,7 +478,7 @@ x64_jump_address(X64_Assembler* x64, Buffer* buf, u8** target) {
 }
 
 inline void
-x64_jump_address_for_label(X64_Assembler* x64, Buffer* buf, Bytecode_Function* func, u32 label_index) {
+x64_jump_address_for_label(X64_Assembler* x64, Buffer* buf, Bc_Function* func, u32 label_index) {
     if (label_index > 0) {
         label_index = x64->block_stack[label_index - 1].label_index;
     }

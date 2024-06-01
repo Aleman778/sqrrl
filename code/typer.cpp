@@ -27,16 +27,16 @@ resolve_declaration_by_identifier(Type_Context* tcx, Ast_Block* block, Identifie
         result = resolve_declaration_by_identifier(tcx, block->parent, ident);
     }
     
-    
     return result;
 }
 
 inline Ast_Type*
-resolve_identifier(Type_Context* tcx, Ast_Block* block, Ast_Identifier* ident) {
+resolve_identifier(Type_Context* tcx, Ast_Block* block, Ast_Identifier* ast) {
+    Identifier ident = unwrap_identifier(ast);
     assert(!is_builtin_type_keyword(ident) && "shouldn't be possible");
     
-    if (ident->resolved_decl) {
-        return ident->resolved_decl->inferred_type
+    if (ast->resolved_declaration) {
+        return ast->resolved_declaration->inferred_type;
     }
     
     
@@ -46,7 +46,7 @@ resolve_identifier(Type_Context* tcx, Ast_Block* block, Ast_Identifier* ident) {
         result = decl->inferred_type;
         
         if (result) {
-            ident->resolved_decl = 
+            ast->resolved_declaration = decl;
         }
     }
     
@@ -54,8 +54,8 @@ resolve_identifier(Type_Context* tcx, Ast_Block* block, Ast_Identifier* ident) {
 }
 
 inline Ast_Type*
-resolve_identifier(Type_Context* tcx, Identifier ident) {
-    return resolve_identifier(tcx, tcx->block, ident);
+resolve_identifier(Type_Context* tcx, Ast_Identifier* ast) {
+    return resolve_identifier(tcx, tcx->block, ast);
 }
 
 Ast_Type*
@@ -79,7 +79,7 @@ infer_expression(Type_Context* tcx, Ast_Expression* expr) {
         
         case AST_IDENTIFIER: {
             auto ident = (Ast_Identifier*) expr;
-            result = resolve_identifier(tcx, ident->identifier);
+            result = resolve_identifier(tcx, ident);
         } break;
         
         case AST_UNARY: {

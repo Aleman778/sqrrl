@@ -75,22 +75,6 @@ struct Bytecode_Builder {
     u32 next_register_index;
 };
 
-inline Bytecode_Operator
-to_bytecode_opcode(Operator_Kind op, Ast_Type* type) {
-    bool is_unsigned = type->flags & TYPE_FLAG_UNSIGNED;
-    switch (op) {
-        case OP_NONE: return BC_NOOP;
-        case OP_NEG: return BC_NEG;
-        case OP_ADD: return BC_ADD;
-        case OP_SUB: return BC_SUB;
-        case OP_MUL: return BC_MUL;
-        case OP_DIV: return is_unsigned ? BC_DIV_U : BC_DIV_S;
-        case OP_SCOPE_ACCESS: return BC_FIELD_ACCESS;
-        case OP_SUBSCRIPT: return BC_ARRAY_ACCESS;
-        default: unimplemented;
-    }
-}
-
 #if 0
 void emit_value_expression(Bytecode_Builder* bc, Ast* expr, int result=-1);
 

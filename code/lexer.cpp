@@ -151,7 +151,7 @@ lex_number(Lexer* lexer, Token* token, u8 ch) {
             } break;
             
             default: {
-                integral_part = 10;
+                integral_part = 0;
                 has_integral_digits = true;
             } break;
         }

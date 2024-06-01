@@ -1,14 +1,18 @@
 
 void
-add_member(Ast_Block* block, Ast_Declaration* decl) {
-    array_push(block->statements, decl);
+add_statement(Ast_Block* block, Ast_Expression* statement) {
+    array_push(block->statements, statement);
     
-    if (decl->identifier && map_get_index(block->members, decl->identifier) == -1) {
-        map_put(block->members, decl->identifier, decl);
+    if (statement->kind == AST_DECLARATION) {
+        auto decl = (Ast_Declaration*) statement;
         
-    } else if (decl->kind == AST_FUNCTION) {
-        // TODO(Alexander): create a set of overloaded functions
-        unimplemented;
+        if (decl->identifier && map_get_index(block->members, decl->identifier) == -1) {
+            map_put(block->members, decl->identifier, decl);
+            
+        } else if (decl->kind == AST_FUNCTION) {
+            // TODO(Alexander): create a set of overloaded functions
+            unimplemented;
+        }
     }
 }
 
@@ -41,6 +45,7 @@ print_ast_type_storage(String_Builder* sb, Type_Storage kind) {
         default: {
             string_builder_push(sb, "unknown");
         } break;
+        
     }
 }
 

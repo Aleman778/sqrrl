@@ -273,7 +273,7 @@ parse_statement(Lexer* lexer, Ast_Block* block) {
         default: {
             unlex(lexer);
             
-            result = parse_declaration(lexer, block);
+            result = parse_declaration(lexer);
             if (!result) {
                 result = parse_expression(lexer);
             }
@@ -301,7 +301,7 @@ parse_block(Lexer* lexer) {
         if (!expr) {
             break;
         }
-        array_push(result->statements, expr);
+        add_statement(result, expr);
     }
     
     return result;
@@ -333,7 +333,7 @@ parse_struct_declaration(Lexer* lexer) {
         
         lex_expect(lexer, ';');
         
-        add_member(result, decl);
+        add_statement(result, decl);
     }
     
     return result;
@@ -376,7 +376,7 @@ parse_struct_initializer_list(Lexer* lexer) {
             break;
         }
         
-        array_push(result->statements, decl);
+        add_statement(result, decl);
         
         if (!lex_if_matched(lexer, ',')) {
             lex_expect(lexer, '}');
@@ -411,7 +411,7 @@ parse_type_argument_list(Lexer* lexer, bool expect_ident) {
         }
         arg->identifier = lexer->curr_token.identifier;
         
-        add_member(result, arg);
+        add_statement(result, arg);
         
         if (!lex_if_matched(lexer, ',')) {
             lex_expect(lexer, ')');
@@ -423,7 +423,7 @@ parse_type_argument_list(Lexer* lexer, bool expect_ident) {
 }
 
 Ast_Declaration*
-parse_declaration(Lexer* lexer, Ast_Block* block) {
+parse_declaration(Lexer* lexer) {
     Ast_Declaration* result = 0;
     
     switch (lex(lexer)) {
@@ -494,8 +494,6 @@ parse_declaration(Lexer* lexer, Ast_Block* block) {
                     result->type = type;
                     lex_expect(lexer, ';');
                 }
-                
-                add_member(block, result);
             }
             
             if (!result) {
@@ -521,13 +519,13 @@ parse_file(Lexer* lexer) {
     while (lex(lexer) != Token_EOF) {
         unlex(lexer);
         
-        Ast_Declaration* decl = parse_declaration(lexer, &result->block);
-        if (!decl) {
+        Ast_Declaration* decl = parse_declaration(lexer);
+        if (decl) {
+            add_statement(&result->block, decl);
+        } else {
             lex_finish(lexer);
             break;
         }
-        
-        array_push(result->block.statements, decl);
     }
     
     return result; 

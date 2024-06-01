@@ -1,4 +1,35 @@
 
+void 
+convert_bytecode_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bc* bc) {
+    
+    switch (bc->opcode) {
+        case BC_BEGIN_FUNCTION:
+        case BC_END_FUNCTION: {
+        } break;
+        
+        case BC_LOAD_CONSTANT: {
+            u64 immediate = bc->constant._u64;
+            // TODO(Alexander): assumes 32-bit integer, add more variants
+            
+            x64_move_immediate_to_register(buf, X64_RAX, (s32) immediate);
+        } break;
+        
+        case BC_ADD: {
+            
+        } break;
+        
+        case BC_RETURN: {
+            push_u8(buf, 0xc3);
+        } break;
+        
+        default: {
+            unimplemented;
+        } break;
+    }
+}
+
+
+#if 0
 X64_Assembler
 convert_bytecode_to_x64_machine_code(Bytecode* bytecode, Buffer* buf, 
                                      Data_Packer* data_packer,
@@ -1288,3 +1319,5 @@ convert_bytecode_insn_to_x64_machine_code(X64_Assembler* x64, Buffer* buf,
         } break;
     }
 }
+
+#endif

@@ -187,14 +187,16 @@ x64_move_slot_to_register(X64_Assembler* x64, Buffer* buf, X64_Reg dest, int src
         } break;
         
         case X64_SLOT_SPILL: {
-            x64_move_extend_memory_to_register(buf, dest, X64_RSP, src.disp, src.type.size,
-                                               src.type.flags & BC_FLAG_SIGNED);
+            unimplemented;
+            //x64_move_extend_memory_to_register(buf, dest, X64_RSP, src.disp, src.type.size,
+            //src.type.flags & BC_FLAG_SIGNED);
         } break;
         
         case X64_SLOT_REG: {
+            unimplemented;
             //if (src.reg != dest) {
-            x64_move_extend_register_to_register(buf, dest, src.reg, src.type.size,
-                                                 src.type.flags & BC_FLAG_SIGNED);
+            //x64_move_extend_register_to_register(buf, dest, src.reg, src.type.size,
+            //src.type.flags & BC_FLAG_SIGNED);
             //}
         } break;
         
@@ -400,9 +402,10 @@ global const u16 x64_setcc_opcodes[] = {
 };
 
 inline void
-x64_setcc(Buffer* buf, Bytecode_Operator opcode, X64_Reg dest) {
+x64_setcc(Buffer* buf, Opcode opcode, X64_Reg dest) {
     // setcc 
-    push_u16(buf, x64_setcc_opcodes[opcode - BC_EQ]); 
+    unimplemented;
+    //push_u16(buf, x64_setcc_opcodes[opcode - BC_EQ]); 
     x64_modrm_direct(buf, 0, dest);
 }
 
@@ -455,11 +458,13 @@ x64_move_slot_to_float_register(X64_Assembler* x64, Buffer* buf, X64_Reg dest, i
     switch (src.kind) {
         case X64_SLOT_SPILL:
         case X64_SLOT_RSP_DISP32: {
-            x64_move_memory_to_float_register(buf, dest, X64_RSP, src.disp, src.type.size);
+            unimplemented;
+            //x64_move_memory_to_float_register(buf, dest, X64_RSP, src.disp, src.type.size);
         } break;
         
         case X64_SLOT_REG: {
-            x64_move_float_register_to_register(buf, dest, src.reg, src.type.size);
+            unimplemented;
+            //x64_move_float_register_to_register(buf, dest, src.reg, src.type.size);
         } break;
         
         default: verify_not_reached();
@@ -472,11 +477,13 @@ x64_move_float_register_to_slot(X64_Assembler* x64, Buffer* buf, int dest_index,
     switch (dest.kind) {
         case X64_SLOT_SPILL:
         case X64_SLOT_RSP_DISP32: {
-            x64_move_float_register_to_memory(buf, X64_RSP, dest.disp, src, dest.type.size);
+            unimplemented;
+            //x64_move_float_register_to_memory(buf, X64_RSP, dest.disp, src, dest.type.size);
         } break;
         
         case X64_SLOT_REG: {
-            x64_move_float_register_to_register(buf, dest.reg, src, dest.type.size);
+            unimplemented;
+            //x64_move_float_register_to_register(buf, dest.reg, src, dest.type.size);
         } break;
         
         default: verify_not_reached();

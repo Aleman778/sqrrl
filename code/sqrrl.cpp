@@ -21,9 +21,8 @@
 #include "parser.cpp"
 #include "typer.cpp"
 #include "sqrrl_bytecode_builder.cpp"
-//#include "sqrrl_bytecode_builder.cpp"
-//#include "sqrrl_x64_instructions.cpp"
-//#include "sqrrl_x64_converter.cpp"
+#include "sqrrl_x64_instructions.cpp"
+#include "sqrrl_x64_converter.cpp"
 //#include "sqrrl_pe_converter.cpp"
 //#include "sqrrl_pdb_converter.cpp"
 //#include "sqrrl_wasm_instructions.cpp"
@@ -143,17 +142,19 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         return 1;
     }
     
+    {
+        String_Builder sb = {};
+        print_ast_file(&sb, ast_file);
+        string s = string_builder_to_string_nocopy(&sb);
+        pln("%", f_string(s));
+        string_builder_free(&sb);
+    }
+    
     // Phase 2: Typing
     Type_Context tcx = {};
     tcx.file = ast_file;
     infer_block(&tcx, &ast_file->block);
     check_block(&tcx, &ast_file->block);
-    
-    String_Builder sb = {};
-    print_ast_file(&sb, ast_file);
-    string s = string_builder_to_string_nocopy(&sb);
-    pln("%", f_string(s));
-    string_builder_free(&sb);
     
     
     // Phase 3: Intermediate representation
@@ -162,20 +163,122 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     
     emit_bytecode_for_declarations(&bytecode_builder, &ast_file->block);
     
-    Bc_Bucket* it_bucket = bytecode_builder.module.first_bucket;
-    while (it_bucket) {
-        Bc* instructions = (Bc*) (it_bucket + 1);
-        for (int inst_index = 0; inst_index < it_bucket->count; inst_index++) {
-            Bc* bc = &instructions[inst_index];
+    {
+        String_Builder string_builder = {};
+        String_Builder* sb = &string_builder;
+        
+        int num_instructions = 0;
+        
+        for_bc_inst(bytecode_builder.module, it) {
+            Bc* bc = it.inst;
+            num_instructions++;
             
-            if (bc->opcode == BC_FUNCTION_START || bc->opcode == BC_FUNCTION_END) {
-                pln("% (%)", f_cstring(opcode_names[bc->opcode]), f_int(bc->res_index));
+            if (bc->opcode == BC_BEGIN_FUNCTION) {
+                if (bc->function) {
+                    string_builder_push_format(sb, "\nvoid %() {\n", f_ident(bc->function->identifier));
+                } else {
+                    string_builder_push_format(sb, "\nvoid <%>() {\n", f_int(bc->res_index));
+                }
+                
+                continue;
+                
+            } else if (bc->opcode == BC_END_FUNCTION) {
+                string_builder_push(sb, "}\n");
+                continue;
             }
+            
+            string_builder_push(sb, "  ");
+            if (bc->res_index >= 0) {
+                string_builder_push_format(sb, "v% = ", f_int(bc->res_index));
+            }
+            
+            string_builder_push(sb, opcode_names[bc->opcode]);
+            
+            if (bc->a_index >= 0) {
+                string_builder_push_format(sb, " v%", f_int(bc->a_index));
+            }
+            if (bc->b_index >= 0) {
+                string_builder_push_format(sb, ", v%", f_int(bc->b_index));
+            }
+            
+            if (bc->opcode == BC_LOAD_CONSTANT) {
+                string_builder_push_format(sb, " %", f_u64_HEX(bc->constant._u64));
+            }
+            
+            string_builder_push(sb, "\n");
         }
         
-        it_bucket = it_bucket->next;
+        string s = string_builder_to_string_nocopy(sb);
+        pln("\nBytecode: (% instructions)\n%\n", f_int(num_instructions), f_string(s));
+        string_builder_free(sb);
     }
     
+    // Phase 4: Backend code generation
+    switch (compiler.backend) {
+        case Backend_X64: {
+            X64_Assembler x64 = {};
+            x64.module = &bytecode_builder.module;
+            
+            Buffer buf = {};
+            buf.data = (u8*) asm_buffer;
+            buf.size = asm_size;
+            
+            for_bc_inst(bytecode_builder.module, it) {
+                Bc* inst = it.inst;
+                convert_bytecode_to_x64_machine_code(&x64, &buf, inst);
+            }
+            
+            if (compiler.task != CompilerTask_Run) {
+                // NOTE(Alexander): Run machine code
+                asm_make_executable(buf.data, buf.curr_used);
+                //DEBUG_add_debug_symbols(&ast_file, (u8*) asm_buffer);
+                
+                fflush(stdout);
+                fflush(stderr);
+                
+                if (working_directory.data) {
+                    cstring dir = string_to_cstring(working_directory);
+                    DEBUG_set_current_directory(dir);
+                    cstring_free(dir);
+                }
+                
+                u8* code_entry_point = buf.data;
+                asm_main* func = (asm_main*) code_entry_point;
+                int jit_exit_code = (int) func();
+                pln("\nJIT exited with code: %", f_int(jit_exit_code));
+                
+                // TODO(Alexander): call main function
+                //Bytecode* bc = &bytecode_builder.bytecode;
+                //Bytecode_Function* main_func = bc->functions[bc->entry_func_index];
+                //u8* code_entry_point = (u8*) main_func->code_ptr;
+                //if (main_func->ret_count == 1) {
+                //Bytecode_Type ret_type = function_ret_types(main_func)->type;
+                //
+                //if (ret_type.kind == BC_TYPE_INT) {
+                //asm_main* func = (asm_main*) code_entry_point;
+                //int jit_exit_code = (int) func();
+                //pln("\nJIT exited with code: %", f_int(jit_exit_code));
+                //
+                //} else if (ret_type.kind == BC_TYPE_FLOAT) {
+                //asm_f32_main* func = (asm_f32_main*) code_entry_point;
+                //f32 jit_exit_code = (f32) func();
+                //pln("\nJIT exited with code: %", f_float(jit_exit_code));
+                //} 
+                //} else {
+                //asm_main* func = (asm_main*) code_entry_point;
+                //func();
+                //pln("\nJIT exited with code: 0");
+                //}
+                
+            } else if (compiler.task == CompilerTask_Build) {
+                unimplemented;
+            }
+        } break;
+        
+        case Backend_WASM: {
+            unimplemented;
+        } break;
+    }
     
 #if 0
     // TODO(Alexander): this is hardcoded for now
@@ -274,7 +377,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     }
     
     bool flag_dump_ast    = value_to_bool(interp_get_value(&interp, Sym_DUMP_AST));
-    bool flag_dump_bc     = value_to_bool(interp_get_value(&interp, Sym_DUMP_BYTECODE));
+    bool flag_dump_inst     = value_to_bool(interp_get_value(&interp, Sym_DUMP_BYTECODE));
     bool flag_dump_disasm = value_to_bool(interp_get_value(&interp, Sym_DUMP_DISASM));
     
     if (tcx.error_count != 0) {
@@ -349,7 +452,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 import.func_index = func->type_index;
                 
                 func->code_ptr = type->Function.external_address;
-                function->bc_func_index = func->type_index;
+                function->inst_func_index = func->type_index;
             }
             
             array_push(bytecode_builder.bytecode.imports, import);
@@ -404,9 +507,9 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     // Print the bytecode
     String_Builder sb = {};
     for_array(interp.compilation_units, cu, _4) {
-        if (flag_dump_bc || (cu->ast && cu->ast->type && 
-                             cu->ast->type->kind == TypeKind_Function &&
-                             cu->ast->type->Function.dump_bytecode)) {
+        if (flag_dump_inst || (cu->ast && cu->ast->type && 
+                               cu->ast->type->kind == TypeKind_Function &&
+                               cu->ast->type->Function.dump_bytecode)) {
             
             string_builder_dump_bytecode_function(&sb, &bytecode_builder.bytecode,
                                                   cu->bytecode_function);

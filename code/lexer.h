@@ -107,8 +107,9 @@ struct Location {
 
 struct Value {
     u64 _u64;
-    f64 _f64;
+    
     f32 _f32;
+    f64 _f64;
 };
 
 struct Token {

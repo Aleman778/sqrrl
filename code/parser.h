@@ -13,6 +13,6 @@ Ast_Block* parse_struct_declaration(Lexer* lexer);
 
 Ast_Block* parse_struct_initializer_list(Lexer* lexer);
 
-Ast_Declaration* parse_declaration(Lexer* lexer, Ast_Block* block);
+Ast_Declaration* parse_declaration(Lexer* lexer);
 
 Ast_Type* parse_aggregate_type(Lexer* lexer, Ast_Type* base_type);

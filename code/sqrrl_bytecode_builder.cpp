@@ -20,8 +20,32 @@ emit_bytecode_for_expression(Bytecode_Builder* bc, Ast_Expression* expr) {
             }
         } break;
         
-        case AST_IDENTIFIER: {
+        case AST_BINARY: {
+            auto binop = (Ast_Binary*) expr;
+            // TODO(Alexander): add support for 
+            int left = emit_bytecode_for_expression(bc, binop->left);
+            int right = emit_bytecode_for_expression(bc, binop->right);
+            assert((left != -1) && (right != -1));
             
+            Ast_Type* type = binop->inferred_type;
+            Bc_Type register_type = BC_I64;
+            if (type->flags & TYPE_FLAG_INTEGER) {
+                register_type = type->size > 4 ? BC_I64 : BC_I32;
+            } else {
+                unimplemented;
+            }
+            result = bc_allocate_register(bc, register_type);
+            
+            Opcode opcode = operator_to_opcode(binop->op, type);
+            bc_instruction(bc, opcode, result, left, right);
+        } break;
+        
+        case AST_IDENTIFIER: {
+            auto ident = (Ast_Identifier*) expr;
+            assert(ident->resolved_declaration && "cannot emit unresolved identifier");
+            
+            Ast_Declaration* decl = ident->resolved_declaration;
+            result = decl->bytecode_register;
         } break;
         
         case AST_BLOCK: {
@@ -52,7 +76,7 @@ emit_bytecode_for_expression(Bytecode_Builder* bc, Ast_Expression* expr) {
                 assert(result != -1 && "expects return value");
             }
             
-            bc_instruction(bc, BC_RETURN, result);
+            bc_instruction(bc, BC_RETURN, -1, result);
         } break;
         
         default: {
@@ -67,12 +91,12 @@ int
 emit_bytecode_for_function(Bytecode_Builder* bc, Ast_Function* func) {
     int func_index = bc->module.next_func_index++;
     
-    Bc* inst = bc_instruction(bc, BC_FUNCTION_START, func_index);
+    Bc* inst = bc_instruction(bc, BC_BEGIN_FUNCTION, func_index);
     inst->function = func;
     
     emit_bytecode_for_expression(bc, func->body);
     
-    inst = bc_instruction(bc, BC_FUNCTION_END, func_index);
+    inst = bc_instruction(bc, BC_END_FUNCTION, func_index);
     inst->function = func;
     
     return func_index;

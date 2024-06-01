@@ -170,7 +170,7 @@ struct Ast_Identifier : Ast_Type {
     
     Identifier identifier;
     
-    Ast_Declaration* resolved_decl;
+    Ast_Declaration* resolved_declaration;
 };
 
 inline Identifier
@@ -281,7 +281,7 @@ struct Ast_Block : Ast_Expression {
     map(Identifier, Ast_Declaration*)* members;
 };
 
-void add_member(Ast_Block* block, Ast_Declaration* decl);
+void add_statement(Ast_Block* block, Ast_Expression* statement);
 
 
 struct Ast_Declaration : Ast_Expression {

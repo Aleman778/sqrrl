@@ -3,22 +3,54 @@ struct Bytecode_Builder {
     Bc_Bucket* bucket;
     
     Bc_Module module;
-    
-    
-    array(Bc_Type)* register_types;
 };
 
-int
-bc_allocate_register(Bytecode_Builder* bc, Bc_Type type) {
-    int result = (int) array_count(bc->register_types);
-    array_push(bc->register_types, type);
+#define BC_REG_ACCUMULATOR 0
+
+inline Bc_Type
+bc_type(Ast_Type* type) {
+    switch (type->storage) {
+        // TODO(Alexander): implement more types
+        case TYPE_S8:
+        case TYPE_U8:
+        case TYPE_S16:
+        case TYPE_U16:
+        case TYPE_S32:
+        case TYPE_U32: return BC_I32;
+        
+        default: unimplemented;
+    }
     
+    return BC_I64;
+}
+
+inline Bc_Arg
+bc_register(u8 reg) {
+    Bc_Arg result = {};
+    result.mode = BC_REG;
+    result.reg = reg;
+    return result;
+}
+
+inline Bc_Arg
+bc_immediate(s32 disp) {
+    Bc_Arg result = {};
+    result.mode = BC_DISP;
+    result.disp = disp;
+    return result;
+}
+
+inline Bc_Arg
+bc_stack(s32 disp) {
+    Bc_Arg result = {};
+    result.mode = BC_STK;
+    result.disp = disp;
     return result;
 }
 
 Bc*
-bc_instruction(Bytecode_Builder* bc, Opcode opcode,
-               int res_index=-1, int a_index=-1, int b_index=-1) {
+bc_instruction(Bytecode_Builder* bc, Opcode opcode, Bc_Type type,
+               Bc_Arg res={}, Bc_Arg a={}, Bc_Arg b={}) {
     
     Bc_Bucket* bucket = bc->bucket;
     
@@ -33,9 +65,9 @@ bc_instruction(Bytecode_Builder* bc, Opcode opcode,
     }
     Bc* result = (Bc*) (bucket + 1) + bucket->count++;
     result->opcode = opcode;
-    result->res_index = res_index;
-    result->a_index = a_index;
-    result->b_index = b_index;
+    result->res = res;
+    result->a = a;
+    result->b = b;
     
     if (!bc->module.first_bucket) {
         bc->module.first_bucket = bucket;

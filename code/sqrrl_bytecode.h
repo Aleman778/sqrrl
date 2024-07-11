@@ -54,29 +54,40 @@ operator_to_opcode(Operator_Kind op, Ast_Type* type) {
     return BC_NOOP;
 }
 
-enum Bc_Type {
-    BC_PTR,
-    BC_I32,
-    BC_I64,
-    BC_F32,
-    BC_F64,
+enum {
+    BC_I32 = bit(0),
+    BC_I64 = bit(1),
+    BC_F32 = bit(2),
+    BC_F64 = bit(3),
+    BC_INT = BC_I32 | BC_I64,
+    BC_FLOAT = BC_F32 | BC_F64,
 };
+typedef u8 Bc_Type;
 
-struct Bc_Operand {
-    
+enum {
+    BC_REG   = bit(0),
+    BC_DISP  = bit(1),
+    BC_STK   = bit(2),
+    BC_DATA  = bit(3),
+    BC_ARRAY = bit(4),
+};
+typedef u8 Bc_Mode;
+
+struct Bc_Arg {
+    s32 disp;
+    u8 reg;
+    u8 index;
+    u8 scale;
+    Bc_Mode mode;
 };
 
 struct Bc {
     Opcode opcode;
+    Bc_Type type;
     
-    int res_index;
-    int a_index;
-    int b_index;
-    
-    union {
-        Value constant;
-        Ast_Function* function;
-    };
+    Bc_Arg res;
+    Bc_Arg a;
+    Bc_Arg b;
 };
 
 struct Bc_Bucket {
@@ -134,7 +145,6 @@ struct Bc_Function {
 struct Bc_Module {
     Bc_Bucket* first_bucket;
     
-    array(Bc_Type)* register_types;
     //array(Bc_Function)* functions;
     
     int next_func_index;

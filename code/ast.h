@@ -291,7 +291,7 @@ struct Ast_Declaration : Ast_Expression {
     Ast_Expression* initializer;
     Identifier identifier;
     
-    int bytecode_register;
+    s32 bytecode_stk_allocation;
 };
 
 struct Ast_Function : Ast_Declaration {

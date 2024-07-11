@@ -1,16 +1,17 @@
 
-int
+Bc_Arg
 emit_bytecode_for_expression(Bytecode_Builder* bc, Ast_Expression* expr) {
-    int result = -1;
+    Bc_Arg result = {};
     
     switch (expr->kind) {
         case AST_LITERAL: {
+            
+            
             auto lit = (Ast_Literal*) expr;
             Ast_Type* type = lit->inferred_type;
             if (type->flags & TYPE_FLAG_INTEGER) {
-                result = bc_allocate_register(bc, type->size > 4 ? BC_I64 : BC_I32);
-                Bc* inst = bc_instruction(bc, BC_LOAD_CONSTANT, result, -1, -1);
-                inst->constant._u64 = lit->value._u64;
+                assert(type->size <= 4 && "unimplemented FIXME add 64-bit integers"); ;
+                result = bc_immediate((s32) lit->value._u64);
                 
             } else if (type->flags & TYPE_FLAG_FLOAT) {
                 unimplemented;
@@ -22,22 +23,13 @@ emit_bytecode_for_expression(Bytecode_Builder* bc, Ast_Expression* expr) {
         
         case AST_BINARY: {
             auto binop = (Ast_Binary*) expr;
-            // TODO(Alexander): add support for 
-            int left = emit_bytecode_for_expression(bc, binop->left);
-            int right = emit_bytecode_for_expression(bc, binop->right);
-            assert((left != -1) && (right != -1));
+            Ast_Type* type = binop->inferred_type; 
+            Bc_Arg left = emit_bytecode_for_expression(bc, binop->left);
+            Bc_Arg right = emit_bytecode_for_expression(bc, binop->right);
             
-            Ast_Type* type = binop->inferred_type;
-            Bc_Type register_type = BC_I64;
-            if (type->flags & TYPE_FLAG_INTEGER) {
-                register_type = type->size > 4 ? BC_I64 : BC_I32;
-            } else {
-                unimplemented;
-            }
-            result = bc_allocate_register(bc, register_type);
-            
+            result = bc_register(BC_REG_ACCUMULATOR);
             Opcode opcode = operator_to_opcode(binop->op, type);
-            bc_instruction(bc, opcode, result, left, right);
+            bc_instruction(bc, opcode, bc_type(type), result, left, right);
         } break;
         
         case AST_IDENTIFIER: {
@@ -45,7 +37,7 @@ emit_bytecode_for_expression(Bytecode_Builder* bc, Ast_Expression* expr) {
             assert(ident->resolved_declaration && "cannot emit unresolved identifier");
             
             Ast_Declaration* decl = ident->resolved_declaration;
-            result = decl->bytecode_register;
+            result = bc_stack(decl->bytecode_stk_allocation);
         } break;
         
         case AST_BLOCK: {
@@ -61,7 +53,7 @@ emit_bytecode_for_expression(Bytecode_Builder* bc, Ast_Expression* expr) {
             if (type->size == 1 || type->size == 2 || type->size == 4 || type->size == 8) {
                 // Small allocations can be stored directly inside register
                 result = emit_bytecode_for_expression(bc, decl->initializer);
-                decl->bytecode_register = result;
+                decl->bytecode_stk_allocation = result.disp;
                 
             } else {
                 unimplemented;
@@ -73,10 +65,8 @@ emit_bytecode_for_expression(Bytecode_Builder* bc, Ast_Expression* expr) {
             
             if (ret->expression) {
                 result = emit_bytecode_for_expression(bc, ret->expression); 
-                assert(result != -1 && "expects return value");
             }
-            
-            bc_instruction(bc, BC_RETURN, -1, result);
+            bc_instruction(bc, BC_RETURN, bc_type(expr->inferred_type), {}, result);
         } break;
         
         default: {
@@ -91,13 +81,9 @@ int
 emit_bytecode_for_function(Bytecode_Builder* bc, Ast_Function* func) {
     int func_index = bc->module.next_func_index++;
     
-    Bc* inst = bc_instruction(bc, BC_BEGIN_FUNCTION, func_index);
-    inst->function = func;
-    
+    Bc* inst = bc_instruction(bc, BC_BEGIN_FUNCTION, BC_I32, bc_immediate(func_index));
     emit_bytecode_for_expression(bc, func->body);
-    
-    inst = bc_instruction(bc, BC_END_FUNCTION, func_index);
-    inst->function = func;
+    inst = bc_instruction(bc, BC_END_FUNCTION, BC_I32, bc_immediate(func_index));
     
     return func_index;
 }

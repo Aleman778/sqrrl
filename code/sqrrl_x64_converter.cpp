@@ -15,7 +15,7 @@ convert_bytecode_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bc* bc) {
         } break;
         
         case BC_ADD: {
-            
+            x64_add()
         } break;
         
         case BC_RETURN: {

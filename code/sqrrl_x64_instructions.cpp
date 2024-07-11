@@ -1,6 +1,6 @@
 
 inline void
-x64_zero(Buffer* buf, X64_Reg reg) {
+x64_zero(Buffer* buf, u8 reg) {
     // REX.W + 33 /r 	XOR r64, r/m64 	RM
     x64_rex(buf, REX_W, reg, reg);
     push_u8(buf, 0x33);
@@ -8,12 +8,207 @@ x64_zero(Buffer* buf, X64_Reg reg) {
 }
 
 inline void
-x64_move_rax_u64(Buffer* buf, u64 disp) {
+x64_mov_rax_u64(Buffer* buf, u64 disp) {
     // REX.W + B8+ rd io 	MOV r64, imm64 	OI
     x64_rex(buf, REX_W);
     push_u8(buf, 0xB8);
     push_u64(buf, disp);
 }
+
+void
+x64_mov(Buffer* buf, Bc_Type type,
+        Bc_Mode m1, X64_Reg r1, s64 d1,
+        Bc_Mode m2, X64_Reg r2, s64 d2) {
+    
+    switch (m1) {
+        case BC_REG: {
+            if (m2 & BC_DISP) {
+                if (d2 == 0) {
+                    x64_zero(buf, r1);
+                    
+                } else if ((u64) d2 > U32_MAX) {
+                    // REX.W + B8+ rd io 	MOV r64, imm64 	OI
+                    x64_rex(buf, REX_W, r1);// TODO(Alexander): test this not sure if r1 is on R or B field?
+                    push_u8(buf, 0xB8+((u8)r1&7));
+                    push_u64(buf, (u64) d2);
+                    
+                } else {
+                    // B8+ rd id 	MOV r32, imm32 	OI
+                    if (r1&8) {
+                        x64_rex(buf, REX_B);
+                    }
+                    push_u8(buf, 0xB8+((u8)r1&7));
+                    push_u32(buf, (u32) d2);
+                }
+                
+            } else if (m2 & (BC_REG | BC_STK | BC_DATA)) {
+                u8 rex_w = type & BC_I64 ? REX_W : 0;
+                if (rex_w | r1&8 | r2&8) {
+                    x64_rex(buf, rex_w, r1, r2);
+                }
+                // 8B /r 	MOV r32,r/m32 	RM
+                push_u8(buf, 0x8B);
+                x64_modrm(buf, m2, d2, r1, r2);
+                
+            } else {
+                assert(0 && "invalid instruction");
+            }
+        } break;
+        
+        case BC_STK: {
+            if (m2 == BC_DISP) {
+                if ((u64) d2 > U32_MAX) {
+                    x64_mov_rax_u64(buf, d2);
+                    x64_mov(buf, type, m1, r1, d1, BC_REG, X64_RAX, 0);
+                    
+                } else {
+                    if (type & BC_I64) {
+                        x64_rex(buf, REX_W);
+                    }
+                    
+                    // C7 /0 id 	MOV r/m32, imm32 	MI
+                    push_u8(buf, 0xC7);
+                    x64_modrm(buf, m1, d1, 0, r1);
+                    push_u32(buf, (u32) d2);
+                }
+                
+            } else if (m2 == BC_REG) {
+                // 89 /r 	MOV r/m32,r32 	MR
+                u8 rex_w = type & BC_I64 ? REX_W : 0;
+                if (rex_w | r2&8) {
+                    x64_rex(buf, rex_w, r2);
+                }
+                push_u8(buf, 0x89);
+                x64_modrm(buf, m1, d1, r2&7, r1);
+                
+            } else if (m2 == BC_DATA) {
+                // NOTE(Alexander): x64 doesn't allow MOV STK, STK, move to tmp reg
+                // TODO(Alexander): reg hardcoded RAX
+                s64 tmpr = X64_RAX;
+                if (r2 == tmpr || r1 == tmpr) {
+                    tmpr = X64_RCX;
+                }
+                x64_mov(buf, type, BC_REG, tmpr, 0, m2, r2, d2);
+                x64_mov(buf, type, m1, r1, d1, BC_REG, tmpr, 0);
+                
+            } else {
+                assert(0 && "invalid instruction");
+            }
+        } break;
+        
+        default: assert(0 && "invalid instruction");
+    }
+}
+
+inline void
+x64_binary(Intermediate_Code* buf,
+           Bc_Type m1, s64 r1, s64 d1, 
+           Bc_Type m2, s64 r2, s64 d2,
+           u8 reg_field, u8 opcode, s64 rip) {
+    
+    if (m1 & BC_DISP) {
+        Bc_Type tmpt = BC_REG + (m1 & BC_RT_MASK);
+        s64 tmpr = X64_RAX;
+        x64_mov(buf, tmpt, tmpr, 0, m1, r1, d1);
+        m1 = tmpt;
+        r1 = tmpr;
+        d1 = 0;
+    }
+    
+    switch (m1 & BC_TF_MASK) {
+        case BC_REG: {
+            if (m2 & BC_DISP) {
+                if (d2 > U32_MAX) {
+                    unimplemented;
+                }
+                
+                if (m1 & BC_T64) {
+                    x64_rex(buf, REX_W);
+                }
+                
+                // 81 /0 id 	ADD r/m32, imm32 	MI
+                //push_u8(buf, 0x81);
+                push_u8(buf, (m1 & BC_T8) ? 0x80 : 0x81);
+                push_u8(buf, 0xC0 | (reg_field << 3) | (u8) r1);
+                if (m1 & BC_T8) {
+                    push_u8(buf, (u8) d2);
+                } else {
+                    push_u32(buf, (u32) d2);
+                }
+                
+            } else if (m2 & BC_STK_RIP_REG) {
+                if (m1 & BC_T64) {
+                    x64_rex(buf, REX_W);
+                }
+                
+                // 03 /r 	ADD r32, r/m32 	RM
+                push_u8(buf, (m1 & BC_T8) ? opcode + 2 : opcode + 3);
+                x64_modrm(buf, m2, d2, r1, r2);
+            } else {
+                unimplemented;
+            }
+        } break;
+        
+        case BC_STK:
+        case BC_RIP_DISP32: {
+            if (m2 & BC_DISP) {
+                
+                if ((u64) d2 > U32_MAX && (d2 != -1 || m2 & BC_UINT)) {
+                    unimplemented;
+                } else if (m2 & BC_UINT && (s32) d2 < 0) {
+                    Bc_Type tmpt = BC_T32 + BC_REG;
+                    s64 tmpr = X64_RAX;
+                    x64_mov(buf, tmpt, tmpr, 0, m2, r2, d2);
+                    x64_binary(buf, m1, r1, d1, tmpt, tmpr, 0, reg_field, opcode);
+                } else {
+                    if (m1 & BC_T64) {
+                        x64_rex(buf, REX_W);
+                    }
+                    
+                    // 81 /0 id 	ADD r/m32, imm32 	MI
+                    push_u8(buf, (m1 & BC_T8) ? 0x80 : 0x81);
+                    //push_u8(buf, 0xC7);
+                    s64 disp_size = m1 & BC_T8 ? 1 : 4;
+                    x64_modrm(buf, m1, d1, reg_field, r1 + disp_size);
+                    if (m1 & BC_T8) {
+                        push_u8(buf, (u8) d2);
+                    } else {
+                        push_u32(buf, (u32) d2);
+                    }
+                }
+            } else if (m2 & BC_REG) {
+                if (m1 & BC_T16) {
+                    push_u8(buf, X64_OP_SIZE_PREFIX);
+                }
+                
+                if (m1 & BC_T64) {
+                    x64_rex(buf, REX_W);
+                }
+                
+                // 01 /r 	ADD r/m32, r32 	MR
+                push_u8(buf, (m1 & BC_T8) ? opcode : opcode + 1);
+                x64_modrm(buf, m1, d1, r2, r1);
+                
+            } else if (m2 & BC_STK_RIP) {
+                s64 tmpr = X64_RAX;
+                if (r2 == tmpr || r1 == tmpr) {
+                    tmpr = X64_RCX;
+                }
+                x64_mov(buf, BC_REG + (m2 & BC_RT_MASK), tmpr, 0, m2, r2, d2);
+                x64_binary(buf, m1, r1, d1, BC_REG + (m1 & BC_RT_MASK), tmpr, 0, reg_field, opcode);
+            } else {
+                assert(0 && "invalid instruction");
+            }
+        } break;
+        
+        default: assert(0 && "invalid instruction");
+    }
+}
+
+
+
+#if 0
+
 
 inline void
 x64_move_immediate_to_register(Buffer* buf, X64_Reg dest, s32 immediate) { 
@@ -609,3 +804,4 @@ x64_rep_stosb(Buffer* buf, X64_Reg dest, X64_Reg byte, X64_Reg count) {
     // F3 REX.W AA 	REP STOS m8 	ZO 	Valid
     push_u24(buf, 0xAA48F3);
 }
+#endif

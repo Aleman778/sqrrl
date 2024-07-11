@@ -1,6 +1,4 @@
 
-#define X64_DEBUG 0
-
 enum X64_Reg: u8 {
     X64_RAX,
     X64_RCX,
@@ -38,6 +36,77 @@ enum X64_Reg: u8 {
     
     X64_REG_COUNT,
 };
+
+#define REX_PATTERN 0x40
+#define REX_W bit(3)
+#define REX_R bit(2)
+#define REX_X bit(1)
+#define REX_B bit(0)
+
+#define MODRM_DIRECT 0xC0
+#define MODRM_INDIRECT_DISP8 0x40
+#define MODRM_INDIRECT_DISP32 0x80
+
+inline void
+x64_rex(Buffer* buf, u8 flags, u8 r_reg=0, u8 b_rm=0, u8 x_index=0) {
+    push_u8(buf, REX_PATTERN | flags | ((r_reg&8)>>1) | ((x_index&8)>>2) | (b_rm&8)>>3);
+}
+
+inline void
+x64_sib(Buffer* buf, u8 scale, u8 index, u8 base) {
+    push_u8(buf, scale << 6 | index << 3 | base);
+}
+
+inline void
+x64_modrm_direct(Buffer* buf, u8 reg, u8 rm) {
+    push_u8(buf, MODRM_DIRECT | ((reg&7)<<3) | (rm&7));
+}
+
+inline void
+x64_rip_relative(Buffer* buf, u8 r, s64 data) {
+    x64_modrm_direct(buf, r, X64_RBP);
+    push_u8(buf, ((u8) (r&7)<<3) | (u8) X64_RBP);
+    
+    u8* code_ptr = buf->data + buf->curr_used;
+    s64 disp = data - (s64) code_ptr - 4;
+    
+    push_u32(buf, (u32) disp);
+}
+
+void
+x64_modrm(Buffer* ic, Bc_Mode mode, s64 d, u8 r, u8 rm) {
+    switch(mode) {
+        case BC_STK: {
+            if (d < S8_MIN || d > S8_MAX) {
+                push_u8(ic, MODRM_INDIRECT_DISP32 | (((u8) r&7)<<3) | (u8) rm&7);
+                if (rm == X64_RSP) {
+                    push_u8(ic, rm << 3 | rm);
+                }
+                push_u32(ic, (u32) d);
+            } else {
+                push_u8(ic, MODRM_INDIRECT_DISP8 | (((u8) r&7)<<3) | (u8) rm&7);
+                if (rm == X64_RSP) {
+                    push_u8(ic, rm << 3 | rm);
+                }
+                push_u8(ic, (u8) d);
+            }
+        } break;
+        
+        case BC_DATA: {
+            x64_rip_relative(ic, r, d);
+        } break;
+        
+        case BC_REG: {
+            x64_modrm_direct(ic, r, rm);
+        } break;
+        
+        default: unimplemented;
+    }
+}
+
+#if 0
+#define X64_DEBUG 0
+
 
 bool x64_windows_nonvolatile_reg[] = {
     false, // X64_RAX
@@ -387,12 +456,6 @@ set_slot(X64_Assembler* x64, int reg_index, X64_Slot slot) {
     x64->slots[reg_index] = slot;
 }
 
-inline s32
-x64_register_displacement(X64_Assembler* x64, int slot_index, Bc_Type type=BC_PTR) {
-    //return x64->
-    return 0;
-}
-
 // TODO(Alexander): we should probably return something more approporiate.
 X64_Assembler convert_bytecode_to_x64_machine_code(Bc* bytecode, 
                                                    Buffer* buf, 
@@ -417,19 +480,6 @@ global const X64_Reg float_arg_registers_ccall_windows[] {
     X64_XMM0, X64_XMM1, X64_XMM2, X64_XMM3
 };
 
-
-#define X64_OP_SIZE_PREFIX 0x66
-
-#define REX_PATTERN 0x40
-#define REX_W bit(3)
-#define REX_R bit(2)
-#define REX_X bit(1)
-#define REX_B bit(0)
-
-#define MODRM_DIRECT 0xC0
-#define MODRM_INDIRECT_DISP8 0x40
-#define MODRM_INDIRECT_DISP32 0x80
-
 global const u16 x64_jcc_opcodes[] = {
     0x840F, 0x8F0F, 0x870F, 0x8D0F, 0x830F, 0x820F, 0x8C0F, 0x860F, 0x8E0F, 0x850F
 };
@@ -440,28 +490,8 @@ global const u16 x64_jcc_opcodes[] = {
 //}
 
 inline void
-x64_rex(Buffer* buf, u8 flags, u8 r_reg=0, u8 b_rm=0, u8 x_index=0) {
-    push_u8(buf, REX_PATTERN | flags | ((r_reg&8)>>1) | ((x_index&8)>>2) | (b_rm&8)>>3);
-}
-
-inline void
-x64_sib(Buffer* buf, u8 scale, u8 index, u8 base) {
-    push_u8(buf, scale << 6 | index << 3 | base);
-}
-
-inline void
 x64_rip_rel(Buffer* buf, u8 reg) {
     push_u8(buf, ((u8) (reg&7)<<3) | (u8) X64_RBP);
-}
-
-inline void
-x64_rip_relative(Buffer* buf, s64 r, s64 data) {
-    push_u8(buf, ((u8) (r&7)<<3) | (u8) X64_RBP);
-    
-    u8* x64_machine_code_ptr = buf->data + buf->curr_used;
-    s64 disp = data - (s64) x64_machine_code_ptr - 4;
-    
-    push_u32(buf, (u32) disp);
 }
 
 inline void
@@ -487,34 +517,10 @@ x64_jump_address_for_label(X64_Assembler* x64, Buffer* buf, Bc_Function* func, u
 }
 
 inline void
-x64_modrm(Buffer* buf, u8 reg, u8 rm, s64 disp) {
-    reg = reg&7;
-    rm = rm&7;
-    if (disp < S8_MIN || disp > S8_MAX) {
-        push_u8(buf, MODRM_INDIRECT_DISP32 | (reg<<3) | rm&7);
-        if (rm == X64_RSP) {
-            push_u8(buf,  (rm << 3) | rm);
-        }
-        push_u32(buf, (u32) disp);
-    } else {
-        push_u8(buf, MODRM_INDIRECT_DISP8 | (reg<<3) | rm&7);
-        if (rm == X64_RSP) {
-            push_u8(buf,  (rm << 3) | rm);
-        }
-        push_u8(buf, (u8) disp);
-    }
-}
-
-inline void
 x64_modrm_sib(Buffer* buf, u8 reg, u8 scale, u8 index, u8 base, s64 disp) {
     push_u8(buf, MODRM_INDIRECT_DISP32 | ((reg&7)<<3) | X64_RSP&7); // reg=RAX, rm=RSP (for SIB)
     push_u8(buf, (scale << 6) | ((index&7) << 3) | (base&7)); // [base + (index * scale) + disp]
     push_u32(buf, (u32) disp); // TODO(Alexander): we can optimize this to use DISP8 too!
-}
-
-inline void
-x64_modrm_direct(Buffer* buf, u8 reg, u8 rm) {
-    push_u8(buf, MODRM_DIRECT | ((reg&7)<<3) | (rm&7));
 }
 
 inline void
@@ -548,3 +554,4 @@ x64_modrm_exported_data(X64_Assembler* x64, Buffer* buf, u8 reg, Exported_Data d
         x64_create_u32_patch(x64, buf, kind, data.relative_ptr);
     }
 }
+#endif

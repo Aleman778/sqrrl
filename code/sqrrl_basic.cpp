@@ -2,9 +2,6 @@
 // NOTE(Alexander): forward declare
 struct Ast_Node;
 
-
-struct Intermediate_Code;
-
 void
 print(const char* format...) {
     va_list args;

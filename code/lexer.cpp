@@ -185,13 +185,15 @@ lex_number(Lexer* lexer, Token* token, u8 ch) {
     }
 }
 
-void
+bool
 lex_comment(Lexer* lexer) {
     if (*lexer->curr == '/') {
         lexer_next_char(lexer);
         do {
             lexer_next_char(lexer);
         } while (lexer->curr < lexer->end && *lexer->curr != '\n');
+        
+        return true;
         
     } else if (*lexer->curr == '*') {
         lexer_next_char(lexer);
@@ -209,6 +211,11 @@ lex_comment(Lexer* lexer) {
             }
             if (depth == 0) break;
         }
+        
+        return true;
+        
+    } else {
+        return false;
     }
 }
 
@@ -264,7 +271,9 @@ lex(Lexer* lexer) {
     
     u8 ch = lexer_next_char(lexer);
     while (ch == '/') {
-        lex_comment(lexer);
+        if (!lex_comment(lexer)) {
+            break;
+        }
         ch = lexer_next_char(lexer);
     }
     

@@ -1,12 +1,34 @@
 
+int
+emit_bytecode_for_function(Bytecode_Builder* bc, Ast_Function* func) {
+    int func_index = bc->module.next_func_index++;
+    
+    Bc* inst = bc_instruction(bc, BC_BEGIN_FUNCTION, BC_I32);
+    inst->function = func;
+    bc->curr_func = func;
+    emit_bytecode_for_expression(bc, func->body);
+    inst = bc_instruction(bc, BC_END_FUNCTION, BC_I32);
+    inst->function = func;
+    bc->curr_func = 0;
+    
+    return func_index;
+}
+
+void
+emit_bytecode_for_declarations(Bytecode_Builder* bc, Ast_Block* block) {
+    for_array_v(block->statements, ast, _) {
+        if (ast->kind == AST_FUNCTION) {
+            emit_bytecode_for_function(bc, (Ast_Function*) ast);
+        }
+    }
+}
+
 Bc_Arg
 emit_bytecode_for_expression(Bytecode_Builder* bc, Ast_Expression* expr) {
     Bc_Arg result = {};
     
     switch (expr->kind) {
         case AST_LITERAL: {
-            
-            
             auto lit = (Ast_Literal*) expr;
             Ast_Type* type = lit->inferred_type;
             if (type->flags & TYPE_FLAG_INTEGER) {
@@ -52,7 +74,9 @@ emit_bytecode_for_expression(Bytecode_Builder* bc, Ast_Expression* expr) {
             Ast_Type* type = decl->inferred_type;
             if (type->size == 1 || type->size == 2 || type->size == 4 || type->size == 8) {
                 // Small allocations can be stored directly inside register
-                result = emit_bytecode_for_expression(bc, decl->initializer);
+                Bc_Arg src = emit_bytecode_for_expression(bc, decl->initializer);
+                Bc_Arg dest = bc_stack_alloc(bc, type->size, type->align);
+                bc_instruction(bc, BC_MOV, bc_type(type), {}, dest, src);
                 decl->bytecode_stk_allocation = result.disp;
                 
             } else {
@@ -76,28 +100,6 @@ emit_bytecode_for_expression(Bytecode_Builder* bc, Ast_Expression* expr) {
     
     return result;
 }
-
-int
-emit_bytecode_for_function(Bytecode_Builder* bc, Ast_Function* func) {
-    int func_index = bc->module.next_func_index++;
-    
-    Bc* inst = bc_instruction(bc, BC_BEGIN_FUNCTION, BC_I32, bc_immediate(func_index));
-    emit_bytecode_for_expression(bc, func->body);
-    inst = bc_instruction(bc, BC_END_FUNCTION, BC_I32, bc_immediate(func_index));
-    
-    return func_index;
-}
-
-void
-emit_bytecode_for_declarations(Bytecode_Builder* bc, Ast_Block* block) {
-    for_array_v(block->statements, ast, _) {
-        if (ast->kind == AST_FUNCTION) {
-            emit_bytecode_for_function(bc, (Ast_Function*) ast);
-        }
-    }
-}
-
-
 
 #if 0
 

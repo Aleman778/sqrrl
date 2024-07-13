@@ -137,6 +137,11 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     Ast_File* ast_file = parse_file(&lexer);
     ast_file->source_file = file;
     
+    if (lexer.error_count > 0) {
+        pln("\nFound error(s) during parsing, exiting...");
+        return 1;
+    }
+    
     if (!file)  {
         pln("Failed to parse");
         return 1;
@@ -177,7 +182,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
                 if (bc->function) {
                     string_builder_push_format(sb, "\nvoid %() {\n", f_ident(bc->function->identifier));
                 } else {
-                    string_builder_push_format(sb, "\nvoid <%>() {\n", f_int(bc->res_index));
+                    string_builder_push_format(sb, "\nvoid <???>() {\n");
                 }
                 
                 continue;
@@ -188,21 +193,20 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             }
             
             string_builder_push(sb, "  ");
-            if (bc->res_index >= 0) {
-                string_builder_push_format(sb, "v% = ", f_int(bc->res_index));
+            if (bc->res.mode) {
+                print_bc_arg(sb, bc->res);
+                string_builder_push(sb, " = ");
             }
             
             string_builder_push(sb, opcode_names[bc->opcode]);
             
-            if (bc->a_index >= 0) {
-                string_builder_push_format(sb, " v%", f_int(bc->a_index));
+            if (bc->a.mode) {
+                string_builder_push(sb, " ");
+                print_bc_arg(sb, bc->a);
             }
-            if (bc->b_index >= 0) {
-                string_builder_push_format(sb, ", v%", f_int(bc->b_index));
-            }
-            
-            if (bc->opcode == BC_LOAD_CONSTANT) {
-                string_builder_push_format(sb, " %", f_u64_HEX(bc->constant._u64));
+            if (bc->b.mode) {
+                string_builder_push(sb, ", ");
+                print_bc_arg(sb, bc->b);
             }
             
             string_builder_push(sb, "\n");
@@ -216,7 +220,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
     // Phase 4: Backend code generation
     switch (compiler.backend) {
         case Backend_X64: {
-            X64_Assembler x64 = {};
+            X64_Converter x64 = {};
             x64.module = &bytecode_builder.module;
             
             Buffer buf = {};
@@ -225,7 +229,7 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             
             for_bc_inst(bytecode_builder.module, it) {
                 Bc* inst = it.inst;
-                convert_bytecode_to_x64_machine_code(&x64, &buf, inst);
+                convert_bytecode_to_x64_machine_code(&x64, &buf, inst, is_debugger_present);
             }
             
             if (compiler.task != CompilerTask_Run) {

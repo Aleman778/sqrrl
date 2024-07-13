@@ -1,41 +1,57 @@
 
-enum X64_Reg: u8 {
-    X64_RAX,
-    X64_RCX,
-    X64_RDX,
-    X64_RBX,
-    X64_RSP,
-    X64_RBP,
-    X64_RSI,
-    X64_RDI,
-    X64_R8,
-    X64_R9,
-    X64_R10,
-    X64_R11,
-    X64_R12,
-    X64_R13,
-    X64_R14,
-    X64_R15,
-    
-    X64_XMM0,
-    X64_XMM1,
-    X64_XMM2,
-    X64_XMM3,
-    X64_XMM4,
-    X64_XMM5,
-    X64_XMM6,
-    X64_XMM7,
-    X64_XMM8,
-    X64_XMM9,
-    X64_XMM10,
-    X64_XMM11,
-    X64_XMM12,
-    X64_XMM13,
-    X64_XMM14,
-    X64_XMM15,
-    
-    X64_REG_COUNT,
+struct X64_Converter {
+    Bc_Module* module;
 };
+
+enum X64_Reg: u8 {
+    X64_NONE = 0,
+    
+    X64_RAX = 0,
+    X64_RCX = 1,
+    X64_RDX = 2,
+    X64_RBX = 3,
+    X64_RSP = 4,
+    X64_RBP = 5,
+    X64_RSI = 6,
+    X64_RDI = 7,
+    X64_R8  = 8,
+    X64_R9  = 9,
+    X64_R10 = 10,
+    X64_R11 = 11,
+    X64_R12 = 12,
+    X64_R13 = 13,
+    X64_R14 = 14,
+    X64_R15 = 15,
+    
+    X64_XMM0 = 0,
+    X64_XMM1 = 1,
+    X64_XMM2 = 2,
+    X64_XMM3 = 3,
+    X64_XMM4 = 4,
+    X64_XMM5 = 5,
+    X64_XMM6 = 6,
+    X64_XMM7 = 7,
+    X64_XMM8 = 8,
+    X64_XMM9 = 9,
+    X64_XMM10 = 10,
+    X64_XMM11 = 11,
+    X64_XMM12 = 12,
+    X64_XMM13 = 13,
+    X64_XMM14 = 14,
+    X64_XMM15 = 15,
+    
+    X64_REG_COUNT = 16,
+};
+
+X64_Reg bc_to_x64_reg[] = {
+    X64_RAX, X64_RSP
+};
+
+inline X64_Reg
+x64_reg(u8 bc_reg) {
+    assert(bc_reg < fixed_array_count(bc_to_x64_reg) && "invalid bytecode register");
+    return bc_to_x64_reg[bc_reg];
+}
 
 #define REX_PATTERN 0x40
 #define REX_W bit(3)
@@ -74,30 +90,30 @@ x64_rip_relative(Buffer* buf, u8 r, s64 data) {
 }
 
 void
-x64_modrm(Buffer* ic, Bc_Mode mode, s64 d, u8 r, u8 rm) {
+x64_modrm(Buffer* buf, Bc_Mode mode, s64 d, u8 r, u8 rm) {
     switch(mode) {
         case BC_STK: {
             if (d < S8_MIN || d > S8_MAX) {
-                push_u8(ic, MODRM_INDIRECT_DISP32 | (((u8) r&7)<<3) | (u8) rm&7);
+                push_u8(buf, MODRM_INDIRECT_DISP32 | (((u8) r&7)<<3) | (u8) rm&7);
                 if (rm == X64_RSP) {
-                    push_u8(ic, rm << 3 | rm);
+                    push_u8(buf, rm << 3 | rm);
                 }
-                push_u32(ic, (u32) d);
+                push_u32(buf, (u32) d);
             } else {
-                push_u8(ic, MODRM_INDIRECT_DISP8 | (((u8) r&7)<<3) | (u8) rm&7);
+                push_u8(buf, MODRM_INDIRECT_DISP8 | (((u8) r&7)<<3) | (u8) rm&7);
                 if (rm == X64_RSP) {
-                    push_u8(ic, rm << 3 | rm);
+                    push_u8(buf, rm << 3 | rm);
                 }
-                push_u8(ic, (u8) d);
+                push_u8(buf, (u8) d);
             }
         } break;
         
         case BC_DATA: {
-            x64_rip_relative(ic, r, d);
+            x64_rip_relative(buf, r, d);
         } break;
         
         case BC_REG: {
-            x64_modrm_direct(ic, r, rm);
+            x64_modrm_direct(buf, r, rm);
         } break;
         
         default: unimplemented;

@@ -169,13 +169,13 @@ random_f32() {
 }
 
 inline u32
-safe_truncate_u64(u64 value) {
+safe_truncate_to_u32(u64 value) {
     assert(value <= U32_MAX && "u64 cannot fit in u32");
     return (u32) value;
 }
 
 inline s32
-safe_truncate_s64(s64 value) {
+safe_truncate_to_s32(s64 value) {
     assert(value >= S32_MIN && value <= S32_MAX && "s64 cannot fit in s32");
     return (s32) value;
 }

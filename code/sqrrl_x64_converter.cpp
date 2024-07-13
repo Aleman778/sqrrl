@@ -1,25 +1,63 @@
 
 void 
-convert_bytecode_to_x64_machine_code(X64_Assembler* x64, Buffer* buf, Bc* bc) {
-    
+convert_bytecode_to_x64_machine_code(X64_Converter* x64, Buffer* buf, Bc* bc, bool is_debugger_attached=false) {
     switch (bc->opcode) {
-        case BC_BEGIN_FUNCTION:
-        case BC_END_FUNCTION: {
-        } break;
-        
-        case BC_LOAD_CONSTANT: {
-            u64 immediate = bc->constant._u64;
-            // TODO(Alexander): assumes 32-bit integer, add more variants
+        case BC_BEGIN_FUNCTION: {
+            Ast_Function* func = bc->function;
             
-            x64_move_immediate_to_register(buf, X64_RAX, (s32) immediate);
+            // Push 16-byte aligned stack but excluding the return address (8 bytes)
+            umm stack_usage = align_forward(func->stack_size + 8, 16) - 8;
+            x64_int_binary_operator(buf, BC_I64, 
+                                    BC_REG, X64_RSP, 0,
+                                    BC_DISP, X64_NONE, safe_truncate_to_s32(stack_usage), 0, 0);
+            
+            if (is_debugger_attached) {
+                push_u8(buf, 0xCC);
+            }
         } break;
         
-        case BC_ADD: {
-            x64_add()
+        case BC_END_FUNCTION: {
+            Ast_Function* func = bc->function;
+            
+            // NOTE(Alexander): pop stack, copy pasted above except x64_sub instead of x64_add
+            umm stack_usage = align_forward(func->stack_size + 8, 16) - 8;
+            x64_int_binary_operator(buf, BC_I64,
+                                    BC_REG, X64_RSP, 0,
+                                    BC_DISP, X64_NONE, safe_truncate_to_s32(stack_usage), 5, 0x28);
+            
+            push_u8(buf, 0xc3);
+        } break;
+        
+        case BC_ADD:
+        case BC_SUB: {
+            u16 op = binary_operator_table[bc->opcode - BC_ADD];
+            x64_int_binary_and_assign_operator(buf, bc->type, 
+                                               bc->res.mode, x64_reg(bc->res.reg), bc->res.disp,
+                                               bc->a.mode,   x64_reg(bc->a.reg),   bc->a.disp,
+                                               bc->b.mode,   x64_reg(bc->b.reg),   bc->b.disp, 
+                                               op >> 8, op & 0xFF);
+        } break;
+        
+        case BC_MUL: {
+            x64_mul(buf, bc);
+        } break;
+        
+        case BC_UDIV: {
+            x64_div(buf, bc, false, false);
+        } break;
+        
+        case BC_SDIV: {
+            x64_div(buf, bc, false, true);
+        } break;
+        
+        case BC_MOV: {
+            x64_mov(buf, bc->type,
+                    bc->a.mode, x64_reg(bc->a.reg), bc->a.disp, 
+                    bc->b.mode, x64_reg(bc->b.reg), bc->b.disp);
         } break;
         
         case BC_RETURN: {
-            push_u8(buf, 0xc3);
+            x64_mov(buf, bc->type, BC_REG, X64_RAX, 0, bc->a.mode, x64_reg(bc->a.reg), bc->a.disp);
         } break;
         
         default: {

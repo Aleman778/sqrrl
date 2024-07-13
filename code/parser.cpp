@@ -77,6 +77,7 @@ parse_call_argument_list(Lexer* lexer) {
         
         array_push(result, arg);
         
+        
         if (!lex_if_matched(lexer, ',')) {
             lex_expect(lexer, ')');
             break;
@@ -132,17 +133,6 @@ parse_leaf_expression(Lexer* lexer) {
     }
     
     return result;
-}
-
-Operator_Kind
-parse_binary_operator(Token token) {
-    switch (token.kind) {
-        case '+': return OP_ADD;
-        case '-': return OP_SUB;
-        case '*': return OP_MUL;
-        case '/': return OP_DIV;
-        default:  return OP_NONE;
-    }
 }
 
 internal inline Ast_Expression*

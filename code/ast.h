@@ -217,15 +217,30 @@ enum Operator_Kind {
     OP_SUBSCRIPT,
 };
 
+Operator_Kind
+parse_binary_operator(Token token) {
+    switch (token.kind) {
+        case '+': return OP_ADD;
+        case '-': return OP_SUB;
+        case '*': return OP_MUL;
+        case '/': return OP_DIV;
+        default:  return OP_NONE;
+    }
+}
+
 int
 get_precedence(Operator_Kind op) {
     switch (op) {
         case OP_NEG: return 13;
+        case OP_MUL:
+        case OP_DIV: return 11;
         case OP_ADD:
         case OP_SUB: return 10;
-        
-        default: return 0;
+        case OP_SCOPE_ACCESS: return 0;
+        case OP_SUBSCRIPT: return 0;
+        default: unimplemented;
     }
+    return 0;
 }
 
 struct Ast_Unary : Ast_Expression {
@@ -300,6 +315,8 @@ struct Ast_Function : Ast_Declaration {
     Ast_Type* return_type;
     Ast_Block* args;
     Ast_Block* body;
+    
+    umm stack_size;
 };
 
 struct Ast_Struct : Ast_Declaration {

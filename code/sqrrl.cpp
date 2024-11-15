@@ -61,6 +61,9 @@ compiler_parse_args(int argc, char** argv) {
         } else if (string_equals(arg, string_lit("-wasm"))) {
             result.backend = Backend_WASM;
             
+        } else if (string_equals(arg, string_lit("-llvm"))) {
+            result.backend = Backend_LLVM;
+            
         } else if (string_equals(arg, string_lit("-x64"))) {
             result.backend = Backend_X64;
             
@@ -147,6 +150,12 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         return 1;
     }
     
+    // Phase 2: Typing
+    Type_Context tcx = {};
+    tcx.file = ast_file;
+    infer_block(&tcx, &ast_file->block);
+    check_block(&tcx, &ast_file->block);
+    
     {
         String_Builder sb = {};
         print_ast_file(&sb, ast_file);
@@ -154,13 +163,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         pln("%", f_string(s));
         string_builder_free(&sb);
     }
-    
-    // Phase 2: Typing
-    Type_Context tcx = {};
-    tcx.file = ast_file;
-    infer_block(&tcx, &ast_file->block);
-    check_block(&tcx, &ast_file->block);
-    
     
     // Phase 3: Intermediate representation
     Bytecode_Builder bytecode_builder = {};
@@ -178,17 +180,15 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
             Bc* bc = it.inst;
             num_instructions++;
             
-            if (bc->opcode == BC_BEGIN_FUNCTION) {
-                if (bc->function) {
-                    string_builder_push_format(sb, "\nvoid %() {\n", f_ident(bc->function->identifier));
+            if (bc->opcode == BC_LABEL) {
+                if (bc->label.function) {
+                    string_builder_push_format(sb, "\nbb%: <function: name = %, epilogue = bb%>\n",
+                                               f_u32(bc->label.index), 
+                                               f_ident(bc->label.function->identifier),
+                                               f_u32(bc->label.epilogue_index));
                 } else {
-                    string_builder_push_format(sb, "\nvoid <???>() {\n");
+                    string_builder_push_format(sb, "\nbb%:\n", f_u32(bc->label.index));
                 }
-                
-                continue;
-                
-            } else if (bc->opcode == BC_END_FUNCTION) {
-                string_builder_push(sb, "}\n");
                 continue;
             }
             
@@ -612,7 +612,6 @@ compiler_main_entry(int argc, char* argv[], void* asm_buffer, umm asm_size,
         } break;
         
         case Backend_WASM: {
-            
             Buffer buffer = {};
             buffer.data = (u8*) asm_buffer;
             buffer.size = asm_size;

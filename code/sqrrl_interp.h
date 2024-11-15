@@ -5,7 +5,6 @@ enum Compilation_Unit_Status {
     CUnitStatus_Type_Inference_Failed,
     CUnitStatus_Type_Inference_Finished,
     
-    
     CUnitStatus_Finished,
 };
 

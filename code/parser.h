@@ -1,6 +1,8 @@
 
 Ast_Type* parse_type(Lexer* lexer);
 
+Ast_Block* parse_block(Lexer* lexer);
+
 array(Ast_Argument)* parse_call_argument_list(Lexer* lexer);
 
 Ast_Block* parse_type_argument_list(Lexer* lexer, bool expect_ident=true);

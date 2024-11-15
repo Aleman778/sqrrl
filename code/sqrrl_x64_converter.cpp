@@ -2,30 +2,36 @@
 void 
 convert_bytecode_to_x64_machine_code(X64_Converter* x64, Buffer* buf, Bc* bc, bool is_debugger_attached=false) {
     switch (bc->opcode) {
-        case BC_BEGIN_FUNCTION: {
-            Ast_Function* func = bc->function;
-            
-            // Push 16-byte aligned stack but excluding the return address (8 bytes)
-            umm stack_usage = align_forward(func->stack_size + 8, 16) - 8;
-            x64_int_binary_operator(buf, BC_I64, 
-                                    BC_REG, X64_RSP, 0,
-                                    BC_DISP, X64_NONE, safe_truncate_to_s32(stack_usage), 0, 0);
-            
-            if (is_debugger_attached) {
-                push_u8(buf, 0xCC);
+        case BC_LABEL: {
+            if (bc->label.function) {
+                Ast_Function* func = bc->label.function;
+                if (bc->label.index != bc->label.epilogue_index) {
+                    // Prologue
+                    
+                    // Push 16-byte aligned stack but excluding the return address (8 bytes)
+                    umm stack_usage = align_forward(func->stack_size + 8, 16) - 8;
+                    x64_int_binary_operator(buf, BC_I64, 
+                                            BC_REG, X64_RSP, 0,
+                                            BC_DISP, X64_NONE, safe_truncate_to_s32(stack_usage), 0, 0);
+                    
+                    if (is_debugger_attached) {
+                        push_u8(buf, 0xCC);
+                    }
+                    
+                } else {
+                    // Epilogue
+                    
+                    // NOTE(Alexander): pop stack, copy pasted above except x64_sub instead of x64_add
+                    umm stack_usage = align_forward(func->stack_size + 8, 16) - 8;
+                    x64_int_binary_operator(buf, BC_I64,
+                                            BC_REG, X64_RSP, 0,
+                                            BC_DISP, X64_NONE, safe_truncate_to_s32(stack_usage), 5, 0x28);
+                    push_u8(buf, 0xc3); // ret
+                }
+                
+            } else {
+                // Regular label
             }
-        } break;
-        
-        case BC_END_FUNCTION: {
-            Ast_Function* func = bc->function;
-            
-            // NOTE(Alexander): pop stack, copy pasted above except x64_sub instead of x64_add
-            umm stack_usage = align_forward(func->stack_size + 8, 16) - 8;
-            x64_int_binary_operator(buf, BC_I64,
-                                    BC_REG, X64_RSP, 0,
-                                    BC_DISP, X64_NONE, safe_truncate_to_s32(stack_usage), 5, 0x28);
-            
-            push_u8(buf, 0xc3);
         } break;
         
         case BC_ADD:
@@ -36,6 +42,17 @@ convert_bytecode_to_x64_machine_code(X64_Converter* x64, Buffer* buf, Bc* bc, bo
                                                bc->a.mode,   x64_reg(bc->a.reg),   bc->a.disp,
                                                bc->b.mode,   x64_reg(bc->b.reg),   bc->b.disp, 
                                                op >> 8, op & 0xFF);
+        } break;
+        
+        case BC_JNE: {
+            // CMP
+            x64_int_binary_operator(buf, bc->type,
+                                    bc->a.mode, x64_reg(bc->a.reg), bc->a.disp,
+                                    bc->b.mode, x64_reg(bc->b.reg), bc->b.disp,
+                                    7, 0x38);
+            // JNE
+            push_u16(buf, 0x850F);
+            push_u32(buf, 0); // patch this later
         } break;
         
         case BC_MUL: {

@@ -2,8 +2,7 @@
 enum Opcode : u8 {
     BC_NOOP,
     
-    BC_BEGIN_FUNCTION, // res_index = func_index
-    BC_END_FUNCTION,   // res_index = func_index
+    BC_LABEL,
     
     BC_MOV,
     
@@ -15,16 +14,18 @@ enum Opcode : u8 {
     BC_UDIV,
     BC_SDIV,
     
+    BC_JZ,
+    BC_JNE,
+    
     BC_RETURN,
     
     BC_COUNT,
 };
 
 global const cstring opcode_names[BC_COUNT] = {
-    "NOOP",
+    "noop",
     
-    "FUNCTION_START",
-    "FUNCTION_END",
+    "label",
     
     "mov",
     
@@ -35,6 +36,9 @@ global const cstring opcode_names[BC_COUNT] = {
     "mul",
     "udiv",
     "sdiv",
+    
+    "jz",
+    "jne",
     
     "return",
 };
@@ -51,6 +55,14 @@ operator_to_opcode(Operator_Kind op, Ast_Type* type) {
         default: assert(0 && "invalid operator");
     }
     return BC_NOOP;
+}
+
+inline Opcode
+operator_to_inverse_jump_opcode(Operator_Kind op) {
+    switch (op) {
+        case OP_EQUALS: return BC_JNE;
+        default: return BC_NOOP;
+    }
 }
 
 enum {
@@ -88,12 +100,19 @@ struct Bc {
     Bc_Type type;
     
     union {
+        u32 target_label;
+        
         struct {
             Bc_Arg res;
             Bc_Arg a;
             Bc_Arg b;
         };
-        Ast_Function* function;
+        
+        struct {
+            u32 index;
+            u32 epilogue_index;
+            Ast_Function* function;
+        } label;
     };
 };
 

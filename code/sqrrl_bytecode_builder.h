@@ -5,6 +5,7 @@ struct Bytecode_Builder {
     Bc_Module module;
     
     Ast_Function* curr_func;
+    u32 curr_label_index;
 };
 
 Bc_Arg emit_bytecode_for_expression(Bytecode_Builder* bc, Ast_Expression* expr);
@@ -63,10 +64,8 @@ bc_stack_alloc(Bytecode_Builder* bc, s32 size, s32 align) {
     return result;
 }
 
-Bc*
-bc_instruction(Bytecode_Builder* bc, Opcode opcode, Bc_Type type,
-               Bc_Arg res={}, Bc_Arg a={}, Bc_Arg b={}) {
-    
+inline Bc* 
+bc_push(Bytecode_Builder* bc) {
     Bc_Bucket* bucket = bc->bucket;
     
     if (!bucket || bucket->count >= BC_INSTRUCTION_BUCKET_SIZE) {
@@ -78,16 +77,37 @@ bc_instruction(Bytecode_Builder* bc, Opcode opcode, Bc_Type type,
         
         pln("allocating new bucket with capacity: % instructions (instruction size: %)", f_int(BC_INSTRUCTIONS_PER_BUCKET), f_int(sizeof(Bc)));
     }
+    
     Bc* result = (Bc*) (bucket + 1) + bucket->count++;
-    result->opcode = opcode;
-    result->res = res;
-    result->a = a;
-    result->b = b;
     
     if (!bc->module.first_bucket) {
         bc->module.first_bucket = bucket;
     }
     
     bc->bucket = bucket;
+    
+    return result;
+}
+
+Bc*
+bc_instruction(Bytecode_Builder* bc, Opcode opcode, Bc_Type type,
+               Bc_Arg res={}, Bc_Arg a={}, Bc_Arg b={}) {
+    
+    Bc* result = bc_push(bc);
+    result->opcode = opcode;
+    result->type = type;
+    result->res = res;
+    result->a = a;
+    result->b = b;
+    return result;
+}
+
+Bc*
+bc_label(Bytecode_Builder* bc, Ast_Function* function=0) {
+    Bc* result = bc_push(bc);
+    result->opcode = BC_LABEL;
+    result->type = BC_I32;
+    result->label.index = bc->curr_label_index++;
+    result->label.function = function;
     return result;
 }

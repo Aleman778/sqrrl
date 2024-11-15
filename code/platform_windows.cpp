@@ -85,8 +85,9 @@ DEBUG_log_backtrace() {
             file_name   = line.FileName;
             line_number = line.LineNumber;
         }
-        //strcmp(module_name, "sqrrl") == 0 &&  // what is this????
-        if (strcmp(function_name, "__scrt_common_main_seh") != 0) {
+        if (file_name &&
+            strcmp(function_name, "__scrt_common_main_seh") != 0 &&
+            strcmp(function_name, "__assert") != 0) {
             printf("%s:%u: in function %s\n", file_name, line_number, function_name);
         }
     }

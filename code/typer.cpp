@@ -69,7 +69,7 @@ infer_expression(Type_Context* tcx, Ast_Expression* expr) {
             if (result->storage == TYPE_INT) {
                 result = &ast_basic_types[TYPE_S32];
             }
-            pln("infer AST_TYPE: %", f_type(result));
+            //pln("infer AST_TYPE: %", f_type(result));
         } break;
         
         case AST_LITERAL: {
@@ -98,6 +98,21 @@ infer_expression(Type_Context* tcx, Ast_Expression* expr) {
                 result = t_void;
             }
             end_block(tcx);
+        } break;
+        
+        case AST_IF: {
+            auto if_stmt = (Ast_If*) expr;
+            
+            Ast_Type* found_cond = infer_expression(tcx, if_stmt->cond);
+            Ast_Type* found_then = infer_expression(tcx, if_stmt->then_stmt);
+            Ast_Type* found_else = t_void;
+            if (if_stmt->else_stmt) {
+                found_else = infer_expression(tcx, if_stmt->else_stmt);
+            }
+            
+            if (found_cond && found_then && found_else) {
+                result = t_void;
+            }
         } break;
         
         case AST_RETURN: {
@@ -199,10 +214,18 @@ bool
 infer_function(Type_Context* tcx, Ast_Function* proc) {
     begin_block(tcx, proc->args);
     bool result = infer_block(tcx, proc->args);
+    if (result) {
+        proc->args->inferred_type = t_void;
+    }
+    
     
     if (proc->body) {
         begin_block(tcx, proc->body);
         result = result && infer_block(tcx, proc->body);
+        if (result) {
+            proc->body->inferred_type = t_void;
+        }
+        
         end_block(tcx);
     }
     

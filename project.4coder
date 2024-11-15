@@ -63,7 +63,7 @@ commands = {
 
 fkey_command = {
   .F1 = "build",
-  .F2 = "run",
+  .F2 = "build_personal",
   .F3 = "build_release",
   .F4 = "run_build",
   .F5 = "build_personal",

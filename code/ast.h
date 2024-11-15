@@ -14,6 +14,7 @@ enum Ast_Kind {
     AST_BINARY,
     AST_CAST,
     AST_CALL,
+    AST_IF,
     AST_RETURN,
     
     AST_DECLARATION,
@@ -215,6 +216,7 @@ enum Operator_Kind {
     OP_DIV,
     OP_SCOPE_ACCESS,
     OP_SUBSCRIPT,
+    OP_EQUALS,
 };
 
 Operator_Kind
@@ -224,6 +226,7 @@ parse_binary_operator(Token token) {
         case '-': return OP_SUB;
         case '*': return OP_MUL;
         case '/': return OP_DIV;
+        case Token_Equals: return OP_EQUALS;
         default:  return OP_NONE;
     }
 }
@@ -231,13 +234,14 @@ parse_binary_operator(Token token) {
 int
 get_precedence(Operator_Kind op) {
     switch (op) {
-        case OP_NEG: return 13;
+        case OP_SCOPE_ACCESS: return 15;
+        case OP_SUBSCRIPT: return 15;
+        case OP_NEG: return 14;
         case OP_MUL:
-        case OP_DIV: return 11;
+        case OP_DIV: return 12;
         case OP_ADD:
-        case OP_SUB: return 10;
-        case OP_SCOPE_ACCESS: return 0;
-        case OP_SUBSCRIPT: return 0;
+        case OP_SUB: return 11;
+        case OP_EQUALS: return 7;
         default: unimplemented;
     }
     return 0;
@@ -297,6 +301,14 @@ struct Ast_Block : Ast_Expression {
 };
 
 void add_statement(Ast_Block* block, Ast_Expression* statement);
+
+struct Ast_If : Ast_Expression {
+#define AST_KIND_Ast_If AST_IF
+    
+    Ast_Expression* cond;
+    Ast_Expression* then_stmt;
+    Ast_Expression* else_stmt;
+};
 
 
 struct Ast_Declaration : Ast_Expression {

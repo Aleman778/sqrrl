@@ -21,6 +21,7 @@ sqrrl_free(void* data) {
 enum Backend_Type {
     Backend_X64,
     Backend_WASM,
+    Backend_LLVM,
     
     Backend_Count,
 };

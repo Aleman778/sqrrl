@@ -144,6 +144,22 @@ print_ast_expression(String_Builder* sb, Ast_Expression* expr, int indent, bool 
             print_ast_expression(sb, binary->right, indent + 4);
         } break;
         
+        case AST_IF: {
+            auto if_stmt = (Ast_If*) expr;
+            string_builder_push(sb, "Ast_If:");
+            string_builder_push_newline(sb, indent + 2);
+            string_builder_push(sb, "cond: ");
+            print_ast_expression(sb, if_stmt->cond, indent + 2);
+            
+            string_builder_push_newline(sb, indent + 2);
+            string_builder_push(sb, "then: ");
+            print_ast_expression(sb, if_stmt->then_stmt, indent + 2);
+            
+            string_builder_push_newline(sb, indent + 2);
+            string_builder_push(sb, "else_if: ");
+            print_ast_expression(sb, if_stmt->else_stmt, indent + 2);
+        } break;
+        
         case AST_RETURN: {
             auto ret = (Ast_Return*) expr;
             string_builder_push(sb, "Ast_Return:");

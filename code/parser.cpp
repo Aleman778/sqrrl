@@ -226,7 +226,15 @@ parse_statement(Lexer* lexer, Ast_Block* block) {
         } break;
         
         case Token_If: {
-            unimplemented;
+            Ast_If* if_stmt = push_ast_node(lexer, Ast_If);
+            lex_expect(lexer, '(');
+            if_stmt->cond = parse_expression(lexer);
+            lex_expect(lexer, ')');
+            if_stmt->then_stmt = parse_statement(lexer, block);
+            if (lex_if_matched(lexer, Token_Else)) {
+                if_stmt->else_stmt = parse_statement(lexer, block);
+            }
+            result = if_stmt;
         } break;
         
         case Token_For: {
@@ -257,7 +265,7 @@ parse_statement(Lexer* lexer, Ast_Block* block) {
         } break;
         
         case '{': {
-            unimplemented; // parse_block
+            result = parse_block(lexer);
         } break;
         
         default: {
